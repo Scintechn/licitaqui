@@ -6,8 +6,10 @@ One line per task: date · task ID · status · PR link · follow-ups.
 |---|---|---|---|---|
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
-| 2026-09-17 | A1 (CI workflows) | in review | https://github.com/Scintechn/licitaqui/pull/1 | Make `gitleaks` a required status check on `main`; add GHCR push + Easypanel webhook with B1; Sentry DSNs still pending |
-| 2026-09-17 | E0 (message texts) | in review | https://github.com/Scintechn/licitaqui/pull/2 | 10 `TODO(Sci):` open, mostly blocked on gap G3 (privacy policy + terms); price-change notice needs legal review |
+| 2026-09-17 | A2 (Neon roles + extensions) | partial | — | Extensions and least-privilege roles done and verified. Remaining: `dev` branch, preview-branch automation, `pg_dump` stub — all need Neon console/API access |
+| 2026-09-17 | D1 (design tokens) | merged | https://github.com/Scintechn/licitaqui/pull/3 | 34 tests; Tailwind v4 `@theme` tokens, 12 components, `/dev/components` |
+| 2026-09-17 | A1 (CI workflows) | merged | https://github.com/Scintechn/licitaqui/pull/1 | Make `gitleaks` a required status check on `main`; add GHCR push + Easypanel webhook with B1; Sentry DSNs still pending |
+| 2026-09-17 | E0 (message texts) | merged | https://github.com/Scintechn/licitaqui/pull/2 | 10 `TODO(Sci):` open, mostly blocked on gap G3 (privacy policy + terms); price-change notice needs legal review |
 | 2026-09-17 | Commit attribution fix | done | — | All 5 commits re-authored to Scintechn <development@scintechn.com> (were mis-attributed to `scintylla`). Local safety tag `backup-before-author-fix`, not pushed |
 
 ## Open items from Session 1
@@ -25,6 +27,28 @@ One line per task: date · task ID · status · PR link · follow-ups.
 | 5 | **Python 3.14.7 locally, worker targets 3.12.** Docker image pins 3.12, so CI and production are correct; only the local venv differs. | B1 | Sci |
 | 6 | `apps/web/styles/tokens.css` is a documented stub. | D1 | agent |
 | 7 | `.github/workflows/` is empty — `ci-web.yml`, `ci-worker.yml`, `migrate.yml`, `evaluate-ai.yml` are task A1/A3/C1 scope (spec §13). | A1 | agent |
+
+## A2 — what was applied to Neon (2026-09-17)
+
+Neon project `neon-bistre-cloud` (`rapid-mouse-53141905`), São Paulo, database `neondb`,
+**PostgreSQL 18.6** (spec §5 says 16 — newer, all required extensions available).
+
+Applied to the **main** branch, with Sci's explicit go-ahead:
+- Extensions: `unaccent`, `pg_trgm`, `citext`.
+- Role `migrator` — DDL: `USAGE, CREATE ON SCHEMA public`.
+- Role `app` — DML only: `USAGE ON SCHEMA public`, `SELECT/INSERT/UPDATE/DELETE` on all
+  tables, `USAGE, SELECT` on sequences, plus `ALTER DEFAULT PRIVILEGES FOR ROLE migrator`
+  so tables created by migrations are automatically reachable.
+
+Verified, not assumed: `migrator` created a table, `app` did DML on it, `app` was **denied**
+`CREATE TABLE`, `unaccent('licitação') = 'licitacao'`, `pg_trgm` similarity and `citext`
+case-insensitive compare all behave. Test table dropped afterwards.
+
+Credentials are in `.env.neon-roles.local` (gitignored, mode 600) — never committed.
+
+**Decision (2026-09-17):** the Vercel integration provisioned **Neon Auth** (9 tables in a
+`neon_auth` schema). Sci confirmed spec §5 stands: **Auth.js / NextAuth v5**. The
+`neon_auth` schema is unused and left untouched; consider dropping it before launch.
 
 ## Notes
 
