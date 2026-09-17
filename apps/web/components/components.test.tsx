@@ -1,6 +1,17 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { AppBarAction, Button, Field, Icon, LockedValue, Logo, StateCard, Status, Tag } from './index'
+import {
+  AppBarAction,
+  Button,
+  Field,
+  Icon,
+  LockedValue,
+  Logo,
+  SectionLabel,
+  StateCard,
+  Status,
+  Tag,
+} from './index'
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(node)
 
@@ -184,5 +195,40 @@ describe('AppBarAction', () => {
     const out = html(<AppBarAction icon="alert" label="Alertas" />)
     expect(out).toContain('aria-label="Alertas"')
     expect(out).toContain('size-touch')
+  })
+})
+
+/* What task D2 added to the design system for the public pages. */
+
+describe('public-page additions (D2)', () => {
+  it('gives Status a green tone that still ships a text label', () => {
+    const out = html(<Status kind="positive">Exclusivo ME/EPP</Status>)
+    expect(out).toContain('Exclusivo ME/EPP')
+    expect(out).toContain('bg-success-soft')
+    expect(out).toContain('text-success')
+  })
+
+  it('sizes SectionLabel by prop, never by two competing font-size classes', () => {
+    const board = html(<SectionLabel>Resumo</SectionLabel>)
+    const publicPage = html(<SectionLabel size="caption">Resumo</SectionLabel>)
+    expect(board).toContain('text-label')
+    expect(board).not.toContain('text-caption')
+    expect(publicPage).toContain('text-caption')
+    expect(publicPage).not.toContain('text-label')
+  })
+
+  it('carries the graphite-panel tone for SectionLabel', () => {
+    expect(html(<SectionLabel tone="inverse">Fundador</SectionLabel>)).toContain(
+      'text-on-ink-faint',
+    )
+  })
+
+  it('draws the three offer-page glyphs on the same grid as the rest', () => {
+    for (const name of ['money', 'send', 'warning'] as const) {
+      const out = html(<Icon name={name} />)
+      expect(out).toContain('viewBox="0 0 24 24"')
+      expect(out).toContain('stroke-width="1.8"')
+      expect(out).toContain('<path')
+    }
   })
 })

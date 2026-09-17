@@ -9,7 +9,9 @@
       "TODO(Sci): define the support address used in support.email.",
       "TODO(Sci): review consent.* word by word — this is the LGPD consent record for WhatsApp and email contact (spec §12).",
       "TODO(Sci): review billing.priceChange.* — it must match the price-change clause in the terms and the email in worker/templates/email/price-change-30-days.md.",
-      "TODO(Sci): gap G13 — nothing here mentions nota fiscal, on purpose. Decide with the accountant before adding anything."
+      "TODO(Sci): gap G13 — nothing here mentions nota fiscal, on purpose. Decide with the accountant before adding anything.",
+      "TODO(Sci): foundersPage.footer.company — the approved offer page carries a literal [CNPJ] placeholder. The CNPJ is omitted here until SCINT TECNOLOGIA's number is confirmed.",
+      "TODO(E0): foundersPage.* is the approved copy of paginas/oferta_fundadores.html, ported verbatim by task D2. A few strings are near-duplicates of founders.* (the e-mail and WhatsApp field labels, the WhatsApp placeholder, the consent sentence). Reconcile the two sets before 09-24 so the offer page and the signup API speak the same way."
     ]
   },
   "brand": {
@@ -112,6 +114,264 @@
       "duplicate": "Este contato já está na lista de fundadores. Não precisa cadastrar de novo.",
       "rateLimited": "Você tentou várias vezes seguidas. Espere um minuto e tente de novo.",
       "generic": "Não conseguimos guardar sua vaga agora. Tente de novo em instantes — e, se continuar assim, escreva para {email}."
+    }
+  },
+  "foundersPage": {
+    "meta": {
+      "title": "LicitaQui Fundadores",
+      "description": "Lista de fundadores da LicitaQui: 48 vagas a R$ 26 por mês nos 6 primeiros meses. Ache o edital que a sua empresa consegue atender e saiba até quanto ofertar com lucro."
+    },
+    "nav": {
+      "skip": "Ir direto para o conteúdo",
+      "home": "LicitaQui, início",
+      "cta": "Garantir minha vaga"
+    },
+    "hero": {
+      "badge": "Lista de fundadores · 48 vagas · abertura 08/10",
+      "title": "Ache o edital que você consegue atender. Saiba até quanto ofertar com lucro.",
+      "subtitle": "O LicitaQui é uma ferramenta de licitações feita para MEI e pequena empresa. Ela lê os editais abertos, mostra o que combina com o seu CNPJ, explica o que pedem e avisa antes do prazo.",
+      "promises": [
+        "Editais compatíveis com o seu CNAE",
+        "Leitura do edital por IA, com a página",
+        "Preço que costuma vencer na região",
+        "Alertas no Telegram antes do prazo"
+      ]
+    },
+    "signup": {
+      "planLabel": "Plano Promocional · só para fundadores",
+      "price": "R$ 26",
+      "priceUnit": "por mês nos 6 primeiros meses",
+      "priceWas": "R$ 57",
+      "priceNote": "Tudo do plano Essencial. Do 7º mês em diante, R$ 57 por mês, com aviso 30 dias antes.",
+      "seatsGroup": "48 vagas de fundador",
+      "seatsLabel": "Vagas neste preço",
+      "seatsNote": "Depois das 48 vagas, o Essencial custa R$ 57 por mês desde o início.",
+      "emailLabel": "E-mail",
+      "whatsappLabel": "WhatsApp",
+      "whatsappPlaceholder": "(00) 00000-0000",
+      "sellsLabel": "O que você vende",
+      "sellsPlaceholder": "ex.: material de escritório, limpeza, informática",
+      "consent": "Aceito receber o aviso de abertura e as novidades por e-mail e WhatsApp. Posso sair quando quiser.",
+      "note": "Não cobramos nada agora. Quando o plano abrir, você recebe o link de assinatura e decide se quer entrar."
+    },
+    "pain": {
+      "label": "Por que agora",
+      "title": "O governo compra todo dia. Quem está começando entra no escuro.",
+      "items": [
+        {
+          "title": "Achar o edital certo",
+          "body": "São milhares de editais abertos. A busca por palavra traz muito item que não tem nada a ver com o que você vende."
+        },
+        {
+          "title": "Entender o que pedem",
+          "body": "Dezenas de páginas de edital e termo de referência para descobrir se exigem atestado, capital mínimo, amostra ou licença."
+        },
+        {
+          "title": "Não perder dinheiro",
+          "body": "O valor estimado do edital engana. Na disputa o preço cai, e quem não fez a conta ganha o contrato no prejuízo."
+        }
+      ],
+      "facts": [
+        {
+          "value": "R$ 272,6 bi",
+          "label": "ficaram com micro e pequenas empresas em 2025"
+        },
+        {
+          "value": "R$ 397/mês",
+          "label": "é o preço de entrada de ferramentas populares, muitas com contrato anual"
+        }
+      ],
+      "source": "Fonte: dados do Portal Nacional de Contratações Públicas divulgados pela Convergência Digital. Preços de concorrentes: sites oficiais, setembro de 2026."
+    },
+    "ruler": {
+      "label": "Exemplo real · papel sulfite A4, por resma",
+      "title": "Parecia lucro. Era prejuízo.",
+      "body": "Olhando só o valor do edital, comprar no varejo e revender dava margem. Mas quem venceu ofertou bem abaixo. A ferramenta mostra essa diferença antes da sua proposta e diz até quanto você pode pagar ao fornecedor para disputar com lucro.",
+      "source": "Medianas de 8 editais encerrados, consultados em 16/09/2026. Varejo: ofertas online com 10% de frete.",
+      "alt": "Régua de preço: para ter 15% de margem é preciso comprar por até R$ 14,60; o vencedor ofertou cerca de R$ 20, varejo com frete custa cerca de R$ 29 e o edital estimava cerca de R$ 36.",
+      "winner": "vencedor ofertou",
+      "winnerValue": "≈ R$ 20",
+      "tender": "edital",
+      "tenderValue": "≈ R$ 36",
+      "maxPurchase": "compra máxima",
+      "maxPurchaseValue": "R$ 14,60",
+      "retail": "varejo + frete",
+      "retailValue": "≈ R$ 29",
+      "scaleStart": "R$ 10",
+      "scaleEnd": "R$ 40",
+      "verdictLead": "Comprando no varejo, não fecha a conta.",
+      "verdictBody": "Para ter 15% de margem ao preço que venceu, seria preciso comprar por até R$ 14,60."
+    },
+    "pillars": {
+      "label": "O que você vai usar",
+      "title": "Da busca à proposta, com a conta feita.",
+      "items": [
+        {
+          "title": "Encontrar",
+          "body": "Digite o CNPJ. Mostramos os editais abertos compatíveis com as suas atividades, com prazo, valor e se é exclusivo para ME/EPP.",
+          "plan": "Básico"
+        },
+        {
+          "title": "Entender",
+          "body": "A IA lê o edital e aponta atestado, capital mínimo, amostra, entrega, pagamento e o que pode barrar uma empresa pequena, com a página.",
+          "plan": "Básico com limite"
+        },
+        {
+          "title": "Ofertar com lucro",
+          "body": "A faixa de preço que costuma vencer na sua região e o preço máximo de compra para ter margem, item por item.",
+          "plan": "Essencial"
+        },
+        {
+          "title": "Antes do prazo",
+          "body": "Alertas no Telegram com os editais novos que combinam com você: toda semana no Básico, todo dia no Essencial.",
+          "plan": "Básico e Essencial"
+        }
+      ]
+    },
+    "screening": {
+      "label": "Triagem de um edital real",
+      "title": "58 páginas resumidas no que decide se vale disputar.",
+      "body": "Cada ponto vem com a página do edital, para você conferir. A leitura de um edital leva segundos e fica pronta para todos que pedirem depois.",
+      "source": "A IA ajuda a ler e pode errar: confira sempre no edital. Não é assessoria jurídica.",
+      "cardLabel": "Exemplo de triagem por IA",
+      "modality": "Pregão eletrônico",
+      "exclusive": "Exclusivo ME/EPP",
+      "tender": "Registro de preços de baterias e pilhas",
+      "buyer": "Prefeitura de Campinas/SP · Secretaria de Saúde · sessão 30/09 às 08:30",
+      "score": "9",
+      "scoreOutOf": "/10",
+      "scoreBody": "Acessível para pequena empresa: exclusivo ME/EPP e sem atestado, amostra ou capital mínimo.",
+      "rows": [
+        { "label": "Valor estimado", "value": "R$ 48.196", "page": "—", "mono": true },
+        { "label": "Atestado técnico", "value": "Não exige", "page": "p. 43" },
+        { "label": "Capital mínimo", "value": "Não exige", "page": "p. 44" },
+        { "label": "Amostra", "value": "Não exige", "page": "p. 44" },
+        { "label": "Entrega", "value": "15 dias · Campinas", "page": "p. 50" },
+        { "label": "Validade na entrega", "value": "mín. 75%", "page": "p. 50", "badge": true },
+        { "label": "Pagamento", "value": "10 dias fora a dezena", "page": "—" },
+        { "label": "Atenção", "value": "Consórcio vedado", "page": "p. 4" }
+      ],
+      "readIn": "Lida em 9,9 segundos",
+      "published": "Edital publicado no PNCP em 16/09/2026"
+    },
+    "founderValue": {
+      "label": "O que o fundador recebe",
+      "title": "Entrar agora vale mais do que entrar depois.",
+      "benefits": [
+        {
+          "title": "R$ 26 por mês durante 6 meses",
+          "body": "Menos da metade do Essencial (R$ 57) no primeiro semestre, incluindo os primeiros meses com o produto completo. Só 48 vagas."
+        },
+        {
+          "title": "Acesso antes de todos",
+          "body": "Você usa o Radar antes da abertura pública e recebe os primeiros resumos semanais de editais."
+        },
+        {
+          "title": "Aviso direto, sem precisar acompanhar redes",
+          "body": "A abertura chega por e-mail e WhatsApp."
+        },
+        {
+          "title": "Você ajuda a decidir o que vem primeiro",
+          "body": "Canal aberto com quem está construindo a ferramenta."
+        }
+      ],
+      "comparisonLabel": "Sem as armadilhas de sempre",
+      "comparisonOther": "Ferramentas populares",
+      "comparisonRows": [
+        {
+          "feature": "Preço de entrada",
+          "other": "a partir de R$ 397/mês",
+          "us": "R$ 26/mês por 6 meses (fundador)"
+        },
+        { "feature": "Fidelidade", "other": "muitas com contrato anual", "us": "sem fidelidade" },
+        { "feature": "Cancelar", "other": "conforme contrato", "us": "em 1 clique" },
+        { "feature": "Aviso de cobrança", "other": "—", "us": "3 dias antes de cada cobrança" },
+        {
+          "feature": "Até quanto ofertar com lucro",
+          "other": "não anunciado",
+          "us": "preço máximo de compra por item"
+        }
+      ],
+      "comparisonNote": "Comparação com base nas páginas públicas de ferramentas do mercado em setembro de 2026.",
+      "cta": "Garantir uma das 48 vagas"
+    },
+    "timeline": {
+      "label": "Como funciona a lista",
+      "title": "Você entra hoje e decide depois.",
+      "steps": [
+        {
+          "when": "Hoje",
+          "title": "Reserve a vaga",
+          "body": "Nome, e-mail e WhatsApp. Nenhum pagamento."
+        },
+        {
+          "when": "08/10 às 19h",
+          "title": "Abertura para fundadores",
+          "body": "Você recebe o acesso ao Radar: CNPJ, editais compatíveis e triagem por IA."
+        },
+        {
+          "when": "Semanas seguintes",
+          "title": "Resumo toda segunda",
+          "body": "Até 3 editais que combinam com você, já triados, no Telegram."
+        },
+        {
+          "when": "Abertura do Essencial",
+          "title": "Link de assinatura",
+          "body": "R$ 26 por mês nos 6 primeiros meses, depois R$ 57. Pix ou cartão, cancela quando quiser."
+        }
+      ]
+    },
+    "faq": {
+      "label": "Perguntas",
+      "title": "Antes de reservar",
+      "columns": [
+        [
+          {
+            "q": "Preciso pagar alguma coisa agora?",
+            "a": "Não. A lista só reserva o preço de fundador. O link de assinatura chega quando o plano Essencial abrir, e você decide se quer entrar."
+          },
+          {
+            "q": "Serve para MEI?",
+            "a": "Sim. A ferramenta foi pensada para MEI, ME e EPP. Ela lê as atividades do seu CNPJ e marca o que é compatível ou precisa ser verificado. Lembre que o MEI tem limite de faturamento anual."
+          },
+          {
+            "q": "Preciso já saber participar de licitação?",
+            "a": "Não. A triagem explica em linguagem simples o que o edital pede e o que pode te barrar. Para cadastro e habilitação, siga o edital e o portal de compras."
+          },
+          {
+            "q": "De onde vêm os editais?",
+            "a": "Do Portal Nacional de Contratações Públicas, onde os órgãos publicam as compras pela nova Lei de Licitações, com link direto para o edital original."
+          }
+        ],
+        [
+          {
+            "q": "O que acontece depois das 48 vagas?",
+            "a": "Você entra na lista de espera e ainda recebe o aviso de abertura, mas o Essencial custa R$ 57 por mês."
+          },
+          {
+            "q": "O que acontece depois dos 6 meses?",
+            "a": "O plano passa ao valor do Essencial, R$ 57 por mês. Avisamos por e-mail 30 dias antes, e você pode cancelar a qualquer momento, sem multa."
+          },
+          {
+            "q": "Tem fidelidade ou multa?",
+            "a": "Não. O plano é mensal, cancela em 1 clique e você recebe aviso 3 dias antes de cada cobrança."
+          },
+          {
+            "q": "A ferramenta dá lances por mim?",
+            "a": "Não. O foco é a decisão antes da disputa: em quais editais entrar e até que preço ofertar."
+          },
+          {
+            "q": "A IA pode errar?",
+            "a": "Pode. Por isso cada ponto mostra a página do edital, para você conferir. A ferramenta ajuda a ler e não substitui assessoria jurídica ou contábil."
+          }
+        ]
+      ]
+    },
+    "final": {
+      "title": "48 vagas a R$ 26 por mês, por 6 meses."
+    },
+    "footer": {
+      "company": "LicitaQui é um produto da SCINT TECNOLOGIA"
     }
   },
   "plans": {
