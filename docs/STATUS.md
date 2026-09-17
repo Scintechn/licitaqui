@@ -6,6 +6,8 @@ One line per task: date · task ID · status · PR link · follow-ups.
 |---|---|---|---|---|
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
+| 2026-09-17 | F1 (founders signup) | in review | https://github.com/Scintechn/licitaqui/pull/8 | Stacked on #5. Rate limiting is in-memory, not the Postgres store spec §3.3 wants — no `rate_limits` table exists yet; swap touches only `lib/rate-limit.ts`. LGPD consent version/timestamp live in `events.props` for want of a column |
+| 2026-09-17 | migrate.yml + db/README | in review | https://github.com/Scintechn/licitaqui/pull/7 | Preview-branch migration job still blocked on Neon preview branching (rest of A2) |
 | 2026-09-17 | B0 (spikes G7, G8) | in review | https://github.com/Scintechn/licitaqui/pull/6 | **G7 default overturned, accepted by Sci:** B2 builds on `/contratacoes/atualizacao`. G8: BrasilAPI confirmed. Open: BrasilAPI rate limit unmeasured; re-measure G7 hourly over a day before B2 commits deeply |
 | 2026-09-17 | D2 (Offer page) | in review | https://github.com/Scintechn/licitaqui/pull/5 | Follow-ups: reconcile near-duplicate i18n keys with E0 before 09-24; `Field` inputs are 15px and iOS Safari zooms below 16px on a public page (D1 call); footer `[CNPJ]` omitted; privacy/terms links still anchor to `#topo` |
 | 2026-09-17 | A3 (migrations + seed) | merged | https://github.com/Scintechn/licitaqui/pull/4 | Migrations applied to `neondb` (22 tables); seed is dev-only. Drizzle `schema.ts` left to R1 |
