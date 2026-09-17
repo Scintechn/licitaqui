@@ -1,5 +1,259 @@
 {
+  "_meta": {
+    "status": "draft (task E0, gap G10) — awaiting Sci's approval",
+    "keys": "Key names are English (CLAUDE.md). Values are Brazilian Portuguese.",
+    "placeholders": "UI copy uses ICU single braces (nome). Outbound message bodies in worker/templates use double braces. Do not mix the two. Braces are omitted in this note so it stays safe to compile.",
+    "scope": "Covers the flows E0 owns: founders offer and consent, plans and prices, billing and the promo price change, Telegram linking, notification preferences, and the AI disclaimer. Screen copy for Radar, Opportunity and Screening belongs to tasks D3/D4.",
+    "todo": [
+      "TODO(Sci): gap G3 — publish the privacy policy and terms of use, then fill legal.privacyUrl and legal.termsUrl.",
+      "TODO(Sci): define the support address used in support.email.",
+      "TODO(Sci): review consent.* word by word — this is the LGPD consent record for WhatsApp and email contact (spec §12).",
+      "TODO(Sci): review billing.priceChange.* — it must match the price-change clause in the terms and the email in worker/templates/email/price-change-30-days.md.",
+      "TODO(Sci): gap G13 — nothing here mentions nota fiscal, on purpose. Decide with the accountant before adding anything."
+    ]
+  },
   "brand": {
-    "name": "LicitaQui"
+    "name": "LicitaQui",
+    "tagline": "Encontre o edital que a sua empresa consegue atender.",
+    "promise": "Para quem quer encontrar um edital que consegue atender, entender o que pedem e saber até quanto pode ofertar com lucro — antes do prazo."
+  },
+  "common": {
+    "continue": "Continuar",
+    "back": "Voltar",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "close": "Fechar",
+    "tryAgain": "Tentar de novo",
+    "loading": "Carregando...",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "optional": "opcional",
+    "required": "obrigatório",
+    "perMonth": "por mês",
+    "yes": "Sim",
+    "no": "Não"
+  },
+  "legal": {
+    "privacyLabel": "Política de privacidade",
+    "termsLabel": "Termos de uso",
+    "privacyUrl": "TODO(Sci): G3",
+    "termsUrl": "TODO(Sci): G3",
+    "dataRequest": "Para corrigir ou apagar seus dados, escreva para {email}."
+  },
+  "support": {
+    "email": "TODO(Sci): endereço de contato",
+    "label": "Falar com a gente",
+    "help": "Dúvida, erro ou sugestão? Escreva para {email}. A gente responde."
+  },
+  "ai": {
+    "disclaimer": "A leitura é feita por inteligência artificial e serve para você decidir rápido. Antes de enviar proposta, confira no edital.",
+    "disclaimerShort": "Confira sempre no edital.",
+    "analyzing": "Lendo o edital. Isso leva alguns instantes.",
+    "citation": "Baseado na página {pagina} do edital."
+  },
+  "consent": {
+    "whatsapp": "Autorizo a LicitaQui a me enviar mensagens no WhatsApp sobre a minha vaga de fundador e sobre editais. Posso parar quando quiser respondendo SAIR.",
+    "email": "Autorizo a LicitaQui a me enviar e-mails sobre a minha vaga de fundador e sobre editais.",
+    "terms": "Li e aceito a política de privacidade e os termos de uso.",
+    "required": "Para continuar, você precisa aceitar a política de privacidade e os termos de uso.",
+    "contactRequired": "Escolha pelo menos um jeito de a gente falar com você: WhatsApp ou e-mail.",
+    "note": "A gente não vende nem empresta seus dados para ninguém, e só usa seu contato para o que está escrito aqui."
+  },
+  "founders": {
+    "offer": {
+      "eyebrow": "Oferta de fundador",
+      "title": "48 vagas para quem entra antes",
+      "subtitle": "A LicitaQui procura os editais abertos que combinam com o que a sua empresa já faz e lê cada um para você em português claro.",
+      "why": "São só 48 porque nas primeiras semanas queremos conversar com cada fundador e entender o que realmente ajuda uma empresa pequena a achar e entender um edital.",
+      "priceLine": "R$ 26 por mês nos 6 primeiros meses. Depois, R$ 57 por mês.",
+      "priceNote": "Mensal, sem fidelidade. Avisamos por e-mail 30 dias antes de a mensalidade passar para R$ 57.",
+      "cta": "Quero minha vaga de fundador"
+    },
+    "seats": {
+      "left": "{count, plural, =0 {Vagas esgotadas} one {Resta 1 vaga} other {Restam # vagas}}",
+      "of": "{count} de 48 vagas preenchidas",
+      "soldOut": "As 48 vagas acabaram. Você pode entrar na lista de espera.",
+      "unknown": "Não conseguimos conferir as vagas agora. Tente de novo em instantes."
+    },
+    "form": {
+      "nameLabel": "Seu nome",
+      "namePlaceholder": "Como podemos te chamar",
+      "emailLabel": "Seu e-mail",
+      "emailPlaceholder": "nome@empresa.com.br",
+      "whatsappLabel": "Seu WhatsApp",
+      "whatsappPlaceholder": "(11) 99999-9999",
+      "whatsappHelp": "É por aqui que avisamos quando a LicitaQui abrir.",
+      "cnpjLabel": "CNPJ da sua empresa",
+      "cnpjHelp": "Serve para já deixar sua lista de editais pronta no dia da abertura.",
+      "submit": "Garantir minha vaga",
+      "submitting": "Guardando sua vaga...",
+      "waitlistSubmit": "Entrar na lista de espera"
+    },
+    "confirmation": {
+      "title": "Vaga garantida, {nome}!",
+      "seat": "Você é o fundador número {numero} de 48.",
+      "nextTitle": "O que acontece agora",
+      "nextWhatsapp": "Mandamos uma mensagem no seu WhatsApp confirmando a vaga.",
+      "nextOpening": "No dia da abertura você recebe o link de acesso, antes da abertura ao público.",
+      "nextNothing": "Da sua parte, nada. Pode fechar esta página tranquilo.",
+      "share": "Conhece outro dono de empresa pequena que disputa licitação? Ainda dá tempo de ele pegar uma vaga."
+    },
+    "waitlist": {
+      "title": "Você está na lista de espera",
+      "position": "Você é o {posicao}º da fila.",
+      "body": "As 48 vagas de fundador acabaram. Se alguém desistir, a vaga passa para quem está na frente da fila e a gente te avisa.",
+      "basicNote": "De qualquer forma, quando a LicitaQui abrir você vai poder usar o plano Básico, que é gratuito: busca pelo CNPJ da sua empresa, 5 leituras de edital por mês e um aviso por semana no Telegram."
+    },
+    "errors": {
+      "nameRequired": "Diga como podemos te chamar.",
+      "emailInvalid": "Confira o e-mail: parece que falta alguma coisa.",
+      "whatsappInvalid": "Confira o número com DDD, por exemplo (11) 99999-9999.",
+      "cnpjInvalid": "Confira o CNPJ: são 14 números.",
+      "duplicate": "Este contato já está na lista de fundadores. Não precisa cadastrar de novo.",
+      "rateLimited": "Você tentou várias vezes seguidas. Espere um minuto e tente de novo.",
+      "generic": "Não conseguimos guardar sua vaga agora. Tente de novo em instantes — e, se continuar assim, escreva para {email}."
+    }
+  },
+  "plans": {
+    "monthly": "por mês",
+    "noLockIn": "Sem fidelidade. Cancele quando quiser.",
+    "currentPlan": "Seu plano atual",
+    "basic": {
+      "name": "Básico",
+      "price": "R$ 0",
+      "summary": "Para começar e entender se licitação é para você.",
+      "feature1": "Busca pelo CNPJ da sua empresa ou por palavra-chave",
+      "feature2": "5 leituras de edital por inteligência artificial por mês",
+      "feature3": "Edital e anexos liberados",
+      "feature4": "1 aviso por semana no Telegram, com 1 palavra-chave e 1 estado"
+    },
+    "promo": {
+      "name": "Promocional",
+      "badge": "Só para os 48 fundadores",
+      "price": "R$ 26",
+      "summary": "O plano Essencial pelo preço de fundador nos 6 primeiros meses.",
+      "priceChangeNote": "R$ 26 por mês nos 6 primeiros meses. A partir do sétimo mês, R$ 57 por mês, o preço do plano Essencial. Avisamos por e-mail 30 dias antes."
+    },
+    "essential": {
+      "name": "Essencial",
+      "price": "R$ 57",
+      "summary": "Para quem já disputa e quer decidir mais rápido.",
+      "feature1": "Leituras de edital sem limite",
+      "feature2": "Avisos diários no Telegram, com 10 palavras-chave e as atividades do seu CNPJ",
+      "feature3": "Faixa de preço de quem venceu e preço-alvo de compra",
+      "feature4": "10 análises completas por mês, com trechos citados do edital"
+    },
+    "pro": {
+      "name": "Pro",
+      "price": "R$ 98",
+      "summary": "Para quem disputa muito e precisa saber contra quem.",
+      "feature1": "Tudo do Essencial",
+      "feature2": "Concorrentes por nome e CNPJ",
+      "feature3": "Avisos no WhatsApp e por gatilhos",
+      "feature4": "60 análises completas por mês"
+    },
+    "locked": {
+      "title": "Disponível no plano Essencial",
+      "priceBand": "Aqui aparece a faixa de preço de quem venceu licitações parecidas e até quanto dá para ofertar com lucro.",
+      "files": "Crie sua conta gratuita para baixar o edital e os anexos.",
+      "cta": "Ver os planos"
+    },
+    "quota": {
+      "visitorLeft": "{count, plural, =0 {Você já usou suas 2 leituras gratuitas} one {Resta 1 leitura gratuita} other {Restam # leituras gratuitas}}",
+      "visitorSpent": "Crie sua conta gratuita e continue com 5 leituras por mês.",
+      "basicLeft": "{count, plural, =0 {Você já usou suas 5 leituras deste mês} one {Resta 1 leitura neste mês} other {Restam # leituras neste mês}}",
+      "basicSpent": "Suas leituras deste mês acabaram. Elas voltam no dia {data}, ou você pode assinar e ler sem limite.",
+      "cta": "Assinar"
+    }
+  },
+  "billing": {
+    "subscribe": {
+      "title": "Assinar a LicitaQui",
+      "cta": "Ir para o pagamento",
+      "methods": "Você pode pagar com Pix ou cartão.",
+      "redirect": "Abrimos a página de pagamento. Quando terminar, é só voltar para cá.",
+      "error": "Não conseguimos abrir a página de pagamento agora. Tente de novo em instantes."
+    },
+    "status": {
+      "active": "Assinatura ativa",
+      "pending": "Aguardando o pagamento",
+      "overdue": "Pagamento em atraso",
+      "cancelled": "Assinatura cancelada",
+      "nextCharge": "Próxima cobrança em {data}, no valor de {valor}.",
+      "lastPayment": "Último pagamento: {valor} em {data}."
+    },
+    "confirmed": {
+      "title": "Pagamento confirmado",
+      "body": "Sua assinatura está ativa e sua conta já está liberada.",
+      "cta": "Voltar para o Radar"
+    },
+    "priceChange": {
+      "bannerTitle": "Sua mensalidade muda em {data}",
+      "bannerBody": "Hoje você paga R$ 26 por mês, o preço de fundador dos 6 primeiros meses. A partir de {data}, a mensalidade passa a ser R$ 57 por mês. Nada mais muda na sua conta.",
+      "bannerCancel": "Se não quiser continuar, cancele até {data}, em um clique e sem multa.",
+      "noticeSent": "Avisamos por e-mail em {data}, 30 dias antes da mudança.",
+      "detailTitle": "Como fica o preço",
+      "detailNow": "Hoje: R$ 26,00 por mês",
+      "detailAfter": "A partir de {data}: R$ 57,00 por mês",
+      "detailSame": "Os recursos da sua conta continuam exatamente os mesmos."
+    },
+    "cancel": {
+      "cta": "Cancelar assinatura",
+      "title": "Quer mesmo cancelar?",
+      "body": "Sua conta volta para o plano Básico, que é gratuito: você continua buscando editais e tem 5 leituras por mês.",
+      "untilWhen": "Você continua com o plano pago até {data}, que é o fim do período já pago.",
+      "confirm": "Sim, cancelar",
+      "keep": "Não, continuar assinante",
+      "reasonLabel": "Se quiser, conte por que está saindo (opcional)",
+      "reasonHelp": "Isso não muda nada no cancelamento. Só ajuda a gente a melhorar.",
+      "doneTitle": "Assinatura cancelada",
+      "doneBody": "Pronto. Sua conta está no plano Básico e não vai haver nova cobrança. Se um dia quiser voltar, é só assinar de novo."
+    }
+  },
+  "telegram": {
+    "connect": {
+      "title": "Receba os editais no Telegram",
+      "body": "Uma vez por semana, o robô da LicitaQui manda até 3 editais abertos que combinam com o que a sua empresa faz.",
+      "cta": "Conectar o Telegram",
+      "opening": "Abrindo o Telegram...",
+      "help": "O Telegram abre com uma conversa já pronta. É só tocar em Iniciar.",
+      "noApp": "Não tem o Telegram? Ele é gratuito e dá para instalar na loja de aplicativos do seu celular."
+    },
+    "connected": {
+      "title": "Telegram conectado",
+      "body": "Seus avisos vão chegar em {conta}.",
+      "frequencyBasic": "Você recebe 1 aviso por semana.",
+      "frequencyPaid": "Você recebe avisos todos os dias.",
+      "disconnect": "Desconectar o Telegram",
+      "disconnected": "Telegram desconectado. Você não vai mais receber avisos por lá."
+    },
+    "errors": {
+      "expired": "Este link de conexão expirou. Gere outro e use nos próximos minutos.",
+      "generic": "Não conseguimos conectar o Telegram agora. Tente de novo em instantes."
+    }
+  },
+  "notifications": {
+    "title": "Avisos e preferências",
+    "intro": "Você escolhe por onde a LicitaQui fala com você. Pode mudar quando quiser.",
+    "emailLabel": "E-mail",
+    "emailHelp": "Editais da semana, avisos sobre a sua conta e sobre cobrança.",
+    "whatsappLabel": "WhatsApp",
+    "whatsappHelp": "Avisos importantes sobre a sua conta. Você também pode parar respondendo SAIR na conversa.",
+    "telegramLabel": "Telegram",
+    "telegramHelp": "Os editais abertos que combinam com a sua empresa.",
+    "digestLabel": "Resumo semanal de editais",
+    "digestHelp": "Até 3 editais por semana, escolhidos pelas atividades do seu CNPJ.",
+    "billingLabel": "Avisos de cobrança",
+    "billingHelp": "Confirmação de pagamento e aviso de mudança de preço. Esses não dá para desligar, porque a gente precisa te avisar.",
+    "saved": "Preferências salvas.",
+    "saveError": "Não conseguimos salvar agora. Tente de novo em instantes."
+  },
+  "errors": {
+    "generic": "Alguma coisa deu errado do nosso lado. Tente de novo em instantes.",
+    "network": "Parece que a conexão caiu. Confira a internet e tente de novo.",
+    "notFound": "Não encontramos esta página.",
+    "rateLimited": "Você fez muitos pedidos seguidos. Espere um pouco e tente de novo.",
+    "pncpDown": "O PNCP, o portal do governo de onde vêm os editais, está fora do ar agora. Os editais que já baixamos continuam aqui; os novos entram assim que o portal voltar.",
+    "staleData": "Estes dados foram atualizados em {data}. Estamos buscando as novidades agora."
   }
 }
