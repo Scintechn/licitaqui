@@ -6,7 +6,7 @@ import {
   seatsLeft,
   seatsLeftLabel,
   seatsTaken,
-} from './founders'
+} from './seats'
 
 describe('FOUNDER_SEATS', () => {
   it('is the 48 of spec §10 — the cap on the Promocional price', () => {

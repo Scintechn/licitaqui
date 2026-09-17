@@ -11,7 +11,7 @@
       "TODO(Sci): review billing.priceChange.* — it must match the price-change clause in the terms and the email in worker/templates/email/price-change-30-days.md.",
       "TODO(Sci): gap G13 — nothing here mentions nota fiscal, on purpose. Decide with the accountant before adding anything.",
       "TODO(Sci): foundersPage.footer.company — the approved offer page carries a literal [CNPJ] placeholder. The CNPJ is omitted here until SCINT TECNOLOGIA's number is confirmed.",
-      "TODO(E0): foundersPage.* is the approved copy of paginas/oferta_fundadores.html, ported verbatim by task D2. A few strings are near-duplicates of founders.* (the e-mail and WhatsApp field labels, the WhatsApp placeholder, the consent sentence). Reconcile the two sets before 09-24 so the offer page and the signup API speak the same way."
+      "TODO(Sci): review consent.founders and consent.terms — task F1 renders the two checkboxes of Annex B of the terms of use, one per purpose, never pre-ticked (LGPD art. 8 §4)."
     ]
   },
   "brand": {
@@ -54,12 +54,14 @@
     "citation": "Baseado na página {pagina} do edital."
   },
   "consent": {
+    "founders": "Quero entrar na lista de fundadores e receber por e-mail e WhatsApp o aviso de abertura das vagas. Posso sair quando quiser respondendo SAIR.",
+    "foundersRequired": "Para entrar na lista de fundadores, marque a caixa do aviso por e-mail e WhatsApp.",
+    "terms": "Li e aceito os termos de uso e a política de privacidade.",
+    "termsRequired": "Para continuar, você precisa aceitar os termos de uso e a política de privacidade.",
     "whatsapp": "Autorizo a LicitaQui a me enviar mensagens no WhatsApp sobre a minha vaga de fundador e sobre editais. Posso parar quando quiser respondendo SAIR.",
     "email": "Autorizo a LicitaQui a me enviar e-mails sobre a minha vaga de fundador e sobre editais.",
-    "terms": "Li e aceito a política de privacidade e os termos de uso.",
-    "required": "Para continuar, você precisa aceitar a política de privacidade e os termos de uso.",
-    "contactRequired": "Escolha pelo menos um jeito de a gente falar com você: WhatsApp ou e-mail.",
-    "note": "A gente não vende nem empresta seus dados para ninguém, e só usa seu contato para o que está escrito aqui."
+    "note": "A gente não vende nem empresta seus dados para ninguém, e só usa seu contato para o que está escrito aqui.",
+    "contactRequired": "Escolha pelo menos um jeito de a gente falar com você: WhatsApp ou e-mail."
   },
   "founders": {
     "offer": {
@@ -80,13 +82,16 @@
     "form": {
       "nameLabel": "Seu nome",
       "namePlaceholder": "Como podemos te chamar",
-      "emailLabel": "Seu e-mail",
+      "emailLabel": "E-mail",
       "emailPlaceholder": "nome@empresa.com.br",
-      "whatsappLabel": "Seu WhatsApp",
-      "whatsappPlaceholder": "(11) 99999-9999",
+      "whatsappLabel": "WhatsApp",
+      "whatsappPlaceholder": "(00) 00000-0000",
       "whatsappHelp": "É por aqui que avisamos quando a LicitaQui abrir.",
       "cnpjLabel": "CNPJ da sua empresa",
+      "cnpjPlaceholder": "00.000.000/0000-00",
       "cnpjHelp": "Serve para já deixar sua lista de editais pronta no dia da abertura.",
+      "sellsLabel": "O que você vende",
+      "sellsPlaceholder": "ex.: material de escritório, limpeza, informática",
       "submit": "Garantir minha vaga",
       "submitting": "Guardando sua vaga...",
       "waitlistSubmit": "Entrar na lista de espera"
@@ -146,12 +151,6 @@
       "seatsGroup": "48 vagas de fundador",
       "seatsLabel": "Vagas neste preço",
       "seatsNote": "Depois das 48 vagas, o Essencial custa R$ 57 por mês desde o início.",
-      "emailLabel": "E-mail",
-      "whatsappLabel": "WhatsApp",
-      "whatsappPlaceholder": "(00) 00000-0000",
-      "sellsLabel": "O que você vende",
-      "sellsPlaceholder": "ex.: material de escritório, limpeza, informática",
-      "consent": "Aceito receber o aviso de abertura e as novidades por e-mail e WhatsApp. Posso sair quando quiser.",
       "note": "Não cobramos nada agora. Quando o plano abrir, você recebe o link de assinatura e decide se quer entrar."
     },
     "pain": {
@@ -242,14 +241,48 @@
       "scoreOutOf": "/10",
       "scoreBody": "Acessível para pequena empresa: exclusivo ME/EPP e sem atestado, amostra ou capital mínimo.",
       "rows": [
-        { "label": "Valor estimado", "value": "R$ 48.196", "page": "—", "mono": true },
-        { "label": "Atestado técnico", "value": "Não exige", "page": "p. 43" },
-        { "label": "Capital mínimo", "value": "Não exige", "page": "p. 44" },
-        { "label": "Amostra", "value": "Não exige", "page": "p. 44" },
-        { "label": "Entrega", "value": "15 dias · Campinas", "page": "p. 50" },
-        { "label": "Validade na entrega", "value": "mín. 75%", "page": "p. 50", "badge": true },
-        { "label": "Pagamento", "value": "10 dias fora a dezena", "page": "—" },
-        { "label": "Atenção", "value": "Consórcio vedado", "page": "p. 4" }
+        {
+          "label": "Valor estimado",
+          "value": "R$ 48.196",
+          "page": "—",
+          "mono": true
+        },
+        {
+          "label": "Atestado técnico",
+          "value": "Não exige",
+          "page": "p. 43"
+        },
+        {
+          "label": "Capital mínimo",
+          "value": "Não exige",
+          "page": "p. 44"
+        },
+        {
+          "label": "Amostra",
+          "value": "Não exige",
+          "page": "p. 44"
+        },
+        {
+          "label": "Entrega",
+          "value": "15 dias · Campinas",
+          "page": "p. 50"
+        },
+        {
+          "label": "Validade na entrega",
+          "value": "mín. 75%",
+          "page": "p. 50",
+          "badge": true
+        },
+        {
+          "label": "Pagamento",
+          "value": "10 dias fora a dezena",
+          "page": "—"
+        },
+        {
+          "label": "Atenção",
+          "value": "Consórcio vedado",
+          "page": "p. 4"
+        }
       ],
       "readIn": "Lida em 9,9 segundos",
       "published": "Edital publicado no PNCP em 16/09/2026"
@@ -283,9 +316,21 @@
           "other": "a partir de R$ 397/mês",
           "us": "R$ 26/mês por 6 meses (fundador)"
         },
-        { "feature": "Fidelidade", "other": "muitas com contrato anual", "us": "sem fidelidade" },
-        { "feature": "Cancelar", "other": "conforme contrato", "us": "em 1 clique" },
-        { "feature": "Aviso de cobrança", "other": "—", "us": "3 dias antes de cada cobrança" },
+        {
+          "feature": "Fidelidade",
+          "other": "muitas com contrato anual",
+          "us": "sem fidelidade"
+        },
+        {
+          "feature": "Cancelar",
+          "other": "conforme contrato",
+          "us": "em 1 clique"
+        },
+        {
+          "feature": "Aviso de cobrança",
+          "other": "—",
+          "us": "3 dias antes de cada cobrança"
+        },
         {
           "feature": "Até quanto ofertar com lucro",
           "other": "não anunciado",
