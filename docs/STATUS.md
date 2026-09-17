@@ -6,6 +6,8 @@ One line per task: date · task ID · status · PR link · follow-ups.
 |---|---|---|---|---|
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
+| 2026-09-17 | A3 (migrations + seed) | in review | https://github.com/Scintechn/licitaqui/pull/4 | Migrations applied to `neondb` (22 tables); seed is dev-only. Drizzle `schema.ts` left to R1 |
+| 2026-09-17 | G3 (legal texts) | drafted | — | Privacy policy + terms copied to `docs/legal/`. **Not publishable yet**: 19 placeholders unfilled and a lawyer must review §11 liability cap, §6 price clause, §15 forum |
 | 2026-09-17 | A2 (Neon roles + extensions) | partial | — | Extensions and least-privilege roles done and verified. Remaining: `dev` branch, preview-branch automation, `pg_dump` stub — all need Neon console/API access |
 | 2026-09-17 | D1 (design tokens) | merged | https://github.com/Scintechn/licitaqui/pull/3 | 34 tests; Tailwind v4 `@theme` tokens, 12 components, `/dev/components` |
 | 2026-09-17 | A1 (CI workflows) | merged | https://github.com/Scintechn/licitaqui/pull/1 | Make `gitleaks` a required status check on `main`; add GHCR push + Easypanel webhook with B1; Sentry DSNs still pending |
