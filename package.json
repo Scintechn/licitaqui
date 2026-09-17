@@ -11,6 +11,8 @@
     "start": "pnpm --filter @licitaqui/web start",
     "lint": "pnpm --filter @licitaqui/web lint",
     "typecheck": "pnpm --filter @licitaqui/web typecheck",
-    "test": "pnpm --filter @licitaqui/web test"
+    "test": "pnpm --filter @licitaqui/web test",
+    "db:migrate": "worker/.venv/bin/python db/migrate.py",
+    "db:seed": "worker/.venv/bin/python db/seed.py"
   }
 }
