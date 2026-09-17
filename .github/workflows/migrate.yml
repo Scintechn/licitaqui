@@ -1,0 +1,91 @@
+# Database migrations (spec §13): apply db/migrations before the deploy that
+# needs them.
+#
+# Runs only on push to main, never on pull_request. A PR from a fork would
+# otherwise get the production migrator credential, and Neon preview branches
+# are not wired up yet (rest of task A2) — when they are, add a pull_request
+# job that targets the preview branch instead of main.
+#
+# The runner is idempotent: it records each applied file with its sha256 in
+# schema_migrations, skips what is already applied, and refuses to run if an
+# applied migration was edited. Re-running this workflow is therefore safe.
+name: migrate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'db/migrations/**'
+      - 'db/migrate.py'
+      - '.github/workflows/migrate.yml'
+  # Manual runs for recovery, or to apply a migration whose push predated this
+  # workflow.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never let two migration runs overlap: they would race on schema_migrations.
+# Do not cancel in progress — killing a migration mid-flight is worse than
+# queueing behind it.
+concurrency:
+  group: migrate-main
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: apply db/migrations
+    runs-on: ubuntu-latest
+    # Guard against a fork PR ever reaching this through a misconfiguration.
+    if: github.repository == 'Scintechn/licitaqui'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install psycopg
+        run: pip install --disable-pip-version-check 'psycopg[binary]>=3.2'
+
+      - name: Fail fast if the credential is missing
+        env:
+          MIGRATOR_DATABASE_URL: ${{ secrets.MIGRATOR_DATABASE_URL }}
+        run: |
+          if [ -z "$MIGRATOR_DATABASE_URL" ]; then
+            echo "::error::MIGRATOR_DATABASE_URL is not set."
+            echo "Set it to the direct (non-pooled) connection string for the"
+            echo "'migrator' role. Migrations must not go through PgBouncer."
+            exit 1
+          fi
+
+      - name: Apply migrations
+        env:
+          # Direct, non-pooled connection: DDL must not go through PgBouncer,
+          # and the 'migrator' role owns DDL while 'app' is DML-only (spec §5.1).
+          MIGRATOR_DATABASE_URL: ${{ secrets.MIGRATOR_DATABASE_URL }}
+        run: python db/migrate.py
+
+      - name: Report applied versions
+        env:
+          MIGRATOR_DATABASE_URL: ${{ secrets.MIGRATOR_DATABASE_URL }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os
+          import psycopg
+
+          with psycopg.connect(os.environ["MIGRATOR_DATABASE_URL"]) as c, c.cursor() as cur:
+              cur.execute(
+                  "select version, applied_at from schema_migrations order by version"
+              )
+              rows = cur.fetchall()
+
+          print("### Applied migrations\n")
+          print("| version | applied at (UTC) |")
+          print("|---|---|")
+          for version, applied_at in rows:
+              print(f"| `{version}` | {applied_at:%Y-%m-%d %H:%M} |")
+          PY
