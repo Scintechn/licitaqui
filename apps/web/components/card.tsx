@@ -92,16 +92,32 @@ export function SectionLabel({
   children,
   className,
   tone = 'ink',
+  size = 'label',
 }: {
   children: ReactNode
   className?: string
-  tone?: 'ink' | 'muted'
+  /** `inverse` is the same label on a graphite panel (public pages, task D2). */
+  tone?: 'ink' | 'muted' | 'inverse'
+  /**
+   * `label` (11px) is the board's in-app size. `caption` (12px) is the eyebrow
+   * on the public pages, which sit on a wider measure (task D2).
+   *
+   * This is a prop and not a `className` on purpose: two font-size utilities
+   * would fight over stylesheet order, which `lib/cn.ts` warns about.
+   */
+  size?: 'label' | 'caption'
 }) {
+  const TONE = {
+    ink: 'text-ink',
+    muted: 'text-muted',
+    inverse: 'text-on-ink-faint',
+  } as const
   return (
     <div
       className={cn(
-        'font-mono text-label font-medium tracking-[0.08em] uppercase',
-        tone === 'ink' ? 'text-ink' : 'text-muted',
+        'font-mono font-medium tracking-[0.08em] uppercase',
+        size === 'label' ? 'text-label' : 'text-caption',
+        TONE[tone],
         className,
       )}
     >

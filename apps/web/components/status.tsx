@@ -13,11 +13,18 @@ export type StatusKind =
   | 'check'
   /** Found by keyword only, outside the CNAE match. */
   | 'keyword'
+  /**
+   * A fact squarely in the company's favour — "Exclusivo ME/EPP" on the offer
+   * page's example screening card. Added by task D2; the green is the board's
+   * success pair, so no new colour enters the system.
+   */
+  | 'positive'
 
 const KIND: Record<StatusKind, { box: string; dot: string }> = {
   compatible: { box: 'bg-blue-soft text-blue', dot: 'bg-blue' },
   check: { box: 'bg-attention-soft text-attention', dot: 'bg-attention' },
   keyword: { box: 'bg-fill-muted text-muted', dot: 'bg-muted' },
+  positive: { box: 'bg-success-soft text-success', dot: 'bg-success' },
 }
 
 export type StatusProps = {
