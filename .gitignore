@@ -34,3 +34,6 @@ coverage/
 # vercel
 .vercel
 .env*
+
+# parallel task worktrees
+.worktrees/

@@ -12,11 +12,11 @@ One line per task: date · task ID · status · PR link · follow-ups.
 
 | # | Item | Blocks | Owner |
 |---|---|---|---|
-| 1 | **G1 — Neon not created.** Vercel → Storage → Create database → Neon, project `licitaqui`, Free plan, region São Paulo (`aws-sa-east-1`) if offered (spec §5.1). Cannot be changed later. | A2 | Sci |
+| ~~1~~ | **G1 RESOLVED** — Neon created via Vercel: `neon-bistre-cloud` (id `rapid-mouse-53141905`), **AWS South America East 1 (São Paulo)**, Free plan, default branch `main`. Per spec §5.1 this pairs with Vercel functions in `gru1`, now pinned in `apps/web/vercel.json`. | — | — |
 | ~~2~~ | **RESOLVED** — Vercel project linked; Root Directory verified as `apps/web` with `sourceFilesOutsideRootDirectory: true` (correct for the pnpm workspace). No change was needed. | — | — |
 | ~~2b~~ | **RESOLVED — and the earlier diagnosis was wrong.** The project was never paused (`paused: false` on every read; `live: false` is normal — every project in this team reports it). The real cause was a **commit-author seat block**: `readyStateReason` = "the commit author doesn't have permission to create deployments", `seatBlock.blockCode: TEAM_ACCESS_REQUIRED` for GitHub user `scintylla`, with `alwaysRefuseToBuild: true` — which is why there were zero build logs. Fixed by re-authoring commits to `Scintechn` (the team owner). | — | — |
 | ~~2c~~ | **RESOLVED** — commit author is now `Scintechn`. The Vercel deployment *creator* remains `scintechn-4604` (development@scintechn.com), the account owning the GitHub integration; that is a separate field from commit authorship. | — | — |
-| 2d | **Pending team access request from `scintylla`.** Each blocked push re-filed one (`joinedFrom.origin: nsnb-request-access`). It should stop now that commits are authored by the owner. Decline it at Settings → Members unless a seat is wanted — approving consumes a **billable Pro seat**. | — | Sci |
+| ~~2d~~ | **RESOLVED** — the pending `scintylla` team access request was removed by Sci; no Pro seat consumed. | — | — |
 | 2e | **Monorepo affected-projects skipping is ON** (`enableAffectedProjectsDeployments: true`). A commit touching only root-level files can be CANCELED with "the commit didn't affect this project" — this is what happened to the empty retrigger commit, and it looks like a silent failure. | all | agent |
 | 3 | **GitHub secret scanning unavailable** on this private repo (API returns 422 — needs GitHub Secret Protection, or a public repo). Spec §12 assumes it is on; pick a substitute (e.g. gitleaks in CI) or accept the gap. | A1 | Sci |
 | 4 | **Docker not installed locally.** Needed to build the worker image and run `docker compose up`. | B1 | Sci |
@@ -37,6 +37,9 @@ One line per task: date · task ID · status · PR link · follow-ups.
 - Commit identity is pinned in `CLAUDE.md`. Getting it wrong does more than mis-attribute:
   a commit author who is not an approved team member makes Vercel **refuse to build at
   all**, with no build logs to explain it.
-- Vercel functions/build region is currently `iad1` (Washington). Spec §5.1 pairs
-  `gru1` with a São Paulo Neon and `iad1` with a N. Virginia Neon — check the Neon
-  project's region matches when doing A2.
+- **Regions.** Neon is in São Paulo (`aws-sa-east-1`, permanent). Vercel functions are
+  therefore pinned to `gru1` in `apps/web/vercel.json` (spec §5.1). Note the *build*
+  region is chosen by Vercel and may still show `iad1` — that is the build machine, not
+  where functions execute, and it does not affect query latency.
+- `vercel.json` lives in `apps/web/`, not the repo root, because the project's Root
+  Directory is `apps/web`.
