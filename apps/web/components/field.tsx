@@ -49,7 +49,11 @@ export function Field({
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy || undefined}
           className={cn(
-            'min-h-control w-full rounded-control border bg-surface pl-3 text-lead text-ink',
+            // 16px, not the board's 15px (`text-lead`), and deliberately so:
+            // iOS Safari zooms the whole viewport when a focused input renders
+            // below 16px, which on a public page most people open from a phone
+            // throws the layout around mid-form. Do not "correct" this back.
+            'min-h-control w-full rounded-control border bg-surface pl-3 text-base text-ink',
             'placeholder:text-muted',
             icon ? 'pr-10' : 'pr-3',
             mono ? 'font-mono' : 'font-sans',

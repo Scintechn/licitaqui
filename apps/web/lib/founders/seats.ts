@@ -1,4 +1,4 @@
-import { format, messages } from './messages'
+import { format, messages } from '../messages'
 
 /**
  * Spec §10: the Promocional price (R$ 26/month for the first 6 months, then
