@@ -33,15 +33,26 @@ describe('/fundadores', () => {
   })
 
   it('labels every form control', () => {
-    for (const id of ['nome', 'email', 'whatsapp', 'vende', 'aceite']) {
+    for (const id of ['nome', 'email', 'whatsapp', 'cnpj', 'vende', 'aceite-contato', 'aceite-termos']) {
       expect(out).toContain(`for="${id}"`)
       expect(out).toContain(`id="${id}"`)
     }
   })
 
-  it('does not point the form at an endpoint task F1 has not built', () => {
-    expect(out).not.toContain('/api/founders')
+  it('submits through fetch, never a browser form navigation (F1)', () => {
+    // The endpoint is called from the submit handler, so nothing about it is in
+    // the static HTML: a bare `action=` would serialise the e-mail and the
+    // WhatsApp number into the URL.
     expect(out).not.toMatch(/<form[^>]*\saction=/)
+  })
+
+  it('never pre-ticks a consent box (LGPD art. 8 §4, terms Annex B)', () => {
+    for (const box of out.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? []) {
+      expect(box).not.toContain('checked')
+    }
+    expect(out.match(/type="checkbox"/g)).toHaveLength(2)
+    expect(out).toContain(messages.consent.founders)
+    expect(out).toContain(messages.consent.terms)
   })
 
   it('revalidates inside the 10–30 min window of spec §3.3', () => {
