@@ -22,7 +22,6 @@ from typing import Any
 import psycopg
 
 from .db import ConnectionFactory
-from .observability import get_logger
 from .queue import Job
 
 
@@ -96,5 +95,3 @@ class JobRegistry:
 
 #: The registry the worker process runs from.
 REGISTRY = JobRegistry()
-
-log = get_logger("job")
