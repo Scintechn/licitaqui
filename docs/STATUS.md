@@ -6,6 +6,8 @@ One line per task: date · task ID · status · PR link · follow-ups.
 |---|---|---|---|---|
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
+| 2026-09-17 | B1 (worker skeleton) | in review | https://github.com/Scintechn/licitaqui/pull/9 | 68 tests. **GHCR push + Easypanel deploy NOT done** — still blocked on credentials, `TODO(B1)` in ci-worker.yml stands. Neon compute *suspension* itself unproven (needs 5 idle min + the console); the no-open-session property that causes it is proven |
+| 2026-09-17 | Security: migrator credential rotated | done | — | The test DSN (migrator role) was rendered into a subagent transcript by a pytest traceback. Rotated, old password verified rejected, GitHub secret updated. No file or commit was affected |
 | 2026-09-17 | F1 (founders signup) | in review | https://github.com/Scintechn/licitaqui/pull/8 | Stacked on #5. Rate limiting is in-memory, not the Postgres store spec §3.3 wants — no `rate_limits` table exists yet; swap touches only `lib/rate-limit.ts`. LGPD consent version/timestamp live in `events.props` for want of a column |
 | 2026-09-17 | migrate.yml + db/README | in review | https://github.com/Scintechn/licitaqui/pull/7 | Preview-branch migration job still blocked on Neon preview branching (rest of A2) |
 | 2026-09-17 | B0 (spikes G7, G8) | in review | https://github.com/Scintechn/licitaqui/pull/6 | **G7 default overturned, accepted by Sci:** B2 builds on `/contratacoes/atualizacao`. G8: BrasilAPI confirmed. Open: BrasilAPI rate limit unmeasured; re-measure G7 hourly over a day before B2 commits deeply |
@@ -33,6 +35,20 @@ One line per task: date · task ID · status · PR link · follow-ups.
 | 5 | **Python 3.14.7 locally, worker targets 3.12.** Docker image pins 3.12, so CI and production are correct; only the local venv differs. | B1 | Sci |
 | 6 | `apps/web/styles/tokens.css` is a documented stub. | D1 | agent |
 | 7 | `.github/workflows/` is empty — `ci-web.yml`, `ci-worker.yml`, `migrate.yml`, `evaluate-ai.yml` are task A1/A3/C1 scope (spec §13). | A1 | agent |
+
+## Lesson: one shared test database, two agents
+
+B1 and F1 ran concurrently against the same `licitaqui_test` database. B1's unfiltered
+`claim()` picked up ~100 job rows created by F1's signup tests and flipped them to
+`running`. B1 caught it (its race test claimed rows it had not created) and fixed it
+properly: every database test now uses a job kind of its own (`b1t_<uuid>`) and claims
+with that filter. The table was left empty.
+
+That was an orchestration mistake, not an agent mistake — handing two parallel agents the
+same database invites it. Either give each task its own database, or require a
+task-scoped `kind` prefix in the brief. It also produced a genuinely useful production
+API: `claim(conn, kinds=[...])` and `WORKER_JOB_KINDS`, so a container can be dedicated
+to part of the queue.
 
 ## Decisions (2026-09-17)
 
