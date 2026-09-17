@@ -30,3 +30,7 @@ Thumbs.db
 # local data
 *.log
 coverage/
+
+# vercel
+.vercel
+.env*
