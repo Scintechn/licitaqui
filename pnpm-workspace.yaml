@@ -1,10 +1,7 @@
 packages:
   - apps/*
 
+# Native binary used by the Next.js ESLint resolver. Declared explicitly so that
+# `pnpm install` never stops for approval in CI or on Vercel (spec §13).
 allowBuilds:
-  unrs-resolver: set this to true or false
-
-# Native binary needed by the Next.js ESLint resolver. Declared so that
-# `pnpm install` is non-interactive in CI (spec §13).
-onlyBuiltDependencies:
-  - unrs-resolver
+  unrs-resolver: true
