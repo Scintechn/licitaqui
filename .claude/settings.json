@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./**/.chaves_poc)",
+      "Read(./**/*.xlsx)",
+      "Read(./**/__pycache__/**)",
+      "Read(./**/.DS_Store)"
+    ]
+  }
+}

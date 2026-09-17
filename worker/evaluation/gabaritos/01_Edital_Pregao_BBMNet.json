@@ -1,0 +1,194 @@
+{
+  "documento": "01_Edital_Pregao_BBMNet",
+  "pasta_pncp": "45781176000166_2026_804",
+  "descricao": "Americana/SP - Pregão Eletrônico 091/2025 - locação de sistema web SaaS (PNCP 45781176000166/2026/804). Conferido manualmente no PDF em 16/09/2026.",
+  "checks": [
+    {
+      "nome": "Prazo de envio da proposta",
+      "campo": "prazo_envio_proposta",
+      "tipo": "contem_todos",
+      "valor": [
+        "2026-09-30",
+        "07:30"
+      ],
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Data/hora da sessão",
+      "campo": "data_sessao_disputa",
+      "tipo": "contem_todos",
+      "valor": [
+        "2026-09-30",
+        "08:30"
+      ],
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Valor estimado total",
+      "campo": "valor_estimado_total",
+      "tipo": "numero",
+      "valor": 4330766.67,
+      "tolerancia": 0.01,
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Critério: menor preço global",
+      "campo": "criterio_julgamento",
+      "tipo": "contem_todos",
+      "valor": [
+        "global"
+      ],
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Plataforma BBMNet",
+      "campo": "plataforma_disputa",
+      "tipo": "contem_todos",
+      "valor": [
+        "bbm"
+      ],
+      "fonte": "p.1-2"
+    },
+    {
+      "nome": "Vigência 60 meses",
+      "campo": "vigencia_meses_normalizada",
+      "tipo": "numero",
+      "valor": 60,
+      "tolerancia": 0,
+      "fonte": "p.21"
+    },
+    {
+      "nome": "ME/EPP: tratamento favorecido",
+      "campo": "beneficio_me_epp.situacao",
+      "tipo": "igual",
+      "valor": "tratamento_favorecido",
+      "fonte": "p.1 (quadro: 'Benefícios ME/EPP: Sim. Vide condições do Edital') e p.3 (2.9)",
+      "nota": "CORRIGIDO em 16/09: o texto corrido embaralhava o quadro de 2 colunas; a tabela da p.1 diz SIM. O item 3.4.3 só afasta os benefícios se o valor superar o limite de EPP (R$ 4,8 mi), e R$ 4,33 mi fica abaixo."
+    },
+    {
+      "nome": "Atestado: 650 usuários",
+      "campo": "atestado_capacidade_tecnica.resumo",
+      "tipo": "contem_todos",
+      "valor": [
+        "650"
+      ],
+      "fonte": "p.17"
+    },
+    {
+      "nome": "Capital/patrimônio 10%",
+      "campo": "capital_ou_patrimonio_minimo.resumo",
+      "tipo": "contem_todos",
+      "valor": [
+        "10"
+      ],
+      "fonte": "p.17"
+    },
+    {
+      "nome": "Capital mínimo ≈ R$ 86.615 (conta)",
+      "campo": "capital_ou_patrimonio_minimo.valor_minimo_calculado",
+      "tipo": "numero",
+      "valor": 86615.33,
+      "tolerancia": 0.02,
+      "fonte": "p.17: 10% do valor de 1 ano = 10% × 4.330.766,67 / 5"
+    },
+    {
+      "nome": "Prova de conceito (não amostra)",
+      "campo": "amostra_ou_prova_de_conceito.tipo",
+      "tipo": "igual",
+      "valor": "prova_de_conceito",
+      "fonte": "p.95-99"
+    },
+    {
+      "nome": "PoC: 509 requisitos",
+      "campo": "amostra_ou_prova_de_conceito.resumo",
+      "tipo": "contem_algum",
+      "valor": [
+        "509",
+        "70%",
+        "70 %"
+      ],
+      "fonte": "p.98-99"
+    },
+    {
+      "nome": "Garantia contratual não exigida",
+      "campo": "garantia_contratual.situacao",
+      "tipo": "igual",
+      "valor": "nao_exigida",
+      "fonte": "p.26 e p.86"
+    },
+    {
+      "nome": "Visita técnica facultativa",
+      "campo": "visita_tecnica",
+      "tipo": "igual",
+      "valor": "facultativa",
+      "fonte": "p.17 e p.96"
+    },
+    {
+      "nome": "Consórcio vedado",
+      "campo": "consorcio",
+      "tipo": "igual",
+      "valor": "vedado",
+      "fonte": "p.97"
+    },
+    {
+      "nome": "Implantação em 30 dias",
+      "campo": "prazo_execucao_ou_entrega_dias",
+      "tipo": "numero",
+      "valor": 30,
+      "tolerancia": 0,
+      "fonte": "p.87"
+    },
+    {
+      "nome": "Pagamento em 30 dias",
+      "campo": "prazo_pagamento_dias",
+      "tipo": "numero",
+      "valor": 30,
+      "tolerancia": 0,
+      "fonte": "p.22"
+    },
+    {
+      "nome": "Nota de triagem baixa (≤ 4)",
+      "campo": "nota_triagem_0_a_10",
+      "tipo": "maximo",
+      "valor": 4,
+      "fonte": "julgamento"
+    }
+  ],
+  "checks_deep": [
+    {
+      "nome": "Subcontratação até 30%",
+      "campo": "subcontratacao.limite",
+      "tipo": "contem_todos",
+      "valor": [
+        "30"
+      ],
+      "fonte": "p.21"
+    },
+    {
+      "nome": "Multa 1%/dia até 15 dias",
+      "campo": "penalidades.multa_atraso",
+      "tipo": "contem_todos",
+      "valor": [
+        "1",
+        "15"
+      ],
+      "fonte": "p.26"
+    },
+    {
+      "nome": "Reajuste IPCA",
+      "campo": "prazos.reajuste",
+      "tipo": "contem_todos",
+      "valor": [
+        "ipca"
+      ],
+      "fonte": "p.23"
+    },
+    {
+      "nome": "3 itens",
+      "campo": "itens",
+      "tipo": "tamanho",
+      "valor": 3,
+      "fonte": "p.20"
+    }
+  ]
+}

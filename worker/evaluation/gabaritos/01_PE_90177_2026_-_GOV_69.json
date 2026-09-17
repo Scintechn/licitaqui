@@ -1,0 +1,215 @@
+{
+  "documento": "01_PE_90177_2026_-_GOV_69",
+  "pasta_pncp": "47018676000176_2026_383",
+  "descricao": "Rede Mário Gatti (Campinas/SP) - Pregão 69/2026 - Registro de preços de materiais hospitalares (PNCP 47018676000176/2026/383). Conferido manualmente no PDF em 16/09/2026.",
+  "checks": [
+    {
+      "nome": "Data/hora da sessão",
+      "campo": "data_sessao_disputa",
+      "tipo": "contem_todos",
+      "valor": [
+        "2026-09-30",
+        "09:00"
+      ],
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Valor estimado R$ 1.249.376,49",
+      "campo": "valor_estimado_total",
+      "tipo": "numero",
+      "valor": 1249376.49,
+      "tolerancia": 0.005,
+      "fonte": "p.2"
+    },
+    {
+      "nome": "Menor preço por item",
+      "campo": "criterio_julgamento",
+      "tipo": "contem_todos",
+      "valor": [
+        "item"
+      ],
+      "fonte": "p.1 e p.37"
+    },
+    {
+      "nome": "Plataforma Compras.gov",
+      "campo": "plataforma_disputa",
+      "tipo": "contem_algum",
+      "valor": [
+        "compras"
+      ],
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Registro de preços",
+      "campo": "registro_de_precos",
+      "tipo": "verdadeiro",
+      "valor": true,
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Vigência da ata 12 meses",
+      "campo": "vigencia_meses_normalizada",
+      "tipo": "numero",
+      "valor": 12,
+      "tolerancia": 0,
+      "fonte": "p.2 e p.37"
+    },
+    {
+      "nome": "ME/EPP misto (ampla + cota + exclusivos)",
+      "campo": "beneficio_me_epp.situacao",
+      "tipo": "igual",
+      "valor": "misto",
+      "fonte": "p.1-2 (cotas 11,13,15; exclusivos 16-19)"
+    },
+    {
+      "nome": "Itens exclusivos 16 a 19",
+      "campo": "beneficio_me_epp.itens_exclusivos",
+      "tipo": "contem_todos",
+      "valor": [
+        "16",
+        "17",
+        "18",
+        "19"
+      ],
+      "fonte": "p.2"
+    },
+    {
+      "nome": "Sem capital mínimo",
+      "campo": "capital_ou_patrimonio_minimo.exige",
+      "tipo": "falso_ou_nulo",
+      "valor": false,
+      "fonte": "não exigido"
+    },
+    {
+      "nome": "Amostra (quando solicitada)",
+      "campo": "amostra_ou_prova_de_conceito.tipo",
+      "tipo": "igual",
+      "valor": "amostra",
+      "fonte": "p.38"
+    },
+    {
+      "nome": "Sem visita técnica",
+      "campo": "visita_tecnica",
+      "tipo": "contem_algum",
+      "valor": [
+        "nao_ha",
+        "nao_informado"
+      ],
+      "fonte": "não citada"
+    },
+    {
+      "nome": "Consórcio não citado (não inventar)",
+      "campo": "consorcio",
+      "tipo": "igual",
+      "valor": "nao_informado",
+      "fonte": "não citado no documento"
+    },
+    {
+      "nome": "Entrega em 15 dias",
+      "campo": "prazo_execucao_ou_entrega_dias",
+      "tipo": "numero",
+      "valor": 15,
+      "tolerancia": 0,
+      "fonte": "p.35"
+    },
+    {
+      "nome": "Entrega parcelada",
+      "campo": "entrega.parcelada",
+      "tipo": "verdadeiro",
+      "valor": true,
+      "fonte": "p.35"
+    },
+    {
+      "nome": "Pagamento 10 dias fora a dezena",
+      "campo": "prazo_pagamento_dias",
+      "tipo": "entre",
+      "valor": [
+        10,
+        20
+      ],
+      "fonte": "p.41"
+    },
+    {
+      "nome": "Validade mínima 75%",
+      "campo": "entrega.validade_minima_produto",
+      "tipo": "contem_todos",
+      "valor": [
+        "75"
+      ],
+      "fonte": "p.36"
+    },
+    {
+      "nome": "Registro ANVISA",
+      "campo": "exigencias_produto.registro_anvisa",
+      "tipo": "verdadeiro",
+      "valor": true,
+      "fonte": "p.37"
+    },
+    {
+      "nome": "AFE ANVISA",
+      "campo": "exigencias_produto.afe_anvisa",
+      "tipo": "verdadeiro",
+      "valor": true,
+      "fonte": "p.37"
+    },
+    {
+      "nome": "Licença/alvará sanitário",
+      "campo": "exigencias_produto.licenca_ou_alvara_sanitario",
+      "tipo": "verdadeiro",
+      "valor": true,
+      "fonte": "p.37"
+    },
+    {
+      "nome": "Distribuidor só com licença própria",
+      "campo": "exigencias_produto.aceita_distribuidor_revendedor",
+      "tipo": "contem_algum",
+      "valor": [
+        "com_condicoes",
+        "nao"
+      ],
+      "fonte": "p.37 (6.2.2.2.3.1)"
+    },
+    {
+      "nome": "Nota de triagem ≤ 6 (barreira sanitária)",
+      "campo": "nota_triagem_0_a_10",
+      "tipo": "maximo",
+      "valor": 6,
+      "fonte": "julgamento: AFE + alvará sanitário próprio"
+    }
+  ],
+  "checks_deep": [
+    {
+      "nome": "20 itens",
+      "campo": "itens",
+      "tipo": "tamanho",
+      "valor": 20,
+      "fonte": "p.28-34"
+    },
+    {
+      "nome": "Subcontratação vedada",
+      "campo": "subcontratacao.situacao",
+      "tipo": "igual",
+      "valor": "vedada",
+      "fonte": "p.35"
+    },
+    {
+      "nome": "Multa de mora 0,5%/dia",
+      "campo": "penalidades.multa_atraso",
+      "tipo": "contem_todos",
+      "valor": [
+        "0,5"
+      ],
+      "fonte": "p.23"
+    },
+    {
+      "nome": "Aponta barreira para distribuidor",
+      "campo": "*",
+      "tipo": "contem_algum",
+      "valor": [
+        "distribuidor",
+        "intermediari"
+      ],
+      "fonte": "p.37"
+    }
+  ]
+}

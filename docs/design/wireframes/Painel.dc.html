@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FBF7F3; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #171717; }
+    a { color: #2457D6; } a:hover { color: #134A3D; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; background: #FFFFFF; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #171717; display: flex; flex-direction: column; overflow: hidden;">
+<div style="display: flex; flex-grow: 1; min-height: 0;"><div style="width: 232px; flex-shrink: 0; border-right: 1px solid #E7E1D9; padding: 20px 14px; display: flex; flex-direction: column; gap: 6px; background: #FBF7F3;">
+  <div style="display: flex; align-items: center; gap: 10px; padding: 0 6px 18px;">
+    <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true" style="flex-shrink: 0; display: block;"><rect x="34" y="12" width="22" height="11" fill="#2457D6"/><rect x="8" y="27" width="48" height="11" fill="#171717"/><rect x="14" y="42" width="42" height="11" fill="#171717"/></svg><span style="font-family: 'Archivo', 'IBM Plex Sans', sans-serif; font-weight: 800; font-stretch: 85%; letter-spacing: -.03em; font-size: 22px; line-height: 1; color: #171717;">Licita<span style="color: #2457D6;">Qui</span></span>
+  </div>
+  <a href="Painel.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #171717; font-weight: 600; background: #E8EEFB;">Editais</a>
+<a href="Alertas.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #171717; font-weight: 400; background: transparent;">Alertas</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #171717; font-weight: 400; background: transparent;">Minha empresa</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #171717; font-weight: 400; background: transparent;">Plano e pagamento</a>
+
+  <div style="margin-top: auto; border: 1px solid #E7E1D9; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: #FFFFFF;">
+    <div style="display: flex; justify-content: space-between; font-size: 13px;"><strong>Essencial</strong><span style="color: #6B6B67;">R$ 49/mês</span></div>
+    <div style="font-size: 12px; color: #6B6B67;">Análises completas: 3 de 10</div>
+    <div style="height: 6px; border-radius: 3px; background: #F3EEE8;"><div style="height: 6px; width: 30%; border-radius: 3px; background: #2457D6;"></div></div>
+  </div>
+</div><div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;"><div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 22px 28px 16px; border-bottom: 1px solid #E7E1D9;">
+  <div style="display: flex; flex-direction: column; gap: 4px;">
+    <div style="font-size: 24px; font-weight: 700; font-family: 'Archivo', 'IBM Plex Sans', sans-serif;">Editais para você</div>
+    <div style="font-size: 14px; color: #6B6B67;">[SUA EMPRESA] · [n] CNAEs · atualizado hoje 06:00</div>
+  </div>
+  <div style="display: flex; gap: 8px; align-items: center;"> <button type="button" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #E7E1D9; background: #FFFFFF; color: #171717; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 15px; font-weight: 600; text-decoration: none; box-sizing: border-box; width: auto;">Salvar como alerta</button></div>
+</div><div style="display: flex; flex-grow: 1; min-height: 0;"><div style="width: 250px; flex-shrink: 0; border-right: 1px solid #E7E1D9; padding: 18px 18px; display: flex; flex-direction: column; gap: 14px;">
+  <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600;"> Filtros</div>
+  <label style="display: flex; gap: 8px; align-items: center; font-size: 14px;"><input type="checkbox" checked> Compatível com meu CNAE</label>
+  <label style="display: flex; gap: 8px; align-items: center; font-size: 14px;"><input type="checkbox"> Mostrar “verificar”</label>
+  <label style="display: flex; gap: 8px; align-items: center; font-size: 14px;"><input type="checkbox" checked> Só exclusivos/cota ME/EPP</label>
+  <div style="display: flex; flex-direction: column; gap: 6px;"><label for="kw" style="font-size: 13px; font-weight: 600;">Palavras-chave (3 de 10)</label><input id="kw" type="text" value="toner, pilha, papel" style="min-height: 40px; border: 1px solid #E7E1D9; border-radius: 8px; padding: 0 10px; font-size: 14px;"></div>
+  <div style="display: flex; flex-direction: column; gap: 6px;"><label for="ufs" style="font-size: 13px; font-weight: 600;">UFs</label><input id="ufs" type="text" value="SP, MG" style="min-height: 40px; border: 1px solid #E7E1D9; border-radius: 8px; padding: 0 10px; font-size: 14px;"></div>
+  <div style="display: flex; flex-direction: column; gap: 6px;"><label for="vmax" style="font-size: 13px; font-weight: 600;">Valor máximo</label><input id="vmax" type="text" value="R$ 200.000" style="min-height: 40px; border: 1px solid #E7E1D9; border-radius: 8px; padding: 0 10px; font-size: 14px; font-family: 'IBM Plex Mono', ui-monospace, monospace;"></div>
+  <label style="display: flex; gap: 8px; align-items: center; font-size: 14px;"><input type="checkbox"> Encerra em até 7 dias</label>
+</div>
+<div style="flex-grow: 1; padding: 8px 20px; overflow: hidden;">
+<table style="width: 100%; border-collapse: collapse;">
+<thead><tr><th style="text-align: left; padding: 10px 12px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; color: #6B6B67; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #E7E1D9;">Objeto</th><th style="text-align: left; padding: 10px 12px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; color: #6B6B67; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #E7E1D9;">Estimado</th><th style="text-align: left; padding: 10px 12px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; color: #6B6B67; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #E7E1D9;">Encerra</th><th style="text-align: left; padding: 10px 12px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; color: #6B6B67; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #E7E1D9;">CNAE</th><th style="text-align: left; padding: 10px 12px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; color: #6B6B67; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #E7E1D9;">ME/EPP</th><th style="text-align: left; padding: 10px 12px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; color: #6B6B67; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #E7E1D9;">Nota IA </th><th style="text-align: left; padding: 10px 12px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; color: #6B6B67; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #E7E1D9;"></th></tr></thead>
+<tbody><tr>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><div style="font-weight: 600;">Baterias e pilhas</div><div style="font-size: 13px; color: #6B6B67;">Campinas/SP</div></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace;">R$ 48.196</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; color: #A15C00; font-weight: 600;">13 dias</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #E8EEFB; color: #2457D6; font-size: 12px; font-weight: 500; white-space: nowrap;">Compatível</span></td><td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #E8EEFB; color: #2457D6; font-size: 12px; font-weight: 500; white-space: nowrap;">Exclusivo</span></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px;">9</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><a href="Edital.dc.html" style="font-weight: 600;">Abrir</a></td>
+</tr><tr>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><div style="font-weight: 600;">Papel sulfite A4 e material de escritório</div><div style="font-size: 13px; color: #6B6B67;">[Órgão] / SP</div></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace;">[R$ valor]</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; color: #A15C00; font-weight: 600;">6 dias</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #E8EEFB; color: #2457D6; font-size: 12px; font-weight: 500; white-space: nowrap;">Compatível</span></td><td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #E8EEFB; color: #2457D6; font-size: 12px; font-weight: 500; white-space: nowrap;">Cota</span></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px;">7</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><a href="Edital.dc.html" style="font-weight: 600;">Abrir</a></td>
+</tr><tr>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><div style="font-weight: 600;">Materiais hospitalares diversos</div><div style="font-size: 13px; color: #6B6B67;">Campinas/SP</div></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace;">R$ 1,25 mi</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; color: #A15C00; font-weight: 600;">13 dias</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #F7EBDD; color: #A15C00; font-size: 12px; font-weight: 500; white-space: nowrap;">Verificar</span></td><td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #E8EEFB; color: #2457D6; font-size: 12px; font-weight: 500; white-space: nowrap;">Misto</span></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px;">4</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><a href="Edital.dc.html" style="font-weight: 600;">Abrir</a></td>
+</tr><tr>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><div style="font-weight: 600;">Sistema web SaaS de documentos</div><div style="font-size: 13px; color: #6B6B67;">Americana/SP</div></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace;">R$ 4,33 mi</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; color: #A15C00; font-weight: 600;">13 dias</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #E8EEFB; color: #2457D6; font-size: 12px; font-weight: 500; white-space: nowrap;">Compatível</span></td><td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #F3EEE8; color: #171717; font-size: 12px; font-weight: 500; white-space: nowrap;">Sem cota</span></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px;">3</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><a href="Edital.dc.html" style="font-weight: 600;">Abrir</a></td>
+</tr><tr>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><div style="font-weight: 600;">Toner e cartuchos</div><div style="font-size: 13px; color: #6B6B67;">[Órgão] / MG</div></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace;">[R$ valor]</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; color: #A15C00; font-weight: 600;">21 dias</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #F3EEE8; color: #171717; font-size: 12px; font-weight: 500; white-space: nowrap;">Palavra: toner</span></td><td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><span style="display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; background: #E8EEFB; color: #2457D6; font-size: 12px; font-weight: 500; white-space: nowrap;">Exclusivo</span></td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px;">—</td>
+  <td style="padding: 12px; font-size: 14px; border-bottom: 1px solid #E7E1D9; vertical-align: top;"><a href="Edital.dc.html" style="font-weight: 600;">Abrir</a></td>
+</tr></tbody>
+</table>
+</div></div></div></div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Local Postgres for development (spec §13). Production uses Neon.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: licitaqui
+      POSTGRES_PASSWORD: licitaqui
+      POSTGRES_DB: licitaqui
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

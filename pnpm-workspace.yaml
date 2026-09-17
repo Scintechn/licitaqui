@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+
+allowBuilds:
+  unrs-resolver: set this to true or false
+
+# Native binary needed by the Next.js ESLint resolver. Declared so that
+# `pnpm install` is non-interactive in CI (spec §13).
+onlyBuiltDependencies:
+  - unrs-resolver

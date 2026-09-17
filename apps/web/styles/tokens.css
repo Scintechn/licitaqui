@@ -1,0 +1,14 @@
+/*
+ * LicitaQui design tokens.
+ *
+ * Owner: task D1 (stream D). This file is intentionally a stub: Session 1 only
+ * creates the place, D1 fills it from the canvas Design System board.
+ *
+ * Source of truth: docs/design/README.md + docs/design/wireframes/DesignSystem.dc.html
+ * Palette (spec §1): Ivory #FBF7F3 · Graphite #171717 · Blue #2457D6
+ * Type (spec §1): Archivo (width axis), IBM Plex Sans, IBM Plex Mono
+ */
+
+@theme {
+  /* D1: define --color-*, --font-* and spacing tokens here. */
+}

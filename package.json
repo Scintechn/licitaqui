@@ -1,0 +1,16 @@
+{
+  "name": "licitaqui",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @licitaqui/web dev",
+    "build": "pnpm --filter @licitaqui/web build",
+    "start": "pnpm --filter @licitaqui/web start",
+    "lint": "pnpm --filter @licitaqui/web lint",
+    "typecheck": "pnpm --filter @licitaqui/web typecheck",
+    "test": "pnpm --filter @licitaqui/web test"
+  }
+}

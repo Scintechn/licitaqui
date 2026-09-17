@@ -1,0 +1,34 @@
+# LicitaQui — agent guide
+
+- Read `docs/TECHNICAL_SPEC.md` and `docs/DEVELOPMENT_PLAN.md` before any task. The task card is the scope; do not widen it.
+- Code, identifiers, tables, commits: English. User-facing copy: Brazilian Portuguese in `apps/web/messages/pt-BR.json`.
+- Never read PNCP/BrasilAPI/OpenRouter inside a web request; enqueue a job (spec §3).
+- Never commit secrets. Use `.env.example`. Never log CPF, emails or tokens.
+- Every change: tests for new logic, `pnpm lint && pnpm typecheck && pnpm test` (web) or `ruff check && pytest` (worker) green.
+- Schema changes only via `db/migrations`, in their own PR.
+- AI prompt or extraction changes must run `worker/evaluation` and report the score diff.
+- Design: use tokens from `apps/web/styles/tokens.css` (Ivory/Graphite/Blue, Archivo/IBM Plex). Brand name is always "LicitaQui".
+
+## Knowledge base and POCs
+
+`/Users/sci/Documents/POC Licitacao` — **read-only**. Studies, POC code, cached PNCP
+responses, brand source and the original spec snapshot live there; see its `CLAUDE.md` §2
+for the folder map and the files that must never be read (`parceria_licita_mei.html`,
+`.chaves_poc`, any `.env*`).
+
+Never edit anything in that folder. `docs/TECHNICAL_SPEC.md`, `docs/DEVELOPMENT_PLAN.md`
+and `docs/design/` in this repo are copies taken on 2026-09-17 and are now the source of
+truth — change them here, not there.
+
+## Workflow
+
+1. Sci gives a task ID (e.g. "faça a A1"). Read the card in `docs/DEVELOPMENT_PLAN.md` §5
+   and the spec sections it needs.
+2. Reply with a short plan: files to create/change, tests, anything missing. Wait for Sci's OK.
+3. Work on branch `task/<id>-<slug>`; use a git worktree when several tasks run in parallel.
+4. Run the checks. Open a PR listing the card's acceptance criteria as a checklist.
+5. Append one line to `docs/STATUS.md`: date · task ID · status · PR link · follow-ups.
+
+Decisions marked open in plan §1.2 are Sci's: stop and ask. External side effects need
+Sci's OK — Asaas **sandbox** only, no real messages except to Sci's test contacts, no
+migrations on the Neon `main` branch without Sci.

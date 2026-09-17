@@ -1,0 +1,191 @@
+{
+  "documento": "01_EditalPE221_26",
+  "pasta_pncp": "51885242000140_2026_744",
+  "descricao": "Campinas/SP - Pregão 221/2026 - Registro de preços de baterias e pilhas (PNCP 51885242000140/2026/744). Conferido manualmente no PDF em 16/09/2026.",
+  "checks": [
+    {
+      "nome": "Data/hora da sessão",
+      "campo": "data_sessao_disputa",
+      "tipo": "contem_todos",
+      "valor": [
+        "2026-09-30",
+        "08:30"
+      ],
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Proposta: até a abertura (ou não informado)",
+      "campo": "prazo_envio_proposta",
+      "tipo": "nulo_ou_contem",
+      "valor": [
+        "2026-09-30"
+      ],
+      "fonte": "o edital não dá prazo separado; propostas vão até a abertura"
+    },
+    {
+      "nome": "Valor estimado R$ 48.196",
+      "campo": "valor_estimado_total",
+      "tipo": "numero",
+      "valor": 48196.0,
+      "tolerancia": 0.005,
+      "fonte": "p.46"
+    },
+    {
+      "nome": "Menor preço por item",
+      "campo": "criterio_julgamento",
+      "tipo": "contem_algum",
+      "valor": [
+        "menor"
+      ],
+      "fonte": "p.1 e p.50"
+    },
+    {
+      "nome": "Plataforma Compras.gov",
+      "campo": "plataforma_disputa",
+      "tipo": "contem_algum",
+      "valor": [
+        "compras"
+      ],
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Registro de preços",
+      "campo": "registro_de_precos",
+      "tipo": "verdadeiro",
+      "valor": true,
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Vigência da ata 12 meses",
+      "campo": "vigencia_meses_normalizada",
+      "tipo": "numero",
+      "valor": 12,
+      "tolerancia": 0,
+      "fonte": "p.44"
+    },
+    {
+      "nome": "Exclusivo ME/EPP",
+      "campo": "beneficio_me_epp.situacao",
+      "tipo": "igual",
+      "valor": "exclusivo",
+      "fonte": "p.1"
+    },
+    {
+      "nome": "Sem atestado técnico",
+      "campo": "atestado_capacidade_tecnica.exige",
+      "tipo": "falso_ou_nulo",
+      "valor": false,
+      "fonte": "p.43 (não exigível)"
+    },
+    {
+      "nome": "Sem capital mínimo",
+      "campo": "capital_ou_patrimonio_minimo.exige",
+      "tipo": "falso_ou_nulo",
+      "valor": false,
+      "fonte": "p.43-44 (não exigível)"
+    },
+    {
+      "nome": "Sem amostra",
+      "campo": "amostra_ou_prova_de_conceito.tipo",
+      "tipo": "igual",
+      "valor": "nenhuma",
+      "fonte": "p.44 (não exigível)"
+    },
+    {
+      "nome": "Garantia contratual não exigida/não citada",
+      "campo": "garantia_contratual.situacao",
+      "tipo": "contem_algum",
+      "valor": [
+        "nao_exigida",
+        "nao_informado"
+      ],
+      "fonte": "sem cláusula; p.51 só garantia legal do CDC"
+    },
+    {
+      "nome": "Sem visita técnica",
+      "campo": "visita_tecnica",
+      "tipo": "contem_algum",
+      "valor": [
+        "nao_ha",
+        "nao_informado"
+      ],
+      "fonte": "não citada"
+    },
+    {
+      "nome": "Consórcio vedado",
+      "campo": "consorcio",
+      "tipo": "igual",
+      "valor": "vedado",
+      "fonte": "p.4 (5.2.6)"
+    },
+    {
+      "nome": "Entrega em 15 dias",
+      "campo": "prazo_execucao_ou_entrega_dias",
+      "tipo": "numero",
+      "valor": 15,
+      "tolerancia": 0,
+      "fonte": "p.50"
+    },
+    {
+      "nome": "Pagamento 10 dias fora a dezena",
+      "campo": "prazo_pagamento_dias",
+      "tipo": "entre",
+      "valor": [
+        10,
+        20
+      ],
+      "fonte": "p.49"
+    },
+    {
+      "nome": "Validade mínima 75%",
+      "campo": "entrega.validade_minima_produto",
+      "tipo": "contem_todos",
+      "valor": [
+        "75"
+      ],
+      "fonte": "p.50"
+    },
+    {
+      "nome": "Exige catálogo/literatura técnica",
+      "campo": "exigencias_produto.catalogo_ou_ficha_tecnica",
+      "tipo": "verdadeiro",
+      "valor": true,
+      "fonte": "p.43"
+    },
+    {
+      "nome": "Nota de triagem alta (≥ 7)",
+      "campo": "nota_triagem_0_a_10",
+      "tipo": "minimo",
+      "valor": 7,
+      "fonte": "julgamento: exclusivo ME/EPP, sem habilitação técnica/financeira, R$ 48 mil"
+    }
+  ],
+  "checks_deep": [
+    {
+      "nome": "7 itens",
+      "campo": "itens",
+      "tipo": "tamanho",
+      "valor": 7,
+      "fonte": "p.46"
+    },
+    {
+      "nome": "Multa de mora 0,1% a 0,5%/dia",
+      "campo": "penalidades.multa_atraso",
+      "tipo": "contem_todos",
+      "valor": [
+        "0,1",
+        "0,5"
+      ],
+      "fonte": "p.35"
+    },
+    {
+      "nome": "Reajuste IPC-FIPE",
+      "campo": "prazos.reajuste",
+      "tipo": "contem_algum",
+      "valor": [
+        "ipc"
+      ],
+      "fonte": "p.44"
+    }
+  ]
+}
