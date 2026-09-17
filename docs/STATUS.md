@@ -6,6 +6,7 @@ One line per task: date · task ID · status · PR link · follow-ups.
 |---|---|---|---|---|
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
+| 2026-09-17 | B0 (spikes G7, G8) | in review | https://github.com/Scintechn/licitaqui/pull/6 | **G7 default overturned, accepted by Sci:** B2 builds on `/contratacoes/atualizacao`. G8: BrasilAPI confirmed. Open: BrasilAPI rate limit unmeasured; re-measure G7 hourly over a day before B2 commits deeply |
 | 2026-09-17 | D2 (Offer page) | in review | https://github.com/Scintechn/licitaqui/pull/5 | Follow-ups: reconcile near-duplicate i18n keys with E0 before 09-24; `Field` inputs are 15px and iOS Safari zooms below 16px on a public page (D1 call); footer `[CNPJ]` omitted; privacy/terms links still anchor to `#topo` |
 | 2026-09-17 | A3 (migrations + seed) | merged | https://github.com/Scintechn/licitaqui/pull/4 | Migrations applied to `neondb` (22 tables); seed is dev-only. Drizzle `schema.ts` left to R1 |
 | 2026-09-17 | G3 (legal texts) | drafted | — | Privacy policy + terms copied to `docs/legal/`. **Not publishable yet**: 19 placeholders unfilled and a lawyer must review §11 liability cap, §6 price clause, §15 forum |
@@ -43,6 +44,14 @@ One line per task: date · task ID · status · PR link · follow-ups.
   page opened from a phone. Documented in `components/field.tsx`.
 - **i18n duplicates:** where E0's catalogue and D2's page disagree, the approved page's
   rendered wording wins and E0's key naming wins. Reconciled in F1.
+- **PNCP sync endpoint (G7):** `/v1/contratacoes/atualizacao`, not the POC search API. The
+  search API caps `pagina × tam_pagina` at 10,000 against ~38,856 open tenders and silently
+  ignores date filters, so a sweep cannot enumerate everything and misses changes silently;
+  an outage on the period endpoint merely delays a cycle. **Inversion rule:** flip back if a
+  full-day re-measurement shows >10% failures or outages beyond ~2 h. **Open question for
+  B2's first hour:** does the search index's `data_atualizacao_pncp` move when only a
+  tender's items or files change? If yes, the correctness argument weakens and search-only
+  may win.
 - **Branch protection:** not available on a private repo without GitHub Pro. Gap accepted
   — `gitleaks` still runs on every PR, advisory only. Revisit before anyone else commits.
 
