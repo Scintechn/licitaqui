@@ -50,6 +50,34 @@ task-scoped `kind` prefix in the brief. It also produced a genuinely useful prod
 API: `claim(conn, kinds=[...])` and `WORKER_JOB_KINDS`, so a container can be dedicated
 to part of the queue.
 
+## Integration checks (2026-09-17, live)
+
+| Service | Result |
+|---|---|
+| OpenRouter | ✅ valid, usage 0, **spend limit 50** (gap G4 satisfied) |
+| Telegram | ✅ `@LicitaQuiBot`, **no webhook set** — gap G9's worry is clear, E1 can claim it |
+| Neon | ✅ both pooled and direct URLs connect |
+| Evolution API | ✅ reachable, instance `flowdeski-scn-real-estate` state `open` — **but see the two warnings below** |
+| Resend, Asaas, Sentry, Google, S3 | not configured yet — blocks E-mail, F2, observability, U1, B4 respectively |
+
+**Evolution warning 1 — Cloudflare blocks default HTTP clients.** `evolutiondev.scintechn.com`
+sits behind Cloudflare, which answers `403 error code: 1010` (browser-signature block) to
+`Python-urllib`, *including on `GET /`*. It is not an auth failure and no API key will fix
+it. **E2's client must send a browser-like `User-Agent`**, or every WhatsApp send fails 403.
+Verified: identical request with a Chrome UA returns 200.
+
+**Evolution warning 2 — the instance belongs to another product.** The only instance on
+that server is `flowdeski-scn-real-estate`, i.e. FlowDeski's. Sending LicitaQui's founders
+welcome through it would deliver from another product's WhatsApp number. This is the same
+trap gap G9 flags for the Telegram bot. **Recommend a dedicated `licitaqui` instance before
+E2 sends anything**, even to test contacts.
+
+## Brand channels
+
+- Instagram **@licitaqui** exists (2026-09-17). Marketing channel for the non-dev track
+  (plan §5, task S2 influencer outreach). Note spec §12 forbids automated scraping of
+  Instagram profiles — it is an outbound channel, never a data source.
+
 ## Decisions (2026-09-17)
 
 - **Auth:** Auth.js / NextAuth v5 stands (spec §5). The `neon_auth` schema the Vercel
