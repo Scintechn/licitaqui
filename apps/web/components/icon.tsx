@@ -24,6 +24,11 @@ const PATHS = {
   account: ['M16 8a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z', 'M4 21a8 8 0 0 1 16 0'],
   filters: ['M4 6h16M7 12h10M10 18h4'],
   visitor: ['M21 12a9 9 0 1 0-18 0 9 9 0 0 0 18 0Z', 'M16 12a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z', 'M12 12l6-6'],
+
+  // Public pages (task D2), transcribed from paginas/oferta_fundadores.html
+  money: ['M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z', 'M14.5 12a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z'],
+  send: ['M21 4L3 11l6 2 2 6 3-4 5 4z'],
+  warning: ['M12 3l9 16H3z', 'M12 10v4M12 17h.01'],
 } as const
 
 export type IconName = keyof typeof PATHS

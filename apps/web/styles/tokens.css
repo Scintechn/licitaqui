@@ -46,6 +46,22 @@
   --color-error: #b42318;
   --color-error-soft: #f8e4e1;
 
+  /*
+   * Public pages (Offer, Landing) · added by task D2.
+   *
+   * The app screens sit on Ivory only. The approved public layouts also use a
+   * graphite panel, which needs its own text and line tones, plus one softer
+   * body grey on Ivory. Every value is transcribed from
+   * `paginas/oferta_fundadores.html`; nothing new was invented.
+   */
+  --color-ink-soft: #3a3a37; /* body copy on ivory, one step below --color-ink */
+  --color-ink-raised: #2a2a28; /* a chip raised off a graphite panel */
+  --color-ink-line: #33332f; /* hairline on a graphite panel */
+  --color-on-ink: #f3eee8; /* body copy on graphite (same ink as --color-fill-muted) */
+  --color-on-ink-muted: #c9c4bc; /* secondary copy on graphite */
+  --color-on-ink-faint: #b8b3ab; /* labels and footnotes on graphite */
+  --color-blue-on-ink: #9db6f2; /* icon blue on graphite: --color-blue-light is too dark there */
+
   /* ------------------------------------------------------------ typography */
   /* Archivo carries the wdth axis: the wordmark is 800 / wdth 85% / -3%. */
   --font-display: var(--font-archivo), 'IBM Plex Sans', system-ui, sans-serif;
@@ -64,11 +80,36 @@
   --text-lead: 0.9375rem; /* 15px · controls, card titles */
   --text-lead--line-height: 1.3;
 
+  /*
+   * Public-page scale · added by task D2. The 11–15px scale above is the
+   * in-app scale, designed for a 390px frame full of data. A marketing page
+   * needs larger, fluid headings; these are the `clamp()`s and sizes of
+   * `paginas/oferta_fundadores.html`. Body copy there is Tailwind's `text-base`.
+   */
+  --text-hero: clamp(2.125rem, 5.4vw, 3.75rem); /* 34 → 60px · the page's one h1 */
+  --text-hero--line-height: 1.02;
+  --text-section: clamp(1.625rem, 3.4vw, 2.375rem); /* 26 → 38px · h2 */
+  --text-section--line-height: 1.1;
+  --text-subsection: 1.25rem; /* 20px · h3 */
+  --text-subsection--line-height: 1.2;
+  --text-intro: 1.1875rem; /* 19px · the sentence under the h1 */
+  --text-intro--line-height: 1.55;
+  --text-subhead: 1.0625rem; /* 17px · a bold lead-in inside a list item */
+  --text-subhead--line-height: 1.35;
+  --text-price: 2.875rem; /* 46px · the headline price */
+  --text-price--line-height: 1;
+  --text-stat: 2.125rem; /* 34px · a standalone figure */
+  --text-stat--line-height: 1.05;
+  --text-score: 2.5rem; /* 40px · the AI screening score */
+  --text-score--line-height: 1;
+
   /* ---------------------------------------------------------------- shape */
   --radius-badge: 6px;
   --radius-control: 8px; /* buttons, fields */
   --radius-swatch: 10px;
   --radius-card: 12px;
+  --radius-panel: 14px; /* public-page panels (D2) */
+  --radius-feature: 16px; /* public-page feature blocks (D2) */
   --radius-pill: 999px;
 
   /* --------------------------------------------------------------- sizing */
