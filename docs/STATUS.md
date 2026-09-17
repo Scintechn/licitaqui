@@ -31,6 +31,21 @@ One line per task: date · task ID · status · PR link · follow-ups.
 | 6 | `apps/web/styles/tokens.css` is a documented stub. | D1 | agent |
 | 7 | `.github/workflows/` is empty — `ci-web.yml`, `ci-worker.yml`, `migrate.yml`, `evaluate-ai.yml` are task A1/A3/C1 scope (spec §13). | A1 | agent |
 
+## Decisions (2026-09-17)
+
+- **Auth:** Auth.js / NextAuth v5 stands (spec §5). The `neon_auth` schema the Vercel
+  integration provisioned is unused; consider dropping it before launch.
+- **Founders form:** **CNPJ is required**, because it determines which licitações a
+  business can enter. "O que você vende" (`sells`) stays on the form but is **optional**.
+  This makes the rendered form differ from the approved HTML, deliberately.
+- **Input font size:** form inputs render at **16px**, not the board's 15px. iOS Safari
+  zooms the viewport on focus for anything smaller, which is a real defect on a public
+  page opened from a phone. Documented in `components/field.tsx`.
+- **i18n duplicates:** where E0's catalogue and D2's page disagree, the approved page's
+  rendered wording wins and E0's key naming wins. Reconciled in F1.
+- **Branch protection:** not available on a private repo without GitHub Pro. Gap accepted
+  — `gitleaks` still runs on every PR, advisory only. Revisit before anyone else commits.
+
 ## A2 — what was applied to Neon (2026-09-17)
 
 Neon project `neon-bistre-cloud` (`rapid-mouse-53141905`), São Paulo, database `neondb`,
