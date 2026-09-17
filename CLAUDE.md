@@ -20,6 +20,20 @@ Never edit anything in that folder. `docs/TECHNICAL_SPEC.md`, `docs/DEVELOPMENT_
 and `docs/design/` in this repo are copies taken on 2026-09-17 and are now the source of
 truth — change them here, not there.
 
+## Git identity (do not get this wrong)
+
+Commits must be authored by the **Scintechn** GitHub account, because Vercel shows the
+commit author and deployments must be attributed to it:
+
+```
+git config user.name  "Scintechn"
+git config user.email "development@scintechn.com"
+```
+
+`scintilla.lima@gmail.com` belongs to a different GitHub account (`scintylla`) and will
+mis-attribute both the commit and the Vercel deployment. Verify with
+`git log --format='%an <%ae>'` before pushing.
+
 ## Workflow
 
 1. Sci gives a task ID (e.g. "faça a A1"). Read the card in `docs/DEVELOPMENT_PLAN.md` §5
