@@ -13,10 +13,11 @@ One line per task: date · task ID · status · PR link · follow-ups.
 | # | Item | Blocks | Owner |
 |---|---|---|---|
 | 1 | **G1 — Neon not created.** Vercel → Storage → Create database → Neon, project `licitaqui`, Free plan, region São Paulo (`aws-sa-east-1`) if offered (spec §5.1). Cannot be changed later. | A2 | Sci |
-| 2 | **Vercel project not linked.** Root Directory must be `apps/web`. | A1 | Sci |
-| ~~2b~~ | **RESOLVED** — project unpaused; deployment `dpl_F9xnFqY…` reached READY. | — | — |
-| ~~2c~~ | **RESOLVED** — commit author is now `Scintechn`. Note the Vercel deployment *creator* remains `scintechn-4604` (development@scintechn.com), the account that owns the GitHub integration; that is separate from commit authorship. | — | — |
-| 2d | **Root Directory not set to `apps/web`** (spec §4); the project currently builds from the repo root. | A1 | Sci |
+| ~~2~~ | **RESOLVED** — Vercel project linked; Root Directory verified as `apps/web` with `sourceFilesOutsideRootDirectory: true` (correct for the pnpm workspace). No change was needed. | — | — |
+| ~~2b~~ | **RESOLVED — and the earlier diagnosis was wrong.** The project was never paused (`paused: false` on every read; `live: false` is normal — every project in this team reports it). The real cause was a **commit-author seat block**: `readyStateReason` = "the commit author doesn't have permission to create deployments", `seatBlock.blockCode: TEAM_ACCESS_REQUIRED` for GitHub user `scintylla`, with `alwaysRefuseToBuild: true` — which is why there were zero build logs. Fixed by re-authoring commits to `Scintechn` (the team owner). | — | — |
+| ~~2c~~ | **RESOLVED** — commit author is now `Scintechn`. The Vercel deployment *creator* remains `scintechn-4604` (development@scintechn.com), the account owning the GitHub integration; that is a separate field from commit authorship. | — | — |
+| 2d | **Pending team access request from `scintylla`.** Each blocked push re-filed one (`joinedFrom.origin: nsnb-request-access`). It should stop now that commits are authored by the owner. Decline it at Settings → Members unless a seat is wanted — approving consumes a **billable Pro seat**. | — | Sci |
+| 2e | **Monorepo affected-projects skipping is ON** (`enableAffectedProjectsDeployments: true`). A commit touching only root-level files can be CANCELED with "the commit didn't affect this project" — this is what happened to the empty retrigger commit, and it looks like a silent failure. | all | agent |
 | 3 | **GitHub secret scanning unavailable** on this private repo (API returns 422 — needs GitHub Secret Protection, or a public repo). Spec §12 assumes it is on; pick a substitute (e.g. gitleaks in CI) or accept the gap. | A1 | Sci |
 | 4 | **Docker not installed locally.** Needed to build the worker image and run `docker compose up`. | B1 | Sci |
 | 5 | **Python 3.14.7 locally, worker targets 3.12.** Docker image pins 3.12, so CI and production are correct; only the local venv differs. | B1 | Sci |
@@ -33,5 +34,9 @@ One line per task: date · task ID · status · PR link · follow-ups.
   `onlyBuiltDependencies`, and `pnpm rebuild` writes an unresolved placeholder into that
   file — verify a clean `rm -rf node_modules && pnpm install --frozen-lockfile` before
   pushing changes to it.
-- Commit identity is pinned in `CLAUDE.md`; getting it wrong mis-attributes the Vercel
-  deployment.
+- Commit identity is pinned in `CLAUDE.md`. Getting it wrong does more than mis-attribute:
+  a commit author who is not an approved team member makes Vercel **refuse to build at
+  all**, with no build logs to explain it.
+- Vercel functions/build region is currently `iad1` (Washington). Spec §5.1 pairs
+  `gru1` with a São Paulo Neon and `iad1` with a N. Virginia Neon — check the Neon
+  project's region matches when doing A2.
