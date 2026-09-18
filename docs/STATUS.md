@@ -79,6 +79,29 @@ E2 sends anything**, even to test contacts.
   (plan §5, task S2 influencer outreach). Note spec §12 forbids automated scraping of
   Instagram profiles — it is an outbound channel, never a data source.
 
+## G7 re-measurement in progress (overnight 09-17 → 09-18)
+
+The hourly probe ADR-0001 asked for is running. Early result, and it is not reassuring:
+
+| Sample (UTC) | search | publicacao | atualizacao |
+|---|---|---|---|
+| 21:21 | 2/2 OK (~1.87 s) | **4/4 timeout** | **4/4 timeout** |
+| 22:25 | 2/2 OK | **4/4 timeout** | **4/4 timeout** |
+| direct one-off, 45 s timeout | inconclusive (different UA) | **2/2 timeout** | **2/2 timeout** |
+
+The `consulta` host has been timing out for **over an hour** while the search host answers
+normally. Every failure is a read timeout, the same signature B0 saw in its 13-minute
+outage. ADR-0001's inversion rule is >10% failures over a day, or outages beyond ~2 h.
+
+**Do not act on this yet** — two plausible readings, and one changes nothing while the
+other changes the architecture:
+1. A nightly maintenance window on the consulta API. It would mean the sweep must tolerate
+   a predictable daily gap, which the queue and breaker already handle.
+2. Genuinely worse availability than B0's 40-minute sample suggested, which would trip the
+   inversion rule and send B2 back to the search API.
+
+The probe continues; the duration of this outage is the number that decides it.
+
 ## Open for Sci
 
 - **Event name mismatch.** Spec §14 names the event `founder_signed_up`; F1 writes
