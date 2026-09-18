@@ -157,6 +157,23 @@ def test_a_document_of_unknown_shape_is_masked_and_so_is_the_name():
     assert supplier.name == "J. S. S."
 
 
+def test_a_tipo_pessoa_outside_pj_and_pf_is_decided_by_the_document():
+    """`tipoPessoa` is not a two-value domain in live data.
+
+    The B8 backfill found a ``"PE"`` among 5,000-odd real awards, on a 14-digit
+    document belonging to a company ("ALFARI SOLUÇÕES LTDA"). Trusting the flag
+    to be PJ-or-PF would have had to guess; keying on the document shape does
+    not. A `PE` on a CPF-shaped document is masked for the same reason.
+    """
+    company = classify_supplier(pj_record(tipoPessoa="PE"))
+    assert company.personal is False
+    assert company.person_type == "PE"
+
+    person = classify_supplier(pj_record(tipoPessoa="PE", niFornecedor=FAKE_CPF))
+    assert person.personal is True
+    assert person.doc == "***.111.111-**"
+
+
 def test_a_missing_tipo_pessoa_is_read_off_the_document_length():
     assert classify_supplier(pj_record(tipoPessoa=None)).personal is False
     assert classify_supplier(pj_record(tipoPessoa="", niFornecedor=FAKE_CPF)).personal is True

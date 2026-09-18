@@ -64,7 +64,12 @@ from licitaqui.items import classify_all, roll_up, upsert_items  # noqa: E402
 from licitaqui.pncp import PncpClient, PncpError  # noqa: E402
 from licitaqui.queue import Job  # noqa: E402
 from licitaqui.registry import JobContext  # noqa: E402
-from licitaqui.sync_awards import DEFAULT_SEGMENTS, FOLLOWUP_KIND, sync_tender_awards  # noqa: E402
+from licitaqui.sync_awards import (  # noqa: E402
+    DEFAULT_SEGMENTS,
+    FOLLOWUP_KIND,
+    probed_at,
+    sync_tender_awards,
+)
 from licitaqui.tenders import (  # noqa: E402
     DEFAULT_MODALITIES,
     from_consulta,
@@ -230,15 +235,20 @@ def one_tender(
     *,
     segments: list[str],
     items_cap: int,
-) -> tuple[int, int]:
-    """Items then awards for one tender. Returns `(awarded_items_seen, failures)`."""
-    try:
-        awarded = sync_one_tenders_items(client, conn, tender_id)
-    except (PncpError, CircuitOpen) as exc:
-        LOG.warning("items failed for %s: %s", tender_id, exc)
-        return 0, 1
+    skip_probed: bool,
+) -> int:
+    """Items then awards for one tender. Returns awarded items seen; raises on PNCP.
+
+    ``skip_probed`` makes a re-run cheap. A tender that already carries a probe
+    marker was finished by an earlier slice, and re-reading its items would
+    spend a request to rediscover that every awarded item is settled. One
+    indexed `events` lookup replaces one HTTP call.
+    """
+    if skip_probed and probed_at(conn, tender_id) is not None:
+        return 0
+    awarded = sync_one_tenders_items(client, conn, tender_id)
     if not awarded:
-        return 0, 0
+        return 0
     job = Job(
         id=-1,
         kind=FOLLOWUP_KIND,
@@ -256,12 +266,31 @@ def one_tender(
         },
         attempts=1,
     )
-    try:
-        sync_tender_awards(JobContext(job=job, conn=conn, connect=lambda: conn, log=LOG))
-    except (PncpError, CircuitOpen) as exc:
-        LOG.warning("awards failed for %s: %s", tender_id, exc)
-        return awarded, 1
-    return awarded, 0
+    sync_tender_awards(JobContext(job=job, conn=conn, connect=lambda: conn, log=LOG))
+    return awarded
+
+
+def wait_out(exc: CircuitOpen, stop: threading.Event) -> bool:
+    """Sleep until an open circuit is due to close. False if the run is stopping.
+
+    Measured the hard way, on the first full run of this script: with ten
+    threads sharing one breaker, two consecutive timeouts on `/itens` opened
+    the circuit for the spec's 900 s (§7.2) — and the workers then drained the
+    sweep at full speed, failing every tender instantly and **discarding** it.
+    Forty tenders vanished in seconds. The queue is what normally protects
+    against that (a failed job is retried at 2, 8 and 30 minutes); a script has
+    to do it itself, and the honest way is to stop taking work rather than to
+    keep pulling it and drop it.
+
+    Waking every few seconds rather than sleeping the whole 900 s so that
+    Ctrl-C still lands.
+    """
+    deadline = time.monotonic() + exc.retry_in + 2
+    LOG.warning("circuit '%s' open; pausing %.0f s", exc.name, exc.retry_in)
+    while time.monotonic() < deadline:
+        if stop.wait(5):
+            return False
+    return True
 
 
 @dataclass
@@ -291,6 +320,8 @@ def worker(
     *,
     segments: list[str],
     items_cap: int,
+    attempts: int,
+    skip_probed: bool,
 ) -> None:
     """One thread, one database connection, the shared rate-limited client.
 
@@ -307,15 +338,59 @@ def worker(
             except queue.Empty:
                 continue
             try:
-                awarded, failed = one_tender(
-                    client, conn, tender_id, segments=segments, items_cap=items_cap
+                _run_with_retries(
+                    client,
+                    conn,
+                    tender_id,
+                    totals,
+                    stop,
+                    segments=segments,
+                    items_cap=items_cap,
+                    attempts=attempts,
+                    skip_probed=skip_probed,
                 )
-                totals.add(awarded=awarded, failed=failed)
             except Exception:  # pragma: no cover - a backfill must not die on one row
                 LOG.exception("unhandled error on %s", tender_id)
                 totals.add(awarded=0, failed=1)
             finally:
                 work.task_done()
+
+
+def _run_with_retries(
+    client: PncpClient,
+    conn: psycopg.Connection,
+    tender_id: str,
+    totals: Totals,
+    stop: threading.Event,
+    *,
+    segments: list[str],
+    items_cap: int,
+    attempts: int,
+    skip_probed: bool,
+) -> None:
+    """The queue's retry policy (§7.2), scaled down to a script.
+
+    Everything a retry re-reads is idempotent and everything already stored is
+    excluded by the `not exists (…awards…)` predicate, so a second attempt
+    costs only the requests the first one did not get to.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            awarded = one_tender(client, conn, tender_id, segments=segments, items_cap=items_cap)
+        except CircuitOpen as exc:
+            if not wait_out(exc, stop):
+                totals.add(awarded=0, failed=1)
+                return
+            continue
+        except PncpError as exc:
+            LOG.warning("attempt %d failed for %s: %s", attempt, tender_id, exc)
+            if attempt == attempts or stop.wait(2):
+                totals.add(awarded=0, failed=1)
+                return
+            continue
+        totals.add(awarded=awarded, failed=0)
+        return
+    totals.add(awarded=0, failed=1)
 
 
 def main() -> int:
@@ -333,6 +408,12 @@ def main() -> int:
     ap.add_argument("--report-every", type=int, default=60, help="seconds between progress lines")
     ap.add_argument("--rate", type=float, default=4.0, help="requests per second (§7.2)")
     ap.add_argument("--workers", type=int, default=6, help="threads hiding database latency")
+    ap.add_argument("--attempts", type=int, default=3, help="tries per tender before giving up")
+    ap.add_argument(
+        "--reprobe",
+        action="store_true",
+        help="re-read tenders an earlier run already finished (default: skip them)",
+    )
     ap.add_argument("--quiet-httpx", action="store_true", default=True)
     args = ap.parse_args()
 
@@ -355,7 +436,12 @@ def main() -> int:
         threading.Thread(
             target=worker,
             args=(str(n), client, dsn, work, totals, stop),
-            kwargs={"segments": list(args.segments), "items_cap": args.items_per_tender},
+            kwargs={
+                "segments": list(args.segments),
+                "items_cap": args.items_per_tender,
+                "attempts": args.attempts,
+                "skip_probed": not args.reprobe,
+            },
             daemon=True,
             name=f"backfill-{n}",
         )

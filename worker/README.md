@@ -608,7 +608,22 @@ the reason the fallback exists.
 `--workers` threads hide Neon round trips; they buy nothing against PNCP, whose
 throttle is shared by the one client and holds the whole run to `--rate`
 (default 4 req/s, §7.2) however many threads there are. Measured
-single-threaded: 5.7 s per tender, of which about 0.4 s was HTTP.
+single-threaded: 5.7 s per tender, of which about 0.4 s was HTTP. With ten
+threads: about 200 award rows a minute.
+
+Two things the first full run taught it, both now in the script:
+
+- **An open circuit has to stop the workers, not be swallowed by them.** Two
+  consecutive `/itens` timeouts opened `pncp-itens` for the spec's 900 s, and
+  the threads then drained the sweep at full speed, failing every tender
+  instantly and discarding it — forty tenders gone in seconds. In production
+  the queue is what prevents this (a failed job is retried at 2, 8 and 30
+  minutes); a script has to pause itself. `wait_out()` does, and `--attempts`
+  gives each tender the queue's retry budget.
+- **A re-run must not re-read what an earlier one finished.** A tender with a
+  probe marker is skipped before any HTTP, so resuming an interrupted
+  collection costs one indexed `events` lookup instead of one items request per
+  tender already done. `--reprobe` turns that off.
 
 ### B8's test database
 
