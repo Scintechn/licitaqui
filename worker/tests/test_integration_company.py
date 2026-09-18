@@ -20,7 +20,7 @@ from pathlib import Path
 import psycopg
 import pytest
 
-from licitaqui import breaker, company, db, queue
+from licitaqui import breaker, cnae, company, db, queue
 from licitaqui.brasilapi import BrasilApiError
 from licitaqui.company import STATUS_FAILED, STATUS_NOT_FOUND
 from licitaqui.consumer import Consumer
@@ -188,14 +188,28 @@ def test_force_bypasses_a_fresh_row(b5_conn, api):
     assert fake.calls == 2
 
 
-def test_a_refresh_does_not_wipe_the_segments_b6_wrote(b5_conn, api):
+def test_a_refresh_recomputes_the_segments_from_the_map(b5_conn, api):
+    """`companies.segments` is derived, so a lookup must recompute it.
+
+    B5 originally asserted the opposite — that a refresh preserved whatever was
+    in the column — because at the time nothing wrote it. B6 then made `lookup`
+    call `refresh_company_segments`, deliberately: the array is materialised
+    from `cnae_segments` precisely so a correction to the map takes effect
+    without a backfill (see `cnae.refresh_company_segments`). Preserving a stale
+    value would defeat that.
+
+    The assertion is the invariant rather than a fixed list, so editing the map
+    cannot make this test lie.
+    """
     api(record("micro_mei"))
     company.lookup(b5_conn, RESOLVED)
     b5_conn.execute("update companies set segments = %s where cnpj = %s", (["papelaria"], RESOLVED))
 
     company.lookup(b5_conn, RESOLVED, force=True)
 
-    assert row(b5_conn, RESOLVED)["segments"] == ["papelaria"]
+    expected = list(cnae.for_company(b5_conn, RESOLVED).names)
+    assert row(b5_conn, RESOLVED)["segments"] == expected
+    assert row(b5_conn, RESOLVED)["segments"] != ["papelaria"] or expected == ["papelaria"]
 
 
 # -- the manual CNAE path -------------------------------------------------

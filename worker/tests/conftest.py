@@ -214,6 +214,67 @@ def unique_kind(label: str = "") -> str:
     return f"{KIND_PREFIX}{label}{uuid.uuid4().hex[:10]}"
 
 
+# -- B6: the CNAE → segment map's own database -----------------------------
+#
+# B6 writes `companies` rows to exercise the `company_segments` view, so it
+# needs a database where B5's company tests are not writing the same table.
+# Resolved and wrapped in `Dsn` exactly like the others: a DSN that reaches a
+# traceback is a leaked credential.
+B6_TEST_DSN_VAR = "TEST_DATABASE_URL_B6"
+
+#: Every company a B6 test writes has a `cnpj` starting with this prefix, so
+#: cleanup deletes exactly this run's rows and never anyone else's.
+#:
+#: Per **run**, not per task (see RUN_ID above), and deliberately **not all
+#: digits**: a run-scoped prefix of digits could in principle prefix-match a
+#: real CNPJ, and this same database holds real supplier CNPJs while
+#: `scripts/check_cnae_segments_live.py` runs. The leading letters make the
+#: delete predicate unable to touch anything but these fixtures.
+B6_CNPJ_PREFIX = f"b6t{RUN_ID}"
+
+
+def b6_cnpj(suffix: str) -> str:
+    """A 14-character test company id inside this run's prefix. Not a CNPJ.
+
+    `companies.cnpj` is `char(14)` with no digits-only constraint, which is what
+    lets these be unmistakably synthetic.
+    """
+    return f"{B6_CNPJ_PREFIX}{suffix.rjust(14 - len(B6_CNPJ_PREFIX), '0')}"[:14]
+
+
+@pytest.fixture(scope="session")
+def b6_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(B6_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{B6_TEST_DSN_VAR} is not configured; skipping B6 database tests")
+
+
+@pytest.fixture
+def b6_clean_dsn(b6_dsn: str) -> Iterator[str]:
+    """B6's test DSN, with this run's company rows deleted before and after."""
+    _delete_b6_rows(b6_dsn)
+    try:
+        yield b6_dsn
+    finally:
+        _delete_b6_rows(b6_dsn)
+
+
+@pytest.fixture
+def b6_conn(b6_clean_dsn: str) -> Iterator[psycopg.Connection]:
+    from licitaqui import db
+
+    with db.factory(b6_clean_dsn, application_name=f"licitaqui-b6-test-{os.getpid()}")() as conn:
+        yield conn
+
+
+def _delete_b6_rows(dsn: str) -> None:
+    """Remove only the companies this run created. Never truncates."""
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from companies where starts_with(cnpj, %s)", (B6_CNPJ_PREFIX,))
+
+
 # -- C1: the AI screening's own database ----------------------------------
 #
 # Same shape and the same reasons as B2's and B5's blocks above: an isolated

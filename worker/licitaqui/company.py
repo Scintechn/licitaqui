@@ -65,7 +65,7 @@ from typing import Any
 
 import psycopg
 
-from . import brasilapi, queue
+from . import brasilapi, cnae, queue
 from .brasilapi import BrasilApiError, CompanyRecord
 from .breaker import CircuitOpen, get_breaker
 from .observability import get_logger
@@ -234,6 +234,21 @@ def lookup(
         return _finish(log, ref, result, started)
 
     _upsert(conn, outcome)
+    # B6: the CNAEs have just changed, so `segments` (§6.2) is now stale. It is
+    # derived, cheap and read by the Radar, so it is refreshed here rather than
+    # left for a later job — but never allowed to fail the lookup: a company
+    # whose CNAEs were resolved is a good outcome even if the map is missing
+    # (a database restored before migration 0003, say).
+    # The savepoint matters: without it a failed refresh would abort the whole
+    # transaction and take the upsert down with it.
+    try:
+        with conn.transaction():
+            cnae.refresh_company_segments(conn, outcome.cnpj)
+    except psycopg.Error as exc:
+        log.warning(
+            "segment refresh failed; CNAEs were stored",
+            extra={"cnpj_ref": ref, "reason": type(exc).__name__},
+        )
     return _finish(log, ref, LookupResult(status="resolved", called_api=True), started)
 
 
