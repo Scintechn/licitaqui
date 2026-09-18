@@ -94,14 +94,29 @@ The `consulta` host has been timing out for **over an hour** while the search ho
 normally. Every failure is a read timeout, the same signature B0 saw in its 13-minute
 outage. ADR-0001's inversion rule is >10% failures over a day, or outages beyond ~2 h.
 
-**Do not act on this yet** — two plausible readings, and one changes nothing while the
-other changes the architecture:
-1. A nightly maintenance window on the consulta API. It would mean the sweep must tolerate
-   a predictable daily gap, which the queue and breaker already handle.
-2. Genuinely worse availability than B0's 40-minute sample suggested, which would trip the
-   inversion rule and send B2 back to the search API.
+**Update 00:35 UTC — the inversion threshold is crossed.** `atualizacao` timed out again
+at 00:35 (40 s), while the search host answered in 0.7 s. That is **~3 h 14 min of
+continuous timeouts** on the consulta host, against ADR-0001's ">2 h outage" trigger.
 
-The probe continues; the duration of this outage is the number that decides it.
+The maintenance-window explanation is now the weaker one: 21:21–00:35 UTC is
+**18:21–21:35 in Brazil** — peak evening, not a maintenance slot. B0 also recorded the
+same host failing at 20:21–20:34 UTC, so the disruption has run since roughly 20:21 UTC
+with at most brief recovery.
+
+**This is Sci's first decision of the morning**, and it is a genuine architecture fork:
+
+- **Revert to the search API.** ADR-0001's own rule says to. The cost is real and was the
+  reason for choosing `/atualizacao`: the search API cannot page past 10,000 of ~38,856
+  open tenders and silently ignores date filters, so a sweep will miss changes.
+- **Keep `/atualizacao` and design around the outages.** The queue, breaker and retry
+  policy already absorb a delayed cycle; correctness is preserved and freshness suffers.
+- **Hybrid** — `/atualizacao` as the watermark source with the search sweep as a scheduled
+  reconciliation, paying for both but losing nothing silently.
+
+My read: the third. The reason for choosing `/atualizacao` was that missed changes are
+invisible, and a 3-hour outage does not make them visible again — it only delays them.
+But this needs Sci, not me: B2 was built on an accepted decision and reversing it
+unilaterally overnight would be worse than waiting a few hours.
 
 ## Two defects found by B5, both worth fixing
 
