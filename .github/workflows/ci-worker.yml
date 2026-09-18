@@ -115,6 +115,9 @@ jobs:
           TEST_DATABASE_URL_R1: ${{ secrets.TEST_DATABASE_URL_R1 }}
           TEST_DATABASE_URL_B4: ${{ secrets.TEST_DATABASE_URL_B4 }}
           TEST_DATABASE_URL_E2: ${{ secrets.TEST_DATABASE_URL_E2 }}
+          TEST_DATABASE_URL_D3: ${{ secrets.TEST_DATABASE_URL_D3 }}
+          TEST_DATABASE_URL_B8: ${{ secrets.TEST_DATABASE_URL_B8 }}
+          TEST_DATABASE_URL_FH: ${{ secrets.TEST_DATABASE_URL_FH }}
         run: |
           set -o pipefail
           pytest -p no:randomly -rs | tee /tmp/pytest.txt
