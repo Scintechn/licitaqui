@@ -115,6 +115,14 @@ attempt failed — the consumer retries after 2, 8 and 30 minutes and marks the
 job `failed` on the fourth attempt, storing the error. Wrap external calls in
 `licitaqui.breaker.get_breaker("pncp-detail").guard()`.
 
+**Wire it into `licitaqui/handlers.py`.** A handler registers itself when its
+module is imported, so a kind nothing imports is simply absent from the
+registry — and B2's sweep, which enqueues follow-ups only for kinds that have a
+handler, then skips it in silence. `handlers.py` is the one module that imports
+them all; `service.py` and the tests import it rather than listing handlers
+themselves, and `tests/test_handlers.py` fails if a new `@REGISTRY.job` is not
+reachable from it.
+
 ## `company_lookup` (CNPJ → CNAEs, size, MEI)
 
 `licitaqui.company`. Enqueue with `company.enqueue(conn, cnpj)`: priority 1,

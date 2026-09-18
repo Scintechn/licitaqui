@@ -8,6 +8,7 @@ Module map (spec §7):
 - ``queue``         the `jobs` table: enqueue, claim, retry, fail
 - ``registry``      job kind → handler, and the context a handler receives
 - ``jobs``          built-in kinds (only ``noop`` so far)
+- ``handlers``      imports every handler module: the complete registry
 - ``segments``      the 14 segments, false positives, per-item classification
 - ``items``         `tender_items` rows and the ME/EPP + value roll-up
 - ``sync_items``    the ``sync_items`` job (§7.1)
@@ -20,6 +21,7 @@ Module map (spec §7):
 - ``service``       wires the above into one process
 
 Submodules are imported explicitly; importing the package pulls in nothing.
+Import ``licitaqui.handlers`` to get a registry with every job kind in it.
 """
 
 __all__ = ["__version__"]
