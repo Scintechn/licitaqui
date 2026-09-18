@@ -404,3 +404,62 @@ def test_zero_is_a_value_and_not_unset():
     assert _int_option({}, "cooldown_hours", 168) == 168
     assert _int_option({"cooldown_hours": None}, "cooldown_hours", 168) == 168
     assert _int_option({"cooldown_hours": "24"}, "cooldown_hours", 168) == 24
+
+
+# -- the MEI hole the backfill found ---------------------------------------
+
+#: The Receita Federal composes a MEI's razão social as the proprietor's full
+#: name followed by their CPF. This is the real shape, with the digits changed.
+MEI_NAME = f"AUGUSTO SOSTA MARTINS {FAKE_CPF}"
+
+
+def test_a_meis_razao_social_does_not_carry_its_owners_cpf_into_the_row():
+    """Found in the data, not reasoned about: one row in the 4,344 the B8
+    backfill collected.
+
+    The record is `tipoPessoa: "PJ"` with a valid 14-digit CNPJ, so every
+    company rule correctly says *company* and keeps the razão social — and the
+    CPF rides in on the one branch that was not looking for one.
+    """
+    record = pj_record(nomeRazaoSocialFornecedor=MEI_NAME)
+    supplier = classify_supplier(record)
+
+    assert supplier.personal is False, "a MEI is a company; its CNPJ stays visible"
+    assert supplier.doc == "68117429000105"
+    assert supplier.name == "AUGUSTO SOSTA MARTINS ***.111.111-**"
+    assert FAKE_CPF not in (supplier.name or "")
+
+    blob = json.dumps(redact_record(record, supplier), ensure_ascii=False)
+    assert FAKE_CPF not in blob
+
+
+def test_from_pncp_keeps_no_embedded_cpf_anywhere_in_the_row():
+    award = from_pncp(
+        TENDER,
+        pj_record(
+            nomeRazaoSocialFornecedor=MEI_NAME,
+            motivoCancelamento=f"CPF {FAKE_CPF_PUNCTUATED} inabilitado",
+        ),
+        unit_estimated_value=Decimal("1000"),
+    )
+    row = json.dumps(asdict(award), ensure_ascii=False, default=str)
+    assert FAKE_CPF not in row
+    assert FAKE_CPF_PUNCTUATED not in row
+
+
+def test_masking_an_embedded_cpf_cannot_eat_a_cnpj():
+    """The lookarounds are the whole safety of this: without them the first 11
+    digits of every 14-digit CNPJ would match."""
+    from licitaqui.awards import mask_embedded_cpf
+
+    assert mask_embedded_cpf("EMPRESA 68117429000105 LTDA") == "EMPRESA 68117429000105 LTDA"
+    assert mask_embedded_cpf("68.117.429/0001-05") == "68.117.429/0001-05"
+    assert mask_embedded_cpf(None) is None
+    assert mask_embedded_cpf("") == ""
+
+
+def test_masking_an_embedded_cpf_handles_both_spellings():
+    from licitaqui.awards import mask_embedded_cpf
+
+    assert mask_embedded_cpf(f"FULANO {FAKE_CPF}") == "FULANO ***.111.111-**"
+    assert mask_embedded_cpf(f"FULANO {FAKE_CPF_PUNCTUATED}") == "FULANO ***.111.111-**"

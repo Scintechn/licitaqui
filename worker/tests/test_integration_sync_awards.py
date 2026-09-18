@@ -321,6 +321,35 @@ def test_a_person_hiding_behind_a_pj_flag_is_still_masked(b8_conn: psycopg.Conne
     assert "Silva" not in stored
 
 
+def test_a_mei_keeps_its_cnpj_and_loses_its_owners_cpf(b8_conn: psycopg.Connection, monkeypatch):
+    """The hole the backfill found, at the real write path.
+
+    A MEI's razão social is the proprietor's full name followed by their CPF
+    (Receita Federal's own composition), on a record that is `PJ` with a valid
+    14-digit CNPJ. Every company rule says *company* — correctly, a MEI is one
+    — so the CNPJ and the trading name must stay visible while the CPF must
+    not survive the write.
+    """
+    tid = given_tender(b8_conn, 16)
+    given_items(b8_conn, tid, [(1, OFFICE, True, Decimal("100"))])
+    run_tender_job(
+        monkeypatch,
+        b8_conn,
+        client_factory(
+            {1: [award_record(nomeRazaoSocialFornecedor=f"AUGUSTO SOSTA MARTINS {FAKE_CPF}")]}
+        ),
+        {"tender_id": tid, "segments": [OFFICE]},
+    )
+
+    stored = whole_rows_as_text(b8_conn, tid)
+    assert FAKE_CPF not in stored
+    assert FAKE_CNPJ in stored, "a MEI's CNPJ is public and must not be masked away"
+    (row,) = award_rows(b8_conn, tid)
+    assert row[2] == FAKE_CNPJ
+    assert row[3] == "AUGUSTO SOSTA MARTINS ***.111.111-**"
+    assert row[4] == "PJ"
+
+
 # -- one call per item, only for the segments of interest ------------------
 
 

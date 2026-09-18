@@ -56,9 +56,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import psycopg  # noqa: E402
+from psycopg.types.json import Jsonb  # noqa: E402
 
 from licitaqui import config, db  # noqa: E402
 from licitaqui import sync_awards as sync_awards_module  # noqa: E402
+from licitaqui.awards import mask_embedded_cpf  # noqa: E402
 from licitaqui.breaker import CircuitOpen  # noqa: E402
 from licitaqui.items import classify_all, roll_up, upsert_items  # noqa: E402
 from licitaqui.pncp import PncpClient, PncpError  # noqa: E402
@@ -226,6 +228,67 @@ def sync_one_tenders_items(client: PncpClient, conn: psycopg.Connection, tender_
 
 def stored_awards(conn: psycopg.Connection) -> int:
     return int(conn.execute("select count(*) from awards").fetchone()[0])
+
+
+#: Rows whose stored text still carries a CPF standing alone — the MEI case
+#: (`licitaqui.awards.mask_embedded_cpf`). The `a::text` predicate covers every
+#: column including `raw`, so this finds a leak wherever it is.
+LEAKED_SQL = r"""
+select tender_id, item_number, sequence, supplier_name, raw
+  from awards a
+ where a::text ~ '(^|[^0-9])[0-9]{11}([^0-9]|$)'
+    or a::text ~ '(^|[^0-9])[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}([^0-9]|$)'
+"""
+
+REPAIR_SQL = """
+update awards set supplier_name = %(supplier_name)s, raw = %(raw)s
+ where tender_id = %(tender_id)s and item_number = %(item_number)s and sequence = %(sequence)s
+"""
+
+
+def repair_personal_data(conn: psycopg.Connection) -> int:
+    """Re-apply the masking to rows already written. Returns how many changed.
+
+    Needed once, and worth keeping. The B8 backfill collected 4,344 awards
+    before anyone noticed that a MEI's razão social ends in the proprietor's
+    CPF, and fixing `from_pncp` only protects the *next* write — the row
+    already in the table is the breach, and it is in the backups. The day a
+    masking rule is found wanting again, this is the tool that closes the gap
+    behind it rather than in front of it.
+
+    Idempotent: masking an already-masked value changes nothing.
+    """
+    rows = conn.execute(LEAKED_SQL).fetchall()
+    repaired = 0
+    for tender_id, item_number, sequence, supplier_name, raw in rows:
+        fixed_name = mask_embedded_cpf(supplier_name)
+        fixed_raw = _scrub_strings(raw)
+        if fixed_name == supplier_name and fixed_raw == raw:
+            continue
+        conn.execute(
+            REPAIR_SQL,
+            {
+                "tender_id": tender_id,
+                "item_number": item_number,
+                "sequence": sequence,
+                "supplier_name": fixed_name,
+                "raw": Jsonb(fixed_raw),
+            },
+        )
+        repaired += 1
+        LOG.warning("repaired personal data on %s item %s", tender_id, item_number)
+    return repaired
+
+
+def _scrub_strings(value):
+    """`mask_embedded_cpf` over every string in a stored payload."""
+    if isinstance(value, dict):
+        return {k: _scrub_strings(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_strings(v) for v in value]
+    if isinstance(value, str):
+        return mask_embedded_cpf(value)
+    return value
 
 
 def one_tender(
@@ -417,6 +480,11 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=6, help="threads hiding database latency")
     ap.add_argument("--attempts", type=int, default=3, help="tries per tender before giving up")
     ap.add_argument(
+        "--repair-personal-data",
+        action="store_true",
+        help="re-apply the masking to rows already stored, then exit (spec §12)",
+    )
+    ap.add_argument(
         "--reprobe",
         action="store_true",
         help="re-read tenders an earlier run already finished (default: skip them)",
@@ -427,6 +495,13 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     if args.quiet_httpx:
         logging.getLogger("httpx").setLevel(logging.WARNING)
+    dsn_for_repair = resolve_dsn(args.dsn_var)
+    if args.repair_personal_data:
+        with db.connect(dsn_for_repair, application_name="licitaqui-b8-repair") as conn:
+            repaired = repair_personal_data(conn)
+        LOG.info("repaired %d row(s)", repaired)
+        return 0
+
     day_from = datetime.strptime(args.day_from, "%Y-%m-%d").date()
     day_to = datetime.strptime(args.day_to, "%Y-%m-%d").date()
 

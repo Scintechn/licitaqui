@@ -106,6 +106,12 @@ MASKED_UNKNOWN = "***"
 
 _NON_DIGITS = re.compile(r"\D+")
 
+#: A CPF standing alone inside a longer string — the MEI case below. The
+#: lookarounds matter: without them these would match the first 11 digits of a
+#: 14-digit CNPJ and mask every company document in the payload.
+_BARE_CPF = re.compile(r"(?<![0-9])[0-9]{11}(?![0-9])")
+_PUNCTUATED_CPF = re.compile(r"(?<![0-9])[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}(?![0-9])")
+
 #: Portuguese name particles carry no initial. "João da Silva" is "J. S.", not
 #: "J. D. S." — which is both what a person would write and one letter less of
 #: a personal datum.
@@ -140,6 +146,32 @@ def mask_cpf(cpf: str) -> str:
     if len(known) != CPF_DIGITS:
         return MASKED_UNKNOWN
     return f"***.{known[3:6]}.{known[6:9]}-**"
+
+
+def mask_embedded_cpf(text: str | None) -> str | None:
+    """Mask a CPF that is sitting *inside* an otherwise impersonal string.
+
+    This exists because of the MEI, and it was found in the data rather than
+    reasoned about: the Receita Federal composes a MEI's razão social as
+    **the proprietor's full name followed by their CPF** — "AUGUSTO SOSTA
+    MARTINS 25510225840". That record is `tipoPessoa: "PJ"` with a perfectly
+    valid 14-digit CNPJ, so every company rule correctly says *company* and
+    keeps the razão social, and a raw CPF lands in `supplier_name` and in
+    `raw` through the one branch that was not looking for one.
+
+    Measured over the 4,344 awards the B8 backfill collected: exactly one row,
+    and ``nomeRazaoSocialFornecedor`` was the **only** payload key in any of
+    them carrying a bare 11-digit run — so scrubbing every string costs no
+    collateral damage on real data, and a process number that one day looks
+    like a CPF is a cheaper loss than a CPF that looks like a process number.
+
+    One in 4,344 is not rare enough to ignore. It is roughly one in every
+    nightly sweep, forever, and MEIs are exactly who this product is for.
+    """
+    if not text:
+        return text
+    masked = _PUNCTUATED_CPF.sub(lambda m: mask_cpf(m.group()), text)
+    return _BARE_CPF.sub(lambda m: mask_cpf(m.group()), masked)
 
 
 def initials(name: Any) -> str | None:
@@ -190,7 +222,14 @@ def classify_supplier(record: dict[str, Any]) -> Supplier:
     is_company = len(ni) == CNPJ_DIGITS and declared != "PF"
     if is_company:
         name = str(raw_name).strip() if raw_name not in (None, "") else None
-        return Supplier(doc=ni, name=name or None, person_type=declared or "PJ", personal=False)
+        # A company's razão social is public — except when it is a MEI's, which
+        # ends in the proprietor's CPF. See :func:`mask_embedded_cpf`.
+        return Supplier(
+            doc=ni,
+            name=mask_embedded_cpf(name) or None,
+            person_type=declared or "PJ",
+            personal=False,
+        )
 
     doc = mask_cpf(ni) if len(ni) == CPF_DIGITS else (MASKED_UNKNOWN if ni else None)
     person_type = declared if declared else ("PF" if len(ni) == CPF_DIGITS else None)
@@ -207,12 +246,16 @@ def redact_record(record: dict[str, Any], supplier: Supplier) -> dict[str, Any]:
     exact original is precise: it cannot damage an unrelated field, because
     nothing else in the record equals a value that is not there.
 
-    A company's payload is returned unchanged. A CNPJ and a razão social are
-    public register data, and §12 asks for the opposite of hiding them.
+    A company's payload keeps its CNPJ and its razão social — those are public
+    register data and §12 asks for the opposite of hiding them — but it is
+    **not** returned untouched: a MEI's razão social ends in the proprietor's
+    CPF, so every string still goes through :func:`mask_embedded_cpf`. That was
+    the hole this function had until the backfill found one in 4,344 real
+    awards.
     """
-    if not supplier.personal:
-        return record
     originals: list[tuple[str, str]] = []
+    if not supplier.personal:
+        return _scrub(record, originals, supplier)
     raw_doc = record.get("niFornecedor")
     if raw_doc not in (None, ""):
         replacement = supplier.doc or MASKED_UNKNOWN
@@ -244,7 +287,9 @@ def _scrub(value: Any, originals: Sequence[tuple[str, str]], supplier: Supplier)
         for needle, replacement in originals:
             if needle:
                 scrubbed = scrubbed.replace(needle, replacement)
-        return scrubbed
+        # Last line of defence, and the one that catches the MEI: a CPF nobody
+        # declared, standing inside a string that is otherwise impersonal.
+        return mask_embedded_cpf(scrubbed) or scrubbed
     return value
 
 

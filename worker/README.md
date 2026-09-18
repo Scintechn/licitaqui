@@ -520,6 +520,24 @@ Three columns carry the risk, not one:
   string in it — the MEI convention of putting the proprietor's name in the
   razão social means the two are not always in separate fields.
 
+**The MEI is the case that nearly got through.** The Receita Federal composes
+a MEI's razão social as *the proprietor's full name followed by their CPF* —
+"AUGUSTO SOSTA MARTINS 25510225840" — on a record that is `tipoPessoa: "PJ"`
+with a perfectly valid 14-digit CNPJ. Every company rule says *company*,
+correctly, and keeps the razão social; the CPF rides in on the one branch that
+was not looking for one. `mask_embedded_cpf` is the answer: every string this
+module stores, on **both** branches, has a standalone 11-digit run replaced by
+the same mask. The lookarounds are load-bearing — without them the first 11
+digits of every CNPJ would match.
+
+It was found in the data, not reasoned about: one row in the 4,344 the backfill
+collected, and `nomeRazaoSocialFornecedor` was the only payload key in any of
+them carrying a bare 11-digit run. One in 4,344 is about one a night, forever,
+and MEIs are exactly who this product is for. `backfill_awards.py
+--repair-personal-data` re-applies the masking to rows already written, because
+fixing the mapper only protects the *next* write and the row already in the
+table is the breach.
+
 **It fails closed.** A document is kept in the clear only when it is provably a
 company: exactly 14 digits **and** PNCP did not say `tipoPessoa: "PF"`.
 Everything else — 11 digits, an unrecognised length, a `PF` flag that
