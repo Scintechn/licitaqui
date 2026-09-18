@@ -426,3 +426,87 @@ def _delete_c1_rows(dsn: str) -> None:
             "delete from jobs where kind = 'ai_screening' and starts_with(key, %s)",
             (f"screening:{C1_TENDER_PREFIX}",),
         )
+
+
+# -- B4: the file sync's own database --------------------------------------
+#
+# Same shape and the same reasons as the blocks above: an isolated database so
+# two tasks' suites cannot collide, a `Dsn` wrapper so pytest cannot render the
+# credentials into a traceback, and deletes scoped to rows *this run* created.
+#
+# B4 writes three things — `tender_files` (which cascades from `tenders`), the
+# per-tender sync marker in `events`, and `ai_analyses` rows in the amendment
+# test (which cascades too). Every one of them is reachable from a tender id
+# carrying `RUN_ID`, so the cleanup keys on that and never on a task constant:
+# a task-scoped prefix looks isolated and is not, and two concurrent runs of
+# this suite would delete each other's fixtures mid-test.
+B4_TEST_DSN_VAR = "TEST_DATABASE_URL_B4"
+
+#: Not a valid CNPJ, per **run**, and with a trailing `4` so it stays distinct
+#: from B2's `…2` and C1's `…3` inside the same run.
+B4_CNPJ = f"99{int(RUN_ID, 16):011d}4"[:14]
+
+#: Tender ids are run-scoped too, and the ids B4 uses have to look like real
+#: `numeroControlePNCP` values because `split_control_number` parses them. The
+#: run id therefore rides in the CNPJ, and this prefix is what cleanup matches.
+B4_TENDER_PREFIX = f"{B4_CNPJ}-"
+
+
+@pytest.fixture(scope="session")
+def b4_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(B4_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{B4_TEST_DSN_VAR} is not configured; skipping B4 database tests")
+
+
+@pytest.fixture
+def b4_clean_dsn(b4_dsn: str) -> Iterator[str]:
+    """B4's test DSN, with this run's rows deleted before and after the test."""
+    _delete_b4_rows(b4_dsn)
+    try:
+        yield b4_dsn
+    finally:
+        _delete_b4_rows(b4_dsn)
+
+
+@pytest.fixture
+def b4_connect(b4_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(b4_clean_dsn, application_name=f"licitaqui-b4-test-{os.getpid()}")
+
+
+@pytest.fixture
+def b4_conn(b4_connect) -> Iterator[psycopg.Connection]:
+    with b4_connect() as connection:
+        yield connection
+
+
+def _delete_b4_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates.
+
+    `tender_files` and `ai_analyses` go with the tender (`on delete cascade`);
+    the sync markers in `events` have no foreign key, so they are deleted by the
+    same run-scoped name prefix `licitaqui.files.sync_event_name` builds. The
+    cross-run statements are deliberately narrow — the fictitious `99…` agency
+    family belongs to these tests alone, and an hour is far longer than the
+    suite takes, so they can only ever catch a crashed run.
+    """
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where agency_cnpj = %s", (B4_CNPJ,))
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' "
+            "  and updated_at < now() - interval '1 hour'"
+        )
+        conn.execute(
+            "delete from events where starts_with(name, %s)", (f"sync_files:{B4_TENDER_PREFIX}",)
+        )
+        conn.execute(
+            "delete from events where starts_with(name, 'sync_files:99') "
+            "  and created_at < now() - interval '1 hour'"
+        )
+        conn.execute(
+            "delete from jobs where kind = 'sync_files' and key like %s", (f"{B4_TENDER_PREFIX}%",)
+        )

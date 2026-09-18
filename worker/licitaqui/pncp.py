@@ -13,6 +13,11 @@ while `/api/search/` answered every request:
   reads. POC 1 kept it apart from the detail endpoint for the same reason: the
   detail endpoint is the one that returns HTTP 500, and an items outage must
   not stop the sweep that feeds every other job.
+- ``pncp-arquivos`` — `/api/pncp/v1/.../arquivos`, the "Arquivos" tab that
+  :mod:`licitaqui.sync_files` reads. Its own breaker for the same reason again:
+  it is served by the same host as the items endpoint but is a different
+  service, and the file list going dark must not stop items arriving (nor the
+  other way round).
 
 Three rules this module exists to enforce:
 
@@ -51,10 +56,12 @@ SEARCH_PATH = "/api/search/"
 ATUALIZACAO_PATH = "/api/consulta/v1/contratacoes/atualizacao"
 PUBLICACAO_PATH = "/api/consulta/v1/contratacoes/publicacao"
 ITEMS_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/itens"
+FILES_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/arquivos"
 
 BREAKER_CONSULTA = "pncp-consulta"
 BREAKER_SEARCH = "pncp-search"
 BREAKER_ITEMS = "pncp-itens"
+BREAKER_FILES = "pncp-arquivos"
 
 #: The period endpoints accept this and nothing else. 100 and 500 are rejected
 #: with "Tamanho de página inválido"; it is not a tunable.
@@ -169,6 +176,10 @@ class PncpClient:
     @property
     def items_breaker(self) -> CircuitBreaker:
         return get_breaker(BREAKER_ITEMS)
+
+    @property
+    def files_breaker(self) -> CircuitBreaker:
+        return get_breaker(BREAKER_FILES)
 
     def _get(self, path: str, params: dict[str, Any], breaker: CircuitBreaker) -> Any:
         """One GET under the breaker. Raises on anything but 200 and 204.
@@ -301,6 +312,32 @@ class PncpClient:
             if self.page_delay:
                 time.sleep(self.page_delay)
         _log.warning("items walk hit the page guard", extra={"path": path, "pages": MAX_PAGES})
+
+    # -- the arquivos endpoint (§7.1 sync_files) --------------------------
+
+    def fetch_files(self, cnpj: int | str, year: int, sequence: int) -> list[dict[str, Any]]:
+        """Every document on one contratação's "Arquivos" tab, in one call.
+
+        **Deliberately unpaged**, which is POC 1's shape too: this endpoint
+        answers with the whole list in a bare JSON array, and the largest tender
+        in the 575 cached responses in the knowledge base has 14 documents. A
+        page loop here would be one more way to spend a job's timeout budget on
+        an endpoint §7.2 already calls unreliable, for a list that arrives
+        whole.
+
+        A ``204`` (empty body) means the tender genuinely has no documents and
+        comes back as ``[]``. Anything else raises, including a 404: a tender
+        that had an edital yesterday and 404s today is an outage, not a
+        withdrawal, and must never be allowed to prune
+        (:func:`licitaqui.files.upsert_files`).
+        """
+        path = FILES_PATH.format(cnpj=cnpj, year=year, sequence=sequence)
+        body = self._get(path, {}, self.files_breaker)
+        if body is None:
+            return []
+        if not isinstance(body, list):
+            raise PncpError(f"GET {path} -> expected a list, got {type(body).__name__}")
+        return body
 
     # -- the search API (ADR-0001, the fallback) --------------------------
 

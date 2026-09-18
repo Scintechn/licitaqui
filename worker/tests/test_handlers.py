@@ -9,8 +9,8 @@ failing when their file ran alone.
 
 So rather than listing the kinds by hand, this reads every ``@REGISTRY.job``
 decorator out of the package source and insists the registry knows all of them.
-B4's `sync_files` and B8's `sync_awards` will be caught by it the day they are
-written and not wired into :mod:`licitaqui.handlers`.
+B8's `sync_awards` will be caught by it the day it is written and not wired
+into :mod:`licitaqui.handlers`.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def kinds_declared_in_source() -> dict[str, str]:
 def test_the_source_actually_declares_some_kinds() -> None:
     """A regex that silently matches nothing would make the next test vacuous."""
     declared = kinds_declared_in_source()
-    assert {"noop", "sync_open_tenders", "sync_items"} <= set(declared)
+    assert {"noop", "sync_open_tenders", "sync_items", "sync_files"} <= set(declared)
 
 
 def test_importing_handlers_registers_every_kind_in_the_package() -> None:
@@ -58,6 +58,15 @@ def test_registered_kinds_reports_what_the_registry_holds() -> None:
     assert "sync_items" in handlers.registered_kinds()
 
 
-def test_sync_files_is_still_b4s_to_write() -> None:
-    """Keeps B2's "no follow-up for a kind with no handler" test meaningful."""
-    assert "sync_files" not in REGISTRY.kinds()
+def test_every_followup_kind_b2_enqueues_has_a_handler() -> None:
+    """B4 landed, so both of B2's follow-ups can now actually run.
+
+    This used to be the inverse assertion — `sync_files` is still B4's to write
+    — kept so that B2's "no follow-up for a kind with no handler" test had a
+    real kind to point at. That test now makes its own missing kind instead,
+    and this one states the property that matters from here on: the sweep never
+    queues work nothing can run, and it is not skipping a kind either.
+    """
+    from licitaqui.sync_tenders import FOLLOWUP_KINDS
+
+    assert set(FOLLOWUP_KINDS) <= set(REGISTRY.kinds())

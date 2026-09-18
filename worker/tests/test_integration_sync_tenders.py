@@ -466,40 +466,44 @@ def test_an_unmappable_record_is_skipped_rather_than_failing_the_cycle(
 def test_no_followup_jobs_are_queued_for_kinds_that_have_no_handler(
     b2_conn: psycopg.Connection, monkeypatch
 ):
-    """B4 is another card: queuing work nothing can run only fills `failed`.
+    """Queuing work nothing can run only fills `failed`.
 
-    This used to cover `sync_items` too. B3 landed and registered it, so the
-    cycle now queues one — which is the seam working, not a regression — and
-    the rule is asserted against the kind that is still missing a handler.
+    This used to point at whichever kind had not landed yet — `sync_items`
+    until B3, then `sync_files` until B4. Both are registered now, so the test
+    makes its own: a kind in `FOLLOWUP_KINDS` with no handler behind it. That
+    keeps the rule under test for good, instead of only until the next card.
     """
+    monkeypatch.setattr(
+        sync_tenders, "FOLLOWUP_KINDS", (*sync_tenders.FOLLOWUP_KINDS, "sync_not_written_yet")
+    )
     run_cycle(monkeypatch, b2_conn, serving({6: [[record(1)]], 8: [], 4: []}))
 
     queued = b2_conn.execute(
-        "select count(*) from jobs where kind = 'sync_files' and key like %s",
+        "select count(*) from jobs where kind = 'sync_not_written_yet' and key like %s",
         (f"{B2_CNPJ}-%",),
     ).fetchone()
     assert queued[0] == 0
-    assert "sync_files" not in REGISTRY.kinds()
+    assert "sync_not_written_yet" not in REGISTRY.kinds()
+    # …and the kinds that *do* have a handler were still queued.
+    assert last_cycle(b2_conn)["followups"] == 2
 
 
 def test_followups_are_queued_as_soon_as_a_handler_exists(b2_conn: psycopg.Connection, monkeypatch):
     """The seam B3 and B4 arrive through: register, and this starts working.
 
-    It used to stub the handler; B3 registered a real one, so this now runs
-    against it — which is the seam actually closing.
+    It used to stub the handler; B3 and then B4 registered real ones, so this
+    now runs against both — which is the seam actually closing.
     """
-    assert "sync_items" in REGISTRY.kinds()
+    assert {"sync_items", "sync_files"} <= set(REGISTRY.kinds())
     run_cycle(monkeypatch, b2_conn, serving({6: [[record(1), record(2)]], 8: [], 4: []}))
 
     rows = b2_conn.execute(
-        "select kind, key, payload from jobs where key like %s order by key",
+        "select kind, key, payload from jobs where key like %s order by key, kind",
         (f"{B2_CNPJ}-%",),
     ).fetchall()
-    assert [r[0] for r in rows] == ["sync_items", "sync_items"]
+    assert [r[0] for r in rows] == ["sync_files", "sync_items", "sync_files", "sync_items"]
     assert rows[0][2] == {"tender_id": f"{B2_CNPJ}-1-000001/2026"}
-    # Still nothing for sync_files: B4 has not registered.
-    assert all(r[0] != "sync_files" for r in rows)
-    assert last_cycle(b2_conn)["followups"] == 2
+    assert last_cycle(b2_conn)["followups"] == 4
 
 
 def test_a_second_cycle_does_not_requeue_followups_for_unchanged_tenders(
