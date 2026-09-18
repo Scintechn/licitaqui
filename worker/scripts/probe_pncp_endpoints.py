@@ -57,16 +57,26 @@ def call(url: str, params: dict) -> dict:
                 body = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 return {"ok": False, "status": resp.status, "err": "bad_json", "s": elapsed}
-            return {"ok": True, "status": resp.status, "s": elapsed, "bytes": len(raw),
-                    "body": body}
+            return {
+                "ok": True,
+                "status": resp.status,
+                "s": elapsed,
+                "bytes": len(raw),
+                "body": body,
+            }
     except urllib.error.HTTPError as exc:
         elapsed = time.monotonic() - started
         try:
             msg = exc.read()[:200].decode("utf-8", "replace")
         except OSError:
             msg = ""
-        return {"ok": False, "status": exc.code, "err": f"http_{exc.code}", "s": elapsed,
-                "msg": msg}
+        return {
+            "ok": False,
+            "status": exc.code,
+            "err": f"http_{exc.code}",
+            "s": elapsed,
+            "msg": msg,
+        }
     except (TimeoutError, urllib.error.URLError, ssl.SSLError, OSError) as exc:
         elapsed = time.monotonic() - started
         err = "timeout" if elapsed >= TIMEOUT - 1 else type(exc).__name__
@@ -76,12 +86,22 @@ def call(url: str, params: dict) -> dict:
 def arm_search(pages: int, delay: float) -> list[dict]:
     rows = []
     for page in range(1, pages + 1):
-        row = call(SEARCH, {"tipos_documento": "edital", "status": "recebendo_proposta",
-                            "ordenacao": "-data", "pagina": page, "tam_pagina": 50})
+        row = call(
+            SEARCH,
+            {
+                "tipos_documento": "edital",
+                "status": "recebendo_proposta",
+                "ordenacao": "-data",
+                "pagina": page,
+                "tam_pagina": 50,
+            },
+        )
         row |= {"arm": "search", "page": page}
         rows.append(row)
-        print(f"  search p{page:<3} {row['status']:>4} {row['s']:6.2f}s {row.get('err', '')}",
-              flush=True)
+        print(
+            f"  search p{page:<3} {row['status']:>4} {row['s']:6.2f}s {row.get('err', '')}",
+            flush=True,
+        )
         time.sleep(delay)
     return rows
 
@@ -93,14 +113,23 @@ def arm_period(base: str, name: str, pages: int, delay: float, days: int) -> lis
         day = (date.today() - timedelta(days=offset + 1)).strftime("%Y%m%d")
         for modalidade in MODALIDADES:
             for page in range(1, pages + 1):
-                row = call(base, {"dataInicial": day, "dataFinal": day,
-                                  "codigoModalidadeContratacao": modalidade,
-                                  "pagina": page, "tamanhoPagina": 50})
+                row = call(
+                    base,
+                    {
+                        "dataInicial": day,
+                        "dataFinal": day,
+                        "codigoModalidadeContratacao": modalidade,
+                        "pagina": page,
+                        "tamanhoPagina": 50,
+                    },
+                )
                 row |= {"arm": name, "day": day, "mod": modalidade, "page": page}
                 rows.append(row)
-                print(f"  {name} {day} mod{modalidade} p{page} {row['status']:>4} "
-                      f"{row['s']:6.2f}s {row.get('err', '')} {row.get('msg', '')[:60]}",
-                      flush=True)
+                print(
+                    f"  {name} {day} mod{modalidade} p{page} {row['status']:>4} "
+                    f"{row['s']:6.2f}s {row.get('err', '')} {row.get('msg', '')[:60]}",
+                    flush=True,
+                )
                 time.sleep(delay)
     return rows
 
@@ -161,9 +190,12 @@ def main() -> int:
                 report[arm]["record_keys"] = sorted(records[0].keys())
 
     with open(args.out, "w") as handle:
-        json.dump({"report": report,
-                   "rows": [{k: v for k, v in r.items() if k != "body"} for r in rows]},
-                  handle, indent=2, ensure_ascii=False)
+        json.dump(
+            {"report": report, "rows": [{k: v for k, v in r.items() if k != "body"} for r in rows]},
+            handle,
+            indent=2,
+            ensure_ascii=False,
+        )
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0
 
