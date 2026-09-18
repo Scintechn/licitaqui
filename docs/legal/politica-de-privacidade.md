@@ -86,7 +86,7 @@ Compartilhamos apenas o necessário, com operadores que tratam dados em nosso no
 
 | Operador | Para quê |
 |---|---|
-| Vercel | Hospedagem da aplicação |
+| Vercel | Hospedagem da aplicação e métricas de uso agregadas (Vercel Analytics e Speed Insights, sem cookies e sem dados pessoais) |
 | Neon | Banco de dados |
 | Amazon Web Services | Servidor do coletor e armazenamento de arquivos |
 | OpenRouter e provedores de modelos | Leitura dos editais por IA (sem dados pessoais) |

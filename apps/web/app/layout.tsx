@@ -1,3 +1,5 @@
+import { Analytics } from '@vercel/analytics/next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import type { Metadata, Viewport } from 'next'
 import { fontVariables } from './fonts'
 import './globals.css'
@@ -23,7 +25,20 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR" className={fontVariables}>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/*
+          Vercel Analytics and Speed Insights (spec §5: "events table + Vercel
+          Analytics"). Both are cookieless and store no personal data, which is
+          why they sit outside the LGPD consent flow — unlike the `events` table,
+          which is ours and does identify a user or visitor.
+
+          They are the page-level numbers (traffic, Core Web Vitals); the Phase 0
+          gate metrics in §14 come from `events` and /admin, not from here.
+        */}
+        <Analytics />
+        <SpeedInsights />
+      </body>
     </html>
   )
 }

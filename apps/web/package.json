@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@vercel/analytics": "2.0.1",
+    "@vercel/speed-insights": "2.0.0",
     "drizzle-orm": "0.45.2",
     "next": "16.3.5",
     "pg": "8.23.0",
