@@ -1,0 +1,58 @@
+{
+  "document": "01_PE_90177_2026_-_GOV_69",
+  "model": "qwen/qwen3.7-flash",
+  "prompt_version": "triagem-edital-v2",
+  "extraction_version": 3,
+  "recorded_at": "2026-09-18T14:12:20+00:00",
+  "calls": [
+    {
+      "status": 200,
+      "payload": {
+        "id": "gen-1789740725-uJyK4HATvanIua1wESm5",
+        "object": "chat.completion",
+        "created": 1789740725,
+        "model": "qwen/qwen3.7-flash",
+        "provider": "Alibaba",
+        "system_fingerprint": null,
+        "service_tier": null,
+        "choices": [
+          {
+            "index": 0,
+            "logprobs": null,
+            "finish_reason": "stop",
+            "native_finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"objeto\": \"Registro de Preços de materiais hospitalares diversos (agulhas, cateteres, compressas, curativos, dialisadores, drenos, esparadrapo).\",\n  \"tipo_objeto\": \"produto\",\n  \"orgao\": \"Rede Municipal Dr. Mário Gatti de Urgência, Emergência e Hospitalar\",\n  \"municipio_uf\": \"Campinas/SP\",\n  \"modalidade\": \"Pregão Eletrônico\",\n  \"criterio_julgamento\": \"Menor valor por item\",\n  \"plataforma_disputa\": \"www.gov.br/compras\",\n  \"prazo_envio_proposta\": null,\n  \"data_sessao_disputa\": \"2026-09-30 09:00\",\n  \"valor_estimado_total\": 1249376.49,\n  \"orcamento_sigiloso\": false,\n  \"registro_de_precos\": true,\n  \"vigencia_meses\": \"12\",\n  \"beneficio_me_epp\": {\n    \"situacao\": \"misto\",\n    \"itens_exclusivos\": [\n      \"16\",\n      \"17\",\n      \"18\",\n      \"19\"\n    ],\n    \"itens_cota_reservada\": [\n      \"11\",\n      \"13\",\n      \"15\"\n    ],\n    \"pagina\": 2,\n    \"observacao\": \"O preâmbulo e o item 1.3 indicam itens exclusivos (16-19) e cotas reservadas (11, 13, 15). O Anexo I mostra o Item 11 como 'RESERVADA'. Itens 1-10 e 12 são 'AMPLA' ou 'PRINCIPAL'. Os itens 16-19 não aparecem na tabela da página 30, mas são mencionados no texto.\"\n  },\n  \"atestado_capacidade_tecnica\": {\n    \"exige\": true,\n    \"resumo\": \"Documentos de qualificação técnica conforme determinado no Anexo I – Termo de Referência (página 15, item 12.12.1).\",\n    \"pagina\": 15\n  },\n  \"capital_ou_patrimonio_minimo\": {\n    \"exige\": false,\n    \"resumo\": \"Não há exigência de capital social ou patrimônio mínimo.\",\n    \"percentual\": null,\n    \"base\": null,\n    \"pagina\": null\n  },\n  \"amostra_ou_prova_de_conceito\": {\n    \"tipo\": \"amostra\",\n    \"resumo\": \"A Rede poderá solicitar amostra da empresa provisoriamente classificada para verificação de compatibilidade técnica. Prazo de entrega em até 03 dias úteis após solicitação.\",\n    \"pagina\": 38\n  },\n  \"garantia_contratual\": {\n    \"situacao\": \"nao_informado\",\n    \"percentual\": null,\n    \"pagina\": null\n  },\n  \"visita_tecnica\": \"nao_ha\",\n  \"consorcio\": \"nao_informado\",\n  \"prazo_execucao_ou_entrega_dias\": 15,\n  \"entrega\": {\n    \"local\": \"Central de Abastecimento Farmacêutico (CAF) - Hospital Municipal Dr. Mário Gatti, Avenida Prefeito Faria Lima n° 340, Parque Itália, Campinas, SP\",\n    \"parcelada\": true,\n    \"validade_minima_produto\": \"75% da validade na entrega\",\n    \"pagina\": 36\n  },\n  \"prazo_pagamento_dias\": 10,\n  \"observacao_pagamento\": \"10 dias fora a dezena, contados da data do aceite da Nota Fiscal.\",\n  \"exigencias_produto\": {\n    \"registro_anvisa\": true,\n    \"afe_anvisa\": true,\n    \"licenca_ou_alvara_sanitario\": true,\n    \"inmetro\": false,\n    \"catalogo_ou_ficha_tecnica\": true,\n    \"aceita_distribuidor_revendedor\": \"nao\",\n    \"pagina\": 37\n  },\n  \"bloqueadores_pequena_empresa\": [\n    {\n      \"ponto\": \"Exigência de Licença/Alvará Sanitário emitido em nome da licitante; distribuidoras sem licença própria são inabilitadas.\",\n      \"pagina\": 37\n    },\n    {\n      \"ponto\": \"Exigência de AFE (Autorização de Funcionamento) da ANVISA.\",\n      \"pagina\": 37\n    },\n    {\n      \"ponto\": \"Exigência de Registro vigente do material na ANVISA ou Declaração de Dispensa.\",\n      \"pagina\": 37\n    }\n  ],\n  \"nota_triagem_0_a_10\": 4,\n  \"vale_deep_dive\": true,\n  \"motivo\": \"Edital exige documentação sanitária robusta (Alvará próprio, AFE, Registro ANVISA) que geralmente inviabiliza MEIs e pequenos revendedores sem estrutura regulatória, além de haver itens exclusivos não detalhados na tabela fornecida.\"\n}",
+              "refusal": null,
+              "reasoning": null
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 19865,
+          "completion_tokens": 1209,
+          "total_tokens": 21074,
+          "cost": 0.00027696,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 19840,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00027696,
+            "upstream_inference_prompt_cost": 0.00011979,
+            "upstream_inference_completions_cost": 0.00015717
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    }
+  ]
+}

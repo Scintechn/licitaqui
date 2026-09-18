@@ -273,3 +273,78 @@ def _delete_b6_rows(dsn: str) -> None:
     """Remove only the companies this run created. Never truncates."""
     with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
         conn.execute("delete from companies where starts_with(cnpj, %s)", (B6_CNPJ_PREFIX,))
+
+
+# -- C1: the AI screening's own database ----------------------------------
+#
+# Same shape and the same reasons as B2's and B5's blocks above: an isolated
+# database so two tasks' suites cannot collide, a `Dsn` wrapper so pytest cannot
+# render the credentials into a traceback, and deletes scoped to rows this run
+# created. `ai_analyses` rows go away with their tender (`on delete cascade`),
+# so deleting the fictitious agency's tenders is enough.
+C1_TEST_DSN_VAR = "TEST_DATABASE_URL_C1"
+
+#: Not a valid CNPJ, and one digit apart from B2's, so the two cleanups never
+#: reach each other's rows.
+C1_CNPJ = "99000000000103"
+
+#: Tender ids are scoped by RUN_ID as well, so two concurrent runs of this same
+#: suite cannot delete each other's fixtures mid-test.
+C1_TENDER_PREFIX = f"c1-test-{RUN_ID}-"
+
+
+@pytest.fixture(scope="session")
+def c1_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(C1_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{C1_TEST_DSN_VAR} is not configured; skipping C1 database tests")
+
+
+@pytest.fixture
+def c1_clean_dsn(c1_dsn: str) -> Iterator[str]:
+    _delete_c1_rows(c1_dsn)
+    try:
+        yield c1_dsn
+    finally:
+        _delete_c1_rows(c1_dsn)
+
+
+@pytest.fixture
+def c1_connect(c1_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(c1_clean_dsn, application_name=f"licitaqui-c1-test-{os.getpid()}")
+
+
+@pytest.fixture
+def c1_conn(c1_connect) -> Iterator[psycopg.Connection]:
+    with c1_connect() as connection:
+        yield connection
+
+
+def c1_tender_id(label: str = "") -> str:
+    return f"{C1_TENDER_PREFIX}{label}{uuid.uuid4().hex[:8]}"
+
+
+def _delete_c1_rows(dsn: str) -> None:
+    """Remove only the rows *this run* created. Never truncates.
+
+    Scoped by ``RUN_ID``, not by the fictitious CNPJ: deleting everything for
+    the CNPJ would look isolated and would not be — two concurrent runs of this
+    same suite would delete each other's fixtures mid-test, which is the flake
+    described at the top of this file. Rows a crashed run left behind are swept
+    by the second statement, which only touches rows too old to belong to a run
+    still going. `ai_analyses` cascades from `tenders`.
+    """
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where starts_with(id, %s)", (C1_TENDER_PREFIX,))
+        conn.execute(
+            "delete from tenders where agency_cnpj = %s and updated_at < now() - interval '1 day'",
+            (C1_CNPJ,),
+        )
+        conn.execute(
+            "delete from jobs where kind = 'ai_screening' and starts_with(key, %s)",
+            (f"screening:{C1_TENDER_PREFIX}",),
+        )
