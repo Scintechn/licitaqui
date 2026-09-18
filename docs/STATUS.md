@@ -6,6 +6,7 @@ One line per task: date · task ID · status · PR link · follow-ups.
 |---|---|---|---|---|
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
+| 2026-09-18 | B2 (`sync_open_tenders`) | in review | https://github.com/Scintechn/licitaqui/pull/13 | SP sweep 5,193 tenders in **2.09 min** (budget 30); rerun 0 duplicates; 144 tests. Sweep exercised the **search fallback** — consulta was down — so the primary path is measured only by tests. Found 4 real bugs, one of which was also in the A3 seed (now fixed) |
 | 2026-09-18 | B5 (`company_lookup`) | in review | https://github.com/Scintechn/licitaqui/pull/12 | 49/50 resolved, 1 real failure exercised the manual path. Contradicts parts of ADR-0002 (now amended). Rate-limit *ceiling* still unmeasured — lookups stay single-threaded |
 | 2026-09-18 | O1 (`/admin` + events) | in review | https://github.com/Scintechn/licitaqui/pull/11 | Needs `ADMIN_EMAILS` + `ADMIN_PASSWORD` set before `/admin` opens at all (fails closed by design). Usage card is half real: this database's size from SQL, project storage and CU-hours need `NEON_API_KEY` |
 | 2026-09-17 | B1 (worker skeleton) | in review | https://github.com/Scintechn/licitaqui/pull/9 | 68 tests. **GHCR push + Easypanel deploy NOT done** — still blocked on credentials, `TODO(B1)` in ci-worker.yml stands. Neon compute *suspension* itself unproven (needs 5 idle min + the console); the no-open-session property that causes it is proven |
@@ -94,7 +95,21 @@ The `consulta` host has been timing out for **over an hour** while the search ho
 normally. Every failure is a read timeout, the same signature B0 saw in its 13-minute
 outage. ADR-0001's inversion rule is >10% failures over a day, or outages beyond ~2 h.
 
-**Update 00:35 UTC — the inversion threshold is crossed.** `atualizacao` timed out again
+**RESOLVED by B2's verification — the endpoint choice stands, the cadence is what to
+revisit.** B2 answered the open question: the search index's `data_atualizacao_pncp` does
+**not** move when only items or files change. It is byte-identical to
+`data_publicacao_pncp`, sub-second digits included. Evidence: of 95 cached tenders, **79
+(83.2%) had a child change**; of those, **74 matched the header timestamp exactly and 0
+matched the global one**. A search-only sweep would have missed all 74 **silently**.
+
+That inverts the inversion rule. The outage is a *freshness* problem, which the queue and
+breaker already absorb; falling back to search as the primary would be a *correctness*
+problem, and a silent one. **Ignore my earlier hybrid recommendation** — it was written
+before this evidence, and search-as-reconciliation cannot detect child changes either, so
+it would only catch tenders missed entirely. Revisit cadence and retry policy, not the
+endpoint.
+
+**Outage record, for the ADR:** `atualizacao` timed out again
 at 00:35 (40 s), while the search host answered in 0.7 s. That is **~3 h 14 min of
 continuous timeouts** on the consulta host, against ADR-0001's ">2 h outage" trigger.
 
@@ -103,20 +118,12 @@ The maintenance-window explanation is now the weaker one: 21:21–00:35 UTC is
 same host failing at 20:21–20:34 UTC, so the disruption has run since roughly 20:21 UTC
 with at most brief recovery.
 
-**This is Sci's first decision of the morning**, and it is a genuine architecture fork:
+Six sync cycles were missed. What this costs is delay, not data, because the watermark
+only advances when a cycle completes every modality — a partial cycle is retried whole.
 
-- **Revert to the search API.** ADR-0001's own rule says to. The cost is real and was the
-  reason for choosing `/atualizacao`: the search API cannot page past 10,000 of ~38,856
-  open tenders and silently ignores date filters, so a sweep will miss changes.
-- **Keep `/atualizacao` and design around the outages.** The queue, breaker and retry
-  policy already absorb a delayed cycle; correctness is preserved and freshness suffers.
-- **Hybrid** — `/atualizacao` as the watermark source with the search sweep as a scheduled
-  reconciliation, paying for both but losing nothing silently.
-
-My read: the third. The reason for choosing `/atualizacao` was that missed changes are
-invisible, and a 3-hour outage does not make them visible again — it only delays them.
-But this needs Sci, not me: B2 was built on an accepted decision and reversing it
-unilaterally overnight would be worse than waiting a few hours.
+**What still needs deciding** is narrower than it looked: how long a consulta outage may
+last before it is an incident rather than a delay, and whether a same-day outage should
+raise anything in `/admin`. That is O2/observability work, not an architecture fork.
 
 ## Two defects found by B5, both worth fixing
 
@@ -124,12 +131,39 @@ unilaterally overnight would be worse than waiting a few hours.
    `ruff format --check .`, so drift lands on `main` unnoticed — it already had, in B0's
    two probe scripts. B5's PR reformats them. **Add the format check to `ci-worker.yml`
    once #12 merges** (doing it before would put `main` red).
-2. **B1's integration tests are not isolated between concurrent runs.** They resolve the
-   default `TEST_DATABASE_URL` and clean up by deleting every `b1-test-*` row, so two
-   worktrees running the worker suite at once delete each other's fixtures. My per-agent
-   databases (`TEST_DATABASE_URL_B2/_O1/_B5`) isolated the *new* tests but not B1's
-   inherited ones. Fix: a per-run key prefix in B1's helper. This is the second time a
-   shared test database has bitten us.
+2. **B1's integration tests are not isolated between concurrent runs.** Confirmed
+   independently by B5 and B2; B2 reproduced it against `main`'s own code with no B2 work
+   in the session (2 failures in run 1, 0 in runs 2–3). **It will keep producing spurious
+   red CI runs until someone owns it**, and a test suite that cries wolf is worse than one
+   that is merely slow.
+
+   Root cause, in `worker/tests/conftest.py`: the cleanup comment says deletes are "scoped
+   by prefix", but the prefixes are module **constants** —
+
+   ```python
+   KEY_PREFIX = "b1-test-"
+   KIND_PREFIX = "b1t_"
+   ...
+   delete from jobs where starts_with(key, %s) or starts_with(kind, %s)
+   ```
+
+   so they scope by *task*, not by *run*. Two concurrent runs of the same suite delete
+   each other's fixtures mid-test. My per-agent databases (`TEST_DATABASE_URL_B2/_O1/_B5`)
+   isolated the *new* tests but not these inherited ones.
+
+   Fix — make the prefix per-run, ~3 lines:
+   ```python
+   RUN_ID = uuid.uuid4().hex[:8]
+   KEY_PREFIX = f"b1-test-{RUN_ID}-"
+   KIND_PREFIX = f"b1t_{RUN_ID}_"
+   ```
+   **Order matters:** both PR #12 and PR #13 already modify `conftest.py`, so do this
+   *after* they merge or it conflicts with two green PRs. That is why it is written down
+   here instead of already done.
+
+   Third time a shared test database has caused a problem. Worth a standing rule: every
+   test that writes to a shared database scopes its rows by a per-run id, not a per-task
+   constant.
 
 ## Open for Sci
 

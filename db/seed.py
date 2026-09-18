@@ -58,9 +58,15 @@ def load_one(cur: psycopg.Cursor, payload: dict) -> int:
         ) values (
           %(id)s, %(cnpj)s, %(year)s, %(seq)s, %(object)s, %(agency)s, %(unit)s,
           %(city)s, %(state)s, %(mod_id)s, %(mod_name)s, %(status)s, %(srp)s,
-          %(open_at)s, %(close_at)s, %(value)s,
+          -- PNCP sends naive Brasília local time with no offset. Casting it
+          -- straight into timestamptz would read it as UTC and store every
+          -- deadline three hours early. Interpret it in its real zone.
+          %(open_at)s::timestamp at time zone 'America/Sao_Paulo',
+          %(close_at)s::timestamp at time zone 'America/Sao_Paulo',
+          %(value)s,
           %(secret)s, %(url)s, %(me_epp)s,
-          %(pncp_updated)s, %(raw)s, now()
+          %(pncp_updated)s::timestamp at time zone 'America/Sao_Paulo',
+          %(raw)s, now()
         )
         on conflict (id) do update set
           object             = excluded.object,
