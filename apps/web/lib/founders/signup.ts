@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { db, foundersList, type Executor } from '@/lib/db'
+import { eventInsertSelect, type EventName } from '@/lib/events'
 import { FOUNDER_SEATS } from './seats'
 import type { SignupInput } from './input'
 
@@ -75,9 +76,14 @@ export const WAITLIST_TEMPLATE = 'founders-waitlist'
  */
 const WELCOME_JOB_PRIORITY = 3
 
-/** The two `events.name` values this flow writes. */
-export const SIGNUP_EVENT = 'founder_signup'
-export const DUPLICATE_EVENT = 'founder_signup_duplicate'
+/**
+ * The two `events.name` values this flow writes. Both come from the catalogue
+ * in `lib/events`, which is the one place that knows how an `events` row is
+ * written; `satisfies` makes a typo here a type error rather than a gate that
+ * silently reads zero.
+ */
+export const SIGNUP_EVENT = 'founder_signup' satisfies EventName
+export const DUPLICATE_EVENT = 'founder_signup_duplicate' satisfies EventName
 
 /**
  * The terms/privacy version stored with each consent, since `founders_list` has
@@ -160,14 +166,15 @@ export async function signUpFounder(
           from new_founder n
       ),
       logged as (
-        insert into events (name, props)
-        select ${SIGNUP_EVENT}::text,
-               jsonb_build_object(
-                 'founders_list_id', p.id,
-                 'seat', p.seat,
-                 'waitlist_position', p.position,
-                 'source', ${input.source ?? null}::text
-               ) || ${consentProps}
+        ${eventInsertSelect({
+          name: SIGNUP_EVENT,
+          props: sql`jsonb_build_object(
+            'founders_list_id', p.id,
+            'seat', p.seat,
+            'waitlist_position', p.position,
+            'source', ${input.source ?? null}::text
+          ) || ${consentProps}`,
+        })}
           from place p
       ),
       queued as (
@@ -222,14 +229,15 @@ async function duplicate(tx: Executor, input: SignupInput): Promise<SignupOutcom
        where l.email = ${input.email}
     ),
     logged as (
-      insert into events (name, props)
-      select ${DUPLICATE_EVENT}::text,
-             jsonb_build_object(
-               'founders_list_id', e.id,
-               'seat', e.seat,
-               'waitlist_position', e.position,
-               'source', ${input.source ?? null}::text
-             )
+      ${eventInsertSelect({
+        name: DUPLICATE_EVENT,
+        props: sql`jsonb_build_object(
+          'founders_list_id', e.id,
+          'seat', e.seat,
+          'waitlist_position', e.position,
+          'source', ${input.source ?? null}::text
+        )`,
+      })}
         from existing e
     )
     select id, seat, position from existing

@@ -15,26 +15,32 @@ import { dirname, join, resolve } from 'node:path'
  */
 
 const ENV_FILES = ['.env.neon-roles.local', '.env.local'] as const
+
+/**
+ * The default variable. A task with its own isolated database passes its own
+ * name instead — task O1 uses `TEST_DATABASE_URL_O1` — so two suites running at
+ * once cannot delete each other's rows.
+ */
 const VARIABLE = 'TEST_DATABASE_URL'
 
-function readFromFile(path: string): string | undefined {
+function readFromFile(path: string, variable: string): string | undefined {
   for (const line of readFileSync(path, 'utf8').split('\n')) {
     const trimmed = line.trim()
-    if (!trimmed.startsWith(`${VARIABLE}=`)) continue
-    const value = trimmed.slice(VARIABLE.length + 1).trim().replace(/^["']|["']$/g, '')
+    if (!trimmed.startsWith(`${variable}=`)) continue
+    const value = trimmed.slice(variable.length + 1).trim().replace(/^["']|["']$/g, '')
     if (value) return value
   }
   return undefined
 }
 
 /** Walks up from `apps/web` looking for the repo root's env files. */
-function fromEnvFiles(): string | undefined {
+function fromEnvFiles(variable: string): string | undefined {
   let directory = resolve(process.cwd())
   for (let depth = 0; depth < 6; depth += 1) {
     for (const file of ENV_FILES) {
       const path = join(directory, file)
       if (existsSync(path)) {
-        const value = readFromFile(path)
+        const value = readFromFile(path, variable)
         if (value) return value
       }
     }
@@ -45,6 +51,6 @@ function fromEnvFiles(): string | undefined {
   return undefined
 }
 
-export function testDatabaseUrl(): string | undefined {
-  return process.env[VARIABLE]?.trim() || fromEnvFiles()
+export function testDatabaseUrl(variable: string = VARIABLE): string | undefined {
+  return process.env[variable]?.trim() || fromEnvFiles(variable)
 }
