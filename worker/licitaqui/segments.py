@@ -7,7 +7,14 @@ across term for term — this module exists to *be* that logic in the worker, no
 to improve on it. ``tests/test_segments.py`` checks that against 476 real cached
 items whose expected segment was produced by running the POC itself.
 
-Three things the port does differently, all deliberate:
+Four things the port does differently, all deliberate:
+
+**Beverages.** POC 1's food rule covers NCM chapters 02–21 and food keywords, so
+chapter 22 — water, juice, soft drinks — lands in "Outros" and never reaches a
+company. Water and soft drinks are added back (:data:`BEVERAGE_NCM_PREFIXES`,
+:data:`BEVERAGE_KEYWORDS`); 8 of the 8,861 cached items move, every one a
+beverage. This is the one place the port knowingly does not reproduce POC 1,
+and ``tests/test_segments.py`` asserts the divergence is exactly those items.
 
 **Keys, not labels.** The POC's segment is a display string ("Saúde /
 Hospitalar"). What goes in `tender_items.segment` and `tenders.segments` is a
@@ -204,6 +211,10 @@ SEGMENT_KEYWORDS: dict[str, tuple[str, ...]] = {
         "acucar",
         "biscoito",
         "suco",
+        # BEVERAGES — not in POC 1. See BEVERAGE_KEYWORDS below.
+        "agua mineral",
+        "agua potavel",
+        r"(?<!gas )(?<!fluido )(?<!liquido )refrigerante",
     ),
     "construction": (
         "construcao",
@@ -298,14 +309,24 @@ SEGMENT_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _is_regex(pattern: str) -> bool:
+    """Whether a term is a regex rather than a literal to escape.
+
+    POC 1's test is "does it contain a backslash", which covers the two it
+    wrote (``\\d+ ?mg\\b``). The port adds ``(?`` for the same reason, because
+    its one lookbehind pattern happens to contain no backslash and POC's test
+    would silently escape it into a literal — which it did, until a corpus
+    diff showed twelve soft drinks quietly failing to reclassify.
+    """
+    return "\\" in pattern or "(?" in pattern
+
+
 def _compile(patterns: tuple[str, ...]) -> re.Pattern[str]:
     """POC 1's construction, unchanged: match at a word boundary.
 
-    The ``\\b`` is why "obra" does not match "dobra". A term that already
-    contains a backslash is a regex the POC wrote on purpose (``\\d+ ?mg\\b``)
-    and is spliced in raw; everything else is escaped.
+    The ``\\b`` is why "obra" does not match "dobra".
     """
-    alternatives = "|".join(p if "\\" in p else re.escape(p) for p in patterns)
+    alternatives = "|".join(p if _is_regex(p) else re.escape(p) for p in patterns)
     return re.compile(r"\b(?:" + alternatives + ")")
 
 
@@ -372,6 +393,36 @@ _NCM_PREFIXES: list[tuple[str, str]] = [
 # NCM chapters 02–21 are food, and the longest prefix wins: 8536 beats 85, and
 # 3004 (medicines) beats chapter 30 never being listed at all.
 _NCM_PREFIXES += [(f"{chapter:02d}", "food") for chapter in range(2, 22)]
+
+#: **The one deliberate gap-fill in this port.** POC 1 stops at chapter 21, so
+#: chapter 22 — beverages — falls into "Outros" and nothing matches a company to
+#: a bottled-water, juice or soft-drink lot. Those are among the most routine
+#: ME/EPP-friendly purchases a municipality makes, and B6 had to mark every
+#: beverage CNAE `check` on the company side because the item side could not
+#: meet it. So water (2201) and flavoured/soft drinks (2202) are added here, and
+#: :data:`SEGMENT_KEYWORDS` grows three terms for the far commoner case of an
+#: item with no NCM at all.
+#:
+#: Every term here was checked against the whole cached corpus before being
+#: added, and three were rejected on the evidence. Not the whole of chapter 22:
+#: 2207 is ethyl alcohol, which agencies buy as cleaning álcool 70%, and the NCM
+#: branch outranks the keywords — a chapter-wide rule would move it out of
+#: Limpeza / Higiene. Not bare "agua": "água sanitária" is bleach and "caixa
+#: d'água" is construction. Not bare "bebida": in this corpus it appears mostly
+#: on trays and cups ("para bebidas quentes").
+#:
+#: "refrigerante" needs the lookbehinds it carries in
+#: :data:`SEGMENT_KEYWORDS`. Without them it matched five air conditioners,
+#: whose specifications say "GÁS REFRIGERANTE R-410A" and "GÁS/FLUIDO
+#: REFRIGERANTE" — a coolant, not a drink. This is the same class of mistake
+#: POC 1's false-positive list exists to prevent, one keyword lower down.
+#:
+#: Measured over the 8,861 cached items: 8 change, every one a beverage — four
+#: soft drinks and four bottled waters, one of which POC 1 had filed under
+#: Construção / Hidráulica because its packaging is PVC.
+BEVERAGE_NCM_PREFIXES: tuple[str, ...] = ("2201", "2202")
+BEVERAGE_KEYWORDS: tuple[str, ...] = ("agua mineral", "agua potavel", "refrigerante")
+_NCM_PREFIXES += [(prefix, "food") for prefix in BEVERAGE_NCM_PREFIXES]
 _NCM_PREFIXES.sort(key=lambda pair: -len(pair[0]))
 
 #: Expressions that contain a keyword but mean something else, verbatim from

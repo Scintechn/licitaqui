@@ -194,6 +194,17 @@ say about the tender.
   Portuguese string as the pt-BR label — `SEGMENTS` is the vocabulary, `label()`
   and `key_for_label()` convert. **B6's `cnae_segments.segment` and R1's filters
   should use these keys.**
+- **One deliberate divergence from POC 1: beverages.** POC 1's food rule covers
+  NCM chapters 02–21 and food keywords, so chapter 22 — water, juice, soft
+  drinks — lands in "Outros" and never reaches a company, which is why B6 had to
+  mark every beverage CNAE `check`. Water (2201) and soft drinks (2202) are
+  added back, plus the keywords `agua mineral`, `agua potavel` and
+  `refrigerante`. Eight of the 8,861 cached items move, every one a beverage.
+  Not the whole of chapter 22 (2207 is the ethyl alcohol agencies buy as
+  cleaning álcool 70%, and the NCM branch outranks keywords), not bare `agua`
+  (bleach, water tanks) and not bare `bebida` (trays and cups). `refrigerante`
+  carries lookbehinds because five air conditioners specify "GÁS REFRIGERANTE
+  R-410A".
 - `tender_items.relevance` records how the segment was reached: `high` from the
   NCM code, `medium` from a keyword, `low` when nothing matched or the only
   match sat inside a false-positive expression.
