@@ -13,6 +13,14 @@ fallback is worse than none".
 Skipped when TEST_DATABASE_URL_B2 is not configured. Every row these tests
 create belongs to the fictitious agency `conftest.B2_CNPJ` and is deleted before
 and after each test.
+
+`licitaqui.handlers` is imported for its side effect: a handler registers itself
+when its module is imported, and the follow-up tests below assert what the sweep
+enqueues, which depends on which kinds have a handler. Without that import this
+file saw whichever kinds another test file happened to have imported first —
+they passed in a full suite and failed when this file ran alone. Importing the
+one module that assembles the registry is the fix; asserting less would only
+have hidden it.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ import psycopg
 import pytest
 
 from licitaqui import breaker as breaker_module
+from licitaqui import handlers as _handlers  # noqa: F401 - see the note below
 from licitaqui import sync_tenders
 from licitaqui.pncp import PncpClient
 from licitaqui.queue import Job
