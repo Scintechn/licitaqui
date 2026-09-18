@@ -484,3 +484,139 @@ failure. Its rows are scoped **per run**: `conftest.B4_CNPJ` carries `RUN_ID`,
 tender ids are built from it, and the `events` markers are deleted by the same
 run-scoped name prefix. `tender_files` and `ai_analyses` cascade from `tenders`.
 Nothing under `pytest` ever calls OpenRouter or PNCP.
+
+## B8 — awards, price bands, and the CPF that must not be stored
+
+`sync_awards` builds the base v1's discount bands read from. POC 3 is the
+source: *valor estimado* against *valor homologado* per item, the discount the
+winner offered, and the four-way judgement about whether that discount is
+usable. Two modules and two job kinds:
+
+| Kind | When | What |
+|---|---|---|
+| `sync_awards` | daily 03:00 BRT (§7.1 "overnight") | No HTTP. Picks tenders with pending awarded items in the segments of interest and enqueues one follow-up each — the shape B2's sweep established. |
+| `sync_tender_awards` | per tender, priority 9 | One request per pending awarded item, upserted as each arrives. |
+
+### CPF is masked on write, and `raw` is the column people forget
+
+Spec §12: *PNCP awards may include the CPF of individual winners: mask on
+write, show only CNPJ.* A raw CPF in `awards` is an LGPD incident whether or
+not a query hides it — the breach is the storage, and the weekly `pg_dump` to
+S3 (§12) inherits it. So the masking happens in `awards.from_pncp`, before a
+row object exists, and `awards.upsert_awards` accepts `Award` values and
+nothing else: there is no call that writes an unmasked document by forgetting
+a step.
+
+Three columns carry the risk, not one:
+
+- **`supplier_doc`** — 14 digits is a CNPJ and is kept; 11 digits is a CPF and
+  is stored as `***.456.789-**`, the shape §6.1 prescribes.
+- **`supplier_name`** — a razão social is kept; a person's name becomes
+  initials (`"Joao da Silva Souza"` → `"J. S. S."`, particles dropped).
+- **`raw`** — the whole payload, which contains both of the above verbatim.
+  Masking the two columns and storing the untouched JSON beside them stores the
+  CPF anyway, one key deeper. `awards.redact_record` rewrites the payload by
+  key *and* by value, so the original document and name are gone from every
+  string in it — the MEI convention of putting the proprietor's name in the
+  razão social means the two are not always in separate fields.
+
+**It fails closed.** A document is kept in the clear only when it is provably a
+company: exactly 14 digits **and** PNCP did not say `tipoPessoa: "PF"`.
+Everything else — 11 digits, an unrecognised length, a `PF` flag that
+contradicts the digits, a missing document — is treated as personal. Masking a
+company by mistake costs a row of supplier analytics; not masking a person is
+not recoverable by a later migration, because the value is already in the
+backups. All 420 cached award records in the knowledge base are `PJ` with a
+14-digit document, so the sample would never have exercised any of this: it is
+written against the rule, not against the data.
+
+The proof is `test_a_natural_person_leaves_no_cpf_and_no_full_name_in_the_table`
+in `tests/test_integration_sync_awards.py`. It runs a natural-person award
+through the handler the scheduler runs, against the real table, then reads
+**every column of every row back as text** (`select a::text`, so `raw` is
+included and a column added later is covered) and insists neither the CPF in
+any spelling nor any part of the name is in it. The test next to it stores a
+*company* award and asserts the CNPJ and razão social **are** visible through
+the identical query — otherwise a broken reader would make the first test pass
+on an empty string.
+
+### What it costs, and why it is not an unbounded sweep
+
+§3.2: *award per item (winner) — 1 call per item: only for segments of
+interest, permanent once awarded*. There is no bulk endpoint. Three filters,
+all of them in the SQL that picks the work rather than after the call:
+
+1. `tender_items.has_award` (PNCP's `temResultado`, written by B3);
+2. the item's segment is in `sync_awards.DEFAULT_SEGMENTS`;
+3. **no `awards` row exists for it** — §3.2's *permanent once awarded*, which
+   is not a long TTL but the absence of any expiry.
+
+An item PNCP flags as awarded before publishing the result would otherwise be
+re-asked forever, so the tender carries a probe marker in `events`
+(`sync_awards:<tender_id>`, B4's precedent — `awards` has no timestamp column
+and a migration is its own PR) and is left alone for `PROBE_COOLDOWN_HOURS`
+(168). Settled items are excluded by their award row regardless, so the
+cooldown can only delay asking about something that was not there last time.
+
+`AWARDS_SEGMENTS` (comma-separated labels) overrides the default set; a job
+payload may carry `segments`, and an explicit `[]` means every segment — the
+unbounded sweep, reachable on purpose for an operator and never the default.
+
+### Divergences from POC 3
+
+| POC 3 | Here | Why |
+|---|---|---|
+| Writes CNPJ/CPF and the winner's full name to a spreadsheet | Masks both on write | Spec §12. The POC ran on one laptop; this is a database with backups. |
+| Quality labels in Portuguese (`OK`, `Cancelado`, `Sem estimado (sigiloso?)`, `Suspeito`) | §6.1's vocabulary (`OK`, `cancelled`, `confidential`, `out_of_range`) | Same four classes, same precedence, same −5%…90% thresholds; §6.1 names the column's values. |
+| Discount as a fraction in a spreadsheet formula | `discount_pct` in percentage points | The column is `numeric(6,2)`. A discount outside ±9999.99 points is stored as NULL rather than clamped — a clamped −9999.99% would look like a measurement; `quality` still says `out_of_range`. |
+| Items filtered by description keywords (`--filtro-item`) | Items filtered by B3's segment | Segments are the product's vocabulary and the thing a founder's CNAEs map onto (B6). Keywords were the POC's stand-in for a classifier that did not exist yet. |
+| Uses `dataCancelamento` alone for "cancelled" | Same | Checked rather than assumed: across the 420 cached records `situacaoCompraItemResultadoNome = "Cancelado"` appears on 2, both of which also carry a `dataCancelamento` that 18 further records carry on their own. The date is strictly broader. |
+| Ignores the payload's own `percentualDesconto` | Same | It is 0.0 on 390 of the 420 cached records. POC 3's computed `1 − homologado/estimado` is the honest number. |
+
+### Two traps this had to step around
+
+**`awarded_on` is a `date`.** PNCP sends naive Brasília wall clock, so
+`tenders.parse_timestamp` attaches the offset — but handing Postgres an aware
+*timestamp* for a `date` column casts through the session TimeZone, which for
+the worker is UTC. A result at 23:30 BRT would be stored as the following day:
+not three hours early, a whole day late. `awards.award_date` converts back to
+Brasília and hands the driver a real `date`. `dataResultado` is date-only in
+all 420 cached records, which is exactly why a test defends it rather than the
+sample.
+
+**A zero estimate is a confidential budget, not a cheap item.** B3 measured all
+374 sigiloso items reporting `valorUnitarioEstimado` as 0. Dividing by it — or
+reading it as a real estimate — would manufacture a 100% discount and put it in
+a price band, so `discount_fraction` returns None and the row is
+`confidential`. This is POC 3's `if estimado and …` reproduced deliberately
+rather than inherited by accident.
+
+### The backfill
+
+`scripts/backfill_awards.py` sweeps closed tenders, classifies their items
+(B3's step) and then runs the **real** `sync_tender_awards` handler over each —
+so the masking, the segment filter and *permanent once awarded* are whatever
+production does, because they are production. It defaults to
+`TEST_DATABASE_URL_B8`, never the production database.
+
+Tenders come from the search index with `status=encerradas` (POC 3's own
+source) by default, or from `/contratacoes/publicacao` with
+`--source publicacao`. Both are supported because the Consulta host timed out
+on every attempt while this was written — the ADR's measured failure mode, and
+the reason the fallback exists.
+
+`--workers` threads hide Neon round trips; they buy nothing against PNCP, whose
+throttle is shared by the one client and holds the whole run to `--rate`
+(default 4 req/s, §7.2) however many threads there are. Measured
+single-threaded: 5.7 s per tender, of which about 0.4 s was HTTP.
+
+### B8's test database
+
+`test_integration_sync_awards.py` needs `TEST_DATABASE_URL_B8` — B8's own
+isolated, already-migrated database — and skips without it, which CI counts as
+a failure. Rows are scoped **per run** by `conftest.B8_CNPJ`, which carries
+`RUN_ID`. One difference from the other blocks: `awards` has **no foreign key**
+to `tenders` and **no timestamp column**, so neither a cascade nor an age
+predicate can clean it. Cleanup deletes award rows explicitly by the run-scoped
+tender prefix and then sweeps any award under the fictitious `99…` agency whose
+tender no longer exists.
