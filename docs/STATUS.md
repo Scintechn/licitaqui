@@ -7,6 +7,8 @@ One line per task: date · task ID · status · PR link · follow-ups.
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
 | 2026-09-18 | B2 (`sync_open_tenders`) | in review | https://github.com/Scintechn/licitaqui/pull/13 | SP sweep 5,193 tenders in **2.09 min** (budget 30); rerun 0 duplicates; 144 tests. Sweep exercised the **search fallback** — consulta was down — so the primary path is measured only by tests. Found 4 real bugs, one of which was also in the A3 seed (now fixed) |
+| 2026-09-18 | B6 (CNAE → segment map, **gap G6**) | in review | https://github.com/Scintechn/licitaqui/pull/16 | 19/20 acceptance. Sci owns the 150-code review of `db/reference/cnae_segments.csv`. Found a real item-side gap: beverages (NCM ch. 22) fall into "Outros" |
+| 2026-09-18 | C1 (AI screening port) | in review | https://github.com/Scintechn/licitaqui/pull/15 | **58/58 (100%)** vs the POC's 57/58; R$ 0,0156 spent. CI gate runs in **replay** until `OPENROUTER_API_KEY` is a repo secret |
 | 2026-09-18 | B5 (`company_lookup`) | in review | https://github.com/Scintechn/licitaqui/pull/12 | 49/50 resolved, 1 real failure exercised the manual path. Contradicts parts of ADR-0002 (now amended). Rate-limit *ceiling* still unmeasured — lookups stay single-threaded |
 | 2026-09-18 | O1 (`/admin` + events) | in review | https://github.com/Scintechn/licitaqui/pull/11 | Needs `ADMIN_EMAILS` + `ADMIN_PASSWORD` set before `/admin` opens at all (fails closed by design). Usage card is half real: this database's size from SQL, project storage and CU-hours need `NEON_API_KEY` |
 | 2026-09-17 | B1 (worker skeleton) | in review | https://github.com/Scintechn/licitaqui/pull/9 | 68 tests. **GHCR push + Easypanel deploy NOT done** — still blocked on credentials, `TODO(B1)` in ci-worker.yml stands. Neon compute *suspension* itself unproven (needs 5 idle min + the console); the no-open-session property that causes it is proven |
@@ -164,6 +166,33 @@ raise anything in `/admin`. That is O2/observability work, not an architecture f
    Third time a shared test database has caused a problem. Worth a standing rule: every
    test that writes to a shared database scopes its rows by a per-run id, not a per-task
    constant.
+
+## Gap G6 closed (2026-09-18) — pending Sci's review
+
+B6 (PR #16) builds the CNAE → segment map, so "Compatível / Verificar" is computable for
+the first time. **572 mappings over 555 of the 1,332 IBGE subclasses; 777 deliberately
+unmapped.** Unmapped is not `check`: it means the activity is outside the fourteen
+segments, and the Radar falls back to keyword search.
+
+It reversed its own design rule on measurement, which is the part worth trusting:
+
+| Rule | `compatible` per company | 20-CNPJ result |
+|---|---|---|
+| strongest claim wins (incl. secondaries) | mean 5.75 of 14 | 16/20 |
+| **main CNAE decides** (shipped) | mean 0.8 | **19/20** |
+
+A small company's secondary CNAEs are whatever its accountant registered, so letting them
+grant `compatible` made almost everything compatible. Secondaries still contribute the
+segment at `check`.
+
+The single miss was the agent's own expectation being wrong, not the map — and it said so
+rather than adjusting the expectation to fit.
+
+**Sci owns the 150-code review** (plan §5). Start with `db/reference/cnae_segments.csv`,
+and focus where B6 says its judgement has no data behind it: the goods-versus-services
+line (`8121400` *limpeza em prédios* and health divisions 86–87 are `check` — if concierge
+tenders are mostly cleaning *services*, that should flip), retail 47 / wholesale 46 where
+MEI/ME actually live, and the six catch-all codes left unmapped on purpose.
 
 ## Still to do after B3 and B6 land
 
