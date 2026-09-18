@@ -131,12 +131,39 @@ raise anything in `/admin`. That is O2/observability work, not an architecture f
    `ruff format --check .`, so drift lands on `main` unnoticed — it already had, in B0's
    two probe scripts. B5's PR reformats them. **Add the format check to `ci-worker.yml`
    once #12 merges** (doing it before would put `main` red).
-2. **B1's integration tests are not isolated between concurrent runs.** They resolve the
-   default `TEST_DATABASE_URL` and clean up by deleting every `b1-test-*` row, so two
-   worktrees running the worker suite at once delete each other's fixtures. My per-agent
-   databases (`TEST_DATABASE_URL_B2/_O1/_B5`) isolated the *new* tests but not B1's
-   inherited ones. Fix: a per-run key prefix in B1's helper. This is the second time a
-   shared test database has bitten us.
+2. **B1's integration tests are not isolated between concurrent runs.** Confirmed
+   independently by B5 and B2; B2 reproduced it against `main`'s own code with no B2 work
+   in the session (2 failures in run 1, 0 in runs 2–3). **It will keep producing spurious
+   red CI runs until someone owns it**, and a test suite that cries wolf is worse than one
+   that is merely slow.
+
+   Root cause, in `worker/tests/conftest.py`: the cleanup comment says deletes are "scoped
+   by prefix", but the prefixes are module **constants** —
+
+   ```python
+   KEY_PREFIX = "b1-test-"
+   KIND_PREFIX = "b1t_"
+   ...
+   delete from jobs where starts_with(key, %s) or starts_with(kind, %s)
+   ```
+
+   so they scope by *task*, not by *run*. Two concurrent runs of the same suite delete
+   each other's fixtures mid-test. My per-agent databases (`TEST_DATABASE_URL_B2/_O1/_B5`)
+   isolated the *new* tests but not these inherited ones.
+
+   Fix — make the prefix per-run, ~3 lines:
+   ```python
+   RUN_ID = uuid.uuid4().hex[:8]
+   KEY_PREFIX = f"b1-test-{RUN_ID}-"
+   KIND_PREFIX = f"b1t_{RUN_ID}_"
+   ```
+   **Order matters:** both PR #12 and PR #13 already modify `conftest.py`, so do this
+   *after* they merge or it conflicts with two green PRs. That is why it is written down
+   here instead of already done.
+
+   Third time a shared test database has caused a problem. Worth a standing rule: every
+   test that writes to a shared database scopes its rows by a per-run id, not a per-task
+   constant.
 
 ## Open for Sci
 
