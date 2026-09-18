@@ -58,6 +58,70 @@ jobs:
       - name: Test (pytest)
         run: pytest
 
+  # The unit job above skips every database test, so it reported "296 passed,
+  # 99 skipped" and called that green while two integration tests were broken
+  # on main. This job is the one that can actually fail for a broken sync, a
+  # lost follow-up or a seat race.
+  #
+  # Concurrency is safe: since PR #18 every fixture scopes its rows by a
+  # per-run id, so two runs — here, or here and a laptop — cannot delete each
+  # other's data.
+  integration:
+    name: integration (Neon)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: worker
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: worker/pyproject.toml
+
+      - name: Install worker with dev extras
+        run: pip install -e '.[dev]'
+
+      # A missing secret makes these tests skip rather than fail, which is the
+      # blind spot this job exists to close. Fail loudly instead.
+      - name: Fail fast if the test databases are not configured
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+        run: |
+          if [ -z "$TEST_DATABASE_URL" ]; then
+            echo "::error::TEST_DATABASE_URL is not set, so every integration"
+            echo "test would skip and this job would pass without testing anything."
+            exit 1
+          fi
+
+      # One run, not two: each keeps the Neon compute awake and burns the Free
+      # plan's CU-hours. `-rs` reports skip reasons so the check below can read
+      # them from the same run.
+      - name: Test (pytest, integration)
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_DATABASE_URL_B2: ${{ secrets.TEST_DATABASE_URL_B2 }}
+          TEST_DATABASE_URL_B3: ${{ secrets.TEST_DATABASE_URL_B3 }}
+          TEST_DATABASE_URL_B5: ${{ secrets.TEST_DATABASE_URL_B5 }}
+          TEST_DATABASE_URL_B6: ${{ secrets.TEST_DATABASE_URL_B6 }}
+          TEST_DATABASE_URL_C1: ${{ secrets.TEST_DATABASE_URL_C1 }}
+        run: |
+          set -o pipefail
+          pytest -p no:randomly -rs | tee /tmp/pytest.txt
+          # A missing variable makes a test skip, not fail — which is exactly
+          # how two broken tests reached main. Treat it as a failure here.
+          if grep -qi 'is not configured; skipping' /tmp/pytest.txt; then
+            echo "::error::A database test skipped for a missing variable."
+            grep -i 'is not configured; skipping' /tmp/pytest.txt | sort -u
+            exit 1
+          fi
+
   image:
     name: docker build
     runs-on: ubuntu-latest
