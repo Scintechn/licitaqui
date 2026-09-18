@@ -1,4 +1,7 @@
 import { z } from 'zod'
+import { normaliseCnpj } from '@/lib/cnpj'
+
+export { normaliseCnpj }
 
 /**
  * What `POST /api/founders` accepts (spec §8: "Validates (Zod)").
@@ -53,28 +56,12 @@ export function normaliseWhatsapp(raw: string): string | null {
   return `+55${value}`
 }
 
-/** 14 digits, as the catalogue promises ("são 14 números"), plus the check digits. */
-export function normaliseCnpj(raw: string): string | null {
-  const value = digits(raw)
-  if (value.length !== 14) return null
-  if (/^(\d)\1{13}$/.test(value)) return null
-
-  const checkDigit = (slice: string): number => {
-    let weight = slice.length - 7
-    let sum = 0
-    for (let i = 0; i < slice.length; i += 1) {
-      sum += Number(slice[i]) * weight
-      weight -= 1
-      if (weight < 2) weight = 9
-    }
-    const rest = sum % 11
-    return rest < 2 ? 0 : 11 - rest
-  }
-
-  if (checkDigit(value.slice(0, 12)) !== Number(value[12])) return null
-  if (checkDigit(value.slice(0, 13)) !== Number(value[13])) return null
-  return value
-}
+/**
+ * 14 digits, as the catalogue promises ("são 14 números"), plus the check
+ * digits. The implementation moved to `lib/cnpj.ts` when the Radar started
+ * needing the same one (task R1); it is re-exported above, so this module's
+ * surface is unchanged.
+ */
 
 const optionalText = (max: number) =>
   z
