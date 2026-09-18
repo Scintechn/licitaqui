@@ -376,7 +376,14 @@ def _run_with_retries(
     """
     for attempt in range(1, attempts + 1):
         try:
-            awarded = one_tender(client, conn, tender_id, segments=segments, items_cap=items_cap)
+            awarded = one_tender(
+                client,
+                conn,
+                tender_id,
+                segments=segments,
+                items_cap=items_cap,
+                skip_probed=skip_probed,
+            )
         except CircuitOpen as exc:
             if not wait_out(exc, stop):
                 totals.add(awarded=0, failed=1)
