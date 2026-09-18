@@ -8,17 +8,29 @@ Fixtures live in db/seed/fixtures/pncp/ — 20 real PNCP tender payloads capture
 by the POCs, kept in the repo so local dev, tests and previews never depend on
 the knowledge-base folder or on PNCP being up.
 
+Classification comes from the worker's own `licitaqui.items`, not a copy: a
+seeded tender must look exactly like a synced one, or the Radar behaves
+differently on seed data than in production. Without it `tenders.segments` is
+null and the Compatível group is empty on a freshly seeded database.
+
 Connection: MIGRATOR_DATABASE_URL, falling back to DATABASE_URL_UNPOOLED.
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import psycopg
 from migrate import dsn  # same env resolution, same precedence
 from psycopg.types.json import Jsonb
+
+# The worker package holds the real segment rules (B3). Importing them keeps the
+# seed honest; re-implementing them here would drift the moment POC 1's lists
+# change.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "worker"))
+from licitaqui.items import classify_all, roll_up, upsert_items  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "seed" / "fixtures" / "pncp"
 
@@ -164,7 +176,7 @@ def main() -> int:
     if not files:
         raise SystemExit(f"no fixtures in {FIXTURES}")
 
-    tenders = items = 0
+    tenders = items = classified = 0
     with psycopg.connect(dsn(), connect_timeout=30) as conn:
         with conn.cursor() as cur:
             for path in files:
@@ -173,7 +185,30 @@ def main() -> int:
                 tenders += 1
         conn.commit()
 
-    print(f"seeded {tenders} tenders, {items} items (idempotent upsert)")
+        # Second pass, with the worker's own rules: segment, relevance and the
+        # tender roll-up (me_epp_summary, favored_treatment, segments, search).
+        # Same calls `sync_items` makes, in the same order, so a seeded row is
+        # indistinguishable from a synced one.
+        for path in files:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            det = payload["det"]
+            tender_id = det["numeroControlePNCP"]
+            parsed = classify_all(tender_id, payload["itens"])
+            upsert_items(conn, tender_id, parsed)
+            roll_up(
+                conn,
+                tender_id,
+                parsed,
+                estimated_value=det.get("valorTotalEstimado"),
+                object_text=det.get("objetoCompra"),
+            )
+            classified += len(parsed)
+        conn.commit()
+
+    print(
+        f"seeded {tenders} tenders, {items} items "
+        f"({classified} classified with the worker's rules, idempotent upsert)"
+    )
     return 0
 
 

@@ -14,6 +14,11 @@
   `worker/tests/conftest.py` constants, the shared sections of `worker/README.md`,
   `docs/STATUS.md`. Append your own row or section instead. Three PRs have collided
   there.
+- **Never run git in a worktree whose task is still working.** Check first —
+  `pgrep -f pytest`, or whether the agent has reported. Resolving a conflict with
+  `git reset --hard` in a live worktree destroys uncommitted work: it happened to B4,
+  which lost two fixes and had to re-apply them. Wait for the lane to finish, then
+  resolve.
 - AI prompt or extraction changes must run `worker/evaluation` and report the score diff.
 - Design: use tokens from `apps/web/styles/tokens.css` (Ivory/Graphite/Blue, Archivo/IBM Plex). Brand name is always "LicitaQui".
 
