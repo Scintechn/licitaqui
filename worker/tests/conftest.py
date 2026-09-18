@@ -22,8 +22,19 @@ import pytest
 
 from licitaqui import config
 
-KEY_PREFIX = "b1-test-"
-KIND_PREFIX = "b1t_"
+#: Scopes every row this pytest process creates.
+#:
+#: It must be per **run**, not per task. These were module constants, so cleanup
+#: deleted by task prefix and two concurrent runs of this same suite wiped each
+#: other's fixtures mid-test — the intermittent failures in
+#: ``test_integration_queue`` and ``test_integration_consumer`` (measured on
+#: main: 2 failures in run 1, 0 in runs 2 and 3 of an identical sequence).
+#:
+#: Anything writing to a shared database must scope its rows this way.
+RUN_ID = uuid.uuid4().hex[:8]
+
+KEY_PREFIX = f"b1-test-{RUN_ID}-"
+KIND_PREFIX = f"b1t_{RUN_ID}_"
 TEST_DSN_VAR = "TEST_DATABASE_URL"
 
 #: B5 has its own isolated database so two tasks' suites cannot collide.

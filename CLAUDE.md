@@ -6,6 +6,14 @@
 - Never commit secrets. Use `.env.example`. Never log CPF, emails or tokens.
 - Every change: tests for new logic, `pnpm lint && pnpm typecheck && pnpm test` (web) or `ruff check && pytest` (worker) green.
 - Schema changes only via `db/migrations`, in their own PR.
+- Tests that write to a shared database scope every row by a **per-run** id (see
+  `RUN_ID` in `worker/tests/conftest.py`), never by a per-task constant. A task-scoped
+  prefix looks isolated and is not: two concurrent runs of the same suite delete each
+  other's fixtures.
+- When several tasks run in parallel, do not edit shared files others also touch —
+  `worker/tests/conftest.py` constants, the shared sections of `worker/README.md`,
+  `docs/STATUS.md`. Append your own row or section instead. Three PRs have collided
+  there.
 - AI prompt or extraction changes must run `worker/evaluation` and report the score diff.
 - Design: use tokens from `apps/web/styles/tokens.css` (Ivory/Graphite/Blue, Archivo/IBM Plex). Brand name is always "LicitaQui".
 

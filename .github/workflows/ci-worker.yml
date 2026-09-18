@@ -50,6 +50,11 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      # Formatting was unchecked until 2026-09-18, so drift reached main twice
+      # unnoticed. `ruff check` does not cover it.
+      - name: Format (ruff)
+        run: ruff format --check .
+
       - name: Test (pytest)
         run: pytest
 
