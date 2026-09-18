@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import breaker, config, db
+from . import company as _company  # noqa: F401 - imported for its registration side effect
 from . import jobs as _jobs  # noqa: F401 - imported for its registration side effect
 from .consumer import Consumer, Metrics, WakeSignal
 from .observability import get_logger

@@ -2,7 +2,8 @@
 
 Only the trivial ones the skeleton needs to prove itself. The collector jobs
 live in their own modules and register against the same :data:`REGISTRY`:
-``sync_open_tenders`` (B2), ``sync_items`` (B3), ``sync_files`` (B4).
+``company_lookup`` (B5, in :mod:`licitaqui.company`), ``sync_open_tenders``
+(B2), ``sync_items`` (B3), ``sync_files`` (B4).
 """
 
 from __future__ import annotations

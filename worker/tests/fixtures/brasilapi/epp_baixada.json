@@ -1,0 +1,29 @@
+{
+  "_fixture_note": "Shape captured from a real BrasilAPI response on 2026-09-18, identifiers replaced. EPP (codigo_porte 3) whose registration is BAIXADA (closed) - ADR-0002 item 6: a closed CNPJ must reach the user, not be silently accepted. opcao_pelo_mei is explicitly false here, which is a different fact from null.",
+  "cnpj": "99900003000149",
+  "razao_social": "EMPRESA FIXTURE EPP BAIXADA LTDA",
+  "nome_fantasia": "FIXTURE EPP",
+  "cnae_fiscal": 6201500,
+  "cnae_fiscal_descricao": "Desenvolvimento de programas de computador sob encomenda",
+  "cnaes_secundarios": [
+    { "codigo": 6202300, "descricao": "Desenvolvimento e licenciamento de programas de computador customizaveis" },
+    { "codigo": 6209100, "descricao": "Suporte tecnico, manutencao e outros servicos em tecnologia da informacao" }
+  ],
+  "porte": "EMPRESA DE PEQUENO PORTE",
+  "codigo_porte": 3,
+  "descricao_porte": null,
+  "opcao_pelo_mei": false,
+  "data_opcao_pelo_mei": null,
+  "opcao_pelo_simples": true,
+  "data_opcao_pelo_simples": "2015-01-01",
+  "descricao_situacao_cadastral": "BAIXADA",
+  "situacao_cadastral": 8,
+  "uf": "MG",
+  "municipio": "BELO HORIZONTE",
+  "logradouro": "RUA FIXTURE",
+  "numero": "30",
+  "cep": "30000000",
+  "email": "fixture-epp@example.invalid",
+  "ddd_telefone_1": "3100000000",
+  "qsa": []
+}
