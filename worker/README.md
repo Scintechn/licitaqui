@@ -395,3 +395,92 @@ log and jobs that hang off them; cleanup is scoped to exactly those ids and
 never truncates. **No test takes a seat:** there are only 48 and `seat` is
 globally unique, so test founders are waitlisted (`seat is null`) and the seat
 number a welcome renders comes from the job payload, which is where F1 puts it.
+
+## B4 — the file list, and what an amendment invalidates
+
+`sync_files` (`licitaqui/sync_files.py`) reads one tender's "Arquivos" tab from
+`/api/pncp/v1/.../arquivos` through the same `PncpClient` B2 and B3 use, behind
+a breaker of its own (`pncp-arquivos`), and writes one `tender_files` row per
+document: `sequence`, `title`, `doc_type`, `url`, `active`, `published_at`.
+
+**List only.** No PDF is downloaded here — S3, extraction and OCR are later
+cards. The call is a single unpaged GET: the endpoint answers with the whole
+list in a bare JSON array, and over the 99 tenders with a cached file list in
+the knowledge base (371 documents) the median tender has 1 document, the 95th
+percentile 14 and the largest 39.
+
+### `files_hash`: how an amendment invalidates text and screening
+
+§3.2: *"an amendment adds a new file: invalidates text and screening"*. A
+company bidding against a superseded edital is the failure this exists to
+prevent, so it is worth knowing exactly how it works.
+
+**Screening is invalidated by the key, not by a delete.**
+`licitaqui.files.files_hash()` digests the tender's **active** file list, and
+`ai_analyses` is unique on `(tender_id, mode, prompt_version,
+extraction_version, files_hash)`. When the list moves, the hash moves, and
+`ai_screening.cached()` — which looks up by exactly that key — misses. The
+analysis of the old set stays on the row: still true of the documents it read,
+still the record of what was paid, and no longer this tender's current answer.
+Nothing has to be deleted for a superseded analysis to stop being served, so
+there is no window in which the delete has not run yet.
+
+Ask for the hash rather than building it — `files.files_hash_for(conn,
+tender_id)` — and put it in the `ai_screening` payload. It is derived from the
+rows on every call rather than cached in a column, because a stored digest can
+disagree with the rows it summarises and then the product serves an analysis of
+documents nobody is reading.
+
+The digest is one line per active document, ordered by document number:
+
+    <sequence>\t<doc_type>\t<title>\t<url>\t<published_at as UTC ISO-8601>
+
+`published_at` and `title` are in there for the dangerous case: PNCP's download
+address is `…/arquivos/{sequencialDocumento}`, so an agency re-publishing the
+edital under the same document number serves **different bytes from the same
+URL**. `dataPublicacaoPncp` is what moves. `MANIFEST_VERSION` prefixes the
+digest input so the card that downloads the files can fold `tender_files.sha256`
+into the same recipe and retire every hash computed without it.
+
+**Text is invalidated per document, in the write itself.** `sha256`, `s3_key`,
+`pages`, `text_version` and `no_text` describe bytes. When a document's
+identity (`title`, `doc_type`, `url`, `published_at`) changes under its number,
+`files.upsert_files()` clears those columns in the same statement that writes
+the new URL, so nothing can read the new address beside the old page count. A
+withdrawn document's row is deleted; a document merely going *inactive* keeps
+its text (the bytes did not change) but leaves the manifest, so the screening
+key still moves.
+
+**This job does not re-screen.** Screening is enqueued on demand at priority 1
+because a user is waiting (§7.3); re-analysing every amended tender in the
+country would spend the AI budget on tenders nobody asked about. The next
+request gets a miss and pays for a fresh reading.
+
+### The 12 h TTL marker lives in `events`
+
+`tender_files` (§6.1) has no timestamp column, and a migration is its own PR, so
+freshness follows the precedent B2 set for its watermark: a row in `events`
+named `sync_files:<tender_id>`, rewritten (not appended) on each fetch. The
+tender id is in `name` rather than in `props` so the lookup is an exact hit on
+`events_name_created_idx (name, created_at)` — with the id in `props` the only
+indexed predicate would be the shared name, and reading one tender's marker
+would scan every tender's. Its props carry the counts and both digests, so
+`select props from events where name = 'sync_files:<id>'` answers "when did we
+last look, and did anything change?".
+
+`read_state()` reports `never | ttl | tender_changed | fresh`. `tender_changed`
+is a moved `dataAtualizacaoGlobal` — which is what an amendment moves — and it
+beats the TTL, so an amendment is never left waiting twelve hours.
+
+A failed call raises before anything is written, so an outage can never be
+mistaken for "this tender has no documents any more": no prune, no hash change,
+no invalidation.
+
+### B4's test database
+
+`test_integration_sync_files.py` needs `TEST_DATABASE_URL_B4` — B4's own
+isolated, already-migrated database — and skips without it, which CI counts as a
+failure. Its rows are scoped **per run**: `conftest.B4_CNPJ` carries `RUN_ID`,
+tender ids are built from it, and the `events` markers are deleted by the same
+run-scoped name prefix. `tender_files` and `ai_analyses` cascade from `tenders`.
+Nothing under `pytest` ever calls OpenRouter or PNCP.
