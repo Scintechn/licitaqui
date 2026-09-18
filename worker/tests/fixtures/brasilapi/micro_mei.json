@@ -1,0 +1,44 @@
+{
+  "_fixture_note": "Shape captured from a real BrasilAPI /api/cnpj/v1 response on 2026-09-18; identifiers, names, address and contact details replaced with placeholders (LGPD, spec 12). A MICRO EMPRESA that is a MEI: codigo_porte 1, descricao_porte null (ADR-0002), opcao_pelo_mei true.",
+  "cnpj": "99900001000150",
+  "razao_social": "EMPRESA FIXTURE MICRO MEI LTDA",
+  "nome_fantasia": "FIXTURE MICRO",
+  "cnae_fiscal": 8219999,
+  "cnae_fiscal_descricao": "Preparacao de documentos e servicos especializados de apoio administrativo nao especificados anteriormente",
+  "cnaes_secundarios": [
+    { "codigo": 1732000, "descricao": "Fabricacao de embalagens de cartolina e papel-cartao" },
+    { "codigo": 4761003, "descricao": "Comercio varejista de artigos de papelaria" },
+    { "codigo": 4761003, "descricao": "Duplicate, to prove we de-duplicate" },
+    { "codigo": 8219999, "descricao": "Same as the primary, to prove we drop it" }
+  ],
+  "porte": "MICRO EMPRESA",
+  "codigo_porte": 1,
+  "descricao_porte": null,
+  "opcao_pelo_mei": true,
+  "data_opcao_pelo_mei": "2019-01-01",
+  "data_exclusao_do_mei": null,
+  "opcao_pelo_simples": true,
+  "data_opcao_pelo_simples": "2019-01-01",
+  "data_exclusao_do_simples": null,
+  "descricao_situacao_cadastral": "ATIVA",
+  "situacao_cadastral": 2,
+  "uf": "PR",
+  "municipio": "CURITIBA",
+  "bairro": "BAIRRO FIXTURE",
+  "logradouro": "RUA FIXTURE",
+  "numero": "100",
+  "complemento": "",
+  "cep": "80000000",
+  "email": "fixture@example.invalid",
+  "ddd_telefone_1": "4100000000",
+  "ddd_telefone_2": "",
+  "capital_social": 10000,
+  "natureza_juridica": "206-2 - Sociedade Empresaria Limitada",
+  "qsa": [
+    {
+      "nome_socio": "SOCIO FIXTURE",
+      "cnpj_cpf_do_socio": "***000000**",
+      "qualificacao_socio": "Socio-Administrador"
+    }
+  ]
+}

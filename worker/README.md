@@ -67,6 +67,38 @@ attempt failed — the consumer retries after 2, 8 and 30 minutes and marks the
 job `failed` on the fourth attempt, storing the error. Wrap external calls in
 `licitaqui.breaker.get_breaker("pncp-detail").guard()`.
 
+## `company_lookup` (CNPJ → CNAEs, size, MEI)
+
+`licitaqui.company`. Enqueue with `company.enqueue(conn, cnpj)`: priority 1,
+because a user is on screen, and one live job per CNPJ. The job key is a digest,
+not the CNPJ — the consumer logs `key` on every line and §12 says the CNPJ never
+reaches a log. The CNPJ travels in the payload, which is not logged.
+
+Results land in `companies` (§6.2) and are good for **30 days** (§3.2); a fresh
+row is served without touching BrasilAPI. Pass `force=True` to bypass the cache
+(a user pressing "try again").
+
+**When the lookup fails, the row still gets written, with `main_cnae` null.**
+That is the manual-CNAE flag — `company.MANUAL_CNAE_PREDICATE` — and
+`registration_status` says why: `lookup:not_found` (the CNPJ does not exist, so
+the user should fix the number) or `lookup:failed` (BrasilAPI was unreachable,
+slow, throttled, or its circuit was open). Neither value can collide with a
+Receita status. A failure never overwrites CNAEs we already have, and a fallback
+row expires in 6 hours rather than 30 days.
+
+`is_mei` is three-state on a resolved row: `true`, `false`, and **`null` for "no
+Simples/MEI registry entry"** — which is not "not a MEI" and must not be
+rendered as one (ADR-0002).
+
+BrasilAPI calls are **single-threaded process-wide with a 1 s minimum gap**,
+whatever `WORKER_CONCURRENCY` is, because the uncached rate limit is unmeasured;
+see the note at the top of `licitaqui/brasilapi.py`. Nothing in `pytest` calls
+BrasilAPI. The live check is deliberate and separate:
+
+```bash
+python scripts/check_company_lookup_live.py --sample cnpjs.json --limit 50
+```
+
 ## Tests
 
 ```bash
@@ -77,3 +109,9 @@ ruff check . && ruff format --check .
 The database tests need `TEST_DATABASE_URL` (an isolated, already-migrated Neon
 database) and skip without it. They only ever touch `jobs` rows whose key starts
 with `b1-test-`, and delete them before and after each test.
+
+`tests/test_integration_company.py` uses `TEST_DATABASE_URL_B5` — B5's own
+database, so two tasks' suites cannot collide — and touches only its own
+synthetic CNPJs (a `999…` root) and their job rows. Both variables are resolved
+the way `db/migrate.py` resolves its connection string, and are wrapped so
+pytest cannot render one into a traceback.

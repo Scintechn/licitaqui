@@ -26,6 +26,9 @@ KEY_PREFIX = "b1-test-"
 KIND_PREFIX = "b1t_"
 TEST_DSN_VAR = "TEST_DATABASE_URL"
 
+#: B5 has its own isolated database so two tasks' suites cannot collide.
+B5_DSN_VAR = "TEST_DATABASE_URL_B5"
+
 
 class Dsn(str):
     """A connection string that cannot be printed by accident.
@@ -75,6 +78,16 @@ def test_dsn() -> str:
         if dsn:
             return Dsn(dsn)
     pytest.skip(f"{TEST_DSN_VAR} is not configured; skipping database integration tests")
+
+
+@pytest.fixture(scope="session")
+def b5_dsn() -> str:
+    """The B5 task's own database. Never printed: see :class:`Dsn`."""
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(B5_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{B5_DSN_VAR} is not configured; skipping database integration tests")
 
 
 @pytest.fixture
