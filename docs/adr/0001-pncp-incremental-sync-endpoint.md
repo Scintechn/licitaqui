@@ -147,3 +147,104 @@ For task B2:
   wins. This is worth an hour of B2's time before building either path.
 - If PNCP raises the period endpoints' `tamanhoPagina` above 50, the throughput objection goes
   away entirely.
+
+---
+
+## Verification — 2026-09-18 (task B2)
+
+Two things were tested before B2 built anything: the open question, and the availability
+claim. **The open question is settled and the decision holds. The availability claim is
+now in doubt**, and by this ADR's own inversion rule it is close to being triggered.
+
+### 1. The open question: does the search index see item and file changes? **No.**
+
+**The answer is no, and it is not marginal.** `/atualizacao`'s `dataAtualizacaoGlobal`
+moves for child changes; the search index's `data_atualizacao_pncp` does not. The main
+correctness argument for this ADR stands, and the simpler search-only design would lose
+changes.
+
+*Method.* Each Consulta record carries two timestamps: `dataAtualizacao`, the header row,
+and `dataAtualizacaoGlobal`, "the record **or any of its children** changed". A record
+where global > header is therefore one whose *header did not change* — the change was in
+an item or a file. For each such tender, the live search index was asked what it thought
+the update time was. `/api/consulta` was down throughout (see §2), so the two Consulta
+timestamps were read from the 95 cached detail responses in the knowledge base
+(`cache_pncp/`, collected 2026-09-14 to 09-16) and only `/api/search/` — which was
+healthy — was called live, once per tender. Reproduce with:
+
+```
+python3 worker/scripts/probe_search_change_detection.py \
+    --from-cache "<knowledge base>/cache_pncp"
+```
+
+*Result.* **79 of the 95 cached tenders (83.2 %) had `dataAtualizacaoGlobal` >
+`dataAtualizacao`** — a child change is the common case, not an edge case. All 79 were
+still present in the search index. Of them:
+
+| Search index `data_atualizacao_pncp` equals… | Tenders |
+|---|---|
+| `dataAtualizacao` — the **header only** | **74** |
+| `dataAtualizacaoGlobal` — child-aware | **0** |
+| neither (changed again after the cache was taken) | 5 |
+
+74 for 74 conclusive cases, to the second. Not one tender in the sample had a search
+timestamp that reflected the child change. Examples:
+
+```
+00394429000100-1-002346/2026  hdr=2026-09-16T04:00:17 glb=2026-09-16T04:20:36 srch=2026-09-16T04:00:17
+00394429000100-1-002351/2026  hdr=2026-09-16T04:00:54 glb=2026-09-16T04:28:15 srch=2026-09-16T04:00:54
+01263896000164-1-000626/2026  hdr=2026-09-16T04:01:20 glb=2026-09-16T04:36:06 srch=2026-09-16T04:01:20
+```
+
+The five "neither" cases all show a search timestamp *later* than both cached values,
+consistent with a further header edit after the cache was taken; none of them moved to the
+cached global value.
+
+A further detail sharpens the point: in every record checked, the index's
+`data_atualizacao_pncp` was **byte-identical to its `data_publicacao_pncp`**, sub-second
+digits included. On this evidence the field is not an update timestamp that happens to
+miss children — for these tenders it had not moved off the publication instant at all.
+
+*Consequence.* A search-only sweep watermarking on `data_atualizacao_pncp` would have
+missed a child change on 74 of 79 tenders, silently, because its watermark would already
+have passed them. That is precisely the "loses it silently" failure mode this ADR chose
+against. **Proceed as decided.**
+
+### 2. The availability claim is worse than measured, and near the inversion rule
+
+This ADR says to invert if the period endpoints "show outages longer than about **2 hours**
+(four missed 30-minute cycles)". On 2026-09-17/18 they did.
+
+| Time (UTC) | Probe | Result |
+|---|---|---|
+| 21:21 | hourly probe | `publicacao` 4/4 timeout, `atualizacao` 4/4 timeout; `search` 2/2 OK (~1.87 s) |
+| 22:25 | hourly probe | identical: both period endpoints 4/4 timeout, search fine |
+| 23:38 | one-off, `uf=SP` | **HTTP 500** in 32.4 s — `HikariPool-1 - Connection is not available, request timed out after 30000ms` |
+| 23:40 → 00:09 | 15 attempts, 90 s apart | **0 successes**: 11 read timeouts, 4 × HTTP 500 `Erro na comunicação com o banco de dados.` |
+| 00:27 | one-off | HTTP 500 in 39.7 s, same body |
+
+**A continuous outage from at least 21:21 to 00:27 UTC — 3 h 06 m, six missed 30-minute
+cycles.** `/api/search/` answered normally throughout (0.79–0.82 s, 3/3 during the worst
+of it), as it did during B0's 13-minute outage. The failure signature is the same one B0
+recorded, and the HTTP 500 body names the cause: the service's JDBC connection pool, not
+the network and not our requests.
+
+This does not change what B2 built — the decision is Sci's and the correctness argument in
+§1 is now *stronger*, not weaker — but it means the inversion trigger has fired once on
+duration. Two observations that matter for the decision to revisit it:
+
+- The asymmetry argument still holds, and is what saves us here. A three-hour period-endpoint
+  outage delays six cycles; because the query is a date window and the watermark only advances
+  on a completed cycle, the seventh cycle returns *exactly* the set the six missed. Nothing
+  was lost tonight — the design absorbed a 3-hour outage by construction.
+- The fallback is therefore load-bearing, not decorative, and B2 implements and tests it:
+  during a consulta outage the cycle sweeps the search index so the product keeps fresh data,
+  marks itself `degraded`, and **does not** advance the watermark, so the window is re-swept
+  properly once the service returns.
+
+*Recommendation for Sci, not acted on here:* keep `/atualizacao` primary — §1 makes that
+unambiguous — but treat a >2 h outage as routine rather than exceptional, and let the
+hourly probe run for a full day before M2 to get the daily failure rate this ADR asks for.
+If it confirms outages of this length are common, the thing to change is not the endpoint
+(the search index cannot do the job) but the *cadence*: a nightly `/atualizacao`
+reconciliation pass over a wide window, with the 30-minute cycle tolerating degradation.

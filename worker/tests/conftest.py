@@ -127,6 +127,69 @@ def _delete_test_jobs(dsn: str) -> None:
         )
 
 
+# -- B2: the sync's own database ------------------------------------------
+#
+# B2 has an isolated database of its own so a sweep test can write `tenders`
+# rows without colliding with B1's queue tests, which share `jobs` in another.
+# The variable is resolved and wrapped in `Dsn` exactly like B1's, and for the
+# same reason: pytest renders fixture values into tracebacks, and a DSN that
+# reaches a transcript is a leaked credential.
+B2_TEST_DSN_VAR = "TEST_DATABASE_URL_B2"
+
+#: Every tender a B2 test writes belongs to this fictitious agency, so the
+#: cleanup can delete exactly this task's rows and nothing else. It is not a
+#: valid CNPJ and matches nothing real in PNCP.
+B2_CNPJ = "99000000000102"
+#: …and every watermark it writes is scoped to this fictitious UF.
+B2_UF = "ZZ"
+
+
+@pytest.fixture(scope="session")
+def b2_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(B2_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{B2_TEST_DSN_VAR} is not configured; skipping B2 database tests")
+
+
+@pytest.fixture
+def b2_clean_dsn(b2_dsn: str) -> Iterator[str]:
+    """B2's test DSN, with this task's rows deleted before and after the test."""
+    _delete_b2_rows(b2_dsn)
+    try:
+        yield b2_dsn
+    finally:
+        _delete_b2_rows(b2_dsn)
+
+
+@pytest.fixture
+def b2_connect(b2_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(b2_clean_dsn, application_name=f"licitaqui-b2-test-{os.getpid()}")
+
+
+@pytest.fixture
+def b2_conn(b2_connect) -> Iterator[psycopg.Connection]:
+    with b2_connect() as connection:
+        yield connection
+
+
+def _delete_b2_rows(dsn: str) -> None:
+    """Remove only the rows B2's tests create. Never truncates."""
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where agency_cnpj = %s", (B2_CNPJ,))
+        conn.execute(
+            "delete from events where name like %s and props ->> 'scope' like %s",
+            ("sync_open_tenders.%", f"{B2_UF}:%"),
+        )
+        conn.execute(
+            "delete from jobs where kind in ('sync_items', 'sync_files') and key like %s",
+            (f"{B2_CNPJ}-%",),
+        )
+
+
 def unique_key(label: str = "") -> str:
     return f"{KEY_PREFIX}{label}{uuid.uuid4().hex[:12]}"
 

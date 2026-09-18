@@ -15,6 +15,7 @@ from typing import Any
 from . import breaker, config, db
 from . import company as _company  # noqa: F401 - imported for its registration side effect
 from . import jobs as _jobs  # noqa: F401 - imported for its registration side effect
+from . import sync_tenders as _sync_tenders  # noqa: F401 - registers sync_open_tenders
 from .consumer import Consumer, Metrics, WakeSignal
 from .observability import get_logger
 from .registry import REGISTRY, JobRegistry
