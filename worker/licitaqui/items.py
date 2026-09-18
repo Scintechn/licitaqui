@@ -17,6 +17,9 @@ items in the knowledge base:
   ``valorUnitarioEstimado`` and ``valorTotal`` as 0, so a tender whose budget is
   confidential sums to zero and its value must be read as *unknown*, never as
   "cheap" (:func:`favored_treatment`).
+* the segment stored is POC 1's **label** ("Alimentos"), not the ASCII key the
+  classifier works in. B6 seeded `cnae_segments.segment` with those labels and
+  R1 joins the two, so they have to be the same string.
 * every item timestamp (17,722 of them) is naive Brasília wall clock, the same
   shape that made B2 store deadlines three hours early. No `tender_items`
   column is a `timestamptz` fed by PNCP — `updated_at` is our own write clock —
@@ -35,7 +38,14 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .segments import OTHER, Classification, classify, segment_for_text
+from .segments import OTHER, Classification, classify, key_for_label, label, segment_for_text
+
+#: What an unclassified item stores. `tender_items.segment` and
+#: `tenders.segments` hold POC 1's **label** ("Saúde / Hospitalar"), not the key
+#: this module classifies with, because that is the vocabulary B6 seeded
+#: `cnae_segments.segment` with and R1 joins the two. The key stays available on
+#: :attr:`TenderItem.segment_key` for code that wants an ASCII slug.
+OTHER_LABEL = label(OTHER)
 
 #: PNCP's ``tipoBeneficio`` domain. 2 (subcontracting) is a benefit but not a
 #: reservation: it does not stop anyone else bidding, so it counts as open for
@@ -65,10 +75,16 @@ class TenderItem:
     judgment_criterion: str | None = None
     benefit_id: int | None = None
     benefit_name: str | None = None
-    segment: str = OTHER
+    #: POC 1's label, which is what `cnae_segments.segment` holds (B6).
+    segment: str = OTHER_LABEL
     relevance: str = "low"
     has_award: bool | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def segment_key(self) -> str:
+        """The ASCII key behind :attr:`segment`, for code rather than for joins."""
+        return key_for_label(self.segment)
 
     @property
     def is_exclusive(self) -> bool:
@@ -130,7 +146,7 @@ def from_pncp(tender_id: str, record: dict[str, Any]) -> TenderItem:
         judgment_criterion=_text(record.get("criterioJulgamentoNome")),
         benefit_id=_int(record.get("tipoBeneficio")),
         benefit_name=_text(record.get("tipoBeneficioNome")),
-        segment=verdict.segment,
+        segment=label(verdict.segment),
         relevance=verdict.relevance,
         has_award=record.get("temResultado"),
         raw=record,
@@ -223,22 +239,22 @@ def tender_segments(items: Sequence[TenderItem], *, object_text: object = None) 
     two different companies — so this is the same ranking, kept whole:
     ``segments[0]`` is the POC's single answer and the rest follow by value.
 
-    `other` is left out. It is the absence of a segment, and an array used to
+    "Outros" is left out. It is the absence of a segment, and an array used to
     match a company's CNAEs is better empty than full of "não sei".
     """
     by_value: dict[str, Decimal] = {}
     for item in items:
-        if item.segment == OTHER:
+        if item.segment == OTHER_LABEL:
             continue
         by_value[item.segment] = by_value.get(item.segment, Decimal(0)) + (
             item.total_value or Decimal(0)
         )
     if by_value:
-        # Value descending, then the key, so a tender whose items are all zero
+        # Value descending, then the name, so a tender whose items are all zero
         # (confidential budget) still gets a stable order instead of dict luck.
-        return [key for key, _ in sorted(by_value.items(), key=lambda kv: (-kv[1], kv[0]))]
+        return [name for name, _ in sorted(by_value.items(), key=lambda kv: (-kv[1], kv[0]))]
     from_object = segment_for_text(object_text)
-    return [from_object] if from_object else []
+    return [label(from_object)] if from_object else []
 
 
 # -- persistence -----------------------------------------------------------

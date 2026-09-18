@@ -190,10 +190,11 @@ say about the tender.
 - `licitaqui/segments.py` is POC 1's classification, ported term for term: the
   14 keyword lists **in their original priority order**, the NCM prefix table
   (materials only, longest prefix first) and the false-positive expressions.
-  Segments are stored as stable English keys (`health`, `it`, …) with POC 1's
-  Portuguese string as the pt-BR label — `SEGMENTS` is the vocabulary, `label()`
-  and `key_for_label()` convert. **B6's `cnae_segments.segment` and R1's filters
-  should use these keys.**
+  The classifier works in stable ASCII keys (`health`, `it`, …), but what is
+  **stored** in `tender_items.segment` and `tenders.segments` is POC 1's
+  Portuguese label — the same vocabulary B6 seeded `cnae_segments.segment` with,
+  so R1 can join them directly. `SEGMENTS` is the vocabulary, `label()` and
+  `key_for_label()` convert, and `TenderItem.segment_key` gives the slug.
 - **One deliberate divergence from POC 1: beverages.** POC 1's food rule covers
   NCM chapters 02–21 and food keywords, so chapter 22 — water, juice, soft
   drinks — lands in "Outros" and never reaches a company, which is why B6 had to

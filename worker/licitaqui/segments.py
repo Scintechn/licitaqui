@@ -4,7 +4,7 @@ A port of POC 1's `segmento_item` / `segmento_por_texto` / `cita_termo`
 (`poc1_licitacoes.py`), which is validated on real PNCP data. The keyword lists,
 their order, the NCM prefix table and the false-positive expressions are copied
 across term for term — this module exists to *be* that logic in the worker, not
-to improve on it. ``tests/test_segments.py`` checks that against 476 real cached
+to improve on it. ``tests/test_segments.py`` checks that against 489 real cached
 items whose expected segment was produced by running the POC itself.
 
 Four things the port does differently, all deliberate:
@@ -16,13 +16,14 @@ company. Water and soft drinks are added back (:data:`BEVERAGE_NCM_PREFIXES`,
 beverage. This is the one place the port knowingly does not reproduce POC 1,
 and ``tests/test_segments.py`` asserts the divergence is exactly those items.
 
-**Keys, not labels.** The POC's segment is a display string ("Saúde /
-Hospitalar"). What goes in `tender_items.segment` and `tenders.segments` is a
-stable ASCII key (`health`), with the POC's string kept as the pt-BR label.
-Identifiers are English (CLAUDE.md), the value ends up in URLs, array filters
-and a join with B6's `cnae_segments`, and a label can be re-worded without a
-migration. :data:`SEGMENTS` is the whole vocabulary, in POC priority order;
-:func:`label` and :func:`key_for_label` convert.
+**Keys in the code, POC 1's labels in the database.** This module classifies
+into stable ASCII keys (`health`) because identifiers are English (CLAUDE.md)
+and a key is pleasanter in a filter than "Saúde / Hospitalar". What gets
+*stored* is the label, because B6 seeded `cnae_segments.segment` with POC 1's
+strings and R1 joins the two — a key in `tender_items.segment` would match no
+company at all. :data:`SEGMENTS` is the whole vocabulary in POC priority order,
+:func:`label` and :func:`key_for_label` convert, and
+:mod:`licitaqui.items` does the conversion at the persistence boundary.
 
 **False positives are scrubbed before the keyword match, not only around it.**
 The POC applies `FALSOS_POSITIVOS` to the *search term* — it is what stops a

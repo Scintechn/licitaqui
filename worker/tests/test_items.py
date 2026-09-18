@@ -17,6 +17,7 @@ import pytest
 
 from licitaqui.items import (
     EPP_REVENUE_CAP,
+    OTHER_LABEL,
     TenderItem,
     classify_all,
     favored_treatment,
@@ -25,6 +26,12 @@ from licitaqui.items import (
     tender_segments,
     total_estimated_value,
 )
+from licitaqui.segments import SEGMENTS, label
+
+CLEANING = label("cleaning")
+FOOD = label("food")
+IT = label("it")
+OFFICE = label("office")
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "poc1"
 TENDERS = {
@@ -70,7 +77,10 @@ def test_from_pncp_maps_and_classifies_in_one_pass() -> None:
     assert mapped.unit == "Unidade"
     assert mapped.quantity == Decimal("10")
     assert mapped.unit_estimated_value == Decimal("4500.5")
-    assert mapped.segment == "it"
+    # The stored value is POC 1's label, because that is what B6 seeded
+    # `cnae_segments.segment` with and R1 joins the two.
+    assert mapped.segment == "Informática / TI"
+    assert mapped.segment_key == "it"
     assert mapped.relevance == "high"  # the NCM said so
     assert mapped.benefit_id == 1
     assert mapped.is_exclusive
@@ -201,25 +211,42 @@ def test_an_unknown_value_is_not_a_favored_one() -> None:
 def test_tender_segments_rank_by_money() -> None:
     """POC 1 gives the edital the segment it spends the most on; segments[0] is it."""
     items = [
-        item(1, segment="it", total_value=Decimal("100")),
-        item(2, segment="cleaning", total_value=Decimal("900")),
-        item(3, segment="it", total_value=Decimal("850")),
+        item(1, segment=IT, total_value=Decimal("100")),
+        item(2, segment=CLEANING, total_value=Decimal("900")),
+        item(3, segment=IT, total_value=Decimal("850")),
     ]
-    assert tender_segments(items) == ["it", "cleaning"]
+    assert tender_segments(items) == [IT, CLEANING]
 
 
 def test_other_is_not_a_segment() -> None:
-    items = [item(1, segment="other", total_value=Decimal("5000")), item(2, segment="food")]
-    assert tender_segments(items) == ["food"]
+    items = [item(1, segment=OTHER_LABEL, total_value=Decimal("5000")), item(2, segment=FOOD)]
+    assert tender_segments(items) == [FOOD]
 
 
 def test_segments_fall_back_to_the_object_when_the_items_say_nothing() -> None:
     """POC 1's own fallback: classify the objeto when the items carry none."""
-    items = [item(1, segment="other")]
-    assert tender_segments(items, object_text="Aquisição de material de limpeza") == ["cleaning"]
+    items = [item(1, segment=OTHER_LABEL)]
+    assert tender_segments(items, object_text="Aquisição de material de limpeza") == [CLEANING]
     assert tender_segments([], object_text="Serviço indeterminado") == []
 
 
 def test_zero_valued_items_still_produce_a_stable_order() -> None:
-    items = [item(1, segment="office"), item(2, segment="food")]
-    assert tender_segments(items) == ["food", "office"]
+    items = [item(1, segment=OFFICE), item(2, segment=FOOD)]
+    assert tender_segments(items) == [FOOD, OFFICE]
+
+
+def test_the_stored_segment_is_the_vocabulary_b6_seeded() -> None:
+    """`tender_items.segment` must be joinable with `cnae_segments.segment`.
+
+    B6 seeded that table with POC 1's labels ("Alimentos", "Saúde / Hospitalar"),
+    so an English key here would match no company on the Radar. Storing POC 1's
+    own string also keeps the parity claim literal.
+    """
+    assert [lab for _, lab in SEGMENTS][:3] == [
+        "Software / Sistemas",
+        "Segurança Eletrônica / CFTV",
+        "Informática / TI",
+    ]
+    mapped = from_pncp(TENDER_ID, {"numeroItem": 1, "descricao": "Refrigerante sabor cola 2L"})
+    assert mapped.segment == "Alimentos"
+    assert mapped.segment_key == "food"

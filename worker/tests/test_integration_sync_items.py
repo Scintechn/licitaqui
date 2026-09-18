@@ -170,10 +170,10 @@ def test_a_real_tender_gets_its_segments_and_relevance(
     # Gráfico / Escritório: "impressora" is an IT keyword and POC 1's list order
     # is priority. Reproducing the POC means reproducing this too — it is the
     # kind of case B6's CNAE map and the AI layer are there to refine later.
-    assert {r[2] for r in stored} == {"it"}
+    assert {r[2] for r in stored} == {"Informática / TI"}
     assert {r[3] for r in stored} == {"medium"}  # by keyword, not by NCM
     summary, favored, segments = tender_row(b3_conn, tid)
-    assert (summary, favored, segments) == ("mixed", True, ["it"])
+    assert (summary, favored, segments) == ("mixed", True, ["Informática / TI"])
 
 
 def test_the_segments_array_is_ranked_by_value(b3_conn: psycopg.Connection, monkeypatch) -> None:
@@ -190,7 +190,7 @@ def test_the_segments_array_is_ranked_by_value(b3_conn: psycopg.Connection, monk
 
     run_job(monkeypatch, b3_conn, serving({items_key(3): payload}), {"tender_id": tid})
 
-    assert tender_row(b3_conn, tid)[2] == ["cleaning", "it"]
+    assert tender_row(b3_conn, tid)[2] == ["Limpeza / Higiene", "Informática / TI"]
 
 
 def test_an_above_cap_tender_is_not_favored(b3_conn: psycopg.Connection, monkeypatch) -> None:
