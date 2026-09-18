@@ -43,9 +43,14 @@ def fake_queue(monkeypatch: pytest.MonkeyPatch) -> FakeQueue:
     return fake
 
 
-def test_b1_ships_an_empty_schedule():
-    """The collector jobs belong to B2 to B4; B1 ships only the engine."""
-    assert DEFAULT_SCHEDULE == ()
+def test_the_schedule_holds_only_the_collector_jobs_that_exist():
+    """B1 shipped an empty schedule; B2 added its sweep and nothing else.
+
+    B3 and B4 do not appear until their handlers do — the scheduler would
+    happily enqueue a kind nothing can run, and every one of those rows would
+    burn four attempts before landing in `failed`.
+    """
+    assert [entry.kind for entry in DEFAULT_SCHEDULE] == ["sync_open_tenders"]
 
 
 def test_an_entry_needs_exactly_one_cadence():

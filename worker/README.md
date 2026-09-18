@@ -50,6 +50,54 @@ alive between polls, would keep the compute running and spend the budget on an
 empty queue (§5.1). When a user is waiting, Vercel calls `/wake` instead of the
 worker polling faster.
 
+## `sync_open_tenders` (§7.1, ADR-0001)
+
+The 30-minute incremental sweep. Each cycle asks
+`/api/consulta/v1/contratacoes/atualizacao` which contratações changed since the
+last completed cycle, for modalities 6, 8 and 4, and upserts them into `tenders`
+on `numeroControlePNCP`.
+
+It windows on `dataAtualizacaoGlobal` — the timestamp that moves when the record
+**or any of its children** changes. ADR-0001's Verification section measured the
+alternative: the search index's `data_atualizacao_pncp` matched the header-only
+timestamp on 74 of 74 conclusive cases and the child-aware one on none, so a
+search-only sweep would silently miss item and file changes.
+
+**The watermark lives in `events`**, under the name `sync_open_tenders.cycle`,
+one append-only row per cycle. B2 was not allowed a migration, `events` already
+exists and the `app` role can write it, and the log is more useful than a single
+mutable cell:
+
+```sql
+select created_at, props from events
+ where name = 'sync_open_tenders.cycle'
+ order by id desc limit 10;
+```
+
+Only a **complete** cycle advances it, and it stores the *window*, not a
+row-level timestamp — so a cycle that dies halfway leaves the previous window
+standing and the next cycle sweeps the whole thing again. That is what makes a
+three-hour PNCP outage cost delay rather than data.
+
+**When `/api/consulta` is down** (measured at 17.4 % of requests, and for a
+continuous 3 h 06 m while B2 was being written) the `pncp-consulta` breaker opens
+and the cycle falls back to the search sweep. The fallback keeps the cache fresh,
+records the cycle as `degraded`, and deliberately does **not** advance the
+watermark.
+
+Rerunning a cycle is free: the upsert only writes a row whose `pncp_updated_at`
+actually moved, so an unchanged tender keeps its `updated_at` and the §3.1
+freshness clock keeps meaning what it says.
+
+Payload (all optional; the scheduled job carries none of them):
+
+| Key | Default | What it does |
+|---|---|---|
+| `uf` | none — the whole country | Restrict to one state. A national sweep is cheaper than 27 per-state ones: the period endpoints have no 10,000-record window to partition around |
+| `modalities` | `[6, 8, 4]` | Pregão Eletrônico, Dispensa, Concorrência Eletrônica |
+| `window_start`, `window_end` | from the watermark | `YYYY-MM-DD`. Re-run a window by hand; does not move the watermark |
+| `lookback_days` | `1` | How far a first run reaches when there is no watermark |
+
 ## Adding a job kind
 
 ```python
@@ -74,6 +122,21 @@ pytest                       # unit tests always; database tests when configured
 ruff check . && ruff format --check .
 ```
 
-The database tests need `TEST_DATABASE_URL` (an isolated, already-migrated Neon
-database) and skip without it. They only ever touch `jobs` rows whose key starts
-with `b1-test-`, and delete them before and after each test.
+The database tests need an isolated, already-migrated Neon database and skip
+without one. Each task has its own so two test runs cannot collide:
+
+| Variable | Used by | Rows it touches |
+|---|---|---|
+| `TEST_DATABASE_URL` | B1's queue and consumer tests | `jobs` rows whose key or kind starts with `b1-test-` / `b1t_` |
+| `TEST_DATABASE_URL_B2` | B2's sweep tests | `tenders` rows for the fictitious agency `99000000000102`, the `sync_open_tenders.*` events scoped to UF `ZZ`, and the follow-up jobs keyed on that CNPJ |
+
+Both are resolved the way `db/migrate.py` resolves its own connection string,
+and both are wrapped in a redacting `Dsn` type before they can reach a fixture
+repr: pytest renders fixture values into tracebacks, and a connection string
+that reaches a CI transcript is a leaked credential. Deletes are always scoped by
+prefix — no test ever truncates a table.
+
+Known flake, not B2's: `test_integration_queue.py` and
+`test_integration_consumer.py` fail intermittently against the shared Neon
+compute (measured on `main`'s code: 2 failures in run 1, 0 in runs 2 and 3 of an
+otherwise identical sequence). Re-run before believing a failure there.

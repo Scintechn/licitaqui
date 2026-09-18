@@ -73,8 +73,17 @@ class ScheduleEntry:
         return due.astimezone(ZoneInfo(self.timezone)).strftime("%Y-%m-%dT%H:%M")
 
 
-#: Nothing to schedule yet: the collector jobs arrive with B2 to B4.
-DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = ()
+#: §7.1. `sync_open_tenders` every 30 minutes; the daily and weekly entries
+#: arrive with the jobs that need them.
+#:
+#: It carries no payload. The window comes from the watermark the previous
+#: cycle wrote (:mod:`licitaqui.sync_tenders`), so a tick is just "sweep
+#: whatever has changed since the last completed cycle" and two ticks 30
+#: minutes apart never re-do each other's work. The default key — the due
+#: instant in BRT — means a duplicated tick during a deploy dedupes to one job.
+DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
+    ScheduleEntry(kind="sync_open_tenders", every_seconds=30 * 60, priority=5),
+)
 
 
 @dataclass
