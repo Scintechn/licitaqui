@@ -165,6 +165,20 @@ raise anything in `/admin`. That is O2/observability work, not an architecture f
    test that writes to a shared database scopes its rows by a per-run id, not a per-task
    constant.
 
+## Still to do after B3 and B6 land
+
+- **Finish the per-run scoping.** PR #14 made `conftest.py`'s `jobs` prefixes `RUN_ID`-based
+  but missed the other half: B2's sync tests scope `tenders` rows by a **constant CNPJ**
+  (`99000000000102`), so two concurrent runs of `test_integration_sync_tenders.py` still
+  delete each other's rows. C1 hit it live while B3 was running the same file. Same defect,
+  different table — my fix was incomplete. The rule needs to cover **natural keys**, not
+  just job keys.
+- **Set `OPENROUTER_API_KEY` as a repo secret.** Without it `evaluate-ai.yml` runs in
+  replay against committed recordings — it passes, and the report says `REPLAYED`, but the
+  gate is not actually exercising the model. A live run costs about R$ 0,004.
+- **Document `OPENROUTER_API_KEY` and `TEST_DATABASE_URL_C1` in `.env.example`** — a deny
+  rule blocks agents from that file.
+
 ## Open for Sci
 
 - **Event name mismatch.** Spec §14 names the event `founder_signed_up`; F1 writes
