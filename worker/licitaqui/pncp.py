@@ -1,6 +1,6 @@
 """HTTP access to PNCP, under the §7.2 budget.
 
-Two services, two circuit breakers, because they fail independently — the
+Three services, three circuit breakers, because they fail independently — the
 measurements behind ADR-0001 caught `/api/consulta` down for thirteen minutes
 while `/api/search/` answered every request:
 
@@ -9,6 +9,10 @@ while `/api/search/` answered every request:
   :mod:`licitaqui.sync_tenders` sweeps.
 - ``pncp-search`` — the undocumented backend of the `pncp.gov.br/app/editais`
   screen, kept as the fallback sweep.
+- ``pncp-itens`` — `/api/pncp/v1/.../itens`, which :mod:`licitaqui.sync_items`
+  reads. POC 1 kept it apart from the detail endpoint for the same reason: the
+  detail endpoint is the one that returns HTTP 500, and an items outage must
+  not stop the sweep that feeds every other job.
 
 Three rules this module exists to enforce:
 
@@ -46,9 +50,11 @@ BASE_URL = "https://pncp.gov.br"
 SEARCH_PATH = "/api/search/"
 ATUALIZACAO_PATH = "/api/consulta/v1/contratacoes/atualizacao"
 PUBLICACAO_PATH = "/api/consulta/v1/contratacoes/publicacao"
+ITEMS_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/itens"
 
 BREAKER_CONSULTA = "pncp-consulta"
 BREAKER_SEARCH = "pncp-search"
+BREAKER_ITEMS = "pncp-itens"
 
 #: The period endpoints accept this and nothing else. 100 and 500 are rejected
 #: with "Tamanho de página inválido"; it is not a tunable.
@@ -58,6 +64,10 @@ PERIOD_PAGE_SIZE = 50
 #: the period endpoints.
 SEARCH_PAGE_SIZE = 500
 SEARCH_WINDOW_CAP = 10_000
+#: POC 1's page size for the items endpoint, which unlike the period endpoints
+#: accepts it. Most tenders have far fewer items than this, so it is normally
+#: one request per tender.
+ITEMS_PAGE_SIZE = 500
 
 #: §7.2: throttle PNCP calls (e.g. 4 req/s per worker).
 DEFAULT_RATE_LIMIT = 4.0
@@ -155,6 +165,10 @@ class PncpClient:
     @property
     def search_breaker(self) -> CircuitBreaker:
         return get_breaker(BREAKER_SEARCH)
+
+    @property
+    def items_breaker(self) -> CircuitBreaker:
+        return get_breaker(BREAKER_ITEMS)
 
     def _get(self, path: str, params: dict[str, Any], breaker: CircuitBreaker) -> Any:
         """One GET under the breaker. Raises on anything but 200 and 204.
@@ -257,6 +271,36 @@ class PncpClient:
             if self.page_delay:
                 time.sleep(self.page_delay)
         _log.warning("period sweep hit the page guard", extra={"path": path, "pages": MAX_PAGES})
+
+    # -- the items endpoint (§7.1 sync_items) -----------------------------
+
+    def iter_items(self, cnpj: str, year: int, sequence: int) -> Iterator[dict[str, Any]]:
+        """Every item of one contratação, paged the way POC 1 pages it.
+
+        This endpoint answers with a bare JSON **array**, not the ``{data,
+        paginasRestantes}`` envelope the period endpoints use, so the walk ends
+        on a short page. A 204 (empty body) ends it too and means the tender
+        genuinely has no items; a 404 raises, because a tender that has items
+        today and 404s tomorrow is an outage, not an empty list, and must not
+        be allowed to delete rows (:func:`licitaqui.items.upsert_items`).
+        """
+        path = ITEMS_PATH.format(cnpj=cnpj, year=year, sequence=sequence)
+        for page in range(1, MAX_PAGES + 1):
+            body = self._get(
+                path,
+                {"pagina": page, "tamanhoPagina": ITEMS_PAGE_SIZE},
+                self.items_breaker,
+            )
+            if not body:
+                return
+            if not isinstance(body, list):
+                raise PncpError(f"GET {path} -> expected a list, got {type(body).__name__}")
+            yield from body
+            if len(body) < ITEMS_PAGE_SIZE:
+                return
+            if self.page_delay:
+                time.sleep(self.page_delay)
+        _log.warning("items walk hit the page guard", extra={"path": path, "pages": MAX_PAGES})
 
     # -- the search API (ADR-0001, the fallback) --------------------------
 
