@@ -25,15 +25,42 @@ from licitaqui.brasilapi import BrasilApiError
 from licitaqui.company import STATUS_FAILED, STATUS_NOT_FOUND
 from licitaqui.consumer import Consumer
 from licitaqui.registry import REGISTRY
+from tests.conftest import RUN_ID
 
 FIXTURES = Path(__file__).parent / "fixtures" / "brasilapi"
 
-RESOLVED = "99900001000150"
-FALLBACK = "99900002000102"
-THIRD = "99900003000149"
-FOURTH = "99900004000193"
-FIFTH = "99900005000138"
-SIXTH = "99900006000182"
+
+# Per **run**, not constants. As fixed strings these scoped cleanup by task, so
+# two concurrent runs of this suite deleted each other's companies mid-test.
+# `companies.cnpj` is char(14) with no digits-only constraint, so the letters
+# make these unmistakably synthetic and unable to prefix-match a real CNPJ —
+# this database holds real supplier CNPJs while the live check script runs.
+def _b5_cnpj(n: int) -> str:
+    """A synthetic, run-scoped CNPJ with **valid check digits**.
+
+    Digits, not letters, and the check digits are computed: `company.lookup`
+    validates the CNPJ shape, so anything malformed never reaches the database.
+    The `999` root is not issued to anyone, and cleanup matches these exactly
+    (`cnpj = any(...)`), never by prefix, so this cannot reach a real company.
+
+    Per run rather than a constant: two concurrent runs of this suite used to
+    delete each other's companies mid-test.
+    """
+    run8 = f"{int(RUN_ID, 16):08d}"[:8]  # fixed width: the int can exceed 8 digits
+    base = f"999{run8}{n:1d}"
+    for weights in ([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]):
+        total = sum(int(base[i]) * w for i, w in enumerate(weights))
+        remainder = total % 11
+        base += str(0 if remainder < 2 else 11 - remainder)
+    return base
+
+
+RESOLVED = _b5_cnpj(1)
+FALLBACK = _b5_cnpj(2)
+THIRD = _b5_cnpj(3)
+FOURTH = _b5_cnpj(4)
+FIFTH = _b5_cnpj(5)
+SIXTH = _b5_cnpj(6)
 TEST_CNPJS = (RESOLVED, FALLBACK, THIRD, FOURTH, FIFTH, SIXTH)
 
 TEST_KEYS = tuple(company.job_key(c) for c in TEST_CNPJS)

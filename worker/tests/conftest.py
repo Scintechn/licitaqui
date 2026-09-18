@@ -148,11 +148,24 @@ def _delete_test_jobs(dsn: str) -> None:
 B2_TEST_DSN_VAR = "TEST_DATABASE_URL_B2"
 
 #: Every tender a B2 test writes belongs to this fictitious agency, so the
-#: cleanup can delete exactly this task's rows and nothing else. It is not a
+#: cleanup can delete exactly this **run's** rows and nothing else. It is not a
 #: valid CNPJ and matches nothing real in PNCP.
-B2_CNPJ = "99000000000102"
+#:
+#: Per run, not per task. As a constant it scoped cleanup by task, so two
+#: concurrent runs of this suite deleted each other's tenders mid-test — the
+#: intermittent `test_integration_sync_tenders` failures that cost B5, B2, B6
+#: and C1 time apiece. B5's suite writes to this database too, which is how a
+#: "B2-only" constant still collided.
+B2_CNPJ = f"99{int(RUN_ID, 16):012d}"[:14]
 #: …and every watermark it writes is scoped to this fictitious UF.
-B2_UF = "ZZ"
+#:
+#: Two letters derived from RUN_ID rather than a constant "ZZ". `tenders.state`
+#: is char(2) and `scope_key` builds the watermark key from it, so this is the
+#: only run-scoping the column has room for: it takes a collision between two
+#: concurrent runs from certain to roughly 1 in 676. Not a real UF in practice,
+#: and harmless if it ever matched one — these rows only exist in test
+#: databases, and cleanup matches this exact value.
+B2_UF = "".join(chr(ord("A") + (int(RUN_ID, 16) >> (5 * i)) % 26) for i in (0, 1))
 
 
 @pytest.fixture(scope="session")
@@ -348,9 +361,10 @@ def _delete_b6_rows(dsn: str) -> None:
 # so deleting the fictitious agency's tenders is enough.
 C1_TEST_DSN_VAR = "TEST_DATABASE_URL_C1"
 
-#: Not a valid CNPJ, and one digit apart from B2's, so the two cleanups never
-#: reach each other's rows.
-C1_CNPJ = "99000000000103"
+#: Not a valid CNPJ, and per **run** rather than a constant, so two concurrent
+#: runs of this suite cannot delete each other's rows. The trailing `3` keeps it
+#: distinct from B2's `…2` within the same run.
+C1_CNPJ = f"99{int(RUN_ID, 16):011d}3"[:14]
 
 #: Tender ids are scoped by RUN_ID as well, so two concurrent runs of this same
 #: suite cannot delete each other's fixtures mid-test.
