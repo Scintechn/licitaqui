@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from . import ai_screening as _ai_screening  # noqa: F401 - registers ai_screening
 from . import breaker, config, db
 from . import company as _company  # noqa: F401 - imported for its registration side effect
 from . import jobs as _jobs  # noqa: F401 - imported for its registration side effect

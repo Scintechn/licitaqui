@@ -178,3 +178,62 @@ are module constants, so cleanup scopes deletes **by task rather than by run**,
 and two concurrent runs of this same suite delete each other's fixtures. The fix
 is to derive both prefixes from a per-run `uuid4`. Until then, re-run before
 believing a failure there.
+
+## `ai_screening` (edital → triage, POC 4)
+
+`licitaqui.ai_tender` is the port of POC 4's *lite* mode; `licitaqui.ai_screening`
+is the job around it. Enqueue with `ai_screening.enqueue(conn, tender_id,
+payload={...})`: priority 1, one live screening per tender.
+
+The payload says where the document is — `pages` (already extracted, which is
+what B4's `extract_text` will hand over), `text_path`, `pdf_path` or `url` — and
+ideally `files_hash`, the digest of the file bytes. Without one the job hashes
+the PDF it downloaded, or as a last resort the extracted text.
+
+**Results are cached for ever and shared across users** (§3.2). The cache key is
+the `ai_analyses` unique key: tender + mode + prompt version + extraction version
++ file hash. A hit costs nothing and makes no API call; a cached `ok` or
+`no_text` row is never overwritten, while a `failed` one can be replaced by a
+later attempt. Bumping `PROMPT_VERSION_LITE` (in `licitaqui/prompts.py`) or
+`EXTRACTION_VERSION` therefore does not invalidate anything: it opens a second,
+parallel cache and every tender is analysed again at full price.
+
+**A scanned PDF never reaches the model.** With no text layer the job writes
+`status = 'no_text'` with no model, no tokens and no cost, before the API key is
+even resolved. OCR is v2 (§16).
+
+**Arithmetic is done in code, never by the model** (§7.2): the minimum capital
+and the contract term in months. The prompt explicitly tells the model not to
+calculate, because the POC's battery measured 5 of 12 models getting Brazilian
+percentages and `R$ 4.330.766,67`-style numbers wrong. The results land in the
+`rules` column.
+
+**Citations are verified, not trusted.** Every page a lite claim points at must
+exist, must be a page we actually sent, and must be about the subject claimed;
+the per-claim verdicts are stored in `citation_check`.
+
+### Evaluating a prompt or extraction change
+
+```bash
+python -m evaluation                  # live if OPENROUTER_API_KEY resolves, replay otherwise
+python -m evaluation --mode recorded  # replay: free, offline, deterministic
+python -m evaluation --mode record    # live, and save the answers for replaying
+```
+
+Scores the screening against the three hand-checked answer keys in
+`evaluation/gabaritos/` and exits non-zero below 95% (spec §13). A live run costs
+about R$ 0,01 for the three editais. `evaluate-ai.yml` runs it when `ai_tender.py`,
+`prompts.py`, `ai_screening.py` or `evaluation/` change; `pytest` replays the
+recorded answers on every run, so a regression in our own code fails the ordinary
+suite for free. Any prompt or extraction change must be evaluated **live** and the
+score diff reported (CLAUDE.md).
+
+Nothing under `pytest` ever calls OpenRouter: the transport is stubbed and the
+key is forced to a dummy value by an autouse fixture.
+
+### C1's test database
+
+`test_integration_ai_screening.py` needs `TEST_DATABASE_URL_C1` — C1's own
+isolated, already-migrated database — and skips without it. It writes tenders for
+the fictitious agency `99000000000103` and the analyses that cascade from them;
+cleanup is scoped by that CNPJ and by the per-run `RUN_ID`, and never truncates.
