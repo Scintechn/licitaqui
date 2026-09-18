@@ -2,13 +2,13 @@
 
 **Minuta v0.1 · 17/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Os campos entre colchetes precisam ser preenchidos.
 
-**Última atualização:** [DATA] · **Vigência:** [DATA]
+**Última atualização:** **[TODO(Sci): data de publicação]** · **Vigência:** **[TODO(Sci): data de publicação]**
 
 ---
 
 ## 1. Quem somos e o que é o LicitaQui
 
-O LicitaQui é um serviço de software pela internet (SaaS) operado por **SCINT TECNOLOGIA [razão social completa]**, CNPJ [00.000.000/0001-00], com sede em [endereço completo], e-mail [contato@dominio].
+O LicitaQui é um serviço de software pela internet (SaaS) operado por **SCINT TECHNOLOGIA SERVICOS LTDA**, CNPJ 36.955.612/0001-85, com sede em **[TODO(Sci): endereço do escritório virtual]**, e-mail **[TODO(Sci): contato@ — depende do domínio]**.
 
 O LicitaQui ajuda MEI e pequenas empresas a **encontrar editais de compras públicas que consegue atender, entender o que pedem e estimar até quanto pode ofertar com lucro**, usando dados públicos do Portal Nacional de Contratações Públicas (PNCP) e leitura automatizada por inteligência artificial.
 
@@ -31,7 +31,7 @@ O serviço é destinado a **pessoas maiores de 18 anos** que atuem em nome de um
 
 - O acesso é feito por **link enviado ao seu e-mail** ou por **login com conta Google**. Não usamos senha própria.
 - A conta é **pessoal e intransferível**. Você é responsável pelo acesso ao seu e-mail e à sua conta Google, e pelo que for feito na sua conta.
-- Se suspeitar de uso indevido, avise em [contato@dominio] para bloquearmos o acesso.
+- Se suspeitar de uso indevido, avise em **[TODO(Sci): contato@ — depende do domínio]** para bloquearmos o acesso.
 - Podemos pedir confirmação do CNPJ informado.
 
 ## 5. Planos, preços e limites
@@ -65,14 +65,14 @@ Esta é a cláusula mais importante do contrato para quem entra pelo plano Promo
 
 - A cobrança é feita pelo **Asaas** (meio de pagamento), por cartão de crédito ou pix, conforme as opções disponíveis no checkout. **Não temos acesso ao número do seu cartão.**
 - A assinatura é **recorrente**: renova automaticamente a cada mês na mesma data, até que você cancele.
-- Falha no pagamento: tentaremos novamente e avisaremos você. Se não houver pagamento em **[10] dias**, o acesso aos recursos pagos é suspenso e a conta volta ao plano Básico. Nada é excluído nesse momento (ver seção 12).
-- Valores são em reais e incluem os tributos aplicáveis. A emissão de documento fiscal segue a legislação vigente. [Revisar com o contador.]
+- Falha no pagamento: tentaremos novamente e avisaremos você. Se não houver pagamento em **[TODO(Sci): prazo de carência — confirmar com o dunning do Asaas]**, o acesso aos recursos pagos é suspenso e a conta volta ao plano Básico. Nada é excluído nesse momento (ver seção 12).
+- Valores são em reais e incluem os tributos aplicáveis. A emissão de documento fiscal segue a legislação vigente. **[TODO(Sci): nota fiscal — revisar com o contador (gap G13)]**
 
 ## 8. Cancelamento e arrependimento
 
 - **Cancelamento:** você cancela sozinho, em um clique, em Conta → Plano, sem falar com ninguém e sem multa. O acesso pago continua até o fim do período já pago; não há cobrança seguinte e não há reembolso proporcional, salvo o caso abaixo.
-- **Arrependimento (art. 49 do Código de Defesa do Consumidor):** se a contratação foi feita fora do estabelecimento (pela internet) e você se enquadra como consumidor, pode desistir em **até 7 dias corridos da contratação**, com devolução integral do valor pago. Basta escrever para [contato@dominio].
-- **Insatisfação:** [opcional — se for oferecer garantia própria, descrever aqui, ex.: "devolvemos o primeiro mês se você pedir em até 30 dias".]
+- **Arrependimento (art. 49 do Código de Defesa do Consumidor):** se a contratação foi feita fora do estabelecimento (pela internet) e você se enquadra como consumidor, pode desistir em **até 7 dias corridos da contratação**, com devolução integral do valor pago. Basta escrever para **[TODO(Sci): contato@ — depende do domínio]**.
+- **Insatisfação:** **[TODO(Sci): oferecer garantia própria? decidir]**
 
 ## 9. Uso aceitável
 
@@ -117,9 +117,9 @@ Usaremos o e-mail cadastrado, o app e — se você tiver consentido — Telegram
 
 ## 15. Lei aplicável e foro
 
-Aplica-se a lei brasileira. Fica eleito o foro da comarca de **[comarca]**, salvo se você for consumidor, hipótese em que vale o foro do seu domicílio.
+Aplica-se a lei brasileira. Fica eleito o foro da comarca de ****[TODO(Sci): comarca — segue o escritório virtual]****, salvo se você for consumidor, hipótese em que vale o foro do seu domicílio.
 
-Antes de qualquer medida judicial, escreva para [contato@dominio]: procuramos resolver diretamente.
+Antes de qualquer medida judicial, escreva para **[TODO(Sci): contato@ — depende do domínio]**: procuramos resolver diretamente.
 
 ---
 

@@ -2,15 +2,15 @@
 
 **Minuta v0.1 · 17/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Os campos entre colchetes precisam ser preenchidos.
 
-**Última atualização:** [DATA] · **Vigência:** [DATA]
+**Última atualização:** **[TODO(Sci): data de publicação]** · **Vigência:** **[TODO(Sci): data de publicação]**
 
 ---
 
 ## 1. Quem trata os seus dados
 
-O LicitaQui é operado por **SCINT TECNOLOGIA [razão social completa]**, CNPJ [00.000.000/0001-00], com sede em [endereço completo], que atua como **controladora** dos dados pessoais tratados no serviço, nos termos da Lei nº 13.709/2018 (LGPD).
+O LicitaQui é operado por **SCINT TECHNOLOGIA SERVICOS LTDA**, CNPJ 36.955.612/0001-85, com sede em **[TODO(Sci): endereço do escritório virtual]**, que atua como **controladora** dos dados pessoais tratados no serviço, nos termos da Lei nº 13.709/2018 (LGPD).
 
-**Canal de contato sobre dados pessoais:** [privacidade@dominio] (respondemos também por WhatsApp em [número], se você preferir).
+**Canal de contato sobre dados pessoais:** **[TODO(Sci): privacidade@ — depende do domínio]** **[TODO(Sci): incluir WhatsApp de contato? opcional]**.
 
 Somos um **agente de tratamento de pequeno porte** (Resolução CD/ANPD nº 2/2022). Por isso não temos encarregado (DPO) formalmente indicado, mas mantemos este canal de atendimento ao titular, que é obrigatório.
 
@@ -23,7 +23,7 @@ Somos um **agente de tratamento de pequeno porte** (Resolução CD/ANPD nº 2/20
 | Vendemos seus dados? | Não. Nunca |
 | Usamos IA com seus dados? | A IA lê **o edital público**, não os seus dados pessoais (seção 6) |
 | Onde os dados ficam | Banco e aplicação em nuvem, com servidores que podem estar fora do Brasil (seção 8) |
-| Como excluir | Escreva para [privacidade@dominio]: apagamos ou anonimizamos no prazo da seção 10 |
+| Como excluir | Escreva para **[TODO(Sci): privacidade@ — depende do domínio]**: apagamos ou anonimizamos no prazo da seção 10 |
 
 ## 3. Dados que coletamos
 
@@ -71,7 +71,7 @@ Quando usamos **legítimo interesse**, limitamos o tratamento ao necessário, av
 
 O consentimento é pedido de forma separada e específica, com caixa de marcação não pré-assinalada, para (a) receber mensagens no WhatsApp e no e-mail e (b) participar da lista de fundadores.
 
-Você pode revogar quando quiser: responda **SAIR** na mensagem, use o link de descadastramento no e-mail, ajuste os alertas no app ou escreva para [privacidade@dominio]. A revogação não afeta o que foi feito antes dela.
+Você pode revogar quando quiser: responda **SAIR** na mensagem, use o link de descadastramento no e-mail, ajuste os alertas no app ou escreva para **[TODO(Sci): privacidade@ — depende do domínio]**. A revogação não afeta o que foi feito antes dela.
 
 ## 6. Como a inteligência artificial é usada
 
@@ -142,4 +142,4 @@ Se mudarmos algo relevante, avisaremos com pelo menos **30 dias** por e-mail ou 
 
 ## 14. Contato
 
-[privacidade@dominio] · SCINT TECNOLOGIA [razão social], CNPJ [00.000.000/0001-00], [endereço].
+**[TODO(Sci): privacidade@ — depende do domínio]** · SCINT TECHNOLOGIA SERVICOS LTDA, CNPJ 36.955.612/0001-85, **[TODO(Sci): endereço do escritório virtual]**.

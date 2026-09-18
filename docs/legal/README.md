@@ -7,6 +7,31 @@ Drafts in **Brazilian Portuguese**, written 2026-09-17. **They are drafts, not l
 | `politica-de-privacidade.md` | Privacy policy (LGPD) | `/privacidade` |
 | `termos-de-uso.md` | Terms of service, incl. the founders price clause | `/termos` |
 
+## Status (2026-09-18)
+
+**Filled and verified:** operator identity — `SCINT TECHNOLOGIA SERVICOS LTDA`,
+CNPJ `36.955.612/0001-85` (confirmed ATIVA against the Receita via BrasilAPI; the razão
+social is written exactly as registered, unaccented).
+
+**Still open** — every one marked in the text as `**[TODO(Sci): …]**`, so
+`grep -rn 'TODO(Sci)' docs/legal/` lists what remains:
+
+| Gap | Blocked on |
+|---|---|
+| Registered address | The virtual office. Sci's home address is the registered one and is deliberately **not** used here |
+| `privacidade@` / `contato@` | A domain. Spec §5.1 keeps the `vercel.app` URL until one is registered |
+| Comarca (§15) | Follows the virtual office's location |
+| Publication and effective dates | Publication |
+| Grace period after failed payment (§7) | Asaas dunning settings |
+| Nota fiscal wording (§7) | The accountant — plan gap G13 |
+| Own-guarantee clause (§8) | Sci's decision; optional |
+
+The `[data]` placeholders in Annex B are **not** gaps — they are runtime values the
+price-change job fills (spec §10, `subscriptions.promo_ends_on`).
+
+The "não é parecer jurídico" banner stays until a lawyer signs off. Nothing here is
+publishable yet.
+
 ## 1. Placeholders to fill before anything is published
 
 | Placeholder | Where | Note |
