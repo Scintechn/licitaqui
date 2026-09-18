@@ -107,3 +107,60 @@ Re-run `worker/scripts/probe_brasilapi_cnpj.py` and reconsider if any of these a
 If two of those hold, the fallback becomes the default again and the lookup becomes a
 best-effort convenience. Worth re-measuring once real signup volume exists, since 45 lookups in
 one session cannot see a daily quota.
+
+---
+
+## Appendix — B5 implementation run, 2026-09-18
+
+Measured while implementing `company_lookup` (B5), with the handler itself rather than the
+probe: `worker/scripts/check_company_lookup_live.py --limit 50`, 2026-09-18 around 00:02 UTC.
+**Sample: 50 distinct supplier CNPJs**, harvested the same way as the 45 above — winners of
+awarded items in the 79 closed PNCP tenders cached from POC 1, legal entities only. It overlaps
+the original sample only by chance; the list is not committed, for the same reason the first one
+was not (§12). Three of the 50 had been fetched ~40 minutes earlier and came back edge-cached
+(0.06–0.10 s), so **47 of 50 are uncached evidence**.
+
+| Measure | 45-CNPJ spike (B0) | 50-CNPJ implementation run (B5) |
+|---|---|---|
+| Lookups | 45 | 50 |
+| Failed | 0 (0 %) | **1 (2 %)** |
+| HTTP latency (min / median / p95 / max) | 0.44 / 0.52 / 0.78 / 0.82 s | 0.06 / **0.42** / 0.61 / 1.43 s |
+| End to end incl. the 1 s spacing and the upsert | — | 0.57 / **1.43** / 1.69 / 2.54 s |
+| Call rate | 0.5 req/s | **1 req/s**, 50 lookups in 73.7 s |
+| 429s | 0 | **0**, and no rate-limit header on any of the 49 responses |
+
+Three things the implementation run **confirms**:
+
+- `descricao_porte` was null on **49 / 49** successful lookups. `codigo_porte` was present on
+  all 49 (22 × 1 → ME, 19 × 3 → EPP, 8 × 5 → DEMAIS). Reading `codigo_porte` is right.
+- `cnae_fiscal` was present on **49 / 49**. The segment map has something to join on.
+- `razao_social` 49 / 49; `nome_fantasia` 39 / 49, still often blank.
+
+Three things it **contradicts or refines**, which is why it is recorded here:
+
+- **"Null for roughly a third" is sample-dependent.** `opcao_pelo_mei` was null on **7 / 49
+  (14 %)**, not ~33 %. The explanation is the one the ADR already gives — nulls cluster in
+  `porte = DEMAIS`, and this sample has 8 DEMAIS against the original's 15. The *rule* holds and
+  the code must still keep the third state (`is_mei` is `true` for 2, `false` for 40, `null` for
+  7); only the headline proportion moves with the sample.
+- **`cnaes_secundarios` reaches at least 97, not 70.** Median 14, max **97**, and **none** of
+  the 49 were empty (the ADR saw 4 / 45 empty). Empty is still possible and still handled; the
+  upper bound is simply higher than measured, so nothing may assume a ceiling.
+- **The one failure was not an HTTP status.** It was `httpx.RemoteProtocolError` — the server
+  closed the connection without sending a response — on lookup 10 of 50. A fallback that only
+  inspects status codes would have missed it. Combined failure rate across both runs: **1 / 95
+  (≈ 1 %)**, comfortably under the 5 % threshold above.
+
+Two smaller notes:
+
+- No `BAIXADA` company appeared in this sample (49 × `ATIVA`), so ADR item 6 remains tested only
+  by the fixture in `worker/tests/fixtures/brasilapi/epp_baixada.json`.
+- `company_lookup` verifies the mod-11 check digits before calling, so a mistyped CNPJ costs the
+  free public API nothing and is recorded as `lookup:not_found` rather than blamed on BrasilAPI.
+
+**The rate limit is still not established.** What is now established is a floor: 1 req/s
+sustained for 50 uncached lookups draws no 429 and no rate-limit header. The worker keeps
+lookups single-threaded process-wide with a 1 s minimum gap
+(`licitaqui.brasilapi.MIN_INTERVAL_SECONDS`), which is that measured floor and not a guess.
+Finding the ceiling would mean deliberately hammering a free community service, which is not
+worth doing for a product that makes one lookup per signup.
