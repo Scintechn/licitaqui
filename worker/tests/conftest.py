@@ -428,6 +428,131 @@ def _delete_c1_rows(dsn: str) -> None:
         )
 
 
+# -- E2: WhatsApp (Evolution API) -----------------------------------------
+#
+# Same shape and the same reasons as every block above: an isolated database so
+# two tasks' suites cannot collide, a `Dsn` wrapper so pytest cannot render the
+# credentials into a traceback, and deletes scoped to rows *this run* created.
+#
+# E2 writes `founders_list`, which has two unique natural keys — `email citext
+# unique` and `seat int unique`, capped at 48 — so run-scoping the rows is not
+# optional here in the way it might feel elsewhere:
+#
+#   * the e-mail carries `RUN_ID`, so two concurrent runs cannot collide on the
+#     unique index and cannot delete each other's founders;
+#   * **no test takes a seat.** There are only 48 and they are global; two runs
+#     both asking for seat 5 would fail on the unique index, and a run that
+#     crashed holding seats would leave the next one with fewer. Test founders
+#     are waitlisted (`seat is null`) and the seat number a welcome message
+#     renders comes from the job payload, which is where F1 puts it anyway.
+E2_TEST_DSN_VAR = "TEST_DATABASE_URL_E2"
+
+#: Every founder an E2 test writes has an e-mail starting with this. Per
+#: **run**, not per task (see RUN_ID): a task constant looks isolated and is not.
+E2_EMAIL_PREFIX = f"e2-test-{RUN_ID}-"
+
+#: The job kinds E2 owns, named here so cleanup cannot drift from the code.
+E2_JOB_KINDS = ("send_whatsapp", "whatsapp_inbound")
+
+
+def e2_email(label: str) -> str:
+    """A run-scoped address on a domain reserved for documentation (RFC 2606)."""
+    return f"{E2_EMAIL_PREFIX}{label}@example.com"
+
+
+def e2_whatsapp(n: int) -> str:
+    """A run-scoped number in the shape F1 stores (`+55` + area + 9 digits).
+
+    It has to be *shaped* like a real mobile because that shape is what
+    `evolution.normalise_number` and `whatsapp.resolve_number` are being tested
+    on. Nothing ever dials it: the kill switch is off in this suite (see
+    `_whatsapp_delivery_off`) and every send in it runs against an
+    `httpx.MockTransport`.
+    """
+    subscriber = (int(RUN_ID, 16) + n) % 100_000_000
+    return f"+5511 9{subscriber:08d}"
+
+
+@pytest.fixture(autouse=True)
+def _whatsapp_delivery_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test can send a WhatsApp message, whatever the shell has exported.
+
+    Autouse and suite-wide on purpose. The kill switch (`WHATSAPP_DELIVERY`) is
+    already off by default, so this changes nothing in CI; it exists for the
+    machine where someone turned it on to send one real message and then ran
+    `pytest`. Belt and braces around the only irreversible thing this worker
+    does.
+    """
+    monkeypatch.delenv("WHATSAPP_DELIVERY", raising=False)
+
+
+@pytest.fixture(scope="session")
+def e2_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(E2_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{E2_TEST_DSN_VAR} is not configured; skipping E2 database tests")
+
+
+@pytest.fixture
+def e2_clean_dsn(e2_dsn: str) -> Iterator[str]:
+    """E2's test DSN, with this run's rows deleted before and after the test."""
+    _delete_e2_rows(e2_dsn)
+    try:
+        yield e2_dsn
+    finally:
+        _delete_e2_rows(e2_dsn)
+
+
+@pytest.fixture
+def e2_connect(e2_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(e2_clean_dsn, application_name=f"licitaqui-e2-test-{os.getpid()}")
+
+
+@pytest.fixture
+def e2_conn(e2_connect) -> Iterator[psycopg.Connection]:
+    with e2_connect() as connection:
+        yield connection
+
+
+def _delete_e2_rows(dsn: str) -> None:
+    """Remove this run's founders and everything hanging off them. Never truncates.
+
+    `founders_list` has no cascades, and the delivery log lives in `events`
+    keyed by `props ->> 'founders_list_id'`, so the ids have to be read before
+    the founders go. The second sweep only catches rows a *crashed* run left
+    behind: an hour is far longer than this suite takes.
+    """
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        ids = [
+            str(row[0])
+            for row in conn.execute(
+                "select id from founders_list where starts_with(email::text, %s)",
+                (E2_EMAIL_PREFIX,),
+            ).fetchall()
+        ]
+        if ids:
+            conn.execute(
+                "delete from events where starts_with(name, 'whatsapp.')"
+                "   and props ->> 'founders_list_id' = any(%s)",
+                (ids,),
+            )
+            conn.execute(
+                "delete from jobs where kind = any(%s) and split_part(key, ':', 2) = any(%s)",
+                (list(E2_JOB_KINDS), ids),
+            )
+        conn.execute(
+            "delete from founders_list where starts_with(email::text, %s)", (E2_EMAIL_PREFIX,)
+        )
+        conn.execute(
+            "delete from founders_list where starts_with(email::text, 'e2-test-')"
+            "   and created_at < now() - interval '1 hour'"
+        )
+
+
 # -- B4: the file sync's own database --------------------------------------
 #
 # Same shape and the same reasons as the blocks above: an isolated database so

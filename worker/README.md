@@ -297,6 +297,105 @@ isolated, already-migrated database — and skips without it. It writes tenders 
 the fictitious agency `99000000000103` and the analyses that cascade from them;
 cleanup is scoped by that CNPJ and by the per-run `RUN_ID`, and never truncates.
 
+## WhatsApp — the founders welcome (E2, spec §9, plan G9)
+
+`send_whatsapp` delivers E0's founders welcome through Evolution API. F1 already
+enqueues it: `apps/web/lib/founders/signup.ts` writes `kind = 'send_whatsapp'`,
+`key = 'founders:<founders_list id>'` and a payload of
+`{template, founders_list_id, numero_vaga, posicao_espera}` inside the same
+statement that hands out the seat. The worker consumes exactly that; the payload
+carries no phone number, so the queue never holds a second copy of one.
+
+### The kill switch: `WHATSAPP_DELIVERY`
+
+**Nothing reaches WhatsApp unless `WHATSAPP_DELIVERY=send`.** Unset — the
+default in CI, on a laptop and in a fresh container — is `dry_run`: every
+consent check runs, the message is rendered, the delivery is logged, and no
+socket is opened. It is a word rather than a boolean on purpose: `=1` is the
+value that arrives by accident in a copy-pasted env block, and it is not enough.
+Anything but the word `send` (surrounding whitespace aside) is dry run, so a
+typo fails safe.
+
+The check lives in the transport (`licitaqui/evolution.py`), not in the job, so
+a new caller cannot route around it; `post_text` raises `SendingDisabled` if it
+is ever reached with the switch off, and the whole test suite forces the switch
+off via an autouse fixture. `tests/test_integration_whatsapp.py` asserts the
+guarantee at the socket layer: with the switch off, the job runs end to end
+while `socket.connect` raises, and nothing attempts a connection.
+
+**As of 2026-09-18 the switch must stay off.** The only Evolution instance on
+the server is `flowdeski-scn-real-estate` — a different product. Sending from it
+would deliver LicitaQui's founders welcome from another product's WhatsApp
+number. Turn the switch on only once a dedicated LicitaQui instance exists.
+
+| Variable | Required | Default | What it is |
+|---|---|---|---|
+| `WHATSAPP_DELIVERY` | to send anything | unset (`dry_run`) | The kill switch. Only the exact word `send` lets a request leave the process |
+| `EVOLUTION_API_URL` | to send | — | Instance base URL. Resolved lazily: a dry run needs none of these three |
+| `EVOLUTION_API_KEY` | to send | — | Sent as the `apikey` header |
+| `EVOLUTION_INSTANCE` | to send | — | Instance name in the `POST /message/sendText/{instance}` path |
+| `FOUNDERS_OPENING_DATE` | no | `2026-10-08` | Fills `{{data_abertura}}`, so a slipped opening is an env change |
+
+### Cloudflare blocks default HTTP clients
+
+`evolutiondev.scintechn.com` sits behind Cloudflare, which answers
+`403 error code: 1010` to `python-httpx` and `urllib` — **including on `GET /`**.
+It is a client-fingerprint block, not an auth failure: no API key fixes it, and
+the identical request with a Chrome `User-Agent` returns 200 (verified). The
+client always sends `evolution.USER_AGENT`; do not remove it and do not let a
+new caller build its own request. A 403 whose body mentions `1010` is reported
+as `cloudflare_1010_client_fingerprint` rather than as a generic auth error,
+because a bare 403 sends the next person hunting for a key problem that is not
+there.
+
+### Consent, pacing and SAIR
+
+- **Opt-in only (§12).** `founders_list.contact_consent` must be true. A refusal
+  is final, not a retry: the job finishes `done` and the log says `no_consent`
+  without naming anybody.
+- **≈ 1 message every 20–30 s (§9),** jittered, measured from the delivery log
+  rather than from a counter in memory — so the pacing survives a restart and
+  holds across containers.
+- **`SAIR` stops everything.** `whatsapp_inbound` records the opt-out, and every
+  later send is refused with `opted_out`. The match is on the whole normalised
+  message (`sair`, `parar`, `stop`, `cancelar`, `quero sair`, …), never a
+  substring: "vou sair de viagem" must not unsubscribe anybody.
+- The reply's **number is resolved to a `founders_list` id before the job is
+  enqueued**, so a phone number never lands in the `jobs` table.
+
+`whatsapp/optout-confirmation.md` still carries a `TODO(Sci):` and an
+`{{email_contato}}` nobody has decided (templates README §7), so today the
+opt-out is recorded and the confirmation is skipped with a warning. The opt-out
+itself stands regardless: being told the messages stopped is the courtesy, and
+it must not be able to undo the thing it confirms.
+
+### The delivery log
+
+Rows in `events`, namespaced `whatsapp.*` (`sent`, `dry_run`, `skipped`,
+`failed`, `optout`) — no migration, because schema changes belong in their own
+PR. Each row carries the `founders_list` id, the template, the job id and
+attempt, the outcome and, when there is one, Evolution's message id and the
+round-trip time. **No number, no name, no e-mail and no rendered body** (§12);
+the id is what makes a support question answerable without the log holding the
+data. A test asserts that none of those strings can be found in the log.
+
+### Templates
+
+`licitaqui/templates.py` loads E0's files. Per templates README §3 a missing
+placeholder **raises** — and so does a blank one, an undeclared one, a malformed
+`{{ nome }}`, and a body still containing `TODO(Sci):`. All 22 of E0's templates
+are checked by `tests/test_templates.py`.
+
+### E2's test database
+
+`tests/test_integration_whatsapp.py` needs `TEST_DATABASE_URL_E2` — E2's own
+isolated, already-migrated database — and skips without it. It writes
+`founders_list` rows whose e-mail carries the per-run `RUN_ID`, and the delivery
+log and jobs that hang off them; cleanup is scoped to exactly those ids and
+never truncates. **No test takes a seat:** there are only 48 and `seat` is
+globally unique, so test founders are waitlisted (`seat is null`) and the seat
+number a welcome renders comes from the job payload, which is where F1 puts it.
+
 ## B4 — the file list, and what an amendment invalidates
 
 `sync_files` (`licitaqui/sync_files.py`) reads one tender's "Arquivos" tab from
@@ -306,8 +405,9 @@ document: `sequence`, `title`, `doc_type`, `url`, `active`, `published_at`.
 
 **List only.** No PDF is downloaded here — S3, extraction and OCR are later
 cards. The call is a single unpaged GET: the endpoint answers with the whole
-list in a bare JSON array, and the largest tender among the 575 cached PNCP
-responses in the knowledge base has 14 documents.
+list in a bare JSON array, and over the 99 tenders with a cached file list in
+the knowledge base (371 documents) the median tender has 1 document, the 95th
+percentile 14 and the largest 39.
 
 ### `files_hash`: how an amendment invalidates text and screening
 

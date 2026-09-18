@@ -38,6 +38,7 @@ from . import jobs as _jobs  # noqa: F401 - registers `noop`
 from . import sync_files as _sync_files  # noqa: F401 - registers `sync_files`
 from . import sync_items as _sync_items  # noqa: F401 - registers `sync_items`
 from . import sync_tenders as _sync_tenders  # noqa: F401 - registers `sync_open_tenders`
+from . import whatsapp as _whatsapp  # noqa: F401 - registers `send_whatsapp`, `whatsapp_inbound`
 
 
 def registered_kinds() -> list[str]:

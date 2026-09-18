@@ -319,11 +319,11 @@ class PncpClient:
         """Every document on one contratação's "Arquivos" tab, in one call.
 
         **Deliberately unpaged**, which is POC 1's shape too: this endpoint
-        answers with the whole list in a bare JSON array, and the largest tender
-        in the 575 cached responses in the knowledge base has 14 documents. A
-        page loop here would be one more way to spend a job's timeout budget on
-        an endpoint §7.2 already calls unreliable, for a list that arrives
-        whole.
+        answers with the whole list in a bare JSON array. Measured over the 99
+        tenders with a cached file list in the knowledge base (371 documents):
+        median 1 document, 95th percentile 14, maximum 39. A page loop here
+        would be one more way to spend a job's timeout budget on an endpoint
+        §7.2 already calls unreliable, for a list that arrives whole.
 
         A ``204`` (empty body) means the tender genuinely has no documents and
         comes back as ``[]``. Anything else raises, including a 404: a tender
