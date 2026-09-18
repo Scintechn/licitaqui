@@ -6,6 +6,7 @@ One line per task: date · task ID · status · PR link · follow-ups.
 |---|---|---|---|---|
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
+| 2026-09-18 | B5 (`company_lookup`) | in review | https://github.com/Scintechn/licitaqui/pull/12 | 49/50 resolved, 1 real failure exercised the manual path. Contradicts parts of ADR-0002 (now amended). Rate-limit *ceiling* still unmeasured — lookups stay single-threaded |
 | 2026-09-18 | O1 (`/admin` + events) | in review | https://github.com/Scintechn/licitaqui/pull/11 | Needs `ADMIN_EMAILS` + `ADMIN_PASSWORD` set before `/admin` opens at all (fails closed by design). Usage card is half real: this database's size from SQL, project storage and CU-hours need `NEON_API_KEY` |
 | 2026-09-17 | B1 (worker skeleton) | in review | https://github.com/Scintechn/licitaqui/pull/9 | 68 tests. **GHCR push + Easypanel deploy NOT done** — still blocked on credentials, `TODO(B1)` in ci-worker.yml stands. Neon compute *suspension* itself unproven (needs 5 idle min + the console); the no-open-session property that causes it is proven |
 | 2026-09-17 | Security: migrator credential rotated | done | — | The test DSN (migrator role) was rendered into a subagent transcript by a pytest traceback. Rotated, old password verified rejected, GitHub secret updated. No file or commit was affected |
@@ -101,6 +102,19 @@ other changes the architecture:
    inversion rule and send B2 back to the search API.
 
 The probe continues; the duration of this outage is the number that decides it.
+
+## Two defects found by B5, both worth fixing
+
+1. **CI does not check Python formatting.** `ci-worker.yml` runs `ruff check .` but not
+   `ruff format --check .`, so drift lands on `main` unnoticed — it already had, in B0's
+   two probe scripts. B5's PR reformats them. **Add the format check to `ci-worker.yml`
+   once #12 merges** (doing it before would put `main` red).
+2. **B1's integration tests are not isolated between concurrent runs.** They resolve the
+   default `TEST_DATABASE_URL` and clean up by deleting every `b1-test-*` row, so two
+   worktrees running the worker suite at once delete each other's fixtures. My per-agent
+   databases (`TEST_DATABASE_URL_B2/_O1/_B5`) isolated the *new* tests but not B1's
+   inherited ones. Fix: a per-run key prefix in B1's helper. This is the second time a
+   shared test database has bitten us.
 
 ## Open for Sci
 
