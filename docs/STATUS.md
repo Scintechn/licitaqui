@@ -213,6 +213,30 @@ MEI/ME actually live, and the six catch-all codes left unmapped on purpose.
 - **Document `OPENROUTER_API_KEY` and `TEST_DATABASE_URL_C1` in `.env.example`** — a deny
   rule blocks agents from that file.
 
+## The screening path is still broken end to end (found 2026-09-18 by FH)
+
+`requestScreening` enqueues `{tender_id}` and nothing else. `load_document` requires one
+of `pages` / `text_path` / `pdf_path` / `url` and raises `ValueError` otherwise, so the
+queued job fails four times and lands `failed`. **A user clicking "analisar" today gets
+nothing.**
+
+This is not a defect in C1, B4, R1 or FH — each is correct within its card. It is the
+seam none of them owned: B4's card says "list only; **download on demand**", and the
+on-demand half was never carded. `tender_files.url` is populated and waiting.
+
+What the missing card has to do: fetch the PDF for a tender's active documents, extract
+the text (`pdfplumber`, already a worker dependency), store it per §3.2 — S3 for the PDF,
+text in the database, delete the PDF 90 days after closing — and hand `load_document`
+what it expects. The seam is `ai_screening.resolve_files_hash`, which already reads the
+active list at exactly the right moment.
+
+Two related gaps worth folding in:
+- `readScreening` ignores `prompt_version`, so a prompt rollback can still serve a row the
+  worker would not consider current.
+- B4's digest covers the file **list**, not the bytes. An agency replacing a file at the
+  same URL without moving `dataPublicacaoPncp` stays invisible until `tender_files.sha256`
+  is folded in under `MANIFEST_VERSION` 2. The seam is ready.
+
 ## Open for Sci
 
 - **Event name mismatch.** Spec §14 names the event `founder_signed_up`; F1 writes
