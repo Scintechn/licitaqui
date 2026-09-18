@@ -44,7 +44,7 @@ from licitaqui.sync_awards import (
 )
 from licitaqui.tenders import from_consulta, upsert_tenders
 
-from .conftest import B8_CNPJ, b8_tender_id
+from .conftest import B8_AGENCY_NAME, B8_CNPJ, b8_tender_id
 
 LOG = logging.getLogger("licitaqui.b8test")
 
@@ -119,7 +119,7 @@ def given_tender(conn: psycopg.Connection, sequence: int = 1) -> str:
                 {
                     "numeroControlePNCP": tid,
                     "objetoCompra": "Aquisição de papel A4",
-                    "orgaoEntidade": {"cnpj": B8_CNPJ, "razaoSocial": "ÓRGÃO DE TESTE B8"},
+                    "orgaoEntidade": {"cnpj": B8_CNPJ, "razaoSocial": B8_AGENCY_NAME},
                     "unidadeOrgao": {"ufSigla": "SP", "municipioNome": "São Paulo"},
                     "modalidadeId": 6,
                     "dataAtualizacaoGlobal": "2026-09-10T10:00:00",

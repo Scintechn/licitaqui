@@ -665,6 +665,18 @@ B8_TENDER_PREFIX = f"{B8_CNPJ}-"
 #: The job kinds B8 owns, named here so cleanup cannot drift from the code.
 B8_JOB_KINDS = ("sync_awards", "sync_tender_awards")
 
+#: Every tender a B8 test writes carries this agency name, and the cross-run
+#: sweep below requires it.
+#:
+#: The other blocks sweep crashed runs by ``agency_cnpj like '99%'`` alone,
+#: which is safe in a database nothing else writes to. B8's is not such a
+#: database: `scripts/backfill_awards.py` puts thousands of **real** tenders in
+#: it, and a real agency whose CNPJ root begins 99 would be deleted an hour
+#: after it arrived — silently shrinking the price base. None of the 2,000-odd
+#: agencies collected so far begins with 99, so this has never fired; it is
+#: cheaper to make it impossible than to notice it later.
+B8_AGENCY_NAME = "ÓRGÃO DE TESTE B8"
+
 
 @pytest.fixture(scope="session")
 def b8_dsn() -> str:
@@ -704,13 +716,16 @@ def _delete_b8_rows(dsn: str) -> None:
         conn.execute("delete from awards where starts_with(tender_id, %s)", (B8_TENDER_PREFIX,))
         conn.execute("delete from tenders where agency_cnpj = %s", (B8_CNPJ,))
         conn.execute(
-            "delete from tenders where agency_cnpj like '99%%' "
-            "  and updated_at < now() - interval '1 hour'"
+            "delete from tenders where agency_cnpj like '99%%' and agency_name = %s"
+            "  and updated_at < now() - interval '1 hour'",
+            (B8_AGENCY_NAME,),
         )
         # Orphans: an award whose fictitious tender is gone. `awards` has no
         # timestamp, so this — not an age predicate — is what catches a crash.
+        # Narrowed to ids that parse as this family's, so a real award can
+        # never be caught by it.
         conn.execute(
-            "delete from awards a where starts_with(a.tender_id, '99') "
+            "delete from awards a where a.tender_id like '99%%-1-%%' "
             "  and not exists (select 1 from tenders t where t.id = a.tender_id)"
         )
         conn.execute(
