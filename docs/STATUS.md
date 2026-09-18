@@ -6,6 +6,7 @@ One line per task: date · task ID · status · PR link · follow-ups.
 |---|---|---|---|---|
 | 2026-09-17 | Session 1 (bootstrap) | done | — | see open items below |
 | 2026-09-17 | Vercel first deploy | done | — | Fixed pnpm `allowBuilds`; deployment `dpl_F9xnFqY…` READY, build 24s |
+| 2026-09-18 | O1 (`/admin` + events) | in review | https://github.com/Scintechn/licitaqui/pull/11 | Needs `ADMIN_EMAILS` + `ADMIN_PASSWORD` set before `/admin` opens at all (fails closed by design). Usage card is half real: this database's size from SQL, project storage and CU-hours need `NEON_API_KEY` |
 | 2026-09-17 | B1 (worker skeleton) | in review | https://github.com/Scintechn/licitaqui/pull/9 | 68 tests. **GHCR push + Easypanel deploy NOT done** — still blocked on credentials, `TODO(B1)` in ci-worker.yml stands. Neon compute *suspension* itself unproven (needs 5 idle min + the console); the no-open-session property that causes it is proven |
 | 2026-09-17 | Security: migrator credential rotated | done | — | The test DSN (migrator role) was rendered into a subagent transcript by a pytest traceback. Rotated, old password verified rejected, GitHub secret updated. No file or commit was affected |
 | 2026-09-17 | F1 (founders signup) | in review | https://github.com/Scintechn/licitaqui/pull/8 | Stacked on #5. Rate limiting is in-memory, not the Postgres store spec §3.3 wants — no `rate_limits` table exists yet; swap touches only `lib/rate-limit.ts`. LGPD consent version/timestamp live in `events.props` for want of a column |
@@ -77,6 +78,19 @@ E2 sends anything**, even to test contacts.
 - Instagram **@licitaqui** exists (2026-09-17). Marketing channel for the non-dev track
   (plan §5, task S2 influencer outreach). Note spec §12 forbids automated scraping of
   Instagram profiles — it is an outbound channel, never a data source.
+
+## Open for Sci
+
+- **Event name mismatch.** Spec §14 names the event `founder_signed_up`; F1 writes
+  `founder_signup`. O1 kept F1's stored name (changing it was out of its scope) and
+  catalogued both. Decide: rename the event and backfill, or amend §14 to match the code.
+  Cheap now — a handful of rows — and it only gets more expensive once the gate queries
+  and the digest depend on it. Not urgent: the founders gate counts `founders_list` rows
+  directly, so the number is right either way.
+- **Concierge-paying gate has no source.** §14 lists it among the six Phase 0 gate
+  numbers, but no table marks the concierge cohort. `/admin` renders "sem fonte" rather
+  than a fabricated 0/20. Needs either a column or a documented manual count before the
+  11-06 gate review.
 
 ## Decisions (2026-09-17)
 
