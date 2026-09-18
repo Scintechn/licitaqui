@@ -30,7 +30,7 @@ from psycopg.types.json import Jsonb
 # seed honest; re-implementing them here would drift the moment POC 1's lists
 # change.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "worker"))
-from licitaqui.items import classify_all, roll_up, upsert_items  # noqa: E402
+from licitaqui.items import classify_all, roll_up, upsert_items
 
 FIXTURES = Path(__file__).resolve().parent / "seed" / "fixtures" / "pncp"
 
