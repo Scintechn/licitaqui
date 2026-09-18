@@ -84,3 +84,12 @@ be.
 
 Both scripts are idempotent: `db:migrate` skips applied files, `db:seed` upserts
 on natural keys. Re-running either changes nothing.
+
+## The CNAE → segment map
+
+`db/reference/cnae_segments.csv` is the reviewed artefact behind
+`0003_cnae_segments.sql` (task B6, gap G6). The migration's seed block is
+generated from it; `db/cnae_reference.py` does the rendering and
+`worker/tests/test_cnae_segments.py` fails if the two drift apart. Edit the CSV,
+never the generated block, and render into a **new** numbered migration once
+0003 has shipped — see `db/reference/README.md`.

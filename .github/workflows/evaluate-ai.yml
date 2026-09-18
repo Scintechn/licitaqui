@@ -1,0 +1,81 @@
+# AI screening evaluation (spec §13): score the port against the three
+# hand-checked answer keys in `worker/evaluation/gabaritos/` and fail below 95%.
+#
+# It runs only when the AI files change, because a live run costs real money
+# (about R$ 0,01 for the three editais with `qwen/qwen3.7-flash`). The ordinary
+# `pytest` in ci-worker.yml replays the recorded answers on every PR, which
+# catches a regression in our own code for free; this workflow is what catches
+# the model or the prompt drifting.
+#
+# Secret: OPENROUTER_API_KEY. Without it the run replays the recorded answers
+# instead — the report says which mode produced the score, so a missing secret
+# cannot be mistaken for a passing live run, and a fork's PR is not a red X.
+name: evaluate-ai
+
+on:
+  pull_request:
+    paths:
+      - 'worker/licitaqui/ai_tender.py'
+      - 'worker/licitaqui/prompts.py'
+      - 'worker/licitaqui/ai_screening.py'
+      - 'worker/evaluation/**'
+      - '.github/workflows/evaluate-ai.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'worker/licitaqui/ai_tender.py'
+      - 'worker/licitaqui/prompts.py'
+      - 'worker/licitaqui/ai_screening.py'
+      - 'worker/evaluation/**'
+      - '.github/workflows/evaluate-ai.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One evaluation per branch: a superseded run would only spend money twice.
+concurrency:
+  group: evaluate-ai-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screening:
+    name: screening ≥ 95% on the answer keys
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: worker/pyproject.toml
+
+      - name: Install worker
+        run: pip install -e .
+
+      # `--mode auto`: live when the secret is configured, replay when it is not.
+      - name: Evaluate the screening against the answer keys
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -o pipefail
+          python -m evaluation --mode auto --threshold 95 | tee evaluation-report.txt
+
+      - name: Publish the score
+        if: always()
+        run: |
+          {
+            echo '### AI screening evaluation'
+            echo '```'
+            cat evaluation-report.txt 2>/dev/null || echo 'the evaluation produced no report'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

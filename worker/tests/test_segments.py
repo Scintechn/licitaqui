@@ -19,6 +19,7 @@ what keeps that divergence honest and bounded.
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from functools import cache
@@ -343,3 +344,25 @@ def test_scrubbing_leaves_a_genuine_software_item_alone() -> None:
     """The guard must not eat the thing it is guarding."""
     text = "Registro de preços para locação de sistema de gestão de frotas"
     assert segment_for_text(text) == "software"
+
+
+# -- the vocabulary B6 seeded ---------------------------------------------
+
+
+def test_the_segment_vocabulary_matches_b6s_cnae_map() -> None:
+    """`tender_items.segment` has to join with `cnae_segments.segment`.
+
+    B6 seeded that table from `db/reference/cnae_segments.csv` using POC 1's
+    labels. R1 answers "can my company serve this?" by matching the two, so a
+    segment spelled differently on either side matches nothing — silently, with
+    no error to notice. This fails the moment the two vocabularies drift.
+    """
+    csv_path = Path(__file__).resolve().parents[2] / "db" / "reference" / "cnae_segments.csv"
+    if not csv_path.exists():  # pragma: no cover - B6 not merged in this checkout
+        pytest.skip("db/reference/cnae_segments.csv is not in this checkout")
+
+    with csv_path.open(encoding="utf-8") as handle:
+        theirs = {row["segment"] for row in csv.DictReader(handle)}
+    ours = {lab for key, lab in SEGMENTS if key != OTHER}
+
+    assert theirs <= ours, f"B6 uses segments this port never produces: {sorted(theirs - ours)}"

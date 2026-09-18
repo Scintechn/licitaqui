@@ -1,0 +1,58 @@
+{
+  "document": "01_Edital_Pregao_BBMNet",
+  "model": "qwen/qwen3.7-flash",
+  "prompt_version": "triagem-edital-v2",
+  "extraction_version": 3,
+  "recorded_at": "2026-09-18T14:12:04+00:00",
+  "calls": [
+    {
+      "status": 200,
+      "payload": {
+        "id": "gen-1789740711-L9Juunu5Y9V9bNV1ift3",
+        "object": "chat.completion",
+        "created": 1789740711,
+        "model": "qwen/qwen3.7-flash",
+        "provider": "Alibaba",
+        "system_fingerprint": null,
+        "service_tier": null,
+        "choices": [
+          {
+            "index": 0,
+            "logprobs": null,
+            "finish_reason": "stop",
+            "native_finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"objeto\": \"Locação de sistema web SaaS para gestão eletrônica de documentos e processos digitais, com implantação, hospedagem em nuvem, manutenção e suporte.\",\n  \"tipo_objeto\": \"servico\",\n  \"orgao\": \"Prefeitura Municipal de Americana\",\n  \"municipio_uf\": \"Americana/SP\",\n  \"modalidade\": \"Pregão Eletrônico\",\n  \"criterio_julgamento\": \"menor preço global\",\n  \"plataforma_disputa\": \"BBMNET - novobbmnet.com.br\",\n  \"prazo_envio_proposta\": \"2026-09-30 07:30\",\n  \"data_sessao_disputa\": \"2026-09-30 08:30\",\n  \"valor_estimado_total\": 4330766.67,\n  \"orcamento_sigiloso\": false,\n  \"registro_de_precos\": false,\n  \"vigencia_meses\": \"60\",\n  \"beneficio_me_epp\": {\n    \"situacao\": \"tratamento_favorecido\",\n    \"itens_exclusivos\": [],\n    \"itens_cota_reservada\": [],\n    \"pagina\": 1,\n    \"observacao\": \"O preâmbulo indica 'Sim' aos benefícios, mas a cláusula 2.9 detalha que será concedido tratamento favorecido nos limites da LC 123/2006. Não há menção a cotas reservadas ou itens exclusivos no trecho fornecido.\"\n  },\n  \"atestado_capacidade_tecnica\": {\n    \"exige\": true,\n    \"resumo\": \"Comprovar aptidão por meio de atestado(s) de capacidade técnica que demonstre execução de serviços similares (SaaS para gestão de documentos/processos) na quantidade mínima de 650 usuários (50% dos 1300 estimados).\",\n    \"pagina\": 96\n  },\n  \"capital_ou_patrimonio_minimo\": {\n    \"exige\": true,\n    \"resumo\": \"Capital social ou patrimônio líquido registrado e integralizado igual ou superior a 10% do valor estimado correspondente ao período de 01 ano da contratação.\",\n    \"percentual\": \"10%\",\n    \"base\": \"valor_anual\",\n    \"pagina\": 17\n  },\n  \"amostra_ou_prova_de_conceito\": {\n    \"tipo\": \"prova_de_conceito\",\n    \"resumo\": \"A vencedora deverá apresentar prova de conceito demonstrando o pleno atendimento das características técnicas, atendendo no mínimo 70% dos itens essenciais listados nas especificações.\",\n    \"pagina\": 98\n  },\n  \"garantia_contratual\": {\n    \"situacao\": \"nao_exigida\",\n    \"percentual\": null,\n    \"pagina\": 26\n  },\n  \"visita_tecnica\": \"facultativa\",\n  \"consorcio\": \"vedado\",\n  \"prazo_execucao_ou_entrega_dias\": 30,\n  \"entrega\": {\n    \"local\": null,\n    \"parcelada\": null,\n    \"validade_minima_produto\": null,\n    \"pagina\": null\n  },\n  \"prazo_pagamento_dias\": 30,\n  \"observacao_pagamento\": null,\n  \"exigencias_produto\": {\n    \"registro_anvisa\": false,\n    \"afe_anvisa\": false,\n    \"licenca_ou_alvara_sanitario\": false,\n    \"inmetro\": false,\n    \"catalogo_ou_ficha_tecnica\": false,\n    \"aceita_distribuidor_revendedor\": \"sim\",\n    \"pagina\": null\n  },\n  \"bloqueadores_pequena_empresa\": [\n    {\n      \"ponto\": \"Exigência de capital social/patrimônio mínimo de 10% do valor anual estimado, o que pode ser um valor elevado para MEIs e MEs.\",\n      \"pagina\": 17\n    },\n    {\n      \"ponto\": \"Exigência de atestado de capacidade técnica comprovando serviço similar com volume significativo (650 usuários), dificultando entrada de empresas pequenas sem histórico recente.\",\n      \"pagina\": 96\n    },\n    {\n      \"ponto\": \"Exigência de Prova de Conceito obrigatória após a habilitação, demandando infraestrutura e tempo adicionais apenas pela vencedora.\",\n      \"pagina\": 98\n    }\n  ],\n  \"nota_triagem_0_a_10\": 4,\n  \"vale_deep_dive\": true,\n  \"motivo\": \"Alto valor estimado e exigências técnicas robustas (patrimônio, atestado volumoso e prova de conceito) tornam o certame complexo e caro para pequenas empresas, apesar do tratamento favorecido.\"\n}",
+              "refusal": null,
+              "reasoning": null
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 17632,
+          "completion_tokens": 1116,
+          "total_tokens": 18748,
+          "cost": 0.000253176,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 17536,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000253176,
+            "upstream_inference_prompt_cost": 0.000108096,
+            "upstream_inference_completions_cost": 0.00014508
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    }
+  ]
+}
