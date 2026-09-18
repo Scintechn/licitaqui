@@ -163,6 +163,7 @@ collide:
 | `TEST_DATABASE_URL` | B1's queue and consumer tests | `jobs` rows whose key or kind starts with `b1-test-` / `b1t_` |
 | `TEST_DATABASE_URL_B2` | B2's sweep tests | `tenders` rows for the fictitious agency `99000000000102`, `sync_open_tenders.*` events scoped to UF `ZZ`, and the follow-up jobs keyed on that CNPJ |
 | `TEST_DATABASE_URL_B5` | B5's company-lookup tests (`test_integration_company.py`) | `companies` rows for synthetic `999…` CNPJs and their job rows |
+| `TEST_DATABASE_URL_B3` | B3's items tests (`test_integration_sync_items.py`) | `tenders` (and their items, by cascade) for the fictitious agency `99` + this **run's** id — see "B3" below |
 
 All are resolved the way `db/migrate.py` resolves its own connection string, and
 all are wrapped in a redacting `Dsn` type before they can reach a fixture repr:
@@ -178,6 +179,56 @@ are module constants, so cleanup scopes deletes **by task rather than by run**,
 and two concurrent runs of this same suite delete each other's fixtures. The fix
 is to derive both prefixes from a per-run `uuid4`. Until then, re-run before
 believing a failure there.
+
+## B3 — items, segments and the tender roll-up
+
+`sync_items` (`licitaqui/sync_items.py`) reads one tender's items from
+`/api/pncp/v1/.../itens` through the same `PncpClient` B2 uses, behind a breaker
+of its own (`pncp-itens`), classifies each item and writes back what the items
+say about the tender.
+
+- `licitaqui/segments.py` is POC 1's classification, ported term for term: the
+  14 keyword lists **in their original priority order**, the NCM prefix table
+  (materials only, longest prefix first) and the false-positive expressions.
+  The classifier works in stable ASCII keys (`health`, `it`, …), but what is
+  **stored** in `tender_items.segment` and `tenders.segments` is POC 1's
+  Portuguese label — the same vocabulary B6 seeded `cnae_segments.segment` with,
+  so R1 can join them directly. `SEGMENTS` is the vocabulary, `label()` and
+  `key_for_label()` convert, and `TenderItem.segment_key` gives the slug.
+- **One deliberate divergence from POC 1: beverages.** POC 1's food rule covers
+  NCM chapters 02–21 and food keywords, so chapter 22 — water, juice, soft
+  drinks — lands in "Outros" and never reaches a company, which is why B6 had to
+  mark every beverage CNAE `check`. Water (2201) and soft drinks (2202) are
+  added back, plus the keywords `agua mineral`, `agua potavel` and
+  `refrigerante`. Eight of the 8,861 cached items move, every one a beverage.
+  Not the whole of chapter 22 (2207 is the ethyl alcohol agencies buy as
+  cleaning álcool 70%, and the NCM branch outranks keywords), not bare `agua`
+  (bleach, water tanks) and not bare `bebida` (trays and cups). `refrigerante`
+  carries lookbehinds because five air conditioners specify "GÁS REFRIGERANTE
+  R-410A".
+- `tender_items.relevance` records how the segment was reached: `high` from the
+  NCM code, `medium` from a keyword, `low` when nothing matched or the only
+  match sat inside a false-positive expression.
+- `me_epp_summary` is `exclusive | quota | mixed | none` from each item's
+  `tipoBeneficio`; `favored_treatment` is the tender's value against the EPP
+  revenue cap (R$ 4.8M), `null` when the value is unknown — a confidential
+  budget reports every item as zero.
+- `tenders.segments` is the item segments ranked by value (POC 1 picks the
+  single biggest; this keeps the whole ranking), falling back to classifying the
+  object. `tenders.search` is rebuilt with the exact expression `db/seed.py`
+  uses, so seeded and synced rows produce the same vector.
+
+**Its test rows are scoped per run, not per task.** `conftest.B3_CNPJ` is `99`
+followed by this pytest run's `RUN_ID` as digits, so two concurrent runs of the
+suite write under different fictitious agencies and neither cleanup can touch
+the other's fixtures. Anything new that writes to a shared database should copy
+that, including the natural-key values — a constant that looks task-specific is
+not run-specific.
+
+The parity fixtures in `tests/fixtures/poc1/` are real cached PNCP payloads from
+the read-only knowledge base, labelled by running POC 1 itself.
+`test_segments.py::test_the_fixture_labels_are_poc1s_own` re-derives every label
+from `poc1_licitacoes.py` when that folder is present, and skips in CI.
 
 ## `ai_screening` (edital → triage, POC 4)
 

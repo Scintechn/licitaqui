@@ -357,3 +357,69 @@ def test_a_zero_rate_disables_the_throttle():
 
 def test_the_default_rate_is_the_specs_four_per_second():
     assert pncp.DEFAULT_RATE_LIMIT == 4.0
+
+
+# -- the items endpoint (B3) ----------------------------------------------
+#
+# A bare JSON array, not the `{data, paginasRestantes}` envelope the period
+# endpoints use, and a breaker of its own so an items outage cannot stop the
+# sweep that feeds every other job.
+
+
+def items_page(count: int, *, first: int = 1) -> list[dict]:
+    return [
+        {"numeroItem": n, "descricao": f"Item {n}", "materialOuServico": "M"}
+        for n in range(first, first + count)
+    ]
+
+
+def test_items_are_read_from_a_bare_array():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/pncp/v1/orgaos/12345678000199/compras/2026/7/itens"
+        assert request.url.params["tamanhoPagina"] == str(pncp.ITEMS_PAGE_SIZE)
+        return httpx.Response(200, json=items_page(3))
+
+    got = list(client(handler).iter_items("12345678000199", 2026, 7))
+
+    assert [i["numeroItem"] for i in got] == [1, 2, 3]
+
+
+def test_items_page_until_a_short_page_arrives():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page_number = int(request.url.params["pagina"])
+        seen.append(page_number)
+        size = pncp.ITEMS_PAGE_SIZE
+        if page_number == 1:
+            return httpx.Response(200, json=items_page(size))
+        return httpx.Response(200, json=items_page(2, first=size + 1))
+
+    got = list(client(handler).iter_items("12345678000199", 2026, 7))
+
+    assert seen == [1, 2]
+    assert len(got) == pncp.ITEMS_PAGE_SIZE + 2
+
+
+def test_an_empty_items_response_ends_the_walk():
+    got = list(client(lambda r: httpx.Response(204)).iter_items("12345678000199", 2026, 7))
+    assert got == []
+
+
+def test_a_failing_items_endpoint_raises_rather_than_returning_nothing():
+    """An outage must never look like "this tender has no items"."""
+    with pytest.raises(PncpError):
+        list(client(lambda r: httpx.Response(404)).iter_items("12345678000199", 2026, 7))
+
+
+def test_the_items_breaker_is_not_the_consulta_one():
+    """POC 1 kept them apart: the detail endpoint is the one that returns 500."""
+    instance = client(lambda r: httpx.Response(503))
+    for _ in range(2):
+        with pytest.raises(PncpError):
+            list(instance.iter_items("12345678000199", 2026, 7))
+
+    assert get_breaker(pncp.BREAKER_ITEMS).state == "open"
+    assert get_breaker(pncp.BREAKER_CONSULTA).state == "closed"
+    with pytest.raises(CircuitOpen):
+        list(instance.iter_items("12345678000199", 2026, 7))

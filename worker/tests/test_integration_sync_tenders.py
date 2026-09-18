@@ -29,7 +29,7 @@ from licitaqui import breaker as breaker_module
 from licitaqui import sync_tenders
 from licitaqui.pncp import PncpClient
 from licitaqui.queue import Job
-from licitaqui.registry import JobContext
+from licitaqui.registry import REGISTRY, JobContext
 from licitaqui.sync_tenders import (
     CYCLE_EVENT,
     CycleStats,
@@ -457,54 +457,52 @@ def test_an_unmappable_record_is_skipped_rather_than_failing_the_cycle(
 def test_no_followup_jobs_are_queued_for_kinds_that_have_no_handler(
     b2_conn: psycopg.Connection, monkeypatch
 ):
-    """B3 and B4 are other cards: queuing work nothing can run only fills `failed`."""
+    """B4 is another card: queuing work nothing can run only fills `failed`.
+
+    This used to cover `sync_items` too. B3 landed and registered it, so the
+    cycle now queues one — which is the seam working, not a regression — and
+    the rule is asserted against the kind that is still missing a handler.
+    """
     run_cycle(monkeypatch, b2_conn, serving({6: [[record(1)]], 8: [], 4: []}))
 
     queued = b2_conn.execute(
-        "select count(*) from jobs where kind in ('sync_items', 'sync_files') and key like %s",
+        "select count(*) from jobs where kind = 'sync_files' and key like %s",
         (f"{B2_CNPJ}-%",),
     ).fetchone()
     assert queued[0] == 0
-    assert last_cycle(b2_conn)["followups"] == 0
+    assert "sync_files" not in REGISTRY.kinds()
 
 
 def test_followups_are_queued_as_soon_as_a_handler_exists(b2_conn: psycopg.Connection, monkeypatch):
-    """The seam B3 and B4 arrive through: register, and this starts working."""
-    from licitaqui.registry import REGISTRY
+    """The seam B3 and B4 arrive through: register, and this starts working.
 
-    REGISTRY.register("sync_items", lambda ctx: None, replace=True)
-    try:
-        run_cycle(monkeypatch, b2_conn, serving({6: [[record(1), record(2)]], 8: [], 4: []}))
+    It used to stub the handler; B3 registered a real one, so this now runs
+    against it — which is the seam actually closing.
+    """
+    assert "sync_items" in REGISTRY.kinds()
+    run_cycle(monkeypatch, b2_conn, serving({6: [[record(1), record(2)]], 8: [], 4: []}))
 
-        rows = b2_conn.execute(
-            "select kind, key, payload from jobs where key like %s order by key",
-            (f"{B2_CNPJ}-%",),
-        ).fetchall()
-        assert [r[0] for r in rows] == ["sync_items", "sync_items"]
-        assert rows[0][2] == {"tender_id": f"{B2_CNPJ}-1-000001/2026"}
-        # Still nothing for sync_files: B4 has not registered.
-        assert all(r[0] != "sync_files" for r in rows)
-        assert last_cycle(b2_conn)["followups"] == 2
-    finally:
-        REGISTRY.unregister("sync_items")
+    rows = b2_conn.execute(
+        "select kind, key, payload from jobs where key like %s order by key",
+        (f"{B2_CNPJ}-%",),
+    ).fetchall()
+    assert [r[0] for r in rows] == ["sync_items", "sync_items"]
+    assert rows[0][2] == {"tender_id": f"{B2_CNPJ}-1-000001/2026"}
+    # Still nothing for sync_files: B4 has not registered.
+    assert all(r[0] != "sync_files" for r in rows)
+    assert last_cycle(b2_conn)["followups"] == 2
 
 
 def test_a_second_cycle_does_not_requeue_followups_for_unchanged_tenders(
     b2_conn: psycopg.Connection, monkeypatch
 ):
-    from licitaqui.registry import REGISTRY
+    factory = serving({6: [[record(1)]], 8: [], 4: []})
+    run_cycle(monkeypatch, b2_conn, factory)
+    run_cycle(monkeypatch, b2_conn, factory)
 
-    REGISTRY.register("sync_items", lambda ctx: None, replace=True)
-    try:
-        factory = serving({6: [[record(1)]], 8: [], 4: []})
-        run_cycle(monkeypatch, b2_conn, factory)
-        run_cycle(monkeypatch, b2_conn, factory)
-
-        assert last_cycle(b2_conn)["followups"] == 0
-        rows = b2_conn.execute(
-            "select count(*) from jobs where kind = 'sync_items' and key like %s",
-            (f"{B2_CNPJ}-%",),
-        ).fetchone()
-        assert rows[0] == 1
-    finally:
-        REGISTRY.unregister("sync_items")
+    assert last_cycle(b2_conn)["followups"] == 0
+    rows = b2_conn.execute(
+        "select count(*) from jobs where kind = 'sync_items' and key like %s",
+        (f"{B2_CNPJ}-%",),
+    ).fetchone()
+    assert rows[0] == 1

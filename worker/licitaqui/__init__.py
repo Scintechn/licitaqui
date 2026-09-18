@@ -8,6 +8,9 @@ Module map (spec §7):
 - ``queue``         the `jobs` table: enqueue, claim, retry, fail
 - ``registry``      job kind → handler, and the context a handler receives
 - ``jobs``          built-in kinds (only ``noop`` so far)
+- ``segments``      the 14 segments, false positives, per-item classification
+- ``items``         `tender_items` rows and the ME/EPP + value roll-up
+- ``sync_items``    the ``sync_items`` job (§7.1)
 - ``brasilapi``     BrasilAPI's CNPJ endpoint: one lookup, sanitised errors
 - ``company``       the ``company_lookup`` job (§7.1) and its 30-day cache
 - ``consumer``      claim/run loop with the 2-minute idle poll

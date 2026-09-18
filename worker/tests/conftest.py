@@ -214,6 +214,70 @@ def unique_kind(label: str = "") -> str:
     return f"{KIND_PREFIX}{label}{uuid.uuid4().hex[:10]}"
 
 
+# -- B3: the items sync's own database ------------------------------------
+#
+# B3 has an isolated database of its own, for the same reason B2 does, and its
+# rows are scoped per **run** rather than by a task constant: `B3_CNPJ` carries
+# `RUN_ID`, so two concurrent runs of this suite write under different
+# fictitious agencies and neither cleanup can touch the other's fixtures.
+B3_TEST_DSN_VAR = "TEST_DATABASE_URL_B3"
+
+#: `99` + this run's id as digits. Not a valid CNPJ and matching nothing in
+#: PNCP, so `tenders` written here can never be confused with real data.
+B3_CNPJ = f"99{int(RUN_ID, 16):012d}"[:14]
+
+
+@pytest.fixture(scope="session")
+def b3_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(B3_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{B3_TEST_DSN_VAR} is not configured; skipping B3 database tests")
+
+
+@pytest.fixture
+def b3_clean_dsn(b3_dsn: str) -> Iterator[str]:
+    """B3's test DSN, with this run's rows deleted before and after the test."""
+    _delete_b3_rows(b3_dsn)
+    try:
+        yield b3_dsn
+    finally:
+        _delete_b3_rows(b3_dsn)
+
+
+@pytest.fixture
+def b3_connect(b3_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(b3_clean_dsn, application_name=f"licitaqui-b3-test-{os.getpid()}")
+
+
+@pytest.fixture
+def b3_conn(b3_connect) -> Iterator[psycopg.Connection]:
+    with b3_connect() as connection:
+        yield connection
+
+
+def _delete_b3_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates.
+
+    `tender_items` goes with the tender (`on delete cascade`). The second
+    statement is the only cross-run delete and it is deliberately narrow: the
+    fictitious `99…` agency family belongs to these tests alone, and an hour is
+    far longer than the suite takes, so it can only ever catch a crashed run.
+    """
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where agency_cnpj = %s", (B3_CNPJ,))
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' "
+            "  and updated_at < now() - interval '1 hour'"
+        )
+        conn.execute(
+            "delete from jobs where kind = 'sync_items' and key like %s", (f"{B3_CNPJ}-%",)
+        )
+
+
 # -- B6: the CNAE → segment map's own database -----------------------------
 #
 # B6 writes `companies` rows to exercise the `company_segments` view, so it
