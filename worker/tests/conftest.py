@@ -733,3 +733,23 @@ def _delete_dl_rows(dsn: str) -> None:
             "   and (starts_with(key, %s) or starts_with(key, %s))",
             (list(DL_JOB_KINDS), DL_TENDER_PREFIX, f"screening:{DL_TENDER_PREFIX}"),
         )
+
+
+@pytest.fixture(autouse=True)
+def _object_storage_off(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """No test can read or write the real S3 bucket, whatever is configured.
+
+    Autouse and suite-wide, for the same reason `_whatsapp_delivery_off` is: the
+    bucket named by `S3_BUCKET` is the production one, `licitaqui.storage`
+    resolves it out of the gitignored env files as well as the environment, and
+    a test that reached it would leave objects in it under fictitious tender
+    ids. A test that wants a store passes its own (`ensure_documents(store=…)`);
+    everything else sees a `NullStore` and re-extracts, which is slower and
+    always correct.
+    """
+    from licitaqui import storage
+
+    storage.reset_store()
+    monkeypatch.setattr(storage, "build_store", storage.NullStore)
+    yield
+    storage.reset_store()

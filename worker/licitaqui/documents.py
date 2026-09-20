@@ -50,8 +50,9 @@ returns an :class:`~licitaqui.ai_tender.Document`;
 :func:`licitaqui.ai_screening.screen_tender` checks ``document.has_text``
 before the key is resolved and before the breaker is consulted, exactly as it
 did when the pages arrived in the payload. This module routes *through* C1's
-guard rather than around it. It also records the per-document verdict in
-`tender_files.no_text` (§6.1), which is what a future OCR card will select on.
+guard rather than around it. It also records a per-document verdict in
+`tender_files.no_text` (§6.1) — see :func:`is_scan` for why that one is a
+narrower test than the screening's, and what a future OCR card will select on.
 
 A tender with **no** active documents comes back as a document with no pages,
 which `has_text` reports as false, so it is stored as `no_text` — a permanent,
@@ -241,6 +242,19 @@ class _Rate:
 _rate_limiter = _Rate(2.0)
 
 
+def build_client(timeout: float = DOWNLOAD_TIMEOUT_SECONDS) -> httpx.Client:
+    """The HTTP client one run uses. A seam, exactly as in :mod:`licitaqui.sync_files`.
+
+    One client per :func:`ensure_documents` call, so an edital and its Termo de
+    Referência — the same host, back to back — reuse one connection.
+    """
+    return httpx.Client(
+        follow_redirects=True,
+        headers=HEADERS,
+        timeout=httpx.Timeout(timeout, connect=CONNECT_TIMEOUT_SECONDS),
+    )
+
+
 def download(
     url: str,
     *,
@@ -267,11 +281,7 @@ def download(
     started = time.monotonic()
     deadline = started + timeout
     owned = client is None
-    http = client or httpx.Client(
-        follow_redirects=True,
-        headers=HEADERS,
-        timeout=httpx.Timeout(timeout, connect=CONNECT_TIMEOUT_SECONDS),
-    )
+    http = client or build_client(timeout)
     try:
         with http.stream("GET", url) as response:
             if 400 <= response.status_code < 500:
@@ -341,6 +351,29 @@ class FileText:
             "downloaded": self.downloaded,
             "bytes": self.size,
         }
+
+
+def is_scan(document: Document) -> bool:
+    """Whether one document carries no text layer — §6.1's `no_text`.
+
+    Deliberately **not** :attr:`licitaqui.ai_tender.Document.has_text` negated.
+    That property answers a different question: *is there enough here to screen
+    a tender?*, and it keeps an absolute floor of 1,500 characters (§7.1) for
+    it. A four-page Termo de Referência of 1,200 characters fails that floor and
+    is plainly not a scan; recording it as one would hand a future OCR card a
+    queue full of documents that are already readable.
+
+    What identifies a scan is the per-page floor on its own: pdfplumber returns
+    an empty string for a page that is nothing but an image, so a document
+    averaging fewer than :data:`~licitaqui.ai_tender.MIN_CHARACTERS_PER_PAGE`
+    characters a page has no text layer however long it is.
+
+    The screening decision is untouched by this: it is made by C1 on the
+    *combined* document, with the absolute floor intact.
+    """
+    if not document.pages:
+        return True
+    return document.characters < ai_tender.MIN_CHARACTERS_PER_PAGE * document.page_count
 
 
 READ_STATE_SQL = """
@@ -414,7 +447,7 @@ def cached_text(
         document=document,
         sha256=sha256,
         s3_key=s3_key,
-        no_text=bool(no_text) if no_text is not None else not document.has_text,
+        no_text=bool(no_text) if no_text is not None else is_scan(document),
         downloaded=False,
     )
 
@@ -465,7 +498,7 @@ def read_file(
         document=document,
         sha256=digest,
         s3_key=source_key,
-        no_text=not document.has_text,
+        no_text=is_scan(document),
         downloaded=True,
         size=len(data),
     )
@@ -599,7 +632,15 @@ def ensure_documents(
         return TenderDocuments(tender_id=tender_id, document=Document(pages=()), files_hash=digest)
 
     store = store or storage.get_store()
-    parts = tuple(read_file(conn, file, store=store, force=force, client=client) for file in chosen)
+    owned = client is None
+    http = client or build_client()
+    try:
+        parts = tuple(
+            read_file(conn, file, store=store, force=force, client=http) for file in chosen
+        )
+    finally:
+        if owned:
+            http.close()
     result = TenderDocuments(
         tender_id=tender_id,
         document=_combine(parts),

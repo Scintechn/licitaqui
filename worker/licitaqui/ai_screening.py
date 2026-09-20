@@ -59,7 +59,7 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import ai_tender, documents, queue
+from . import ai_tender, documents, files, queue
 from .ai_tender import Document, Screening
 from .breaker import CircuitOpen, get_breaker
 from .observability import get_logger
@@ -301,6 +301,45 @@ def _transport_failed(screening: Screening) -> bool:
     return all(a.http == 0 or a.http >= 500 or a.http == 429 for a in analysis.attempts)
 
 
+#: Payload keys that carry a document of the caller's own.
+_DOCUMENT_KEYS = ("pages", "text_path", "pdf_path", "url")
+
+
+def _cached_without_reading(
+    conn: psycopg.Connection | None,
+    payload: dict[str, Any],
+    tender_id: str,
+    *,
+    log: Any,
+) -> Screening | None:
+    """The stored answer, found before a single byte is downloaded.
+
+    B4's digest is a function of rows this process can already read, so the
+    cache key for the ordinary `{tender_id}`-only payload is knowable without
+    fetching anything. Asking first is what keeps the poll in §3.1 step 4 cheap:
+    the second user to open a tender, and every 3-second poll of the first,
+    costs one query instead of two PDF downloads.
+
+    Only for a payload with no document of its own — when the caller brought
+    pages or a path, the hash may depend on what they brought, and only
+    :func:`load_document` knows.
+    """
+    if conn is None or payload.get("force"):
+        return None
+    if any(payload.get(key) is not None for key in _DOCUMENT_KEYS):
+        return None
+    listed = files.files_hash_for(conn, tender_id)
+    hit = cached(conn, tender_id, listed)
+    if hit is None:
+        return None
+    screening = Screening(status=hit["status"], cached=True)
+    log.info(
+        "ai screening",
+        extra={"tender_id": tender_id, "files_hash": listed, **screening.log_fields()},
+    )
+    return screening
+
+
 def screen_tender(
     conn: psycopg.Connection,
     payload: dict[str, Any],
@@ -311,6 +350,10 @@ def screen_tender(
     tender_id = payload.get("tender_id")
     if not tender_id:
         raise ValueError("ai_screening payload needs a 'tender_id'")
+
+    cheap = _cached_without_reading(conn, payload, tender_id, log=log)
+    if cheap is not None:
+        return cheap
 
     document, files_hash = load_document(payload, conn=conn, tender_id=tender_id, log=log)
 
