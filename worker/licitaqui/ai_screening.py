@@ -60,6 +60,25 @@ An explicit ``files_hash`` in the payload still wins, for the evaluation
 harness, for a document that is not in `tender_files` at all, and for an
 operator re-running one exact file set.
 
+## Where the document comes from
+
+Resolving the key is half the hand-over; the other half is *finding the
+document it names*. The web enqueues `{tender_id}` and nothing else, so
+:func:`load_document` prefers whatever the payload carries (pages, a cache file,
+a local PDF, a URL — the evaluation harness and the operator paths) and
+otherwise asks :func:`licitaqui.documents.ensure_documents` to download and
+extract the tender's active Edital and Termo de Referência. That last source is
+what makes a user's "analisar" complete; see that module's docstring for why the
+download is a step of this job rather than a job of its own.
+
+It also tightens the rule above by one notch. ``ensure_documents`` reads the
+file list **once** and returns both the documents it chose and the digest of
+that same snapshot, so in that branch the snapshot's digest is preferred over
+the one :func:`resolve_files_hash` read a moment earlier: a `sync_files` landing
+between the two calls would otherwise key an analysis under one list while
+having read another — the very thing resolving-at-execution exists to prevent,
+one level down.
+
 ## Never for a scanned PDF
 
 `no_text` is decided from the extracted text before any key is resolved, and the
@@ -79,23 +98,25 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import ai_tender, files, queue
+from . import ai_tender, documents, files, queue
 from .ai_tender import Document, Screening
 from .breaker import CircuitOpen, get_breaker
+from .observability import get_logger
 from .registry import REGISTRY, JobContext
+
+_log = get_logger("ai_screening")
 
 JOB_KIND = "ai_screening"
 MODE = "lite"
 
-#: Downloading the edital is B4's job; this fallback exists so the port can be
-#: exercised end to end before it lands. §7.2: download timeout 120 s.
-DOWNLOAD_TIMEOUT_SECONDS = 120.0
-DOWNLOAD_BREAKER_NAME = "pncp-download"
-USER_AGENT = "licitaqui/0.1 (+https://github.com/Scintechn/licitaqui)"
+#: The download itself lives in :mod:`licitaqui.documents`, which owns the
+#: breaker, the wall-clock deadline and the size guard. Re-exported here because
+#: the `url` payload branch below is the operator path into it.
+DOWNLOAD_TIMEOUT_SECONDS = documents.DOWNLOAD_TIMEOUT_SECONDS
+DOWNLOAD_BREAKER_NAME = documents.BREAKER_NAME
 
 CACHE_SQL = """
 select id, status, result, citation_check, rules, model, cost_brl
@@ -165,16 +186,13 @@ def _read_pages_file(path: Path) -> dict[str, Any]:
 
 
 def download(url: str) -> bytes:
-    """Fetch the file, under the download breaker. Raises on anything but 200."""
-    with get_breaker(DOWNLOAD_BREAKER_NAME).guard():
-        response = httpx.get(
-            url,
-            follow_redirects=True,
-            timeout=httpx.Timeout(DOWNLOAD_TIMEOUT_SECONDS, connect=15.0),
-            headers={"User-Agent": USER_AGENT},
-        )
-        response.raise_for_status()
-        return response.content
+    """Fetch one file. Delegates to :func:`licitaqui.documents.download`.
+
+    Kept as a name here because the `url` payload branch is an operator path and
+    this is where someone looks for it, but the budget, the breaker and the
+    wall-clock deadline are owned by one implementation, not two.
+    """
+    return documents.download(url)
 
 
 def resolve_files_hash(
@@ -210,16 +228,27 @@ def resolve_files_hash(
     return None if digest == files.EMPTY_MANIFEST_DIGEST else digest
 
 
-def load_document(payload: dict[str, Any], files_hash: str | None = None) -> tuple[Document, str]:
+def load_document(
+    payload: dict[str, Any],
+    files_hash: str | None = None,
+    *,
+    conn: psycopg.Connection | None = None,
+    tender_id: str | None = None,
+    log: Any = None,
+) -> tuple[Document, str]:
     """The document to screen and the `files_hash` that identifies it.
 
-    Four sources, in order of how much work they save: pages already extracted
-    (B4's `extract_text` output, and what the evaluation harness uses), a cache
-    file of the same shape, a local PDF/ZIP, or a URL to download.
+    Five sources, in order of how much work they save: pages already extracted
+    (what the evaluation harness passes), a cache file of the same shape, a
+    local PDF/ZIP, a URL to download — and finally the tender's **own**
+    documents, downloaded and extracted by :mod:`licitaqui.documents`. The last
+    one is the ordinary path: it is what the web's `{tender_id}`-only payload
+    resolves to, and the four above it are the operator and harness routes.
 
     ``files_hash`` is the key the caller resolved (:func:`resolve_files_hash`);
     it wins, then the payload's own, then — for a document that is in no file
     list — the digest of the bytes, and last the digest of the extracted text.
+    The fifth source is the one exception, and deliberately so: see its branch.
     """
     given_hash = files_hash or payload.get("files_hash")
 
@@ -234,8 +263,30 @@ def load_document(payload: dict[str, Any], files_hash: str | None = None) -> tup
             data = download(payload["url"])
         given_hash = given_hash or hashlib.sha256(data).hexdigest()
         document = ai_tender.extract_text(data)
+    elif conn is not None and tender_id:
+        resolved = documents.ensure_documents(conn, tender_id, log=log or _log)
+        # Only an explicit **payload** pin beats this one. The value
+        # `resolve_files_hash` handed down does not, and that is not an
+        # oversight: `ensure_documents` chose these documents from a file list
+        # it read itself, and returns the digest of that same snapshot. A
+        # `sync_files` landing between the two reads would otherwise key this
+        # analysis under one list while it had read another.
+        #
+        # It is also why `EMPTY_MANIFEST_DIGEST` is right here where
+        # `resolve_files_hash` rejects it. That rule guards the other four
+        # sources, where an empty `tender_files` sits beside a document the list
+        # never mentioned and claiming the empty list would be a lie. Here the
+        # empty list *is* what was read: the tender genuinely has no active
+        # documents, the screening is `no_text`, and the key moves the moment
+        # `sync_files` finds one. Keying on the digest of an empty document
+        # instead would be just as constant and would not match what
+        # `_cached_without_reading` looks up.
+        return resolved.document, payload.get("files_hash") or resolved.files_hash
     else:
-        raise ValueError("ai_screening payload needs 'pages', 'text_path', 'pdf_path' or 'url'")
+        raise ValueError(
+            "ai_screening payload needs 'pages', 'text_path', 'pdf_path' or 'url', "
+            "or a connection and a tender to read the tender's own documents"
+        )
 
     return document, given_hash or document.text_hash()
 
@@ -329,6 +380,56 @@ def _transport_failed(screening: Screening) -> bool:
     return all(a.http == 0 or a.http >= 500 or a.http == 429 for a in analysis.attempts)
 
 
+#: Payload keys that carry a document of the caller's own.
+_DOCUMENT_KEYS = ("pages", "text_path", "pdf_path", "url")
+
+
+def _cached_without_reading(
+    conn: psycopg.Connection | None,
+    payload: dict[str, Any],
+    tender_id: str,
+    resolved: str | None,
+    *,
+    log: Any,
+) -> Screening | None:
+    """The stored answer, found before a single byte is downloaded.
+
+    :func:`resolve_files_hash` has just derived the cache key from rows this
+    process can already read, and for the ordinary `{tender_id}`-only payload
+    that key is complete — nothing about it depends on the documents. Asking the
+    cache now is what keeps the poll in §3.1 step 4 cheap: the second user to
+    open a tender, and every 3-second poll of the first, costs one query instead
+    of two PDF downloads.
+
+    Only for a payload with no document of its own. When the caller brought
+    pages or a path, the key may depend on what they brought
+    (:func:`load_document` falls back to the digest of the bytes), and only
+    `load_document` knows it.
+
+    ``EMPTY_MANIFEST_DIGEST`` stands in for a ``None`` resolution here for the
+    same reason the fifth source in :func:`load_document` uses it: that is the
+    key a tender with no active documents is stored under, and the two have to
+    agree or the hit is never found.
+    """
+    if conn is None or payload.get("force"):
+        return None
+    if any(payload.get(key) is not None for key in _DOCUMENT_KEYS):
+        return None
+    hit = cached(conn, tender_id, resolved or files.EMPTY_MANIFEST_DIGEST)
+    if hit is None:
+        return None
+    screening = Screening(status=hit["status"], cached=True)
+    log.info(
+        "ai screening",
+        extra={
+            "tender_id": tender_id,
+            "files_hash": resolved or files.EMPTY_MANIFEST_DIGEST,
+            **screening.log_fields(),
+        },
+    )
+    return screening
+
+
 def screen_tender(
     conn: psycopg.Connection,
     payload: dict[str, Any],
@@ -340,8 +441,17 @@ def screen_tender(
     if not tender_id:
         raise ValueError("ai_screening payload needs a 'tender_id'")
 
+    # Resolved once and used twice: the cheap cache probe below, and the key the
+    # analysis is stored under. Two calls would be two `files_hash_for` queries
+    # and, worse, two chances to read different lists.
+    resolved = resolve_files_hash(conn, tender_id, payload) if conn is not None else None
+
+    cheap = _cached_without_reading(conn, payload, tender_id, resolved, log=log)
+    if cheap is not None:
+        return cheap
+
     document, files_hash = load_document(
-        payload, files_hash=resolve_files_hash(conn, tender_id, payload)
+        payload, files_hash=resolved, conn=conn, tender_id=tender_id, log=log
     )
 
     if not payload.get("force"):
