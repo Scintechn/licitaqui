@@ -717,10 +717,38 @@ markers go by the same run-scoped name prefix. Nothing calls OpenRouter or PNCP.
 
 ## B4B — downloading the documents, and the screening that now completes
 
+> Reads on from the FH section above: that one resolves *which key* a screening
+> is stored under; this one finds *the document the key names*. The two meet in
+> `load_document`, whose fifth source is described below.
+
 `sync_files` stores *what documents a tender has*; §7.1 says the files are
 "download[ed] … only when someone requests screening", and nothing did the
 second half. `licitaqui/documents.py` is it, and with it a user clicking
 "analisar" gets an analysis instead of a job that fails four times.
+
+### How it meets FH's `resolve_files_hash`
+
+FH resolves the key at the top of `screen_tender`; `load_document` then picks
+the document, and its **fifth** source — the tender's own file list, via
+`documents.ensure_documents` — is the ordinary path for the web's
+`{tender_id}`-only payload. Two details are deliberate where that source meets
+FH's rules:
+
+* **The snapshot's digest wins over the resolver's.** `ensure_documents` reads
+  the file list once and returns both the documents it chose and the digest of
+  that same read. A `sync_files` landing between `resolve_files_hash` and
+  `ensure_documents` would otherwise key an analysis under one list while having
+  read another — FH's own argument for resolving at execution rather than at
+  enqueue, one level further down. An explicit payload pin still beats both.
+* **`EMPTY_MANIFEST_DIGEST` is narrowed, not dropped.** `resolve_files_hash`
+  returns `None` for it, because beside a payload URL an empty `tender_files`
+  would claim a file list we do not have. In the fifth source the empty list
+  *is* what was read: the tender genuinely has no active documents, the answer
+  is `no_text`, and the key moves the moment `sync_files` finds one. So that
+  branch keys on the empty digest, and the cheap cache probe substitutes the
+  same constant for a `None` resolution — otherwise the row would be written
+  under one key and looked up under another, and a permanent answer would be
+  re-derived on every request.
 
 ### Where it is wired, and why there
 
