@@ -172,6 +172,7 @@ collide:
 | `TEST_DATABASE_URL_B2` | B2's sweep tests | `tenders` rows for the fictitious agency `99000000000102`, `sync_open_tenders.*` events scoped to UF `ZZ`, and the follow-up jobs keyed on that CNPJ |
 | `TEST_DATABASE_URL_B5` | B5's company-lookup tests (`test_integration_company.py`) | `companies` rows for synthetic `999…` CNPJs and their job rows |
 | `TEST_DATABASE_URL_B3` | B3's items tests (`test_integration_sync_items.py`) | `tenders` (and their items, by cascade) for the fictitious agency `99` + this **run's** id — see "B3" below |
+| `TEST_DATABASE_URL_FH` | FH's `files_hash` wiring tests (`test_integration_files_hash.py`) | `tenders` (and their files and analyses, by cascade) for the fictitious agency `99` + this **run's** id, and their `sync_files:` markers — see "FH's test database" below |
 
 All are resolved the way `db/migrate.py` resolves its own connection string, and
 all are wrapped in a redacting `Dsn` type before they can reach a fixture repr:
@@ -653,3 +654,63 @@ to `tenders` and **no timestamp column**, so neither a cascade nor an age
 predicate can clean it. Cleanup deletes award rows explicitly by the run-scoped
 tender prefix and then sweeps any award under the fictitious `99…` agency whose
 tender no longer exists.
+
+## Wiring `files_hash` into the screening (task FH)
+
+B4 computes the digest of a tender's active document list and `ai_analyses` is
+unique on it; C1 looks its cache up by exactly that key. Until this task nothing
+joined the two, so the invalidation above was inert: an amended tender kept
+serving the analysis of the superseded edital.
+
+**The screening resolves the digest itself, when the job runs.**
+`ai_screening.resolve_files_hash(conn, tender_id, payload)` asks
+`files.files_hash_for()` for the current value; an explicit `files_hash` in the
+payload still wins, and a tender with no documents on record falls back to
+C1's content digest. So an enqueue site needs nothing but the tender id:
+
+```python
+ai_screening.enqueue(conn, tender_id)  # no hash; the handler resolves it
+```
+
+### Why not at the enqueue site
+
+The queue sits between the two, and this is the one job whose key can change
+while it waits:
+
+* **A payload is a snapshot that goes stale.** `sync_files` can land an errata
+  between the enqueue and the execution. The handler then reads the *new*
+  documents, so a payload hash would key an analysis of the new edital under the
+  old list's digest — a row that misdescribes what it read, permanently, because
+  a cached `ok` is never overwritten.
+* **The queue de-duplicates.** `jobs_dedupe` is unique on `(kind, key)` while
+  queued or running and there is one screening key per tender, so the request
+  that arrives *after* the amendment enqueues nothing. Its payload — and its
+  fresher hash — is dropped.
+* **Only the worker can spell the digest.** The recipe is `MANIFEST_VERSION`,
+  tab-separated fields and UTC ISO-8601 in `licitaqui/files.py`. A web enqueue
+  site would have to re-implement it in TypeScript and agree byte for byte for
+  ever; the day the two disagree, every screening misses its cache and is paid
+  for again (~R$ 0,0014 per edital, per tender, for ever).
+
+This is the same argument B4 makes for deriving the digest rather than storing
+it: a hash in a job payload is a stored digest with a queue delay attached.
+
+### The web read path
+
+`apps/web/lib/radar/screening.ts` had the same gap on the read side — it served
+the newest usable `ai_analyses` row whatever list it was keyed on, which right
+after an amendment is precisely the superseded one. It now filters on the digest
+the worker published in the `sync_files:<tender_id>` marker, and falls back to
+the old behaviour when a tender has never been synced, so the filter can hide a
+superseded row but can never make a tender un-analysable. The honest fix is for
+the worker to expose the current digest properly (a column, or the read API)
+instead of through a marker row.
+
+### FH's test database
+
+`test_integration_files_hash.py` needs `TEST_DATABASE_URL_FH` — this task's own
+isolated, already-migrated database — and skips without it, which CI counts as a
+failure. It drives B4's and C1's jobs against each other: sync, screen, amend,
+re-screen. Rows are scoped **per run** (`conftest.FH_CNPJ` carries `RUN_ID`),
+`tender_files` and `ai_analyses` cascade from `tenders`, and the `events`
+markers go by the same run-scoped name prefix. Nothing calls OpenRouter or PNCP.

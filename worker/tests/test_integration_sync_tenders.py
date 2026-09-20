@@ -21,6 +21,10 @@ file saw whichever kinds another test file happened to have imported first —
 they passed in a full suite and failed when this file ran alone. Importing the
 one module that assembles the registry is the fix; asserting less would only
 have hidden it.
+
+**The clock is frozen** — see :data:`TODAY` and ``_frozen_today``. The records
+below are dated, the sweep derives its window from the wall clock, and until
+2026-09-19 nothing tied the two together.
 """
 
 from __future__ import annotations
@@ -51,8 +55,41 @@ from licitaqui.tenders import from_consulta, upsert_tenders
 from tests.conftest import B2_CNPJ, B2_UF
 
 BRT = ZoneInfo("America/Sao_Paulo")
-WINDOW = (date(2026, 9, 16), date(2026, 9, 17))
+
+#: The day this file's fixtures live on, and the day the sweep is told it is.
+#:
+#: Every record below carries a fixed ``dataAtualizacaoGlobal``, but
+#: `sync_open_tenders` builds its window from ``datetime.now(BRT).date()`` and
+#: the search fallback turns ``window_start`` into the stop value the index walk
+#: ends at (`PncpClient.iter_search`). Nothing tied the data to the clock, so
+#: the window crept forward day by day until, on **2026-09-19**, it started
+#: after the fixtures: the fallback's very first item compared older than the
+#: watermark, the walk ended before yielding anything, and the cycle wrote zero
+#: tenders while still reporting itself degraded and search-sourced. Pinning
+#: "today" puts the clock and the data in one calendar, permanently.
+TODAY = date(2026, 9, 17)
+WINDOW = (date(2026, 9, 16), TODAY)
 SCOPE = scope_key(B2_UF, (6, 8, 4))
+
+
+class _FrozenClock(datetime):
+    """``datetime`` whose ``now()`` is always midday on :data:`TODAY`."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(TODAY.year, TODAY.month, TODAY.day, 12, 0, tzinfo=tz)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_today(monkeypatch: pytest.MonkeyPatch):
+    """Pin the sweep's notion of today to :data:`TODAY`.
+
+    Autouse rather than per-test: any future test that runs a cycle needs the
+    same anchor, and a test file whose result depends on the date it is run on
+    is a failure waiting for a calendar. `sync_tenders` reads the clock in
+    exactly one place, so this is the whole seam.
+    """
+    monkeypatch.setattr(sync_tenders, "datetime", _FrozenClock)
 
 
 @pytest.fixture(autouse=True)
@@ -62,8 +99,14 @@ def _fresh_breakers():
     breaker_module.reset_all()
 
 
-def record(seq: int, *, updated: str = "2026-09-17T10:00:00", **overrides) -> dict:
-    """A PNCP record for the fictitious agency the cleanup deletes."""
+def record(seq: int, *, updated: str = f"{TODAY.isoformat()}T10:00:00", **overrides) -> dict:
+    """A PNCP record for the fictitious agency the cleanup deletes.
+
+    ``updated`` defaults to a time inside the window a cycle on :data:`TODAY`
+    sweeps, expressed in terms of `TODAY` rather than repeated as a literal: the
+    search fallback only yields records newer than ``window_start``, so a
+    fixture dated outside that window is invisible to it.
+    """
     base = {
         "numeroControlePNCP": f"{B2_CNPJ}-1-{seq:06d}/2026",
         "anoCompra": 2026,
@@ -407,7 +450,12 @@ def test_a_consulta_outage_falls_back_to_search_and_holds_the_watermark(
     assert props["degraded"] is True
     assert props["source"] == "search-fallback"
     assert sorted(props["modalities_failed"]) == [4, 6, 8]
-    # The data still landed, from the search index.
+    # The data still landed, from the search index. `records` is asserted
+    # alongside the row count on purpose: it separates "the search walk yielded
+    # nothing" from "it yielded and the upsert dropped it", which is the one
+    # question the row count alone could not answer when this went red.
+    assert props["records"] == 3
+    assert props["inserted"] == 3
     assert count_tenders(b2_conn) == 3
     # …but the window is still open, so the next healthy cycle re-sweeps it.
     assert read_watermark(b2_conn, SCOPE) is None
