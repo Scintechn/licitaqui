@@ -38,9 +38,16 @@
   "legal": {
     "privacyLabel": "Política de privacidade",
     "termsLabel": "Termos de uso",
-    "privacyUrl": "TODO(Sci): G3",
-    "termsUrl": "TODO(Sci): G3",
-    "dataRequest": "Para corrigir ou apagar seus dados, escreva para {email}."
+    "privacyUrl": "/privacidade",
+    "termsUrl": "/termos",
+    "dataRequest": "Para corrigir ou apagar seus dados, escreva para {email}.",
+    "backToHome": "Voltar para a página inicial",
+    "updatedAt": "Última atualização:",
+    "meta": {
+      "termos-de-uso": "Termos de uso do LicitaQui: planos, cobrança, cancelamento, reembolso e responsabilidades.",
+      "politica-de-privacidade": "Como o LicitaQui trata seus dados pessoais: o que coletamos, por quê, com quem compartilhamos e como pedir a exclusão.",
+      "faq-cobranca": "Perguntas frequentes sobre cobrança, cancelamento e reembolso no LicitaQui."
+    }
   },
   "support": {
     "email": "TODO(Sci): endereço de contato",
@@ -61,7 +68,10 @@
     "whatsapp": "Autorizo a LicitaQui a me enviar mensagens no WhatsApp sobre a minha vaga de fundador e sobre editais. Posso parar quando quiser respondendo SAIR.",
     "email": "Autorizo a LicitaQui a me enviar e-mails sobre a minha vaga de fundador e sobre editais.",
     "note": "A gente não vende nem empresta seus dados para ninguém, e só usa seu contato para o que está escrito aqui.",
-    "contactRequired": "Escolha pelo menos um jeito de a gente falar com você: WhatsApp ou e-mail."
+    "contactRequired": "Escolha pelo menos um jeito de a gente falar com você: WhatsApp ou e-mail.",
+    "termsBefore": "Li e aceito os ",
+    "termsBetween": " e a ",
+    "termsAfter": "."
   },
   "founders": {
     "offer": {
@@ -416,7 +426,7 @@
       "title": "48 vagas a R$ 26 por mês, por 6 meses."
     },
     "footer": {
-      "company": "LicitaQui é um produto da SCINT TECNOLOGIA"
+      "company": "LicitaQui é um produto da Scint Tecnologia Serviços Ltda · CNPJ 36.955.612/0001-85 · contato@licitaquiapp.com.br · WhatsApp (11) 96246-0678"
     }
   },
   "plans": {

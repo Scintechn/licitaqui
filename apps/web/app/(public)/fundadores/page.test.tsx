@@ -52,7 +52,22 @@ describe('/fundadores', () => {
     }
     expect(out.match(/type="checkbox"/g)).toHaveLength(2)
     expect(out).toContain(messages.consent.founders)
-    expect(out).toContain(messages.consent.terms)
+    expect(out).toContain(messages.consent.termsBefore)
+    expect(out).toContain(messages.consent.termsBetween)
+  })
+
+  it('lets the reader actually open what they are accepting', () => {
+    // Until the legal lane the two documents were named in plain text and had
+    // nowhere to go, so the box recorded an acceptance nobody could have given.
+    expect(out).toContain(`href="${messages.legal.termsUrl}"`)
+    expect(out).toContain(`href="${messages.legal.privacyUrl}"`)
+    // A new tab, so a half-filled form survives the detour.
+    expect(out).toContain('rel="noopener noreferrer"')
+  })
+
+  it('carries the company identification the legal brief prescribes', () => {
+    expect(out).toContain('36.955.612/0001-85')
+    expect(out).toContain('contato@licitaquiapp.com.br')
   })
 
   it('revalidates inside the 10–30 min window of spec §3.3', () => {

@@ -235,8 +235,33 @@ export function SignupForm() {
       <Consent id="aceite-contato" error={errorText(fieldErrors.contactConsent)}>
         {consent.founders}
       </Consent>
+      {/*
+        The two documents are links, not words. LGPD art. 8 and CDC art. 46:
+        consent is only informed if the person can actually read what they are
+        accepting, and a checkbox naming documents it does not reach is worse
+        than no checkbox — it records an acceptance that was never possible.
+        They open in a new tab so a half-filled form is not lost.
+      */}
       <Consent id="aceite-termos" error={errorText(fieldErrors.acceptedTerms)}>
-        {consent.terms}
+        {consent.termsBefore}
+        <a
+          href={messages.legal.termsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue underline hover:text-blue-hover"
+        >
+          {messages.legal.termsLabel.toLocaleLowerCase('pt-BR')}
+        </a>
+        {consent.termsBetween}
+        <a
+          href={messages.legal.privacyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue underline hover:text-blue-hover"
+        >
+          {messages.legal.privacyLabel.toLocaleLowerCase('pt-BR')}
+        </a>
+        {consent.termsAfter}
       </Consent>
 
       {state.kind === 'error' && state.message ? (

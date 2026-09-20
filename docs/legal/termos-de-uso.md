@@ -1,14 +1,14 @@
 # Termos de Uso — LicitaQui
 
-**Minuta v0.1 · 17/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Os campos entre colchetes precisam ser preenchidos.
+**Minuta v1.1 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. O único campo pendente é a data de publicação.
 
-**Última atualização:** **[TODO(Sci): data de publicação]** · **Vigência:** **[TODO(Sci): data de publicação]**
+**Última atualização:** 20/09/2026 · **Vigência:** 20/09/2026
 
 ---
 
 ## 1. Quem somos e o que é o LicitaQui
 
-O LicitaQui é um serviço de software pela internet (SaaS) operado por **SCINT TECHNOLOGIA SERVICOS LTDA**, CNPJ 36.955.612/0001-85, com sede em **[TODO(Sci): endereço do escritório virtual]**, e-mail **[TODO(Sci): contato@ — depende do domínio]**.
+O LicitaQui é um serviço de software pela internet (SaaS) operado pela **Scint Tecnologia Serviços Ltda**, CNPJ 36.955.612/0001-85, e-mail contato@licitaquiapp.com.br, WhatsApp (11) 96246-0678.
 
 O LicitaQui ajuda MEI e pequenas empresas a **encontrar editais de compras públicas que consegue atender, entender o que pedem e estimar até quanto pode ofertar com lucro**, usando dados públicos do Portal Nacional de Contratações Públicas (PNCP) e leitura automatizada por inteligência artificial.
 
@@ -31,7 +31,8 @@ O serviço é destinado a **pessoas maiores de 18 anos** que atuem em nome de um
 
 - O acesso é feito por **link enviado ao seu e-mail** ou por **login com conta Google**. Não usamos senha própria.
 - A conta é **pessoal e intransferível**. Você é responsável pelo acesso ao seu e-mail e à sua conta Google, e pelo que for feito na sua conta.
-- Se suspeitar de uso indevido, avise em **[TODO(Sci): contato@ — depende do domínio]** para bloquearmos o acesso.
+- **Nunca pedimos sua senha** por e-mail, WhatsApp ou telefone. Se receber um pedido desses em nosso nome, é golpe.
+- Se suspeitar de uso indevido, avise em contato@licitaquiapp.com.br para bloquearmos o acesso.
 - Podemos pedir confirmação do CNPJ informado.
 
 ## 5. Planos, preços e limites
@@ -65,14 +66,29 @@ Esta é a cláusula mais importante do contrato para quem entra pelo plano Promo
 
 - A cobrança é feita pelo **Asaas** (meio de pagamento), por cartão de crédito ou pix, conforme as opções disponíveis no checkout. **Não temos acesso ao número do seu cartão.**
 - A assinatura é **recorrente**: renova automaticamente a cada mês na mesma data, até que você cancele.
-- Falha no pagamento: tentaremos novamente e avisaremos você. Se não houver pagamento em **[TODO(Sci): prazo de carência — confirmar com o dunning do Asaas]**, o acesso aos recursos pagos é suspenso e a conta volta ao plano Básico. Nada é excluído nesse momento (ver seção 12).
-- Valores são em reais e incluem os tributos aplicáveis. A emissão de documento fiscal segue a legislação vigente. **[TODO(Sci): nota fiscal — revisar com o contador (gap G13)]**
+- Falha no pagamento: tentaremos novamente e avisaremos você. Se não houver pagamento em **10 (dez) dias corridos** contados do vencimento, o acesso aos recursos pagos é suspenso e a conta volta ao plano Básico. Nada é excluído nesse momento (ver seção 12).
+- Valores são em reais e incluem os tributos aplicáveis. A emissão de documento fiscal segue a legislação vigente.
 
-## 8. Cancelamento e arrependimento
+## 8. Cancelamento, renovação, arrependimento e garantia
 
-- **Cancelamento:** você cancela sozinho, em um clique, em Conta → Plano, sem falar com ninguém e sem multa. O acesso pago continua até o fim do período já pago; não há cobrança seguinte e não há reembolso proporcional, salvo o caso abaixo.
-- **Arrependimento (art. 49 do Código de Defesa do Consumidor):** se a contratação foi feita fora do estabelecimento (pela internet) e você se enquadra como consumidor, pode desistir em **até 7 dias corridos da contratação**, com devolução integral do valor pago. Basta escrever para **[TODO(Sci): contato@ — depende do domínio]**.
-- **Insatisfação:** **[TODO(Sci): oferecer garantia própria? decidir]**
+**Como funciona o cancelamento**
+
+- A assinatura é mensal e **renova automaticamente** até você cancelar.
+- Você cancela sozinho, em um clique, em Conta → Plano, sem falar com ninguém e sem multa.
+- O cancelamento **desliga a renovação automática**. Você continua com o acesso pago **até o último dia do período já pago** — não perde nada no meio do caminho — e não há cobrança seguinte.
+- Não há fidelidade. Fora dos casos de arrependimento e garantia abaixo, não devolvemos valor proporcional do período em curso, porque ele continua disponível para você até o fim.
+
+**Arrependimento (art. 49 do Código de Defesa do Consumidor)**
+
+- Se a contratação foi feita pela internet e você se enquadra como consumidor, pode desistir em **até 7 dias corridos**, com devolução integral do valor pago.
+- Esse prazo vale para a **primeira contratação**. A renovação automática de uma assinatura já em curso não abre novo prazo de arrependimento, por ser continuação do mesmo contrato.
+- Basta escrever para contato@licitaquiapp.com.br. A devolução é feita pelo mesmo meio de pagamento.
+
+**Garantia de 30 dias**
+
+- Se em até **30 dias corridos da primeira cobrança** você achar que o serviço não valeu, devolvemos o valor do primeiro mês. Basta pedir por e-mail, sem precisar justificar.
+- A garantia vale **uma vez por CNPJ** e apenas sobre a primeira cobrança.
+- Ela se aplica aos planos **Promocional e Essencial**. No plano **Pro** vale o prazo de arrependimento de 7 dias.
 
 ## 9. Uso aceitável
 
@@ -104,7 +120,8 @@ Em caso de descumprimento, podemos suspender o acesso imediatamente e, se o caso
 ## 12. Prazo, suspensão e encerramento
 
 - Estes Termos valem enquanto você usar o serviço.
-- Você pode encerrar a conta quando quiser, pelo app ou por e-mail. Nesse caso, apagamos ou anonimizamos seus dados nos prazos da Política de Privacidade.
+- Você pode encerrar a conta quando quiser, pelo app ou por e-mail.
+- Depois do encerramento ou da suspensão por falta de pagamento, seus dados ficam disponíveis para **exportação por 30 dias**. Passado esse prazo, apagamos ou anonimizamos conforme a Política de Privacidade.
 - Podemos encerrar o serviço como um todo com **aviso de 30 dias**, sem cobrança de novos períodos e com devolução proporcional do que já tiver sido pago.
 
 ## 13. Mudanças nestes Termos
@@ -117,9 +134,15 @@ Usaremos o e-mail cadastrado, o app e — se você tiver consentido — Telegram
 
 ## 15. Lei aplicável e foro
 
-Aplica-se a lei brasileira. Fica eleito o foro da comarca de ****[TODO(Sci): comarca — segue o escritório virtual]****, salvo se você for consumidor, hipótese em que vale o foro do seu domicílio.
+Aplica-se a lei brasileira. Não elegemos foro contratual: vale o foro definido pela legislação — para o consumidor, o do seu próprio domicílio.
 
-Antes de qualquer medida judicial, escreva para **[TODO(Sci): contato@ — depende do domínio]**: procuramos resolver diretamente.
+Antes de qualquer medida judicial, escreva para contato@licitaquiapp.com.br ou chame no WhatsApp (11) 96246-0678: procuramos resolver diretamente.
+
+## 16. Histórico de versões
+
+| Versão | Data | O que mudou |
+|---|---|---|
+| 1.0 | 20/09/2026 | Primeira versão publicada |
 
 ---
 
@@ -131,6 +154,7 @@ Antes de qualquer medida judicial, escreva para **[TODO(Sci): contato@ — depen
 | Preço | R$ 26/mês nos 6 primeiros meses |
 | Depois | R$ 57/mês a partir do 7º mês, com aviso 30 dias antes |
 | Fidelidade | Nenhuma. Cancelamento em 1 clique, sem multa |
+| Garantia | Devolução do primeiro mês se pedida em até 30 dias |
 | Transferência | Não. Vaga vinculada ao CNPJ da assinatura |
 | Inclui | Tudo do plano Essencial, mais acesso antecipado às novidades e canal direto com quem constrói o produto |
 
