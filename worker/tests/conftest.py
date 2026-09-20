@@ -635,3 +635,101 @@ def _delete_b4_rows(dsn: str) -> None:
         conn.execute(
             "delete from jobs where kind = 'sync_files' and key like %s", (f"{B4_TENDER_PREFIX}%",)
         )
+
+
+# -- B4B/DL: the download-and-extract suite's own database ------------------
+#
+# Same shape and the same reasons as every block above: an isolated database so
+# two tasks' suites cannot collide, a `Dsn` wrapper so pytest cannot render the
+# credentials into a traceback, and deletes scoped to rows *this run* created.
+#
+# This suite drives the whole broken path end to end — `tender_files` rows, the
+# B4 sync marker in `events`, the `ai_screening` and `extract_text` job rows,
+# and the `ai_analyses` row the user is waiting for. Every one of them hangs off
+# a tender id carrying `RUN_ID`, so the cleanup keys on that and never on a task
+# constant: a task-scoped prefix looks isolated and is not, and two concurrent
+# runs of this suite would delete each other's fixtures mid-test.
+#
+# Nothing in this suite reaches PNCP, S3 or OpenRouter: the PDFs are built by
+# `tests/pdfs.py`, the downloads run against an `httpx.MockTransport`, the
+# object store is an in-memory fake, and the model call is stubbed.
+DL_TEST_DSN_VAR = "TEST_DATABASE_URL_DL"
+
+#: Not a valid CNPJ, per **run**, and with a trailing `5` so it stays distinct
+#: from B2's `…2`, C1's `…3` and B4's `…4` inside the same run.
+DL_CNPJ = f"99{int(RUN_ID, 16):011d}5"[:14]
+
+#: Tender ids have to look like a real `numeroControlePNCP` — `split_control_number`
+#: parses them — so the run id rides in the CNPJ and this prefix is what cleanup
+#: matches.
+DL_TENDER_PREFIX = f"{DL_CNPJ}-"
+
+#: The job kinds this suite can create, named here so cleanup cannot drift.
+DL_JOB_KINDS = ("ai_screening", "extract_text", "sync_files")
+
+
+def dl_tender_id(sequence: int = 1) -> str:
+    """A run-scoped id shaped like `numeroControlePNCP`: `<cnpj>-1-<seq>/<year>`."""
+    return f"{DL_TENDER_PREFIX}1-{sequence:06d}/2026"
+
+
+@pytest.fixture(scope="session")
+def dl_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(DL_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{DL_TEST_DSN_VAR} is not configured; skipping DL database tests")
+
+
+@pytest.fixture
+def dl_clean_dsn(dl_dsn: str) -> Iterator[str]:
+    """The DL test DSN, with this run's rows deleted before and after the test."""
+    _delete_dl_rows(dl_dsn)
+    try:
+        yield dl_dsn
+    finally:
+        _delete_dl_rows(dl_dsn)
+
+
+@pytest.fixture
+def dl_connect(dl_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(dl_clean_dsn, application_name=f"licitaqui-dl-test-{os.getpid()}")
+
+
+@pytest.fixture
+def dl_conn(dl_connect) -> Iterator[psycopg.Connection]:
+    with dl_connect() as connection:
+        yield connection
+
+
+def _delete_dl_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates.
+
+    `tender_files` and `ai_analyses` go with the tender (`on delete cascade`).
+    The `events` markers and the `jobs` rows have no foreign key, so they are
+    deleted by the same run-scoped prefixes the code builds them from. The
+    cross-run statements are deliberately narrow — the fictitious `99…` agency
+    family belongs to these tests alone, and an hour is far longer than the
+    suite takes, so they can only ever catch a crashed run.
+    """
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where agency_cnpj = %s", (DL_CNPJ,))
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' "
+            "  and updated_at < now() - interval '1 hour'"
+        )
+        conn.execute(
+            "delete from events where starts_with(name, %s)", (f"sync_files:{DL_TENDER_PREFIX}",)
+        )
+        conn.execute(
+            "delete from events where starts_with(name, 'sync_files:99') "
+            "  and created_at < now() - interval '1 hour'"
+        )
+        conn.execute(
+            "delete from jobs where kind = any(%s)"
+            "   and (starts_with(key, %s) or starts_with(key, %s))",
+            (list(DL_JOB_KINDS), DL_TENDER_PREFIX, f"screening:{DL_TENDER_PREFIX}"),
+        )

@@ -24,8 +24,18 @@ Two consequences:
 - **`files_hash` must identify the bytes, not the tender.** An amendment
   republishes the edital, which §3.2 says invalidates text and screening: a new
   hash, a new row, the old one still valid for the old file. B4 (`sync_files`)
-  owns that hash; until it lands, :func:`load_document` computes it from the
-  PDF it was given, or as a last resort from the extracted text.
+  owns that hash and :func:`resolve_files_hash` is where this job asks for it.
+
+## Where the document comes from
+
+The web enqueues `{tender_id}` and nothing else, so the job's first step is to
+*find* the document: :func:`load_document` prefers whatever the payload carries
+(pages, a cache file, a local PDF, a URL — the evaluation harness and the
+operator paths) and otherwise asks :func:`licitaqui.documents.ensure_documents`
+to download and extract the tender's active Edital and Termo de Referência.
+That call is what makes a user's "analisar" complete; see that module's
+docstring for why the download is a step of this job rather than a job of its
+own.
 
 ## Never for a scanned PDF
 
@@ -46,23 +56,25 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import ai_tender, queue
+from . import ai_tender, documents, queue
 from .ai_tender import Document, Screening
 from .breaker import CircuitOpen, get_breaker
+from .observability import get_logger
 from .registry import REGISTRY, JobContext
+
+_log = get_logger("ai_screening")
 
 JOB_KIND = "ai_screening"
 MODE = "lite"
 
-#: Downloading the edital is B4's job; this fallback exists so the port can be
-#: exercised end to end before it lands. §7.2: download timeout 120 s.
-DOWNLOAD_TIMEOUT_SECONDS = 120.0
-DOWNLOAD_BREAKER_NAME = "pncp-download"
-USER_AGENT = "licitaqui/0.1 (+https://github.com/Scintechn/licitaqui)"
+#: The download itself lives in :mod:`licitaqui.documents`, which owns the
+#: breaker, the wall-clock deadline and the size guard. Re-exported here because
+#: the `url` payload branch below is the operator path into it.
+DOWNLOAD_TIMEOUT_SECONDS = documents.DOWNLOAD_TIMEOUT_SECONDS
+DOWNLOAD_BREAKER_NAME = documents.BREAKER_NAME
 
 CACHE_SQL = """
 select id, status, result, citation_check, rules, model, cost_brl
@@ -127,25 +139,51 @@ def _read_pages_file(path: Path) -> dict[str, Any]:
 
 
 def download(url: str) -> bytes:
-    """Fetch the file, under the download breaker. Raises on anything but 200."""
-    with get_breaker(DOWNLOAD_BREAKER_NAME).guard():
-        response = httpx.get(
-            url,
-            follow_redirects=True,
-            timeout=httpx.Timeout(DOWNLOAD_TIMEOUT_SECONDS, connect=15.0),
-            headers={"User-Agent": USER_AGENT},
-        )
-        response.raise_for_status()
-        return response.content
+    """Fetch one file. Delegates to :func:`licitaqui.documents.download`.
+
+    Kept as a name here because the `url` payload branch is an operator path and
+    this is where someone looks for it, but the budget, the breaker and the
+    wall-clock deadline are owned by one implementation, not two.
+    """
+    return documents.download(url)
 
 
-def load_document(payload: dict[str, Any]) -> tuple[Document, str]:
+def resolve_files_hash(
+    payload: dict[str, Any], document: Document, *, listed: str | None = None
+) -> str:
+    """The `ai_analyses.files_hash` this screening is keyed on (§6.3).
+
+    Three sources, in the only order that is safe:
+
+    1. **the payload's own value** — only the caller knows which files went into
+       a hash it computed itself (the evaluation harness, an operator re-running
+       a specific set);
+    2. **B4's digest of the tender's active file list**, which
+       :func:`licitaqui.documents.ensure_documents` computes from the very
+       snapshot it chose the documents from, so the key and the pages can never
+       describe different lists;
+    3. **the digest of the extracted text**, for a document handed over with
+       neither — a local PDF, a cache file. It identifies what was read, which
+       is the most this job can honestly claim about bytes nobody has listed.
+    """
+    return payload.get("files_hash") or listed or document.text_hash()
+
+
+def load_document(
+    payload: dict[str, Any],
+    *,
+    conn: psycopg.Connection | None = None,
+    tender_id: str | None = None,
+    log: Any = None,
+) -> tuple[Document, str]:
     """The document to screen and the `files_hash` that identifies it.
 
-    Four sources, in order of how much work they save: pages already extracted
-    (B4's `extract_text` output, and what the evaluation harness uses), a cache
-    file of the same shape, a local PDF/ZIP, or a URL to download. The hash in
-    the payload always wins — only the caller knows which files went into it.
+    Five sources, in order of how much work they save: pages already extracted
+    (what the evaluation harness passes), a cache file of the same shape, a
+    local PDF/ZIP, a URL to download — and finally the tender's own documents,
+    downloaded and extracted by :mod:`licitaqui.documents`. The last one is the
+    ordinary path: it is what the web's `{tender_id}`-only payload resolves to,
+    and the four above it are the operator and harness routes.
     """
     given_hash = payload.get("files_hash")
 
@@ -160,10 +198,18 @@ def load_document(payload: dict[str, Any]) -> tuple[Document, str]:
             data = download(payload["url"])
         given_hash = given_hash or hashlib.sha256(data).hexdigest()
         document = ai_tender.extract_text(data)
+    elif conn is not None and tender_id:
+        resolved = documents.ensure_documents(conn, tender_id, log=log or _log)
+        return resolved.document, resolve_files_hash(
+            payload, resolved.document, listed=resolved.files_hash
+        )
     else:
-        raise ValueError("ai_screening payload needs 'pages', 'text_path', 'pdf_path' or 'url'")
+        raise ValueError(
+            "ai_screening payload needs 'pages', 'text_path', 'pdf_path' or 'url', "
+            "or a connection and a tender to read the tender's own documents"
+        )
 
-    return document, given_hash or document.text_hash()
+    return document, resolve_files_hash(payload, document, listed=given_hash)
 
 
 def cached(
@@ -266,7 +312,7 @@ def screen_tender(
     if not tender_id:
         raise ValueError("ai_screening payload needs a 'tender_id'")
 
-    document, files_hash = load_document(payload)
+    document, files_hash = load_document(payload, conn=conn, tender_id=tender_id, log=log)
 
     if not payload.get("force"):
         hit = cached(conn, tender_id, files_hash, extraction_version=document.extraction_version)

@@ -8,6 +8,9 @@ dependencies = [
   "httpx>=0.28",
   "pdfplumber>=0.11",
   "sentry-sdk>=2.20",
+  # S3: the edital PDF and its extracted text (spec §3.2). Imported lazily in
+  # `licitaqui.storage`, so a worker with no bucket configured never loads it.
+  "boto3>=1.35",
 ]
 
 [project.optional-dependencies]
