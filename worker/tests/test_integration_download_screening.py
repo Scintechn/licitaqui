@@ -362,6 +362,42 @@ def test_a_document_that_cannot_be_fetched_never_becomes_a_partial_analysis(
     assert analyses(dl_conn, tender) == [], "nothing is written when a document is missing"
 
 
+def test_a_document_nothing_can_parse_is_no_text_and_not_four_retries(
+    dl_conn, tender, pncp, monkeypatch
+):
+    """A `.doc` is a permanent fact about the bytes, not an outage.
+
+    Retrying it four times over forty minutes buys nothing, and because the
+    outcome is deterministic for this list the cache key stays honest. The
+    edital beside it is still read.
+    """
+    monkeypatch.setattr(ai_tender, "call_model", lambda *a, **k: response(ANSWER))
+    edital = pncp.serve("/arquivos/1", pdfs.text_pdf(EDITAL_PAGES))
+    word = pncp.serve("/arquivos/2", b"\xd0\xcf\x11\xe0 an old Word document")
+    publish(dl_conn, tender, (1, "Edital", edital), (2, "Termo de Referência", word))
+
+    run_job(dl_conn, {"tender_id": tender})
+
+    assert analyses(dl_conn, tender)[0]["status"] == "ok", "the edital was still read"
+    rows = file_rows(dl_conn, tender)
+    assert rows[2]["no_text"] is True
+    assert rows[2]["pages"] == 0
+    assert len(rows[2]["sha256"]) == 64, "we know exactly which bytes we could not read"
+
+
+def test_a_tender_whose_only_document_is_unreadable_is_no_text(dl_conn, tender, pncp, monkeypatch):
+    def explode(*_args, **_kwargs):
+        raise AssertionError("there is nothing to send")
+
+    monkeypatch.setattr(ai_tender, "call_model", explode)
+    word = pncp.serve("/arquivos/1", b"\xd0\xcf\x11\xe0 an old Word document")
+    publish(dl_conn, tender, (1, "Edital", word))
+
+    run_job(dl_conn, {"tender_id": tender})
+
+    assert analyses(dl_conn, tender)[0]["status"] == "no_text"
+
+
 def test_a_file_list_nobody_has_fetched_is_not_an_empty_one(dl_conn, tender, monkeypatch):
     """The trap: "no rows" means *we have not looked*, not *there are none*.
 

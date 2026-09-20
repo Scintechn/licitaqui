@@ -50,6 +50,12 @@ def test_the_job_kind_is_registered():
     assert REGISTRY.get(documents.JOB_KIND) is documents.extract_text
 
 
+def test_the_kind_enqueued_for_a_missing_file_list_is_one_that_can_run():
+    """A typo there would queue work nothing can run — silently, which is the
+    exact failure `licitaqui.handlers` exists to prevent."""
+    assert documents.SYNC_FILES_KIND in REGISTRY.kinds()
+
+
 def test_the_edital_and_the_termo_de_referencia_are_what_a_screening_reads():
     listed = [
         file(1, doc_type="Edital"),

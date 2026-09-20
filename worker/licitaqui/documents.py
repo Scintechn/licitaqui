@@ -81,14 +81,24 @@ every other tender.
 
 ## Partial reads are refused, and that is what keeps the cache key honest
 
-`ai_analyses.files_hash` is B4's digest of the **file list**. Two screenings
-under the same list must therefore have read the same documents, or the second
-one would be served an analysis of a different set of pages under a key that
-claims otherwise. So the set is all-or-nothing: if a selected document cannot be
-fetched or parsed, :func:`ensure_documents` raises, nothing is written to
-`ai_analyses`, and the queue retries. A tender whose edital is permanently
-unreachable ends as a `failed` job with the reason on the row — which is the
-truth — rather than as a confident analysis of its annexes.
+`ai_analyses.files_hash` is B4's digest of the **file list**, so the property
+that has to hold is: *the same list always produces the same reading*. Two
+screenings under one list must not read different sets of pages, or the second
+is served an analysis under a key claiming otherwise.
+
+That makes the rule about determinism rather than about success. A **timeout, a
+5xx, a 404 or a file past the size cap** is not deterministic — the next attempt
+may well succeed — so :func:`ensure_documents` raises, nothing is written to
+`ai_analyses`, and the queue retries. A tender whose edital stays unreachable
+ends as a `failed` job with the reason on the row, which is the truth, rather
+than as a confident analysis of its annexes.
+
+A document that arrives whole and **cannot be parsed** — a `.doc`, a `.rar`, a
+corrupt PDF — is the opposite: the same bytes fail the same way for ever. It is
+recorded as having no text (§6.1) and the rest of the tender is read. A tender
+whose only document is a `.doc` therefore ends as `no_text`, which is what the
+product should say, instead of four retries against a file pdfplumber will
+never open.
 
 ## LGPD (§12)
 
@@ -121,6 +131,11 @@ from .registry import REGISTRY, JobContext
 _log = get_logger("documents")
 
 JOB_KIND = "extract_text"
+
+#: B4's kind, enqueued when this tender's file list has never been fetched.
+#: Named rather than spelled inline: a typo there would enqueue a job nothing
+#: can run, silently, and `test_documents` asserts this kind is registered.
+SYNC_FILES_KIND = "sync_files"
 
 #: Downloads get their own breaker, separate from the JSON endpoints: the file
 #: list can be perfectly healthy while the storage service behind the download
@@ -309,6 +324,13 @@ def download(
     except httpx.HTTPError as exc:
         breaker.record_failure()
         raise DocumentError(f"GET document -> {type(exc).__name__}: {exc}") from exc
+    except DocumentError:
+        raise  # every branch above has already told the breaker what happened
+    except Exception:
+        # `allow()` reserved the half-open probe slot; leaving on an unexpected
+        # error without releasing it would keep the circuit shut for ever.
+        breaker.record_failure()
+        raise
     finally:
         if owned:
             http.close()
@@ -463,8 +485,14 @@ def read_file(
     """One document, from the cache when possible and from PNCP otherwise.
 
     Writes `sha256`, `s3_key`, `pages`, `text_version` and `no_text` (§6.1) onto
-    the row. Raises :class:`DocumentError` when the document cannot be read at
-    all — the caller turns that into a retry rather than a partial analysis.
+    the row.
+
+    Raises :class:`DocumentError` only when the failure is **not** a fact about
+    the bytes — a timeout, a 5xx, a 404, a file past the size cap. Those are
+    non-deterministic, so the caller must retry rather than write an analysis
+    the same list would not produce again. A document that arrives whole and
+    simply cannot be parsed is the opposite case and is recorded as having no
+    text; see the comment on the extraction below.
     """
     if not file.url:
         raise DocumentError(f"document {file.sequence} has no URL")
@@ -478,8 +506,26 @@ def read_file(
     digest = hashlib.sha256(data).hexdigest()
     try:
         document = ai_tender.extract_text(data)
-    except Exception as exc:  # noqa: BLE001 - a .doc or a corrupt PDF is a DocumentError
-        raise DocumentError(f"document {file.sequence} could not be read: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - see below: every one of these is permanent
+        # A `.doc`, a `.rar`, a corrupt PDF. Unlike a timeout or a 500, this is a
+        # **deterministic fact about these bytes**: the same download tomorrow
+        # fails the same way, so four retries over forty minutes buy nothing.
+        # And because it is deterministic, recording it keeps the cache key
+        # honest — `files_hash` digests the list, and this list will always
+        # produce this reading. So the document contributes no text (§6.1's
+        # `no_text`, which a converter or OCR card can select on later) and the
+        # rest of the tender is still read.
+        _log.warning(
+            "document could not be parsed; recorded as having no text",
+            extra={
+                "tender_id": file.tender_id,
+                "sequence": file.sequence,
+                "sha256": digest,
+                "bytes": len(data),
+                "reason": type(exc).__name__,
+            },
+        )
+        document = Document(pages=())
 
     suffix = storage.suffix_for(data)
     source_key = store.put(
@@ -617,7 +663,7 @@ def ensure_documents(
             # queue bring this job back.
             queue.enqueue(
                 conn,
-                "sync_files",
+                SYNC_FILES_KIND,
                 tender_id,
                 priority=1,
                 payload={"tender_id": tender_id},
