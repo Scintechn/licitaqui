@@ -417,7 +417,7 @@ Priority 1 = a user waiting on screen (the web also calls the worker's `POST /wa
 | `GET /api/jobs/:id` or SSE `/api/jobs/:id/stream` | owner | Job state |
 | `POST /api/telegram/webhook` | Telegram | Checks `X-Telegram-Bot-Api-Secret-Token`; `/start <token>` links the chat to the user |
 | `POST /api/asaas/webhook` | Asaas | Checks header token; idempotent by event id; updates `subscriptions` and `users.plan` |
-| `POST /api/subscribe` | user | Creates Asaas customer and subscription (Promocional R$ 26 for founders with a seat, otherwise Essencial R$ 57 or Pro R$ 98) and returns the checkout link |
+| `POST /api/subscribe` | user | Creates Asaas customer and subscription (Promocional R$ 26 for founders with a seat, otherwise Essencial R$ 57 or Pro R$ 98) and returns the checkout link. **Creates the customer with `notificationDisabled: true`** — see the Asaas row in §9.2 |
 | `GET /api/health` | monitor | DB, age of last `sync_open_tenders`, stuck queue |
 
 **Quota checks:** always server-side, in a transaction (`usage` in the period + `plan_limits`). Visitors are identified by a signed cookie (`httpOnly`, 30 days); the 3-day rule counts from `visitors.created_at` **and** from the first search of that CNPJ (decided: per device and per CNPJ), so resetting via incognito does not reset the CNPJ.
@@ -436,7 +436,7 @@ Priority 1 = a user waiting on screen (the web also calls the worker's `POST /wa
 | OpenRouter | screening and analysis | `OPENROUTER_API_KEY` on the worker only | Monthly spend cap on the account; alert at 80% |
 | Telegram Bot API | alerts and account linking | bot token | ~30 msg/s; webhook with secret. **Temporary bot:** a bot has only one webhook URL, so confirm the existing bot is not serving another system before pointing it to LicitaQui; later switch to the official bot (avatar `Marca/assest/avatar-bot-512.png`) |
 | Email (Resend) | magic link, founders welcome, opening notice, 30-day price notice | API key | **During development:** Resend test sender (delivers only to the account owner's address — enough to test flows). **Before emailing real users:** verify a sending domain |
-| Asaas | subscription, Pix/card | API key + webhook token (separate sandbox and production keys) | Sandbox for development and previews; customer invoices (NF) out of scope for now |
+| Asaas | subscription, Pix/card | API key + webhook token (separate sandbox and production keys) | Sandbox for development and previews; customer invoices (NF) out of scope for now. **Asaas bills us for the billing notifications it sends on our behalf** (e-mail, SMS, WhatsApp, voice), and they are **on by default**: every customer must be created with `notificationDisabled: true`, and any created without it fixed via `PUT /v3/notifications/batch` (`enabled: false`). LicitaQui does its own messaging, so an Asaas notification is both a duplicate to the user and a line on our invoice |
 | Evolution API (already on Easypanel) | WhatsApp: founders welcome and opening notice in Phase 0; alerts on Pro | instance API key | Unofficial API: risk of number ban. Dedicated number, opt-in only (consent checkbox), low rate (≈ 1 message every 20–30 s), no bulk blasts, honor "SAIR" replies |
 | SearchApi (Pro, phase 2) | retail price | `SEARCHAPI_KEY` | US$ 40 per 10k searches |
 

@@ -22,8 +22,8 @@ So: **importing this module is what makes the registry complete.**
 :mod:`licitaqui.service` does it at start-up, and so should anything else that
 needs to reason about the whole queue — a test, a script, an operator REPL —
 rather than importing handler modules one at a time and hoping the list is
-current. New handler kinds (B8's ``sync_awards``) belong here the moment they
-exist.
+current. New handler kinds belong here the moment they exist — B8's ``sync_awards``
+and ``sync_tender_awards`` are wired in below.
 
 It stays a separate module rather than moving into ``licitaqui/__init__.py``
 because importing the package must stay cheap: ``db/`` tooling and the tests'
@@ -37,6 +37,7 @@ from . import ai_screening as _ai_screening  # noqa: F401 - registers `ai_screen
 from . import company as _company  # noqa: F401 - imported for its registration side effect
 from . import documents as _documents  # noqa: F401 - registers `extract_text`
 from . import jobs as _jobs  # noqa: F401 - registers `noop`
+from . import sync_awards as _sync_awards  # noqa: F401 - registers the two awards kinds
 from . import sync_files as _sync_files  # noqa: F401 - registers `sync_files`
 from . import sync_items as _sync_items  # noqa: F401 - registers `sync_items`
 from . import sync_tenders as _sync_tenders  # noqa: F401 - registers `sync_open_tenders`

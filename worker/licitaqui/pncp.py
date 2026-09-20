@@ -1,6 +1,6 @@
 """HTTP access to PNCP, under the §7.2 budget.
 
-Three services, three circuit breakers, because they fail independently — the
+One circuit breaker per service, because they fail independently — the
 measurements behind ADR-0001 caught `/api/consulta` down for thirteen minutes
 while `/api/search/` answered every request:
 
@@ -18,6 +18,12 @@ while `/api/search/` answered every request:
   it is served by the same host as the items endpoint but is a different
   service, and the file list going dark must not stop items arriving (nor the
   other way round).
+- ``pncp-resultados`` — `/api/pncp/v1/.../itens/{n}/resultados`, the winner of
+  one item, which :mod:`licitaqui.sync_awards` reads. Its own breaker again,
+  and this one earns it twice over: awards are the only job that spends **one
+  request per item** (§3.2), so it is by far the heaviest caller, and it is
+  also the least urgent. When it goes down it must stop on its own without
+  taking the sweep that feeds the Radar with it.
 
 Three rules this module exists to enforce:
 
@@ -57,11 +63,13 @@ ATUALIZACAO_PATH = "/api/consulta/v1/contratacoes/atualizacao"
 PUBLICACAO_PATH = "/api/consulta/v1/contratacoes/publicacao"
 ITEMS_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/itens"
 FILES_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/arquivos"
+RESULTS_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/itens/{item}/resultados"
 
 BREAKER_CONSULTA = "pncp-consulta"
 BREAKER_SEARCH = "pncp-search"
 BREAKER_ITEMS = "pncp-itens"
 BREAKER_FILES = "pncp-arquivos"
+BREAKER_RESULTS = "pncp-resultados"
 
 #: The period endpoints accept this and nothing else. 100 and 500 are rejected
 #: with "Tamanho de página inválido"; it is not a tunable.
@@ -180,6 +188,10 @@ class PncpClient:
     @property
     def files_breaker(self) -> CircuitBreaker:
         return get_breaker(BREAKER_FILES)
+
+    @property
+    def results_breaker(self) -> CircuitBreaker:
+        return get_breaker(BREAKER_RESULTS)
 
     def _get(self, path: str, params: dict[str, Any], breaker: CircuitBreaker) -> Any:
         """One GET under the breaker. Raises on anything but 200 and 204.
@@ -333,6 +345,34 @@ class PncpClient:
         """
         path = FILES_PATH.format(cnpj=cnpj, year=year, sequence=sequence)
         body = self._get(path, {}, self.files_breaker)
+        if body is None:
+            return []
+        if not isinstance(body, list):
+            raise PncpError(f"GET {path} -> expected a list, got {type(body).__name__}")
+        return body
+
+    # -- the resultados endpoint (§7.1 sync_awards) -----------------------
+
+    def fetch_results(
+        self, cnpj: int | str, year: int, sequence: int, item_number: int
+    ) -> list[dict[str, Any]]:
+        """Who won one item, and for how much. **One request per item** (§3.2).
+
+        POC 3's endpoint, unchanged, and unpaged for the same reason
+        :meth:`fetch_files` is: it answers with a bare JSON array and there is
+        at most a handful of results per item — 420 results over the 418 cached
+        item queries in the knowledge base, the largest being two
+        (``sequencialResultado`` 1 and 2, a Registro de Preços runner-up).
+
+        A ``204`` means this item has no published result and comes back as
+        ``[]`` — measured: asking for item 999 of a real tender answers 204,
+        not 404. Anything else raises, a 404 included: an item that had a
+        winner yesterday and 404s today is an outage, and
+        :mod:`licitaqui.sync_awards` must not read it as "not awarded after
+        all" and keep re-asking.
+        """
+        path = RESULTS_PATH.format(cnpj=cnpj, year=year, sequence=sequence, item=item_number)
+        body = self._get(path, {}, self.results_breaker)
         if body is None:
             return []
         if not isinstance(body, list):

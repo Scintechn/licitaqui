@@ -637,6 +637,116 @@ def _delete_b4_rows(dsn: str) -> None:
         )
 
 
+# -- B8: the awards sync's own database ------------------------------------
+#
+# Same shape and the same reasons as every block above: an isolated database so
+# two tasks' suites cannot collide, a `Dsn` wrapper so pytest cannot render the
+# credentials into a traceback, and deletes scoped to rows *this run* created.
+#
+# One difference that matters. `awards` has **no foreign key** to `tenders`
+# (§6.1 declares none) and **no timestamp column at all**, so neither of the
+# two tricks the other blocks use works here: award rows do not cascade when
+# their tender goes, and there is no `created_at` to age out the rows a
+# crashed run left behind. Cleanup therefore deletes awards explicitly by the
+# run-scoped tender prefix, and then sweeps any award under the fictitious
+# `99…` agency family whose tender no longer exists — orphans can only have
+# come from these fixtures, since nothing else writes that agency.
+B8_TEST_DSN_VAR = "TEST_DATABASE_URL_B8"
+
+#: Not a valid CNPJ, per **run**, with a trailing `8` so it stays distinct from
+#: B2's `…2`, C1's `…3` and B4's `…4` inside the same run.
+B8_CNPJ = f"99{int(RUN_ID, 16):011d}8"[:14]
+
+#: Tender ids have to look like real `numeroControlePNCP` values because
+#: `split_control_number` parses them, so the run id rides in the CNPJ and this
+#: is what cleanup matches.
+B8_TENDER_PREFIX = f"{B8_CNPJ}-"
+
+#: The job kinds B8 owns, named here so cleanup cannot drift from the code.
+B8_JOB_KINDS = ("sync_awards", "sync_tender_awards")
+
+#: Every tender a B8 test writes carries this agency name, and the cross-run
+#: sweep below requires it.
+#:
+#: The other blocks sweep crashed runs by ``agency_cnpj like '99%'`` alone,
+#: which is safe in a database nothing else writes to. B8's is not such a
+#: database: `scripts/backfill_awards.py` puts thousands of **real** tenders in
+#: it, and a real agency whose CNPJ root begins 99 would be deleted an hour
+#: after it arrived — silently shrinking the price base. None of the 2,000-odd
+#: agencies collected so far begins with 99, so this has never fired; it is
+#: cheaper to make it impossible than to notice it later.
+B8_AGENCY_NAME = "ÓRGÃO DE TESTE B8"
+
+
+@pytest.fixture(scope="session")
+def b8_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(B8_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{B8_TEST_DSN_VAR} is not configured; skipping B8 database tests")
+
+
+@pytest.fixture
+def b8_clean_dsn(b8_dsn: str) -> Iterator[str]:
+    """B8's test DSN, with this run's rows deleted before and after the test."""
+    _delete_b8_rows(b8_dsn)
+    try:
+        yield b8_dsn
+    finally:
+        _delete_b8_rows(b8_dsn)
+
+
+@pytest.fixture
+def b8_connect(b8_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(b8_clean_dsn, application_name=f"licitaqui-b8-test-{os.getpid()}")
+
+
+@pytest.fixture
+def b8_conn(b8_connect) -> Iterator[psycopg.Connection]:
+    with b8_connect() as connection:
+        yield connection
+
+
+def _delete_b8_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates."""
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from awards where starts_with(tender_id, %s)", (B8_TENDER_PREFIX,))
+        conn.execute("delete from tenders where agency_cnpj = %s", (B8_CNPJ,))
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' and agency_name = %s"
+            "  and updated_at < now() - interval '1 hour'",
+            (B8_AGENCY_NAME,),
+        )
+        # Orphans: an award whose fictitious tender is gone. `awards` has no
+        # timestamp, so this — not an age predicate — is what catches a crash.
+        # Narrowed to ids that parse as this family's, so a real award can
+        # never be caught by it.
+        conn.execute(
+            "delete from awards a where a.tender_id like '99%%-1-%%' "
+            "  and not exists (select 1 from tenders t where t.id = a.tender_id)"
+        )
+        conn.execute(
+            "delete from events where starts_with(name, %s)",
+            (f"sync_awards:{B8_TENDER_PREFIX}",),
+        )
+        conn.execute(
+            "delete from events where starts_with(name, 'sync_awards:99') "
+            "  and created_at < now() - interval '1 hour'"
+        )
+        conn.execute(
+            "delete from jobs where kind = any(%s) and key like %s",
+            (list(B8_JOB_KINDS), f"{B8_TENDER_PREFIX}%"),
+        )
+
+
+def b8_tender_id(sequence: int = 1, year: int = 2026) -> str:
+    """A `numeroControlePNCP` under this run's fictitious agency."""
+    return f"{B8_TENDER_PREFIX}1-{sequence:06d}/{year}"
+
+
 # -- FH: wiring B4's files_hash into C1's screening -----------------------
 #
 # Same shape and the same reasons as every block above: an isolated database so
