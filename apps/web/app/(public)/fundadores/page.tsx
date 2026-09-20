@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Button, Card, CardRow, Icon, Logo, SectionLabel, Status, TagList } from '@/components'
 import { cn } from '@/lib/cn'
@@ -626,17 +627,17 @@ export default function FoundersOfferPage() {
       <footer className="pt-8 pb-12 text-meta leading-[1.55] text-muted">
         <Wrap className="flex flex-wrap justify-between gap-4">
           <span>{page.footer.company}</span>
-          {/* TODO(G3): point these at legal.privacyUrl / legal.termsUrl once the
-              privacy policy and the terms of use are published. The approved
-              page anchors them to the top of the document until then. */}
           <span>
-            <a href="#topo" className="text-blue hover:text-blue-hover">
+            <Link
+              href={messages.legal.privacyUrl}
+              className="text-blue hover:text-blue-hover"
+            >
               {messages.legal.privacyLabel}
-            </a>{' '}
+            </Link>{' '}
             ·{' '}
-            <a href="#topo" className="text-blue hover:text-blue-hover">
+            <Link href={messages.legal.termsUrl} className="text-blue hover:text-blue-hover">
               {messages.legal.termsLabel}
-            </a>
+            </Link>
           </span>
         </Wrap>
       </footer>

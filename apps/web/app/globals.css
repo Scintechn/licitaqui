@@ -1,2 +1,84 @@
 @import 'tailwindcss';
 @import '../styles/tokens.css';
+
+/*
+ * `.legal-prose` — the terms and the privacy policy.
+ *
+ * Those two pages are generated from the Markdown in `docs/legal/` (see
+ * `lib/legal/document.ts`), so their elements arrive as plain tags with no
+ * classes to hang Tailwind on. This is the one place in the app that styles
+ * bare HTML, and it is scoped to the wrapper so it cannot leak.
+ *
+ * Only the tags the documents actually use are covered: headings, paragraphs,
+ * lists, tables, rules, bold and links. Tables get a scroll container of their
+ * own because several are wider than a phone and the page itself must never
+ * scroll sideways.
+ */
+.legal-prose {
+  color: var(--color-ink);
+  font-size: var(--text-body);
+  line-height: 1.65;
+}
+.legal-prose h2 {
+  margin-block: 2.5rem 0.75rem;
+  font-size: var(--text-lead);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.legal-prose h3 {
+  margin-block: 1.75rem 0.5rem;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.legal-prose p {
+  margin-block: 0.85rem;
+}
+.legal-prose ul,
+.legal-prose ol {
+  margin-block: 0.85rem;
+  padding-inline-start: 1.35rem;
+}
+.legal-prose ul {
+  list-style: disc;
+}
+.legal-prose ol {
+  list-style: decimal;
+}
+.legal-prose li {
+  margin-block: 0.35rem;
+}
+.legal-prose strong {
+  font-weight: 600;
+}
+.legal-prose a {
+  color: var(--color-blue);
+  text-decoration: underline;
+}
+.legal-prose a:hover {
+  color: var(--color-blue-hover);
+}
+.legal-prose hr {
+  margin-block: 2rem;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+}
+.legal-prose table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  margin-block: 1.25rem;
+  border-collapse: collapse;
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+.legal-prose th,
+.legal-prose td {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-line);
+  text-align: start;
+  vertical-align: top;
+}
+.legal-prose th {
+  background: var(--color-surface);
+  font-weight: 600;
+}

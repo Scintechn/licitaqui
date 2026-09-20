@@ -59,3 +59,20 @@ mis-attribute both the commit and the Vercel deployment. Verify with
 Decisions marked open in plan §1.2 are Sci's: stop and ask. External side effects need
 Sci's OK — Asaas **sandbox** only, no real messages except to Sci's test contacts, no
 migrations on the Neon `main` branch without Sci.
+
+## Legal copy — which copy wins
+
+`docs/legal/` in this repository is the **source of truth**, like every other file
+under `docs/`. Sci authors amendments in the knowledge base (`~/Documents/POC
+Licitacao/legal/`) and copies them here; from that moment the repository copy is the
+one that ships, because `/termos` and `/privacidade` are generated from these files at
+build time (`apps/web/lib/legal/document.ts`).
+
+Note that the knowledge base's own `CLAUDE.md` calls its `legal/` folder the source of
+truth for legal copy. For this repository that is out of date — resolved by Sci on
+2026-09-20. Do not "fix" the repository copy by re-syncing from there without being
+asked.
+
+**Never write or edit the legal wording yourself** (legal brief §5). If the product
+needs something the documents do not cover, stop and ask Sci. Rendering changes are
+fine; sentences are not.
