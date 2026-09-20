@@ -936,14 +936,14 @@ def _delete_dl_rows(dsn: str) -> None:
         conn.execute("delete from tenders where agency_cnpj = %s", (DL_CNPJ,))
         conn.execute(
             "delete from tenders where agency_cnpj like '99%%' "
-            "  and updated_at < now() - interval '1 hour'"
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from events where starts_with(name, %s)", (f"sync_files:{DL_TENDER_PREFIX}",)
         )
         conn.execute(
             "delete from events where starts_with(name, 'sync_files:99') "
-            "  and created_at < now() - interval '1 hour'"
+            f"  and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from jobs where kind = any(%s)"
