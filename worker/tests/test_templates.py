@@ -180,3 +180,90 @@ def test_channel_mismatch_fails(tmp_path: Path) -> None:
 
     with pytest.raises(TemplateError, match="declares channel"):
         templates.load("whatsapp", "wrong", root=tmp_path)
+
+
+# -- optional rows: the blank-value trap -----------------------------------
+#
+# These two files carry rows that are absent for most tenders — the ME/EPP
+# marker, and the estimated value PNCP is entitled to withhold
+# (`tenders.confidential_budget`). The tempting shape is a placeholder the
+# caller sets to `""`, and it does not work: a blank value is a
+# `MissingPlaceholder` by design (README §3), so the digest would have raised
+# on the first tender without a marker. The rows are `[[se: …]]` blocks
+# instead, and conditionals resolve *before* substitution, so the caller passes
+# nothing at all when the row is off.
+
+
+def test_the_digest_item_drops_the_me_epp_line_without_passing_a_blank() -> None:
+    context = {
+        "objeto": "Pilhas AA",
+        "orgao": "Prefeitura de Campinas",
+        "uf": "SP",
+        "modalidade": "Pregão eletrônico",
+        "prazo_proposta": "30/09/2026 às 08:30",
+        "link_edital": "https://licitaquiapp.com.br/e/1",
+    }
+
+    without = templates.render("telegram", "partial-digest-item", context, tem_meepp=False)
+    assert "ME/EPP" not in without
+    # The line is gone, not blanked: no empty line opens up where it was.
+    assert "\n\n" not in without
+    assert without.splitlines()[-1].startswith("Ler o edital:")
+
+    with_marker = templates.render(
+        "telegram",
+        "partial-digest-item",
+        context,
+        tem_meepp=True,
+        marcador_meepp="Item exclusivo para ME/EPP",
+    )
+    assert "\nItem exclusivo para ME/EPP\nLer o edital:" in with_marker
+
+
+def test_a_blank_marker_still_raises_when_the_flag_is_on() -> None:
+    """The guard is the flag, not a licence to pass empty strings."""
+    context = {
+        "objeto": "Pilhas AA",
+        "orgao": "Prefeitura de Campinas",
+        "uf": "SP",
+        "modalidade": "Pregão eletrônico",
+        "prazo_proposta": "30/09/2026 às 08:30",
+        "link_edital": "https://licitaquiapp.com.br/e/1",
+        "marcador_meepp": "   ",
+    }
+    with pytest.raises(MissingPlaceholder):
+        templates.render("telegram", "partial-digest-item", context, tem_meepp=True)
+
+
+ALERT_CONTEXT = {
+    "nome": "Sci",
+    "objeto": "Registro de preços de baterias e pilhas",
+    "orgao": "Prefeitura de Campinas",
+    "cidade_uf": "Campinas/SP",
+    "modalidade": "Pregão eletrônico",
+    "prazo_proposta": "30/09/2026 às 08:30",
+    "link_edital": "https://licitaquiapp.com.br/radar/edital/123",
+}
+
+
+@pytest.mark.parametrize("tem_valor", [True, False])
+@pytest.mark.parametrize("tem_meepp", [True, False])
+def test_the_tender_alert_renders_every_combination_of_its_optional_rows(
+    tem_valor: bool, tem_meepp: bool
+) -> None:
+    context = dict(ALERT_CONTEXT)
+    if tem_valor:
+        context["valor_estimado"] = "R$ 48.196,00"
+    if tem_meepp:
+        context["marcador_meepp"] = "Item exclusivo para ME/EPP"
+
+    text = templates.render(
+        "whatsapp", "tender-alert", context, tem_valor=tem_valor, tem_meepp=tem_meepp
+    )
+
+    assert ("Valor estimado" in text) is tem_valor
+    assert ("ME/EPP" in text) is tem_meepp
+    # A withheld budget must not leave a hole in the block of facts.
+    assert "\n\n📅" not in text
+    # §4: every WhatsApp message that starts a conversation carries the opt-out.
+    assert text.endswith("Para não receber mais mensagens, responda SAIR.")
