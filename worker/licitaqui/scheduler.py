@@ -81,8 +81,13 @@ class ScheduleEntry:
 #: whatever has changed since the last completed cycle" and two ticks 30
 #: minutes apart never re-do each other's work. The default key — the due
 #: instant in BRT — means a duplicated tick during a deploy dedupes to one job.
+#: `sync_awards` is §7.1's "daily, overnight". 03:00 BRT is off-peak, which
+#: §7.2 asks for heavy jobs, and the sweep itself is cheap — it makes no HTTP
+#: call, it only queues the per-tender jobs that do (priority 9, so they sit
+#: behind anything a user is waiting for).
 DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     ScheduleEntry(kind="sync_open_tenders", every_seconds=30 * 60, priority=5),
+    ScheduleEntry(kind="sync_awards", daily_at="03:00", priority=9),
 )
 
 
