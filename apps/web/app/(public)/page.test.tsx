@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { messages } from '@/lib/messages'
+import { format, messages } from '@/lib/messages'
+import { FOUNDER_SEATS } from '@/lib/founders/seats'
+import { EXAMPLE_AS_OF, EXAMPLE_TENDERS, exampleCounts } from '@/lib/radar/landing-example'
 
 // The search card calls `useRouter()` for the client-side hop to the Radar,
 // and there is no app router mounted under `react-dom/server`. The assertions
@@ -86,5 +88,146 @@ describe('/', () => {
   it('revalidates inside the 10–30 min window of spec §3.3', () => {
     expect(revalidate).toBeGreaterThanOrEqual(600)
     expect(revalidate).toBeLessThanOrEqual(1800)
+  })
+})
+
+/**
+ * The rest of `paginas/landing_radar.html`, which the page stopped short of.
+ * Each block below is one the approved document has and the shipped page did
+ * not.
+ */
+describe('/ · the approved page, section by section', () => {
+  it('opens on the founders strip, above the header', () => {
+    expect(out).toContain(copy.founderStrip.label)
+    expect(out).toContain(format(copy.founderStrip.offer, { preco: messages.plans.promo.price }))
+    expect(out).toContain(copy.founderStrip.cta)
+    expect(out.indexOf(copy.founderStrip.label)).toBeLessThan(out.indexOf('<header'))
+  })
+
+  /**
+   * The one assertion on this page that is about honesty rather than layout.
+   * With no database — which is how `next build` and this test run — the strip
+   * must say how many seats the offer has and nothing about how many are left.
+   */
+  it('never invents a remaining seat count when it cannot read one', () => {
+    expect(out).toContain(format(copy.founderStrip.seatsUnknown, { total: FOUNDER_SEATS }))
+    expect(out).not.toContain('restam')
+    expect(out).not.toContain('[N]')
+  })
+
+  it('carries the nav, and every anchor in it lands on a section that exists', () => {
+    for (const [label, anchor] of [
+      [copy.nav.howItWorks, 'como-funciona'],
+      [copy.nav.plans, 'planos'],
+      [copy.nav.faq, 'perguntas'],
+    ] as const) {
+      expect(out).toContain(label)
+      expect(out).toContain(`href="#${anchor}"`)
+      expect(out).toContain(`id="${anchor}"`)
+    }
+    expect(out).toContain(copy.nav.signIn)
+  })
+
+  it('shows the example Radar panel, with the three real tenders', () => {
+    expect(out).toContain(copy.example.label)
+    expect(out).toContain(copy.example.panelLabel)
+    for (const tender of EXAMPLE_TENDERS) {
+      expect(out).toContain(tender.object)
+      expect(out).toContain(tender.agencyName)
+    }
+  })
+
+  it('draws the example with the product’s own badges and tags', () => {
+    const list = messages.radar.list
+    for (const badge of [list.badges.compatible, list.badges.check, list.badges.keyword]) {
+      expect(out).toContain(badge)
+    }
+    expect(out).toContain(messages.radar.tags.exclusive)
+    expect(out).toContain(messages.radar.tags.mixed)
+    expect(out).toContain(messages.radar.tags.favored)
+  })
+
+  it('counts the example’s own tabs instead of quoting a number', () => {
+    const counts = exampleCounts()
+    expect(counts).toEqual({ compatible: 1, check: 1, keyword: 1 })
+    for (const group of ['compatible', 'check', 'keyword'] as const) {
+      expect(out).toContain(messages.radar.list.groups[group])
+    }
+  })
+
+  /**
+   * The example is three tenders from a fixed date, so: it says so, it is dated,
+   * its countdowns are frozen at that date, and none of its cards is a link to a
+   * tender page that would 404 or show something else entirely.
+   */
+  it('keeps the example visibly an example', () => {
+    expect(out).toContain(format(copy.example.caption, { data: EXAMPLE_AS_OF }))
+    expect(out).toContain(EXAMPLE_AS_OF)
+    // 30/09/2026 minus the frozen 17/09/2026: the board's "13 dias".
+    expect(out).toContain(format(messages.radar.card.daysLeft, { count: 13 }))
+    expect(out).not.toContain('/radar/edital/')
+  })
+
+  it('explains how it works, with the three Radar groups as the legend', () => {
+    expect(out).toContain(copy.how.title)
+    for (const step of copy.how.steps) {
+      expect(out).toContain(step.eyebrow)
+      expect(out).toContain(step.title)
+    }
+    for (const hint of Object.values(messages.radar.list.groupHint)) {
+      expect(out).toContain(hint)
+    }
+  })
+
+  it('opens one real tender, dated, with the price band still locked', () => {
+    const { opportunity } = copy
+    expect(out).toContain(opportunity.title)
+    expect(out).toContain(opportunity.cardLabel)
+    expect(out).toContain(opportunity.tender)
+    for (const row of opportunity.rows) {
+      expect(out).toContain(row.label)
+      expect(out).toContain(row.page)
+    }
+    expect(out).toContain(opportunity.lockedTitle)
+    expect(out).toContain(messages.plans.locked.priceBand)
+    expect(out).toContain(format(opportunity.source, { data: EXAMPLE_AS_OF }))
+    // An AI score on the page means the disclaimer is on the page too (§7.2).
+    expect(out).toContain(messages.ai.disclaimer)
+  })
+
+  it('shows the Telegram alert example', () => {
+    expect(out).toContain(copy.alerts.title)
+    expect(out).toContain(copy.alerts.messageLabel)
+    for (const item of copy.alerts.items) expect(out).toContain(item.text)
+  })
+
+  it('prices the three plans from the catalogue, never from a literal', () => {
+    expect(out).toContain(messages.plans.basic.price)
+    expect(out).toContain(messages.plans.essential.price)
+    expect(out).toContain(messages.plans.promo.price)
+    expect(out).toContain(messages.plans.pro.price)
+    expect(out).toContain(messages.plans.promo.priceChangeNote)
+    expect(out).toContain(messages.plans.essential.feature4)
+    expect(out).toContain(copy.plans.proSoon)
+    expect(out).toContain('href="/fundadores"')
+  })
+
+  it('lists the guarantees and the questions', () => {
+    for (const guarantee of copy.guarantees) expect(out).toContain(guarantee.title)
+    for (const column of copy.faq.columns) {
+      for (const item of column) expect(out).toContain(item.q)
+    }
+    expect(out.match(/<details/g)).toHaveLength(6)
+  })
+
+  it('closes on the footer, pointing at the legal pages', () => {
+    expect(out).toContain(messages.foundersPage.footer.company)
+    expect(out).toContain('href="/privacidade"')
+    expect(out).toContain('href="/termos"')
+  })
+
+  it('drops the knowledge base’s "Prévia" banner', () => {
+    expect(out).not.toContain('Prévia')
+    expect(out).not.toContain('PRÉVIA')
   })
 })

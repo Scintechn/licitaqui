@@ -1,4 +1,4 @@
-import { CardLink, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
+import { Card, CardLink, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
 import { tenderHref } from '@/lib/radar/client'
 import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
 import { agencyLine, daysUntil, deadlineShort, meEppSummary, money, trimObject } from '@/lib/radar/format'
@@ -71,16 +71,32 @@ export function TenderTags({ tender }: { tender: TenderCard }) {
   )
 }
 
-export function TenderCardView({ tender, now = new Date() }: { tender: TenderCard; now?: Date }) {
+export function TenderCardView({
+  tender,
+  now = new Date(),
+  href,
+}: {
+  tender: TenderCard
+  now?: Date
+  /**
+   * Where the card goes. Defaults to this tender's page on the Radar.
+   *
+   * `null` renders the same card as a plain surface instead of a link — the
+   * Landing's "Exemplo" panel, which shows three real tenders frozen at a past
+   * date (`lib/radar/landing-example.ts`). Linking those would take a visitor
+   * to whatever the database holds for that id today, or to a 404. A card that
+   * leads nowhere must also not be a keyboard stop, so it is not an `<a>` with
+   * the href removed: it is not an anchor at all.
+   */
+  href?: string | null
+}) {
   const status = STATUS[tender.group]
   const value = tender.confidentialBudget ? copy.card.confidential : money(tender.estimatedValue)
   const deadline = deadlineShort(tender.proposalsCloseAt)
+  const target = href === undefined ? tenderHref(tender.id) : href
 
-  return (
-    // `w-full` matters: the list item is a flex container so the cards stretch
-    // to equal height in the desktop grid, and a block child of a flex parent
-    // is shrink-to-fit, not full width.
-    <CardLink href={tenderHref(tender.id)} className="flex w-full flex-col gap-2">
+  const body = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <Status kind={status.kind}>{status.label}</Status>
         <span className="text-caption text-muted">{deadlineLabel(tender.proposalsCloseAt, now)}</span>
@@ -108,8 +124,25 @@ export function TenderCardView({ tender, now = new Date() }: { tender: TenderCar
         <span className="grow">
           {deadline ? format(copy.card.proposalsUntil, { quando: deadline }) : copy.card.noDeadline}
         </span>
-        <Icon name="chevronRight" size={16} />
+        {target === null ? null : <Icon name="chevronRight" size={16} />}
       </div>
+    </>
+  )
+
+  // `w-full` matters: the list item is a flex container so the cards stretch
+  // to equal height in the desktop grid, and a block child of a flex parent
+  // is shrink-to-fit, not full width.
+  if (target === null) {
+    return (
+      <Card padding="sm" className="flex w-full flex-col gap-2">
+        {body}
+      </Card>
+    )
+  }
+
+  return (
+    <CardLink href={target} className="flex w-full flex-col gap-2">
+      {body}
     </CardLink>
   )
 }
