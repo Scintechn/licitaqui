@@ -643,7 +643,9 @@ def ensure_documents(
 
     Raises :class:`DocumentsNotReady` when PNCP has never been asked what
     documents this tender has, and :class:`DocumentError` when a selected
-    document cannot be read.
+    document could not be **fetched** — a timeout, a 5xx, a 404, a file past
+    the size cap. A document that arrives and cannot be parsed does not raise;
+    it contributes no text (see :func:`read_file`).
     """
     started = time.monotonic()
     state = sync_files.read_state(conn, tender_id)
@@ -735,7 +737,17 @@ def extract_text(ctx: JobContext) -> None:
     """
     payload = ctx.payload
     tender_id = str(payload.get("tender_id") or ctx.job.key)
-    ensure_documents(ctx.conn, tender_id, force=bool(payload.get("force")), log=ctx.log)
+    try:
+        ensure_documents(ctx.conn, tender_id, force=bool(payload.get("force")), log=ctx.log)
+    except ValueError:
+        # The tender was deleted between the enqueue and the run. Failing would
+        # retry four times over forty minutes against a row that is not coming
+        # back — `sync_files` set this precedent for the same reason. A
+        # *screening* of an unknown tender still fails, and should: the user
+        # asked about something that is not there.
+        ctx.log.warning(
+            "extract_text: unknown tender, nothing to do", extra={"tender_id": tender_id}
+        )
 
 
 #: Named here as well, so a reader who arrives at the download from the job side

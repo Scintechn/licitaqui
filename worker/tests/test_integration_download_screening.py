@@ -556,6 +556,24 @@ def test_the_extract_text_job_warms_the_cache_without_calling_the_model(
     assert file_rows(dl_conn, tender)[1]["text_version"] == ai_tender.EXTRACTION_VERSION
 
 
+def test_extract_text_does_not_retry_a_tender_that_no_longer_exists(dl_conn):
+    """Deleted between the enqueue and the run. `sync_files` set this precedent:
+    four retries over forty minutes against a row that is not coming back."""
+    job = queue.Job(
+        id=1, kind=documents.JOB_KIND, key=dl_tender_id(99), priority=9, payload={}, attempts=1
+    )
+    REGISTRY.get(documents.JOB_KIND)(
+        JobContext(job=job, conn=dl_conn, connect=lambda: None, log=LOG)
+    )
+
+
+def test_a_screening_of_a_tender_that_does_not_exist_still_fails(dl_conn):
+    """The other half of the same rule: the user asked about something that is
+    not there, and `ai_analyses.tender_id` references `tenders(id)` anyway."""
+    with pytest.raises(ValueError, match="unknown tender"):
+        run_job(dl_conn, {"tender_id": dl_tender_id(98)})
+
+
 def test_enqueueing_an_extraction_keeps_one_live_job_per_tender(dl_conn, tender):
     assert documents.enqueue(dl_conn, tender) is not None
     assert documents.enqueue(dl_conn, tender) is None, "the dedupe index is the point"
