@@ -151,3 +151,23 @@ guarantee of winning a tender, testimonials, or numbers not in the docs above.
 Search the templates for `TODO(Sci):`. Every one of them is a decision this task refused
 to invent (legal wording, links and addresses that do not exist yet — gaps **G3** and
 **G13**). They must all be resolved before a single message goes to a real user.
+
+## 8. Optional rows
+
+A row that is absent for most records — the ME/EPP marker, an estimated value PNCP is
+entitled to withhold — is a `[[se: …]]` block, never a placeholder the caller sets to
+`""`. A blank value is a `MissingPlaceholder` by design (§3), so the empty-string shape
+raises on the first record that lacks the row.
+
+Conditionals resolve **before** substitution, so a placeholder inside a block that is
+off is removed and the caller passes nothing for it. Write the block inline so it does
+not leave a blank line behind:
+
+```
+Propostas até {{prazo_proposta}}
+[[se: tem_meepp]]{{marcador_meepp}}
+[[/se]]Ler o edital: {{link_edital}}
+```
+
+The flag guards the row; it is not a licence to pass an empty string. With the flag on,
+a blank value still raises.
