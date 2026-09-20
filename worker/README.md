@@ -598,4 +598,13 @@ without it, which CI counts as a failure. Rows are scoped **per run**:
 Nothing under `pytest` reaches PNCP, S3 or OpenRouter: the PDFs are built in
 memory by `tests/pdfs.py`, downloads run against an `httpx.MockTransport`, the
 model call is stubbed, and the suite-wide `_object_storage_off` fixture forces
-a `NullStore` even on a machine where `S3_BUCKET` resolves.
+a `NullStore` even on a machine where `S3_BUCKET` resolves. That last one is
+autouse and suite-wide for the same reason `_whatsapp_delivery_off` is: the
+bucket named by `S3_BUCKET` is the production one, `licitaqui.storage` resolves
+it out of the gitignored env files as well as the environment, and a test that
+reached it would leave objects in it under fictitious tender ids.
+
+Measured in CI (`integration (Neon)`, the job that fails on any database skip):
+**600 passed, 1 skipped in 739.51 s**. The one skip is `test_segments.py`'s
+knowledge-base comparison, which is not a database test and is expected off
+Sci's machine.
