@@ -135,6 +135,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # Only the publish steps below need this, and only on `main`. `contents:
+    # read` stays the workflow-wide default for every other job.
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -143,13 +149,52 @@ jobs:
       - name: Build worker image
         run: docker build -t licitaqui-worker:${{ github.sha }} worker/
 
-      # TODO(B1): once GHCR and Easypanel credentials exist, add here — gated on
-      # `github.event_name == 'push' && github.ref == 'refs/heads/main'`:
-      #   1. docker/login-action (pinned by SHA) against ghcr.io using
-      #      ${{ github.actor }} / ${{ secrets.GITHUB_TOKEN }} with
-      #      `permissions: packages: write` on this job;
-      #   2. push ghcr.io/scintechn/licitaqui-worker:${{ github.sha }} and :latest;
-      #   3. curl the Easypanel redeploy webhook, URL from
-      #      ${{ secrets.EASYPANEL_WORKER_WEBHOOK }}.
-      # Do not add any of this before the secrets are configured: an unset secret
-      # makes the step fail on every PR. Spec §13, task B1.
+      # Publishing (spec §13, task B1). Only from `main`, so a pull request
+      # still just proves the Dockerfile builds.
+      #
+      # GHCR needs no configured secret: `GITHUB_TOKEN` is minted per run and
+      # `packages: write` above is enough. That is why this no longer waits on
+      # anything — the original TODO assumed a credential that is not required.
+      #
+      # `docker login` is the CLI rather than `docker/login-action` on purpose:
+      # every third-party action in this repository is pinned by SHA to keep the
+      # supply chain reviewable, and not adding one at all is simpler than
+      # pinning one.
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+
+      # Lowercase because GHCR rejects an uppercase path, and the owner is
+      # `Scintechn`.
+      - name: Push the image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          repo="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/licitaqui-worker"
+          docker tag licitaqui-worker:${{ github.sha }} "$repo:${{ github.sha }}"
+          docker tag licitaqui-worker:${{ github.sha }} "$repo:latest"
+          docker push "$repo:${{ github.sha }}"
+          docker push "$repo:latest"
+          echo "published $repo:${{ github.sha }}"
+
+      # The redeploy hook is genuinely optional: Easypanel may not be wired yet,
+      # and an unset secret must not turn `main` red.
+      #
+      # The emptiness check is in the shell rather than in `if:` because the
+      # `secrets` context is not dependably available to a step-level condition;
+      # reading it through `env` works everywhere and keeps the URL out of the
+      # command line, where it would show in the step's own log.
+      - name: Tell Easypanel to redeploy
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          WEBHOOK: ${{ secrets.EASYPANEL_WORKER_WEBHOOK }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "EASYPANEL_WORKER_WEBHOOK is not set - image published, redeploy skipped."
+            exit 0
+          fi
+          curl -fsS -X POST "$WEBHOOK"
+          echo "redeploy requested"
+
