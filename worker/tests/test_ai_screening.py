@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from licitaqui import ai_screening, ai_tender
+from licitaqui import ai_screening, ai_tender, files
 from licitaqui.ai_tender import Analysis, Attempt, Screening
 from licitaqui.registry import REGISTRY
 
@@ -128,3 +128,66 @@ class _SilentLog:
     def info(self, *_args, **_kwargs) -> None: ...
 
     def warning(self, *_args, **_kwargs) -> None: ...
+
+
+# -- resolving the `files_hash` (the B4 hand-over) --------------------------
+#
+# The database half is `test_integration_files_hash.py`. What is checked here is
+# the precedence, which is the part a future reader is most likely to get wrong.
+
+
+class _Rows:
+    """Just enough of a connection for `files.read_files` to run: one `execute`
+    returning the `tender_files` rows a tender has."""
+
+    def __init__(self, rows: list[tuple]) -> None:
+        self.rows = rows
+
+    def execute(self, *_args, **_kwargs):
+        return self
+
+    def fetchall(self) -> list[tuple]:
+        return self.rows
+
+
+def _row(sequence: int, url: str) -> tuple:
+    return ("t", sequence, "Edital.pdf", "Edital", url, True, None)
+
+
+def test_an_explicit_payload_hash_beats_the_stored_list():
+    """Only the caller knows which files went into a hash it computed itself —
+    the evaluation harness, or an operator re-running one exact file set."""
+    conn = _Rows([_row(1, "https://pncp/1")])
+    assert ai_screening.resolve_files_hash(conn, "t", {"files_hash": "pinned"}) == "pinned"
+
+
+def test_the_stored_list_is_the_key_when_the_payload_has_none():
+    conn = _Rows([_row(1, "https://pncp/1")])
+    assert ai_screening.resolve_files_hash(conn, "t", {}) == files.files_hash_for(conn, "t")
+
+
+def test_a_moved_list_moves_the_key():
+    """The whole point: a different active file list is a different cache key."""
+    before = ai_screening.resolve_files_hash(_Rows([_row(1, "https://pncp/1")]), "t", {})
+    after = ai_screening.resolve_files_hash(
+        _Rows([_row(1, "https://pncp/1"), _row(2, "https://pncp/2")]), "t", {}
+    )
+    assert before != after
+
+
+def test_a_tender_with_no_documents_resolves_to_nothing():
+    """`EMPTY_MANIFEST_DIGEST` is the same constant for every tender, so keying
+    on it would claim a file list we do not have. The caller falls back to
+    hashing what it actually read."""
+    assert ai_screening.resolve_files_hash(_Rows([]), "t", {}) is None
+    assert ai_screening.resolve_files_hash(_Rows([]), "t", {"files_hash": ""}) is None
+
+
+def test_the_resolved_hash_beats_the_payloads_when_load_document_is_given_both():
+    """`screen_tender` hands the resolved value down; the payload's own is the
+    fallback for a caller that bypassed the resolver."""
+    payload = {"pages": [{"page": 1, "text": "x" * 100}], "files_hash": "from-payload"}
+    _, resolved = ai_screening.load_document(payload, files_hash="from-database")
+    assert resolved == "from-database"
+    _, fallback = ai_screening.load_document(payload)
+    assert fallback == "from-payload"
