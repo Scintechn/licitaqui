@@ -249,9 +249,10 @@ def manifest(files: Iterable[TenderFile]) -> str:
 def files_hash(files: Iterable[TenderFile]) -> str:
     """The `ai_analyses.files_hash` for this file list (§6.3).
 
-    This is the value :mod:`licitaqui.ai_screening` should be handed in its
-    payload. Use :func:`files_hash_for` to read it off the database rather than
-    recomputing the list from PNCP.
+    This is the value :mod:`licitaqui.ai_screening` keys its cache on. That job
+    resolves it for itself with :func:`files_hash_for` when it runs, rather than
+    being handed it in a payload the queue can outlive — see
+    :func:`licitaqui.ai_screening.resolve_files_hash`.
     """
     return hashlib.sha256(manifest(files).encode("utf-8")).hexdigest()
 
@@ -381,11 +382,14 @@ def read_files(conn: psycopg.Connection, tender_id: str) -> list[TenderFile]:
 def files_hash_for(conn: psycopg.Connection, tender_id: str) -> str:
     """The `files_hash` to screen this tender under, from the stored list.
 
-    This is the entry point for everything downstream: an `ai_screening`
-    payload should carry this value, and a tender whose hash has moved since
-    its last analysis has no current one. It is derived rather than stored on
-    purpose — a cached digest can disagree with the rows it summarises, and
-    then the product serves an analysis of documents nobody is reading.
+    This is the entry point for everything downstream:
+    :func:`licitaqui.ai_screening.resolve_files_hash` calls it at the top of
+    every screening, and a tender whose hash has moved since its last analysis
+    has no current one. It is derived rather than stored on purpose — a cached
+    digest can disagree with the rows it summarises, and then the product serves
+    an analysis of documents nobody is reading. A digest in a job payload is a
+    cached digest with a queue delay attached, which is why the job asks here
+    instead.
     """
     return files_hash(read_files(conn, tender_id))
 

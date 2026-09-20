@@ -25,6 +25,38 @@ import { FEATURES, readLimit, spend, type Spender } from './quota'
  * prompt version back without deleting the newer rows, and the honest fix for
  * that day is a `prompt_version` the two sides share — noted on the PR.
  *
+ * ## …except for `files_hash`, which does not only move forward
+ *
+ * `files_hash` is the one part of the key that can go backwards, and it is the
+ * one that matters most: spec §3.2 says an amendment *invalidates* the
+ * screening. The worker (`licitaqui.files.files_hash`) digests the tender's
+ * active document list, so when PNCP publishes an errata the digest moves and
+ * every analysis of the old documents stops being this tender's answer — while
+ * staying on its row, because §3.2 also keeps AI results for ever and a cached
+ * `ok` is never overwritten.
+ *
+ * "Newest usable row" cannot see that: right after an amendment the newest row
+ * is precisely the superseded one, so it would be served as `ready` and no job
+ * would ever be queued. A company would read an analysis of an edital that no
+ * longer exists. So the read is narrowed to rows keyed on the **current** list.
+ *
+ * Which digest is current is, again, a fact only the worker can compute — the
+ * recipe (`MANIFEST_VERSION`, tab-separated fields, UTC ISO-8601) lives in
+ * `licitaqui/files.py`, and a second implementation of it here would have to
+ * agree byte for byte for ever; the day the two disagreed, every screening
+ * would miss its cache and be paid for again. So this reads the digest the
+ * worker itself published: `sync_files` writes it to the `events` marker
+ * `sync_files:<tender_id>` in the same job that writes `tender_files`, which
+ * makes `tender_files` the single source of truth and the marker its copy.
+ *
+ * **No marker means no filter.** A tender whose list has never been synced
+ * (seed data, a tender the collector has not reached) reads exactly as it did
+ * before — newest usable row. The filter can therefore only ever hide a row
+ * that is genuinely superseded; it cannot make a tender un-analysable.
+ *
+ * The honest fix is for the worker to expose the current digest as a column or
+ * an endpoint rather than through a marker row — noted on the PR.
+ *
  * `status in ('ok','no_text')` is the "usable" part. `no_text` is a scanned PDF
  * (§7.2) — a real, permanent answer meaning "there is nothing to read here",
  * not a failure to retry. A `failed` or abandoned `running` row is neither an
@@ -60,16 +92,38 @@ type AnalysisRow = {
   created_at: Date | string
 }
 
+/**
+ * Mirrors `licitaqui.files.sync_event_name`: the per-tender marker `sync_files`
+ * rewrites on every run, whose `props.files_hash` is the digest of the list as
+ * that job left it. Keep the two spellings in step.
+ */
+function syncMarkerName(tenderId: string) {
+  return `sync_files:${tenderId}`
+}
+
 export async function readScreening(
   tenderId: string,
   database: Executor = db(),
 ): Promise<CachedAnalysis | null> {
+  // The `coalesce` is the "no marker means no filter" rule above, kept in the
+  // same statement rather than in a second round trip: with a marker the row's
+  // `files_hash` must equal it, without one the row is compared to itself and
+  // every usable row stays eligible. `is not distinct from` so that a row
+  // written with no hash at all is excluded once a real digest is known,
+  // instead of vanishing into a NULL comparison.
   const found = await database.execute<AnalysisRow>(sql`
     select status, result, citation_check, rules, created_at
-      from ai_analyses
-     where tender_id = ${tenderId}
-       and mode = ${SCREENING_MODE}
-       and status = any(${sql.raw(`array[${USABLE.map((s) => `'${s}'`).join(',')}]::text[]`)})
+      from ai_analyses a
+     where a.tender_id = ${tenderId}
+       and a.mode = ${SCREENING_MODE}
+       and a.status = any(${sql.raw(`array[${USABLE.map((s) => `'${s}'`).join(',')}]::text[]`)})
+       and a.files_hash is not distinct from coalesce(
+             (select e.props->>'files_hash'
+                from events e
+               where e.name = ${syncMarkerName(tenderId)}
+               order by e.created_at desc
+               limit 1),
+             a.files_hash)
      order by extraction_version desc nulls last, created_at desc
      limit 1
   `)
