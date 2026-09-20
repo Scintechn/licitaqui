@@ -314,3 +314,10 @@ Credentials are in `.env.neon-roles.local` (gitignored, mode 600) — never comm
   where functions execute, and it does not affect query latency.
 - `vercel.json` lives in `apps/web/`, not the repo root, because the project's Root
   Directory is `apps/web`.
+- **Frozen clocks in date-sensitive tests.** `test_integration_sync_tenders` fixed its
+  PNCP records at 2026-09-17 while `sync_open_tenders` built its window from
+  `datetime.now()`. The two drifted apart and on **2026-09-19** the search fallback's
+  stop value overtook the fixtures, so the outage test wrote zero tenders and `main`
+  went red — with no production change involved (`sync_tenders.py` was byte-identical
+  to B2's original commit). A test whose result depends on the day it runs is a
+  failure with a delayed fuse: pin the clock next to the data it has to agree with.
