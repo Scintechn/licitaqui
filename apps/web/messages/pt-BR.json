@@ -560,5 +560,222 @@
     "rateLimited": "Você fez muitos pedidos seguidos. Espere um pouco e tente de novo.",
     "pncpDown": "O PNCP, o portal do governo de onde vêm os editais, está fora do ar agora. Os editais que já baixamos continuam aqui; os novos entram assim que o portal voltar.",
     "staleData": "Estes dados foram atualizados em {data}. Estamos buscando as novidades agora."
+  },
+  "radar": {
+    "meta": {
+      "title": "LicitaQui · Radar de licitações para MEI e pequena empresa",
+      "description": "Digite o CNPJ e veja as licitações abertas que a sua empresa consegue atender, com o prazo, o valor e o que pedem. Dados públicos do PNCP.",
+      "radarTitle": "Radar · LicitaQui",
+      "radarDescription": "Os editais abertos que combinam com as atividades do seu CNPJ."
+    },
+    "nav": {
+      "skip": "Ir direto para o conteúdo",
+      "home": "LicitaQui, início",
+      "menu": "Abrir menu",
+      "alerts": "Alertas",
+      "account": "Conta"
+    },
+    "landing": {
+      "title": "Encontre licitações que fazem sentido para sua empresa.",
+      "subtitle": "Digite o CNPJ e a gente mostra editais que você consegue atender, com o prazo e o que pedem.",
+      "formLabel": "Buscar editais",
+      "cnpjLabel": "CNPJ da empresa",
+      "cnpjPlaceholder": "00.000.000/0001-00",
+      "cnpjHelp": "Só os 14 números. Serve para ler as atividades registradas da empresa.",
+      "ufLabel": "UF onde você entrega",
+      "keywordLabel": "Ou procure por palavra-chave (opcional)",
+      "keywordPlaceholder": "Ex.: material hospitalar",
+      "submit": "Encontrar editais",
+      "trial": "3 dias grátis sem conta · 2 triagens por IA",
+      "sources": "Dados públicos do PNCP e da Receita Federal",
+      "todayLabel": "Hoje no Brasil",
+      "todayOpen": "editais abertos",
+      "todayMeEpp": "exclusivos ME/EPP",
+      "founders": "Quer entrar antes? São 48 vagas de fundador."
+    },
+    "ufAll": "Todo o Brasil",
+    "ufNames": {
+      "AC": "Acre",
+      "AL": "Alagoas",
+      "AP": "Amapá",
+      "AM": "Amazonas",
+      "BA": "Bahia",
+      "CE": "Ceará",
+      "DF": "Distrito Federal",
+      "ES": "Espírito Santo",
+      "GO": "Goiás",
+      "MA": "Maranhão",
+      "MT": "Mato Grosso",
+      "MS": "Mato Grosso do Sul",
+      "MG": "Minas Gerais",
+      "PA": "Pará",
+      "PB": "Paraíba",
+      "PR": "Paraná",
+      "PE": "Pernambuco",
+      "PI": "Piauí",
+      "RJ": "Rio de Janeiro",
+      "RN": "Rio Grande do Norte",
+      "RS": "Rio Grande do Sul",
+      "RO": "Rondônia",
+      "RR": "Roraima",
+      "SC": "Santa Catarina",
+      "SP": "São Paulo",
+      "SE": "Sergipe",
+      "TO": "Tocantins"
+    },
+    "list": {
+      "title": "Radar",
+      "companyFallback": "Sua empresa",
+      "cnaeCount": "{count, plural, =0 {sem CNAE lido} one {1 CNAE} other {# CNAEs}}",
+      "changeCompany": "Trocar empresa ou filtros",
+      "resultsLabel": "Editais encontrados",
+      "groups": {
+        "compatible": "Compatíveis",
+        "check": "Verificar",
+        "keyword": "Palavras"
+      },
+      "groupHint": {
+        "compatible": "seu CNAE atende",
+        "check": "pode haver exigências",
+        "keyword": "achado pela busca"
+      },
+      "badges": {
+        "compatible": "Compatível",
+        "check": "Verificar",
+        "keyword": "Palavra-chave"
+      },
+      "filters": "Filtros",
+      "filtersHide": "Esconder filtros",
+      "sort": "Ordenar: prazo",
+      "more": "Ver mais editais",
+      "apply": "Aplicar filtros",
+      "keywordOnly": "Busca por palavra-chave"
+    },
+    "freshness": {
+      "fresh": "Atualizado {idade}",
+      "stale": "Atualizado {idade}. Estamos buscando as novidades agora.",
+      "unknown": "Ainda não sabemos quando esta lista foi atualizada."
+    },
+    "age": {
+      "now": "agora mesmo",
+      "minutes": "{count, plural, one {há 1 minuto} other {há # minutos}}",
+      "hours": "{count, plural, one {há 1 hora} other {há # horas}}",
+      "days": "{count, plural, one {há 1 dia} other {há # dias}}"
+    },
+    "card": {
+      "daysLeft": "{count, plural, =0 {último dia} one {1 dia} other {# dias}}",
+      "closed": "encerrado",
+      "noDeadline": "sem data de proposta",
+      "proposalsUntil": "Proposta até {quando}",
+      "session": "Sessão {quando}",
+      "items": "{count, plural, one {1 item} other {# itens}}",
+      "confidential": "Valor sigiloso",
+      "noValue": "Valor não informado"
+    },
+    "tags": {
+      "exclusive": "Exclusivo ME/EPP",
+      "quota": "Cotas ME/EPP",
+      "mixed": "Exclusivos e cotas ME/EPP",
+      "none": "Sem cota ME/EPP",
+      "favored": "Tratamento favorecido",
+      "priceRegistration": "Registro de preços"
+    },
+    "visitor": {
+      "label": "Visitante",
+      "line": "{dias} · {triagens}",
+      "days": "{count, plural, =0 {último dia} one {1 dia} other {# dias}}",
+      "screenings": "{count, plural, =0 {triagens usadas} one {1 triagem} other {# triagens}}",
+      "unlimited": "triagens sem limite",
+      "createAccount": "Criar conta",
+      "expiredTitle": "Seus 3 dias de visitante acabaram",
+      "expiredBody": "Crie a conta grátis para continuar buscando editais e ler 5 editais por mês."
+    },
+    "states": {
+      "analyzingCompanyTitle": "Consultando o CNPJ…",
+      "analyzingCompanyBody": "Lendo as atividades registradas da empresa. Isso leva alguns instantes e você não precisa fazer nada.",
+      "analyzingListTitle": "Procurando editais…",
+      "analyzingListBody": "Conferindo os editais abertos que combinam com as suas atividades.",
+      "analyzingTenderTitle": "Abrindo o edital…",
+      "analyzingTenderBody": "Buscando os itens e o que o órgão pede.",
+      "emptyTitle": "Nenhum edital compatível agora",
+      "emptyBody": "Amplie as UFs ou adicione uma palavra-chave.",
+      "emptyCheckTitle": "Nada para verificar agora",
+      "emptyCheckBody": "Quando aparecer um edital perto das suas atividades, ele entra aqui.",
+      "emptyKeywordTitle": "Nenhum edital com essa palavra",
+      "emptyKeywordBody": "Tente outra palavra, ou amplie a UF. A busca aceita frases entre aspas.",
+      "emptyAction": "Ajustar filtros",
+      "noSegmentsTitle": "Não conseguimos ligar o seu CNAE a um segmento",
+      "noSegmentsBody": "As atividades registradas neste CNPJ ainda não estão no nosso mapa de segmentos. Não é erro seu nem defeito da página: a gente amplia esse mapa toda semana. Enquanto isso, procure pelo que você vende.",
+      "noSegmentsAction": "Procurar por palavra-chave",
+      "manualCnaeTitle": "Não conseguimos ler as atividades deste CNPJ",
+      "manualCnaeBody": "A Receita Federal não respondeu agora. Os editais abaixo vêm só da palavra-chave; tente o CNPJ de novo em alguns minutos.",
+      "needCnpjTitle": "Comece pelo CNPJ da sua empresa",
+      "needCnpjBody": "É o CNPJ que diz quais editais você consegue atender. Também dá para procurar só por palavra-chave.",
+      "needCnpjAction": "Digitar o CNPJ",
+      "timeoutTitle": "Está demorando mais que o normal",
+      "timeoutBody": "A consulta continua rodando por aqui. Atualize a página em alguns instantes.",
+      "timeoutAction": "Tentar de novo",
+      "errorTitle": "Não conseguimos carregar o Radar",
+      "errorAction": "Tentar de novo"
+    },
+    "opportunity": {
+      "back": "Voltar",
+      "follow": "Seguir edital",
+      "proposalsUntil": "Proposta até",
+      "remaining": "restantes",
+      "estimatedValue": "Valor estimado",
+      "whyTitle": "Por que você pode participar",
+      "why": {
+        "compatible": "CNAE compatível: {segmentos}",
+        "check": "Perto do que você faz: {segmentos}",
+        "exclusive": "Exclusivo ME/EPP",
+        "quota": "Tem cota reservada para ME/EPP",
+        "mixed": "Tem itens exclusivos e cotas para ME/EPP",
+        "favored": "Tratamento favorecido para ME/EPP",
+        "priceRegistration": "Registro de preços: o órgão compra aos poucos",
+        "open": "Ainda dá tempo: {prazo} até o fim das propostas"
+      },
+      "whyEmptyTitle": "Este edital veio da busca por palavra",
+      "whyEmptyBody": "Ele não bate com as atividades do seu CNPJ. Leia com atenção o que o órgão pede antes de disputar.",
+      "requirementsNote": "Atestado técnico, capital mínimo, amostra e licenças aparecem na triagem por IA, cada um com a página do edital.",
+      "operationTitle": "Operação",
+      "operation": {
+        "modality": "Modalidade",
+        "agency": "Órgão",
+        "unit": "Unidade",
+        "place": "Local",
+        "opensAt": "Propostas abrem",
+        "closesAt": "Propostas encerram",
+        "items": "Itens",
+        "status": "Situação"
+      },
+      "systemLink": "Abrir no portal de compras",
+      "screeningCta": "Ver triagem por IA",
+      "filesLocked": "Edital e anexos · criar conta",
+      "filesLockedNote": "Crie sua conta gratuita para baixar o edital e os anexos.",
+      "closedNotice": "As propostas deste edital já encerraram. Ele fica aqui para consulta.",
+      "notFoundTitle": "Não encontramos este edital",
+      "notFoundBody": "Ele pode ter saído do ar no PNCP, ou o endereço pode estar incompleto.",
+      "backToRadar": "Voltar ao Radar"
+    },
+    "errors": {
+      "cnpjInvalid": "Confira o CNPJ: são 14 números.",
+      "cnpjRequired": "Digite o CNPJ da sua empresa ou uma palavra-chave.",
+      "stateInvalid": "Use a sigla do estado com duas letras, por exemplo SP.",
+      "tenderIdInvalid": "Este endereço de edital não é válido.",
+      "jobIdInvalid": "Este pedido não é válido.",
+      "validation": "Confira os campos e tente de novo.",
+      "badRequest": "Não entendemos este pedido. Tente de novo pela página inicial.",
+      "notFound": "Não encontramos o que você procurou.",
+      "quotaExceeded": "Suas leituras por IA acabaram por enquanto.",
+      "visitorExpired": "Seus 3 dias de visitante acabaram. Crie a conta grátis para continuar.",
+      "accountRequired": "Crie sua conta gratuita para ver esta parte."
+    },
+    "notFoundPage": {
+      "title": "Não encontramos esta página",
+      "body": "O endereço pode estar incompleto, ou esta parte da LicitaQui ainda está sendo construída.",
+      "radar": "Ir para o Radar",
+      "home": "Ir para o início"
+    }
   }
 }

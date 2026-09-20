@@ -134,6 +134,12 @@ export type TenderCard = {
   /** exclusive | quota | mixed | none. */
   meEppSummary: string | null
   favoredTreatment: boolean | null
+  /**
+   * How many items the tender has — the board's "7 itens", next to the value
+   * on both the Radar card and the Opportunity header. `null` when the items
+   * have not been synced yet, which is different from a tender with no items.
+   */
+  itemCount: number | null
   segments: string[]
   /** The segments of this tender the company matched, and how. */
   matchedSegments: SegmentFit[]

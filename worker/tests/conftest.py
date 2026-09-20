@@ -637,6 +637,90 @@ def _delete_b4_rows(dsn: str) -> None:
         )
 
 
+# -- FH: wiring B4's files_hash into C1's screening -----------------------
+#
+# Same shape and the same reasons as every block above: an isolated database so
+# two tasks' suites cannot collide, a `Dsn` wrapper so pytest cannot render the
+# credentials into a traceback, and deletes scoped to rows *this run* created.
+#
+# These tests drive both halves at once — `sync_files` writes `tender_files`
+# and the marker in `events`, `ai_screening` writes `ai_analyses` — so the
+# cleanup has to cover the union of B4's and C1's. Everything but the marker
+# cascades from `tenders`; the marker is keyed by a name carrying the tender id,
+# which carries the run id, so one prefix reaches it.
+FH_TEST_DSN_VAR = "TEST_DATABASE_URL_FH"
+
+#: Not a valid CNPJ, per **run**, and with a trailing `5` so it stays distinct
+#: from B2's `…2`, C1's `…3` and B4's `…4` inside the same run.
+FH_CNPJ = f"99{int(RUN_ID, 16):011d}5"[:14]
+
+#: Tender ids have to look like real `numeroControlePNCP` values, because
+#: `split_control_number` parses them, so the run id rides in the CNPJ and this
+#: prefix is what cleanup matches.
+FH_TENDER_PREFIX = f"{FH_CNPJ}-"
+
+
+@pytest.fixture(scope="session")
+def fh_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(FH_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{FH_TEST_DSN_VAR} is not configured; skipping files_hash wiring tests")
+
+
+@pytest.fixture
+def fh_clean_dsn(fh_dsn: str) -> Iterator[str]:
+    """FH's test DSN, with this run's rows deleted before and after the test."""
+    _delete_fh_rows(fh_dsn)
+    try:
+        yield fh_dsn
+    finally:
+        _delete_fh_rows(fh_dsn)
+
+
+@pytest.fixture
+def fh_connect(fh_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(fh_clean_dsn, application_name=f"licitaqui-fh-test-{os.getpid()}")
+
+
+@pytest.fixture
+def fh_conn(fh_connect) -> Iterator[psycopg.Connection]:
+    with fh_connect() as connection:
+        yield connection
+
+
+def _delete_fh_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates.
+
+    `tender_files` and `ai_analyses` go with the tender (`on delete cascade`).
+    The sync markers in `events` and the queued jobs have no foreign key, so
+    they are deleted by the same run-scoped prefixes. The cross-run statements
+    are deliberately narrow: the fictitious `99…` agency family belongs to
+    these suites alone, and an hour is far longer than the suite takes, so they
+    can only ever catch a crashed run.
+    """
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where agency_cnpj = %s", (FH_CNPJ,))
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' "
+            "  and updated_at < now() - interval '1 hour'"
+        )
+        conn.execute(
+            "delete from events where starts_with(name, %s)", (f"sync_files:{FH_TENDER_PREFIX}",)
+        )
+        conn.execute(
+            "delete from events where starts_with(name, 'sync_files:99') "
+            "  and created_at < now() - interval '1 hour'"
+        )
+        conn.execute(
+            "delete from jobs where key like %s and kind in ('sync_files', 'ai_screening')",
+            (f"%{FH_TENDER_PREFIX}%",),
+        )
+
+
 # -- B4B/DL: the download-and-extract suite's own database ------------------
 #
 # Same shape and the same reasons as every block above: an isolated database so

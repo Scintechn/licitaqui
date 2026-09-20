@@ -19,6 +19,9 @@ export type { LockedBlockProps, LockedValueProps } from './locked-block'
 export { Logo, LogoSymbol } from './logo'
 export type { LogoProps, LogoSymbolProps, LogoTone } from './logo'
 
+export { Select } from './select'
+export type { SelectOption, SelectProps } from './select'
+
 export { StateCard } from './state-card'
 export type { StateCardProps, StateKind } from './state-card'
 

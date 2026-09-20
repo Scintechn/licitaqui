@@ -398,6 +398,65 @@ def test_a_tender_whose_only_document_is_unreadable_is_no_text(dl_conn, tender, 
     assert analyses(dl_conn, tender)[0]["status"] == "no_text"
 
 
+def test_the_empty_list_answer_is_found_again_on_the_next_request(dl_conn, tender, monkeypatch):
+    """The one place FH's `EMPTY_MANIFEST_DIGEST -> None` rule had to be narrowed.
+
+    `resolve_files_hash` refuses that digest, because for a payload carrying its
+    own PDF it would claim a file list we do not have. But when the *documents
+    come from the list itself*, the empty list is exactly what was read — so
+    that is the key the `no_text` row is stored under, and the cheap cache probe
+    has to look it up under the same one or the answer is never found again.
+    """
+    monkeypatch.setattr(ai_tender, "call_model", lambda *a, **k: response(ANSWER))
+    publish(dl_conn, tender)  # a complete fetch that returned no documents
+
+    run_job(dl_conn, {"tender_id": tender})
+    stored = analyses(dl_conn, tender)
+    assert len(stored) == 1
+    assert stored[0]["files_hash"] == files.EMPTY_MANIFEST_DIGEST
+
+    # FH's resolver says "no digest"; the probe must still find the row.
+    assert ai_screening.resolve_files_hash(dl_conn, tender, {}) is None
+    screening = ai_screening.screen_tender(dl_conn, {"tender_id": tender}, log=LOG)
+
+    assert screening.cached is True and screening.status == "no_text"
+    assert analyses(dl_conn, tender) == stored, "no second row, and no rewrite"
+
+
+def test_the_cheap_probe_answers_before_anything_is_read(dl_conn, tender, pncp, monkeypatch):
+    """§3.1 step 4 polls every 3 s. Each poll must cost one query, not two PDFs.
+
+    Proved by breaking the reader: once the answer is cached, a screening that
+    reached `ensure_documents` at all would raise.
+    """
+    monkeypatch.setattr(ai_tender, "call_model", lambda *a, **k: response(ANSWER))
+    url = pncp.serve("/arquivos/1", pdfs.text_pdf(EDITAL_PAGES))
+    publish(dl_conn, tender, (1, "Edital", url))
+    run_job(dl_conn, {"tender_id": tender})
+
+    def explode(*_args, **_kwargs):
+        raise AssertionError("the cache key is knowable without reading a document")
+
+    monkeypatch.setattr(documents, "ensure_documents", explode)
+    for _ in range(3):  # the poll
+        screening = ai_screening.screen_tender(dl_conn, {"tender_id": tender}, log=LOG)
+        assert screening.cached is True and screening.status == "ok"
+
+
+def test_a_pinned_payload_hash_still_wins_over_the_tenders_own_list(
+    dl_conn, tender, pncp, monkeypatch
+):
+    """Both designs agree an explicit pin wins; the fifth source must not be the
+    exception. It overrides only the *resolver's* value, never the caller's."""
+    monkeypatch.setattr(ai_tender, "call_model", lambda *a, **k: response(ANSWER))
+    url = pncp.serve("/arquivos/1", pdfs.text_pdf(EDITAL_PAGES))
+    publish(dl_conn, tender, (1, "Edital", url))
+
+    run_job(dl_conn, {"tender_id": tender, "files_hash": "pinned-by-the-operator"})
+
+    assert analyses(dl_conn, tender)[0]["files_hash"] == "pinned-by-the-operator"
+
+
 def test_a_file_list_nobody_has_fetched_is_not_an_empty_one(dl_conn, tender, monkeypatch):
     """The trap: "no rows" means *we have not looked*, not *there are none*.
 
