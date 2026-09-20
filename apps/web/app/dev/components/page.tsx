@@ -16,6 +16,7 @@ import {
   Logo,
   LogoSymbol,
   SectionLabel,
+  Select,
   StateCard,
   Status,
   Tag,
@@ -226,6 +227,16 @@ function Controls() {
         label="UF"
         defaultValue="SPP"
         error="Use a sigla do estado com duas letras."
+      />
+      {/* Added by task D3: the board's "UF onde você entrega" picker. */}
+      <Select
+        id="ds-select"
+        label="UF onde você entrega"
+        options={[
+          { value: '', label: 'Todo o Brasil' },
+          { value: 'SP', label: 'São Paulo (SP)' },
+          { value: 'RJ', label: 'Rio de Janeiro (RJ)' },
+        ]}
       />
 
       <div className="flex flex-col gap-2.5">

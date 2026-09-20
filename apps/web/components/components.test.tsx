@@ -8,6 +8,7 @@ import {
   LockedValue,
   Logo,
   SectionLabel,
+  Select,
   StateCard,
   Status,
   Tag,
@@ -230,5 +231,50 @@ describe('public-page additions (D2)', () => {
       expect(out).toContain('stroke-width="1.8"')
       expect(out).toContain('<path')
     }
+  })
+})
+
+/* What task D3 added to the design system for the Radar screens. */
+
+describe('Select (D3)', () => {
+  const UFS = [
+    { value: '', label: 'Todo o Brasil' },
+    { value: 'SP', label: 'São Paulo (SP)' },
+  ]
+
+  it('ties the label to a real <select>, never to a listbox of divs', () => {
+    const out = html(<Select id="uf" label="UF onde você entrega" options={UFS} />)
+    expect(out).toContain('<select')
+    expect(out).toContain('for="uf"')
+    expect(out).toContain('id="uf"')
+    expect(out).toContain('<option value="SP">São Paulo (SP)</option>')
+  })
+
+  it('renders at 16px, like Field, so iOS Safari does not zoom on focus', () => {
+    // F1 fixed this on `Field`; a 15px select beside a 16px input would zoom
+    // the viewport the moment the user tapped the second control.
+    expect(html(<Select id="uf" label="UF" options={UFS} />)).toContain('text-base')
+  })
+
+  it('marks an errored select invalid and points at both messages', () => {
+    const out = html(
+      <Select id="uf" label="UF" options={UFS} hint="Sigla" error="Escolha um estado" />,
+    )
+    expect(out).toContain('aria-invalid="true"')
+    expect(out).toContain('aria-describedby="uf-error uf-hint"')
+    expect(out).toContain('border-error')
+  })
+
+  it('omits aria-describedby when there is nothing to describe', () => {
+    expect(html(<Select id="uf" label="UF" options={UFS} />)).not.toContain('aria-describedby')
+  })
+})
+
+describe('Icon (D3)', () => {
+  it('draws the app bar hamburger on the same grid as the rest', () => {
+    const out = html(<Icon name="menu" />)
+    expect(out).toContain('viewBox="0 0 24 24"')
+    expect(out).toContain('stroke-width="1.8"')
+    expect(out).toContain('M4 7h16M4 12h16M4 17h16')
   })
 })

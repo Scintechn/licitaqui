@@ -164,6 +164,7 @@ export async function readTender(
     biddingSystemUrl: row.bidding_system_url,
     meEppSummary: row.me_epp_summary,
     favoredTreatment: row.favored_treatment,
+    itemCount: items.rows.length,
     segments,
     matchedSegments: fits.filter((fit) => segments.includes(fit.segment)),
     // A detail page is opened from a group, so the card's group is the caller's

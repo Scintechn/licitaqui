@@ -23,6 +23,8 @@ const PATHS = {
   check: ['M5 12l5 5 9-10'],
   account: ['M16 8a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z', 'M4 21a8 8 0 0 1 16 0'],
   filters: ['M4 6h16M7 12h10M10 18h4'],
+  /** The app bar's hamburger on canvas 01 (`Main.dc.html`). Added by task D3. */
+  menu: ['M4 7h16M4 12h16M4 17h16'],
   visitor: ['M21 12a9 9 0 1 0-18 0 9 9 0 0 0 18 0Z', 'M16 12a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z', 'M12 12l6-6'],
 
   // Public pages (task D2), transcribed from paginas/oferta_fundadores.html

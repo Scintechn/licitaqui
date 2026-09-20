@@ -78,6 +78,7 @@ type TenderRow = {
   price_registration: boolean | null
   me_epp_summary: string | null
   favored_treatment: boolean | null
+  item_count: string | number | null
   segments: string[] | null
   grp: TenderGroup
   updated_at: Date | string
@@ -196,6 +197,9 @@ export async function listTenders(
              t.proposals_close_at, t.estimated_value, t.confidential_budget,
              t.price_registration, t.me_epp_summary, t.favored_treatment,
              t.segments, t.updated_at,
+             -- The board's "7 itens" on the card. One indexed count per row of
+             -- the page (at most 50), not per row of the tenders table.
+             (select count(*) from tender_items i where i.tender_id = t.id) as item_count,
              ${groupExpression(match)} as grp
         ${scope(match, filters, after)}
     )
@@ -245,6 +249,7 @@ function toCard(row: TenderRow, match: CompanyMatch): TenderCard {
     priceRegistration: Boolean(row.price_registration),
     meEppSummary: row.me_epp_summary,
     favoredTreatment: row.favored_treatment,
+    itemCount: row.item_count === null ? null : Number(row.item_count),
     segments,
     matchedSegments: match.fits.filter((fit) => segments.includes(fit.segment)),
     group: row.grp,
