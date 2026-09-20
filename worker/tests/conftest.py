@@ -33,6 +33,28 @@ from licitaqui import config
 #: Anything writing to a shared database must scope its rows this way.
 RUN_ID = uuid.uuid4().hex[:8]
 
+
+#: How old a row must look before a **different** run's cleanup may delete it.
+#:
+#: Every block below sweeps rows left by a *crashed* run, matched by the shared
+#: fictitious `99…` family rather than by ``RUN_ID`` — a crashed run's id is
+#: unknowable, so age is the only signal available. That makes the threshold
+#: load-bearing: any row a *live* run has deliberately backdated past it looks
+#: exactly like debris, and the other run deletes it mid-test.
+#:
+#: An hour was far too short. The TTL suites age their own rows to
+#: ``FILES_TTL_HOURS``/``ITEMS_TTL_HOURS`` + 1 = 13 h to prove expiry, so two
+#: overlapping CI runs meant one deleted the other's live fixture and
+#: `test_an_expired_list_is_fetched_again` failed with ``'never' == 'ttl'``.
+#: It happened on 2026-09-20: main's run (17:00–17:19) and PR #31's
+#: (17:08–17:22) shared this database.
+#:
+#: So this must stay **above the oldest age any test fabricates**;
+#: `test_conftest_sweeps.py` asserts that and will fail if a new TTL outgrows
+#: it. Debris from a crashed run simply lives a day longer, which costs
+#: nothing: every suite is scoped by ``RUN_ID`` and never reads it.
+CROSS_RUN_SWEEP_HOURS = 24
+
 KEY_PREFIX = f"b1-test-{RUN_ID}-"
 KIND_PREFIX = f"b1t_{RUN_ID}_"
 TEST_DSN_VAR = "TEST_DATABASE_URL"
@@ -284,7 +306,7 @@ def _delete_b3_rows(dsn: str) -> None:
         conn.execute("delete from tenders where agency_cnpj = %s", (B3_CNPJ,))
         conn.execute(
             "delete from tenders where agency_cnpj like '99%%' "
-            "  and updated_at < now() - interval '1 hour'"
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from jobs where kind = 'sync_items' and key like %s", (f"{B3_CNPJ}-%",)
@@ -419,7 +441,8 @@ def _delete_c1_rows(dsn: str) -> None:
     with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
         conn.execute("delete from tenders where starts_with(id, %s)", (C1_TENDER_PREFIX,))
         conn.execute(
-            "delete from tenders where agency_cnpj = %s and updated_at < now() - interval '1 day'",
+            "delete from tenders where agency_cnpj = %s "
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'",
             (C1_CNPJ,),
         )
         conn.execute(
@@ -549,7 +572,7 @@ def _delete_e2_rows(dsn: str) -> None:
         )
         conn.execute(
             "delete from founders_list where starts_with(email::text, 'e2-test-')"
-            "   and created_at < now() - interval '1 hour'"
+            f"   and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
 
 
@@ -623,14 +646,14 @@ def _delete_b4_rows(dsn: str) -> None:
         conn.execute("delete from tenders where agency_cnpj = %s", (B4_CNPJ,))
         conn.execute(
             "delete from tenders where agency_cnpj like '99%%' "
-            "  and updated_at < now() - interval '1 hour'"
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from events where starts_with(name, %s)", (f"sync_files:{B4_TENDER_PREFIX}",)
         )
         conn.execute(
             "delete from events where starts_with(name, 'sync_files:99') "
-            "  and created_at < now() - interval '1 hour'"
+            f"  and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from jobs where kind = 'sync_files' and key like %s", (f"{B4_TENDER_PREFIX}%",)
@@ -717,7 +740,7 @@ def _delete_b8_rows(dsn: str) -> None:
         conn.execute("delete from tenders where agency_cnpj = %s", (B8_CNPJ,))
         conn.execute(
             "delete from tenders where agency_cnpj like '99%%' and agency_name = %s"
-            "  and updated_at < now() - interval '1 hour'",
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'",
             (B8_AGENCY_NAME,),
         )
         # Orphans: an award whose fictitious tender is gone. `awards` has no
@@ -734,7 +757,7 @@ def _delete_b8_rows(dsn: str) -> None:
         )
         conn.execute(
             "delete from events where starts_with(name, 'sync_awards:99') "
-            "  and created_at < now() - interval '1 hour'"
+            f"  and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from jobs where kind = any(%s) and key like %s",
@@ -816,14 +839,14 @@ def _delete_fh_rows(dsn: str) -> None:
         conn.execute("delete from tenders where agency_cnpj = %s", (FH_CNPJ,))
         conn.execute(
             "delete from tenders where agency_cnpj like '99%%' "
-            "  and updated_at < now() - interval '1 hour'"
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from events where starts_with(name, %s)", (f"sync_files:{FH_TENDER_PREFIX}",)
         )
         conn.execute(
             "delete from events where starts_with(name, 'sync_files:99') "
-            "  and created_at < now() - interval '1 hour'"
+            f"  and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from jobs where key like %s and kind in ('sync_files', 'ai_screening')",
@@ -913,14 +936,14 @@ def _delete_dl_rows(dsn: str) -> None:
         conn.execute("delete from tenders where agency_cnpj = %s", (DL_CNPJ,))
         conn.execute(
             "delete from tenders where agency_cnpj like '99%%' "
-            "  and updated_at < now() - interval '1 hour'"
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from events where starts_with(name, %s)", (f"sync_files:{DL_TENDER_PREFIX}",)
         )
         conn.execute(
             "delete from events where starts_with(name, 'sync_files:99') "
-            "  and created_at < now() - interval '1 hour'"
+            f"  and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
         conn.execute(
             "delete from jobs where kind = any(%s)"
