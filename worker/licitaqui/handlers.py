@@ -33,7 +33,9 @@ httpx, pdfplumber and every collector to do it.
 
 from __future__ import annotations
 
+from . import ai_screening as _ai_screening  # noqa: F401 - registers `ai_screening`
 from . import company as _company  # noqa: F401 - imported for its registration side effect
+from . import documents as _documents  # noqa: F401 - registers `extract_text`
 from . import jobs as _jobs  # noqa: F401 - registers `noop`
 from . import sync_awards as _sync_awards  # noqa: F401 - registers the two awards kinds
 from . import sync_files as _sync_files  # noqa: F401 - registers `sync_files`
