@@ -484,3 +484,118 @@ failure. Its rows are scoped **per run**: `conftest.B4_CNPJ` carries `RUN_ID`,
 tender ids are built from it, and the `events` markers are deleted by the same
 run-scoped name prefix. `tender_files` and `ai_analyses` cascade from `tenders`.
 Nothing under `pytest` ever calls OpenRouter or PNCP.
+
+## B4B — downloading the documents, and the screening that now completes
+
+`sync_files` stores *what documents a tender has*; §7.1 says the files are
+"download[ed] … only when someone requests screening", and nothing did the
+second half. `licitaqui/documents.py` is it, and with it a user clicking
+"analisar" gets an analysis instead of a job that fails four times.
+
+### Where it is wired, and why there
+
+`requestScreening` enqueues one row — `ai_screening`, key
+`screening:<tender_id>`, priority 1 — with a payload of `{tender_id}` and
+nothing else. So the fix had to be *that job succeeding*, not a different job
+existing: `ai_screening.load_document` gained a last source, and when the
+payload carries no pages, path or URL it calls
+`documents.ensure_documents(conn, tender_id)`. Nothing in `apps/web` changed.
+
+A prerequisite job and an enqueue chain were both rejected: two queue rows for
+one user action means two dedupe keys, two backoff budgets and a window where
+the first succeeded and the second was never enqueued. §3's rule — no *web
+request* waits on a slow call — is satisfied either way, because the download
+happens in the worker; §3.1 step 4 already says `202` and a 3-second poll.
+
+The `extract_text` kind (§7.1) exists as well, at priority 9, for sampling and
+pre-warming. Both paths call `ensure_documents`, so they cannot disagree.
+
+### What one screening reads
+
+The **active** documents typed or named *Edital* or *Termo de Referência*
+(POC 1's own default set), in document-number order, capped at 8. A tender
+whose list names neither falls back to every active document: refusing to read
+a tender whose only file is "Anexo I" is a worse failure than reading one
+document too many. The selection is deterministic for a given list, which is
+what lets `ai_analyses.files_hash` keep digesting the **list** rather than the
+selection.
+
+**All or nothing.** If a selected document cannot be fetched or parsed, the job
+raises and nothing is written. Anything else would store an analysis of half
+the documents under a key claiming it read all of them, and §3.2 keeps that row
+for ever.
+
+### The download budget
+
+| | |
+|---|---|
+| Whole transfer | 120 s (§7.2), as a **wall-clock deadline**, not a read timeout |
+| Connect | 15 s (§7.2) |
+| Size | 64 MB per document, checked while streaming |
+| Pace | 2 requests/second |
+| Breaker | `pncp-download`, 2 consecutive failures → 15 min |
+| Retries | none here; the queue owns them (2, 8, 30 min, 4 attempts) |
+
+The deadline is the point. `httpx`'s read timeout applies to each read, so a
+server dribbling a kilobyte every ten seconds never trips it — which is how the
+POCs measured one download still running at **929 s**. A 4xx is recorded as a
+breaker *success* before it raises: a server answering "404" quickly is healthy,
+and one permanently missing annexe must not stop every other tender's download
+for fifteen minutes.
+
+### Storage and the 90-day deletion (§3.2)
+
+`licitaqui/storage.py` writes two objects per document, both keyed as pure
+functions of `(tender_id, sequence, sha256)`:
+
+    tenders/<tender id>/files/<0001>/<sha256>.pdf            deleted after 90 days
+    tenders/<tender id>/files/<0001>/<sha256>.text.json.gz   kept for ever
+
+That separation is what makes the `cleanup` sweep possible. It will select rows
+with an `s3_key` whose tender closed more than 90 days ago, delete the object,
+then null `s3_key` — in that order, so a crash between the two leaves a key for
+an object already gone and the next run deletes it again harmlessly. It touches
+nothing else: `sha256` survives, so `storage.text_key()` keeps finding the text
+after `s3_key` is null. `storage.describe_retention()` states this beside the
+code that creates the objects.
+
+With no bucket configured the store degrades to a `NullStore`: nothing is
+written, every read misses, and the documents are extracted again on each run.
+Slower, never wrong, and the reason no test here needs an AWS credential.
+
+### `no_text`, and the two different questions it answers
+
+`Document.has_text` (C1's) asks *is there enough here to screen a tender?* and
+keeps §7.1's absolute floor of 1,500 characters. `documents.is_scan()` asks
+*does this document have a text layer at all?* and only applies the per-page
+floor. A four-page Termo de Referência of 1,200 characters fails the first and
+passes the second, and recording it as a scan would hand a future OCR card a
+queue of readable documents.
+
+The screening decision is unchanged and still C1's: this path hands
+`screen_tender` a `Document`, and `has_text` is checked there before the key is
+resolved and before the breaker is consulted. A scanned edital reaches `no_text`
+through that guard, not around it.
+
+### The trap in "this tender has no documents"
+
+An empty `tender_files` can mean *the agency published none* or *we have never
+looked*, and reading the second as the first would store a permanent `no_text`
+— §3.2 keeps an AI result for ever and C1 never overwrites one — for a tender
+whose edital is sitting on PNCP unread. So `ensure_documents` consults B4's sync
+marker: no marker means it enqueues `sync_files` at priority 1 and raises
+`DocumentsNotReady`, and the queue brings the screening back two minutes later
+against a list that now exists.
+
+### B4B's test database
+
+`test_integration_download_screening.py` needs `TEST_DATABASE_URL_DL` and skips
+without it, which CI counts as a failure. Rows are scoped **per run**:
+`conftest.DL_CNPJ` carries `RUN_ID`, tender ids are built from it, and the
+`events` markers and `jobs` rows are deleted by the same run-scoped prefixes.
+`tender_files` and `ai_analyses` cascade from `tenders`.
+
+Nothing under `pytest` reaches PNCP, S3 or OpenRouter: the PDFs are built in
+memory by `tests/pdfs.py`, downloads run against an `httpx.MockTransport`, the
+model call is stubbed, and the suite-wide `_object_storage_off` fixture forces
+a `NullStore` even on a machine where `S3_BUCKET` resolves.
