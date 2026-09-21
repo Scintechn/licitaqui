@@ -13,6 +13,7 @@ import { ageParts } from '@/lib/radar/format'
 import { errorText } from '@/lib/radar/error-text'
 import { format, messages } from '@/lib/messages'
 import { radarHref } from '@/lib/radar/client'
+import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { TENDER_GROUPS } from '@/lib/radar/contract'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
 import { TenderCardView } from './tender-card'
@@ -75,6 +76,15 @@ export type RadarViewProps = {
   counts: Record<TenderGroup, number> | null
   tenders: TenderCard[]
   freshness: Freshness | null
+  /**
+   * The cursor for the next page, straight from the envelope. `null` is the
+   * end of the list and hides the control — there is nothing more to fetch.
+   */
+  nextCursor?: string | null
+  /** A page is in flight: the button says so and refuses a second press. */
+  loadingMore?: boolean
+  /** Absent means no pagination at all, the way `onRetry` works. */
+  onLoadMore?: () => void
   /** Injected so the countdown on every card is assertable. */
   now?: Date
   /**
@@ -124,7 +134,7 @@ export function VisitorBanner({ visitor, now }: { visitor: VisitorView; now: Dat
           title={copy.visitor.expiredTitle}
           description={copy.visitor.expiredBody}
           action={
-            <Button variant="link" href="/conta/criar" className="px-0">
+            <Button variant="link" href={ACCOUNT_HREF} className="px-0">
               {copy.visitor.createAccount}
             </Button>
           }
@@ -145,7 +155,7 @@ export function VisitorBanner({ visitor, now }: { visitor: VisitorView; now: Dat
         })}
       </span>
       <Link
-        href="/conta/criar"
+        href={ACCOUNT_HREF}
         className="inline-flex min-h-8 items-center font-semibold text-blue no-underline"
       >
         {copy.visitor.createAccount}
@@ -293,6 +303,67 @@ export function FreshnessLine({ freshness }: { freshness: Freshness | null }) {
   return <p className="px-gutter pb-2 text-caption text-muted">{format(template, { idade: age })}</p>
 }
 
+/**
+ * "Ver mais editais", and the line that says where in the list you are.
+ *
+ * ## A button, not infinite scroll
+ *
+ * The list is ordered by deadline, so people scan it for the ones they can
+ * still bid on rather than browsing it. A press is a decision to see the next
+ * twenty; a scroll is not, and auto-loading would keep the footer moving away
+ * and keep fetching for someone who stopped reading two screens ago.
+ *
+ * ## What the counts do while a page loads
+ *
+ * Nothing. The tab badge is the **total** under the current filters — 79 — and
+ * paging does not change it: blanking it or spinning it would say the total is
+ * being recounted, and it would make all three tabs flicker on every press.
+ * The progress that *is* real gets its own line ("Mostrando 20 de 79"), which
+ * keeps its old numbers while the page is in flight and updates once the rows
+ * are actually on screen. The only control that changes state is the button
+ * itself.
+ *
+ * The line is `aria-live="polite"` because the rows append below the button:
+ * without it, a screen-reader user presses "Ver mais editais" and is told
+ * nothing happened.
+ */
+function More({
+  shown,
+  total,
+  nextCursor,
+  loading,
+  onLoadMore,
+}: {
+  shown: number
+  total: number | null
+  nextCursor: string | null
+  loading: boolean
+  onLoadMore?: () => void
+}) {
+  // No handler means no client navigation — the same contract `onRetry` has —
+  // and a cursor of `null` means the last page is already on screen.
+  if (!onLoadMore || shown === 0) return null
+
+  return (
+    <div className="flex flex-col items-center gap-2 pt-4">
+      <p aria-live="polite" className="text-caption text-muted">
+        {format(list.showing, { shown, total: total ?? shown })}
+      </p>
+      {nextCursor ? (
+        <Button
+          variant="secondary"
+          onClick={onLoadMore}
+          disabled={loading}
+          aria-busy={loading || undefined}
+          className="w-full min-[560px]:w-auto"
+        >
+          {loading ? list.moreLoading : list.more}
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ states */
 
 const EMPTY: Record<TenderGroup, { title: string; body: string }> = {
@@ -435,9 +506,12 @@ export function RadarView({
   counts,
   tenders,
   freshness,
+  nextCursor = null,
+  loadingMore = false,
   now = new Date(),
   onNavigate,
   onRetry,
+  onLoadMore,
 }: RadarViewProps) {
   const showList = status.kind === 'ready' || status.kind === 'manualCnae'
 
@@ -458,8 +532,8 @@ export function RadarView({
         }
         actions={
           <>
-            <AppBarActionLink icon="alert" label={copy.nav.alerts} href="/conta/alertas" />
-            <AppBarActionLink icon="account" label={copy.nav.account} href="/conta/criar" />
+            <AppBarActionLink icon="alert" label={copy.nav.alerts} href={ALERTS_HREF} />
+            <AppBarActionLink icon="account" label={copy.nav.account} href={ACCOUNT_HREF} />
           </>
         }
       />
@@ -486,6 +560,15 @@ export function RadarView({
             now={now}
             onRetry={onRetry}
           />
+          {showList ? (
+            <More
+              shown={tenders.length}
+              total={counts ? counts[query.group] : null}
+              nextCursor={nextCursor}
+              loading={loadingMore}
+              onLoadMore={onLoadMore}
+            />
+          ) : null}
         </div>
       </main>
     </div>

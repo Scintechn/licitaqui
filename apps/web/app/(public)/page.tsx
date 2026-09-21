@@ -5,6 +5,7 @@ import { founderSeats, type FounderSeatsView } from '@/lib/founders/seat-count'
 import { FOUNDER_SEATS } from '@/lib/founders/seats'
 import { format, messages } from '@/lib/messages'
 import { openTenderStats } from '@/lib/radar/stats'
+import { ACCOUNT_HREF } from '@/lib/routes'
 import { ExampleRadar } from './example-radar'
 import { Wrap } from './page-parts'
 import { Alerts, Faq, Footer, Guarantees, HowItWorks, Opportunity, Plans } from './sections'
@@ -147,10 +148,10 @@ function Header() {
           <a href="#perguntas" className={`hidden min-[900px]:inline-flex ${NAV_LINK}`}>
             {nav.faq}
           </a>
-          {/* U1 owns the account screens; `/conta/criar` is where the rest of
-              the product already sends people who arrive without one. */}
+          {/* `/conta/criar` is U1's and does not exist yet, so this — like
+              every other account control — goes through `lib/routes.ts`. */}
           <Link
-            href="/conta/criar"
+            href={ACCOUNT_HREF}
             className={`inline-flex ${NAV_LINK} ml-1.5 rounded-control border border-line-strong bg-surface`}
           >
             {nav.signIn}

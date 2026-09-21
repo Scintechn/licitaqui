@@ -5,12 +5,13 @@ import { messages } from '@/lib/messages'
 /**
  * The branded 404.
  *
- * Added with task D3 because the Radar links into routes that later tasks own
- * — `/conta/criar` (U1), `/conta/alertas` (E1),
- * `/radar/edital/<id>/triagem` (D4). Those are the addresses the approved
- * canvas gives those controls, so the links are right and the pages are simply
- * not built yet; until they are, this is what a visitor who follows one sees,
- * instead of Next's unstyled default.
+ * Added with task D3 because the Radar links into routes that later tasks own.
+ * `/conta/criar` (U1) and `/conta/alertas` (E1) no longer reach it — R2 sent
+ * every account control through `lib/routes.ts` to `/fundadores`, because a
+ * `<Link>` to a route that does not exist is prefetched as a 404 and clicked
+ * as a dead end. `/radar/edital/<id>/triagem` (D4) still lands here, as does
+ * any mistyped tender id: this is what a visitor sees instead of Next's
+ * unstyled default.
  */
 
 const copy = messages.radar.notFoundPage
