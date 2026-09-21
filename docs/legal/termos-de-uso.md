@@ -1,6 +1,6 @@
 # Termos de Uso — LicitaQui
 
-**Minuta v1.2 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. O único campo pendente é a data de publicação.
+**Minuta v1.3 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Publicado em 21/09/2026; este aviso é metadado de trabalho e é removido na renderização das páginas públicas.
 
 **Última atualização:** 21/09/2026 · **Vigência:** 21/09/2026
 
@@ -14,14 +14,22 @@ O LicitaQui ajuda MEI e pequenas empresas a **encontrar editais de compras públ
 
 Ao criar uma conta, assinar um plano ou usar o serviço como visitante, você aceita estes Termos e a [Política de Privacidade](./politica-de-privacidade.md).
 
-## 2. O que o LicitaQui **não** é
+## 2. O que o LicitaQui faz, e o que ele **não** faz
 
 Leia esta seção com atenção. Ela define o limite do serviço.
 
-- **Não é assessoria jurídica, contábil ou de licitações.** Não elaboramos propostas, não representamos você perante órgãos públicos e não garantimos habilitação ou vitória em qualquer certame.
+**O que a ferramenta faz:** reúne editais publicados no PNCP, organiza o conteúdo que o próprio edital declara (itens, quantidades, prazos, exigências, valores estimados), indica se o objeto tem relação com as atividades registradas no seu CNPJ e apresenta cálculos a partir desses dados públicos.
+
+**O que ela não faz:**
+
+- **Não dá lances e não participa de certame.** O LicitaQui não se conecta a portal de disputa, não envia proposta, não assina documento e não representa você perante nenhum órgão.
+- **Não decide por você.** A classificação de compatibilidade é uma leitura do conteúdo do edital comparada às atividades do seu CNPJ. É ponto de partida para a sua análise, não julgamento de habilitação: quem avalia se a sua empresa atende às exigências é você, com o edital na mão.
+- **Não recomenda preço.** As faixas e cálculos são **estimativas matemáticas** obtidas de dados que o próprio edital e os resultados públicos declaram. Não são sugestão de quanto ofertar, nem garantia de margem, nem previsão de resultado.
+- **Não é assessoria jurídica, contábil ou de licitações.** Não elaboramos propostas e não garantimos habilitação, classificação ou vitória em qualquer certame.
 - **Não somos o PNCP nem qualquer órgão público**, e não temos vínculo com eles. Os dados vêm de fontes públicas e podem estar incompletos, desatualizados ou fora do ar por motivos alheios a nós.
-- **A leitura por IA é automatizada e pode conter erro.** Os resumos, triagens, alertas de risco e sugestões de preço são **apoio à sua decisão**, não substituem a leitura integral do edital e dos anexos, e não são recomendação de participar ou de ofertar determinado valor.
-- **A decisão é sempre sua.** Antes de apresentar proposta, confira o edital original no portal oficial. Sempre indicamos a página de onde a informação foi extraída justamente para você conferir.
+- **A leitura por IA é automatizada e pode conter erro.** Resumos, triagens e alertas de risco são apoio à sua decisão e não substituem a leitura integral do edital e dos anexos.
+
+**Por isso indicamos a origem de cada informação.** Sempre que possível mostramos a página do edital de onde o dado foi extraído, justamente para você conferir na fonte antes de decidir.
 
 ## 3. Quem pode usar
 
@@ -145,6 +153,7 @@ Antes de qualquer medida judicial, escreva para contato@licitaquiapp.com.br ou c
 |---|---|---|
 | 1.0 | 20/09/2026 | Primeira versão publicada |
 | 1.1 | 21/09/2026 | §7: aviso por e-mail 3 dias antes de cada cobrança |
+| 1.2 | 21/09/2026 | §2 reescrito: o que a ferramenta faz e o que não faz |
 
 ---
 
