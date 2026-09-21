@@ -184,7 +184,7 @@ Legend — **Stream**: A Platform · B Data/worker · C AI · D Web · E Messagi
 | ID | Stream | Task | Depends on | ∥ | Size | Acceptance criteria |
 |---|---|---|---|---|---|---|
 | H1 | A/D | Hardening for public launch: rate limits, error/PNCP-down states, SEO metadata, PWA manifest + icons from `Marca/assest/`, uptime monitors, load test | M3 | ∥ | 1.5 | Exit criteria of M4 |
-| B8 | B | `sync_awards` + awards backfill for concierge segments (starts collecting data for v1 price bands) | B3 | ∥ | 1.5 | ≥ 5k awarded items stored; CPF masked on write |
+| B8 | B | `sync_awards` + awards backfill for concierge segments (starts collecting data for v1 price bands) | B3 | ∥ | 1.5 | ≥ 5k awarded items stored; CPF masked on write. **Framing rule 3 (brief §2.2):** the moment the winning band unlocks and real figures appear, every price on screen carries "estimativa a partir dos dados do edital" and the ceiling is labelled "teto para manter a margem que você informou", with its inputs visible. Locked bars are why this is not yet a defect |
 | C2 | C | `ai_deep_analysis` job (deep prompt v3, fallback model) + quota; used by concierge first | C1, U1 | ∥ | 1 | Deep score ≥ 95% on answer keys; quota counted even when shared |
 | F2 | F | Asaas: customer + subscription creation, checkout link, webhook (idempotent), plan updates, 1-click cancel — sandbox keys in preview, production keys in production | U1, G12 (sandbox first) | | 2 | Sandbox: create → pay → repeat webhook → cancel, no double effects |
 | F3 | F | `promo_price_change` job: 30-day notice email, change value R$ 26 → R$ 57 on `promo_ends_on`, never before notice | F2 | | 1 | Clock-override test covers notice, change and cancelled-before-change |

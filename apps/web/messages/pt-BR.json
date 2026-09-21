@@ -149,7 +149,7 @@
       "promises": [
         "Editais compatíveis com o seu CNAE",
         "Leitura do edital por IA, com a página",
-        "Preço que costuma vencer na região",
+        "Faixa em que os vencedores fecharam na sua região",
         "Alertas no Telegram antes do prazo"
       ]
     },
@@ -228,7 +228,7 @@
         },
         {
           "title": "Ofertar com lucro",
-          "body": "A faixa de preço que costuma vencer na sua região e o preço máximo de compra para ter margem, item por item.",
+          "body": "A faixa em que os vencedores fecharam na sua região e o preço-alvo de compra — o máximo a pagar ao fornecedor para manter a sua margem — item por item.",
           "plan": "Essencial"
         },
         {
@@ -470,7 +470,7 @@
       "summary": "Para quem já disputa e quer decidir mais rápido.",
       "feature1": "Leituras de edital sem limite",
       "feature2": "Avisos diários no Telegram, com 10 palavras-chave e as atividades do seu CNPJ",
-      "feature3": "Faixa de preço de quem venceu e preço-alvo de compra",
+      "feature3": "Faixa em que os vencedores fecharam e preço-alvo de compra: o máximo a pagar ao fornecedor para manter a sua margem",
       "feature4": "10 análises completas por mês, com trechos citados do edital"
     },
     "pro": {
@@ -663,7 +663,7 @@
       "opportunity": {
         "label": "Antes de gastar tempo com proposta",
         "title": "Saiba se vale disputar. E até que preço.",
-        "body": "O valor estimado do edital não é o preço que ganha. Em 8 editais de papel A4, quem venceu ofertou cerca de R$ 20 por resma, contra R$ 36 estimados. No Essencial, cada item mostra a faixa que costuma vencer na sua região e quanto você pode pagar ao fornecedor para ter margem.",
+        "body": "O valor estimado do edital não é o preço que fecha. Em 8 editais de papel A4, quem venceu ofertou cerca de R$ 20 por resma, contra R$ 36 estimados. No Essencial, cada item mostra a faixa em que os vencedores fecharam na sua região e o máximo a pagar ao fornecedor para manter a sua margem.",
         "cardLabel": "Oportunidade · exemplo",
         "tender": "Baterias e pilhas · Campinas/SP",
         "deadlineLabel": "Proposta até",
@@ -925,7 +925,7 @@
       "proposalsUntil": "Proposta até",
       "remaining": "restantes",
       "estimatedValue": "Valor estimado",
-      "whyTitle": "Por que você pode participar",
+      "whyTitle": "Por que este edital apareceu para você",
       "why": {
         "compatible": "CNAE compatível: {segmentos}",
         "check": "Perto do que você faz: {segmentos}",
@@ -1022,7 +1022,7 @@
       "filesLocked": "Edital e anexos · criar conta",
       "openTender": "Ver o edital no Radar",
       "priceTitle": "Até quanto ofertar com lucro?",
-      "priceBody": "Preço que venceu e preço-alvo · Essencial"
+      "priceBody": "Faixa dos vencedores e o máximo a pagar ao fornecedor para manter a sua margem · Essencial"
     },
     "price": {
       "title": "Até quanto ofertar?",
@@ -1040,10 +1040,12 @@
       "maxTitle": "Seu preço máximo de compra",
       "maxNote": "Calculado com imposto, frete e a margem que você escolher.",
       "lockedValue": "valor disponível no plano Essencial",
-      "example": "Exemplo real (papel A4): o edital pagava R$ 35,87, o vencedor levou a R$ 20,34 e o varejo custava R$ 29,29. Sem o preço-alvo, parecia lucro.",
+      "example": "Exemplo real (papel A4): o edital pagava R$ 35,87, o vencedor levou a R$ 20,34 e o varejo custava R$ 29,29. Sem calcular o máximo a pagar ao fornecedor, parecia lucro.",
       "exampleLead": "Exemplo real (papel A4):",
-      "exampleBody": "o edital pagava R$ 35,87, o vencedor levou a R$ 20,34 e o varejo custava R$ 29,29. Sem o preço-alvo, parecia lucro.",
-      "cta": "Ver plano Essencial"
+      "exampleBody": "o edital pagava R$ 35,87, o vencedor levou a R$ 20,34 e o varejo custava R$ 29,29. Sem calcular o máximo a pagar ao fornecedor, parecia lucro.",
+      "cta": "Ver plano Essencial",
+      "ceilingLabel": "Teto para manter a margem que você informou",
+      "inputsLabel": "Calculado a partir de"
     },
     "fields": {
       "meEpp": "ME/EPP",
