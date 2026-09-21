@@ -646,7 +646,12 @@ suite('Radar read APIs (database)', () => {
         [visitor],
       )
       expect(Number(used.rows[0]?.n)).toBe(1)
-    })
+      // Same reason as the test above, which already carries this: four
+      // sequential round trips to a remote Neon are past Vitest's 5 s default
+      // the moment another database suite is running in a second worker. This
+      // one was missed, and it timed out — never failed an assertion — once U1
+      // added a third concurrent suite.
+    }, 60_000)
 
     it('refuses once the visitor’s three days are up', async () => {
       // Its own company: the window is counted per CNPJ as well as per device

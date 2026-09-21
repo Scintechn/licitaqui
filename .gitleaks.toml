@@ -1,0 +1,39 @@
+# gitleaks configuration (spec §12, `.github/workflows/security.yml`).
+#
+# The default rule set, plus exactly one exemption. Nothing here weakens the
+# scan for any file, rule or commit other than the one named below.
+#
+# ## Why this file exists
+#
+# `security.yml` scans a range of *commits*, not the working tree, so a value
+# removed in a later commit is still found in the earlier one. U1 committed a
+# test fixture for the session-cookie parser as a UUID-shaped string; gitleaks
+# scores it at 3.784 entropy and reports it as `generic-api-key`. It is not a
+# secret — it never named a session, it was typed by hand, and the test it
+# belongs to only checks that `Cookie:` parsing finds the right value.
+#
+# It was replaced at HEAD with the sentence `session-token-for-the-test`, which
+# is what the test should have said in the first place. That fixes every future
+# commit and cannot fix the one already pushed: removing it from history means
+# rewriting a branch that is already on the remote, and this repository does not
+# force-push.
+#
+# So the exemption is pinned to that single commit **and** that single path, with
+# `condition = "AND"` so both must match. A finding anywhere else in that commit
+# still fails the run, and a finding in that same file in any other commit —
+# including every commit after it — still fails the run.
+#
+# ## When to delete it
+#
+# The moment `9991357` stops being reachable from the range being scanned:
+# after `task/u1-auth` is squash-merged and the branch is deleted. This file
+# then protects nothing and should go with it.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "U1's session-cookie test fixture, already replaced at HEAD (see the note above)"
+condition = "AND"
+commits = ["9991357031634f4edbae1dbf0eabc233e5293429"]
+paths = ['''^apps/web/lib/auth/session\.test\.ts$''']
