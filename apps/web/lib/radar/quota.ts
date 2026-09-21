@@ -117,6 +117,34 @@ export function quotaView(limit: Limit, used: number): QuotaView {
   }
 }
 
+/**
+ * Has this spender already paid for `reference` in the current period?
+ *
+ * The read side of `spend()`'s "the same tender twice is free" rule, for the
+ * poll route: `GET /api/tenders/:id/screening` may hand back an analysis only
+ * to someone who has already spent a screening on that tender. Without it the
+ * `GET` would be a way to read every cached analysis in the database for free,
+ * which is the whole of §10 undone by the endpoint that was meant to save the
+ * `POST` from being polled twenty times a minute.
+ */
+export async function hasSpentOn(
+  spender: Spender,
+  limit: Limit,
+  reference: string,
+  database: Executor = db(),
+): Promise<boolean> {
+  const since = periodStart(limit.period)
+  const found = await database.execute<{ n: string | number }>(sql`
+    select count(*) as n
+      from usage
+     where ${spenderPredicate(spender)}
+       and feature = ${limit.feature}
+       and reference = ${reference}
+       ${since ? sql`and created_at >= ${since}` : sql``}
+  `)
+  return Number(found.rows[0]?.n ?? 0) > 0
+}
+
 export type SpendOutcome = { allowed: boolean; quota: QuotaView; charged: boolean }
 
 /**

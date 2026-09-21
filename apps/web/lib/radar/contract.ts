@@ -242,11 +242,38 @@ export type ScreeningOk = {
   /** When the analysis was produced. It is shared across users (§3.2). */
   createdAt: string
   quota: QuotaView
+  /**
+   * The same banner the Radar shows (canvas 02 and 04): how long the free
+   * window has left and how many screenings are in it. `null` once the caller
+   * has an account (task U1) — the banner is a visitor-only affordance.
+   */
+  visitor?: VisitorView | null
 }
 
-export type ScreeningQueued = Analyzing & { quota: QuotaView }
+export type ScreeningQueued = Analyzing & {
+  quota: QuotaView
+  visitor?: VisitorView | null
+}
 
 export type ScreeningResponse = ScreeningOk | ScreeningQueued | ApiError
+
+/**
+ * `GET /api/tenders/:id/screening` — the poll, not the request.
+ *
+ * `POST` is what checks the quota, charges it and enqueues the job; this reads
+ * the row the worker writes, for a caller who has already paid for this exact
+ * tender. It therefore adds a fourth answer to the three above: `pending`, the
+ * honest "you asked, nothing is written yet" that a `GET` has to be able to
+ * say without inventing a job it did not enqueue.
+ */
+export type ScreeningPending = {
+  state: 'pending'
+  tenderId: string
+  quota: QuotaView
+  visitor?: VisitorView | null
+}
+
+export type ScreeningReadResponse = ScreeningOk | ScreeningPending | ApiError
 
 // ───────────────────────── GET /api/jobs/:id ─────────────────────────
 

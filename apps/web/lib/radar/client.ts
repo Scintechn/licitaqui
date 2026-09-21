@@ -1,6 +1,8 @@
 import type {
   CnpjResponse,
   JobResponse,
+  ScreeningReadResponse,
+  ScreeningResponse,
   TenderGroup,
   TenderListResponse,
   TenderResponse,
@@ -129,4 +131,44 @@ export async function getJobStatus(id: number, signal?: AbortSignal): Promise<Jo
   if (response.status === 404) return 'gone'
   const body = await envelope<JobResponse>(response)
   return body.state === 'ready' ? body.job.status : 'gone'
+}
+
+/** The Radar's URL for a tender's AI screening — canvas 04. */
+export function screeningHref(id: string): string {
+  return `${tenderHref(id)}/triagem`
+}
+
+/** …and for the locked price block behind it — canvas 05. */
+export function priceHref(id: string, item?: number | null): string {
+  const base = `${tenderHref(id)}/preco`
+  return item ? `${base}?item=${item}` : base
+}
+
+/**
+ * `POST /api/tenders/:id/screening` — **ask** for the triagem.
+ *
+ * This is the call that spends a screening, so the screen makes it once per
+ * visit and then polls `getScreening`. Asking again for the same tender is
+ * free (`quota.spend` de-duplicates on the tender id), which is what makes a
+ * retry button safe.
+ */
+export async function postScreening(id: string, signal?: AbortSignal): Promise<ScreeningResponse> {
+  const response = await fetch(`/api/tenders/${tenderApiPath(id)}/screening`, {
+    method: 'POST',
+    signal,
+  })
+  return envelope<ScreeningResponse>(response)
+}
+
+/**
+ * `GET /api/tenders/:id/screening` — **read** it, for a caller who already
+ * asked. Never spends and never enqueues, so it is the one the 3-second poll
+ * hits; it answers `pending` while the worker is still reading.
+ */
+export async function getScreening(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ScreeningReadResponse> {
+  const response = await fetch(`/api/tenders/${tenderApiPath(id)}/screening`, { signal })
+  return envelope<ScreeningReadResponse>(response)
 }
