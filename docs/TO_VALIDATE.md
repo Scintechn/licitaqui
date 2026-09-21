@@ -13,7 +13,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 
 | # | Item | Blocks | Severity |
 |---|---|---|---|
-| 1 | Offer promises a charge notice that does not exist | first real charge, 10-29 | **high** |
+| ~~1~~ | ~~Offer promises a charge notice that does not exist~~ | — | **resolved 21/09** |
 | 2 | Offer omits refunds, which the FAQ says it must carry | M1, 09-24 | medium |
 | 3 | `faq-cobranca.md` carries an internal note | publishing `/ajuda` | medium |
 | 4 | Drafting note stripped at render, not at source | nothing | low |
@@ -25,41 +25,33 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 
 ---
 
-## 1. The Offer promises a charge notice the product will not send
+## ~~1. The Offer promises a charge notice the product will not send~~ — resolved 2026-09-21
 
-**High.** This is the one that can cost money.
+**Sci kept the promise and made it true**, rather than deleting the copy. The Offer is unchanged;
+"3 dias antes de cada cobrança" becomes true at M5, which is when billing starts and nobody is
+charged before then.
 
-The live Offer page says it twice:
+The premise of this item was too narrow. Asaas charges per customer notification, so those
+notifications are **already disabled** in the account — which means Asaas is not sending the
+payment-failed notice either, and terms §7 already promised one. **Every billing message is ours
+to build**, not just the reminder I happened to find.
 
-- `messages.foundersPage.founderValue.comparisonRows[3]` — feature "Aviso de cobrança", ours: **"3 dias antes de cada cobrança"**
-- `messages.foundersPage.faq.columns[1][2].a` — "Não. O plano é mensal, cancela em 1 clique e **você recebe aviso 3 dias antes de cada cobrança**."
+What changed:
 
-Nothing backs it:
-
-| Checked | Result |
+| | |
 |---|---|
-| `legal/termos-de-uso.md` | no such clause |
-| `legal/faq-cobranca.md` | no such clause |
-| `legal/politica-de-privacidade.md` | no such clause |
-| Any job in `worker/` | not implemented |
-| `TECHNICAL_SPEC.md` §548 | listed under **v1 Essencial**, "billing reminder 3 days before each charge" |
-| `DEVELOPMENT_PLAN.md` §4 | v1 Essencial releases **2027-01-11** |
+| `legal/termos-de-uso.md` §7 | new clause: e-mail 3 days before each charge, with date and amount (v1.2, published 21/09) |
+| `legal/faq-cobranca.md` | new Q&A, "Vou ser cobrado de surpresa?" (v1.3) |
+| `legal/LEGAL_AND_BILLING_BRIEF.md` §2 | the rule, and that every billing message is ours (v1.2) |
+| `legal/LEGAL_AND_BILLING_BRIEF.md` §2.1 | **the promise register** — see below |
+| `legal/LEGAL_AND_BILLING_BRIEF.md` §5 | hard rule: never ship a billing promise absent from §2.1 |
+| `DEVELOPMENT_PLAN.md` | task **F4 `charge_reminder`**, and M5 now ships it |
+| `TECHNICAL_SPEC.md` §10 | billing messages are ours, not Asaas's |
 
-Billing goes live at **M5, 2026-10-29**. So for roughly ten weeks the product would
-charge people who were told they would be warned first, and were not. `faq-cobranca.md`
-names this exact failure: *"Cliente que lê uma regra na Oferta e outra no contrato pede
-chargeback."*
-
-**Options, in the order I would take them:**
-
-1. Drop the row and the FAQ clause. The Offer is strong without it, and nothing else
-   on the page depends on it.
-2. Replace it with a promise that is already true and already contractual: the 30-day
-   notice before the R$ 26 → R$ 57 change.
-3. Keep the promise and bring the reminder job forward into M5. That is real work in
-   the billing lane and it makes the claim true on the day it starts mattering.
-
-Not changed: billing copy is yours under brief §5.
+**The structural fix is §2.1, not this row.** A promise now exists only when three columns are
+filled: where it is contractual, what makes it true, and from when. Copy claiming something with
+an empty column is wrong until the gap closes. That catches the next instance of this class
+before it ships, which deleting one sentence would not have.
 
 ## 2. The Offer omits refunds
 
@@ -192,3 +184,76 @@ From brief §6, unchanged:
   Resend, Sentry, Google and Cloudflare — compliance of privacy §9, not code.
 - **Physical address** — deliberately not published; revisit only if a partner or the
   lawyer requires it.
+
+---
+
+# Copy sweep — 2026-09-21
+
+Every string in `apps/web/messages/pt-BR.json` touching charges, renewal, cancellation, refunds,
+notices, personal data or what the AI does, checked against `docs/legal/` and the promise register
+(brief §2.1). Prompted by the "3 dias" finding: the catalogue was written before the legal texts
+existed, so nothing had ever been reconciled.
+
+**No copy was changed.** These are findings.
+
+## A. Refunds appear nowhere in the product — 0 strings
+
+The strongest result of the sweep. Searching the whole catalogue for `devolv`, `reembols`,
+`garantia`, `arrepend`, `estorno` returns **nothing**.
+
+Both refund promises are contractual and both are in the register:
+
+| Promise | Contractual | In the product's copy |
+|---|---|---|
+| 7 dias de arrependimento, 1ª compra | terms §8 | **absent** |
+| Garantia de 30 dias, 1× por CNPJ | terms §8 | **absent** |
+
+`faq-cobranca.md`'s own table says the Offer must carry *devolução*. It does not, and neither does
+`/conta/plano`, `/ajuda` or anywhere else. This is the inverse of the "3 dias" bug: there the copy
+over-promised, here the copy under-sells something already owed — and a 30-day guarantee is a
+reason to subscribe.
+
+## B. "renovação" where the contract says "cobrança"
+
+`radar.landing.guarantees[2].body` — *"E-mail 3 dias antes de cada renovação."*
+
+Terms §7 and the FAQ both say **cobrança**. For a monthly subscription the two coincide today, but
+they are not the same word, and `faq-cobranca.md` opens by insisting the two documents move
+together. Worth aligning before F4 makes the promise real.
+
+## C. The list of un-disableable billing messages is now stale
+
+`notifications.billingHelp` — *"Confirmação de pagamento e aviso de mudança de preço. Esses não dá
+para desligar, porque a gente precisa te avisar."*
+
+Correct that they cannot be switched off, but the list is short by three: the 3-day reminder, the
+payment-failed notice and the suspension notice are all ours now (brief §2, F4). A user reading
+this will not expect them.
+
+## D. Suspension at 10 days is promised in the contract and mentioned nowhere in the product
+
+Terms §7 and the FAQ both state it. No string in the catalogue does — there is no suspension
+messaging at all, which F4 will need to write anyway.
+
+## E. Comparative claims nobody has re-checked
+
+`foundersPage.founderValue.comparisonRows` compares LicitaQui against competitors
+("muitas com contrato anual"), and `foundersPage.pain.source` cites *"Preços de concorrentes:
+sites oficiais, setembro de 2026"*.
+
+Comparative advertising has to stay accurate and verifiable. These were written in September; if a
+competitor changes terms, the claim becomes false without anyone touching our code. Not a defect
+today — a thing with an expiry date on it.
+
+## F. Two `TODO(Sci)` still inside the catalogue
+
+`_meta.todo[2]` and `_meta.todo[6]` both ask for a word-by-word review of `consent.*`, the LGPD
+consent record for WhatsApp and e-mail (spec §12, terms Annex B). Still unreviewed. `_meta` is not
+rendered, so nothing leaks to a user, but the review they ask for has not happened.
+
+## What checked out
+
+Visitor limits (3 days, 2 triagens), Básico's 5/month, the R$ 26 → R$ 57 change with its 30-day
+notice, "sem fidelidade", "cancela em 1 clique", Pix/cartão via Asaas, the AI disclaimer and
+"não substitui assessoria jurídica ou contábil", and the footer identification — all consistent
+with the legal texts. No copy anywhere promises a nota fiscal, which brief §2 forbids until G13.

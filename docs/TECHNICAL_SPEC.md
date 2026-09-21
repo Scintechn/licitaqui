@@ -456,6 +456,8 @@ Priority 1 = a user waiting on screen (the web also calls the worker's `POST /wa
 
 Numbers live in `plan_limits`, not in code.
 
+**Billing messages are ours, not Asaas's:** Asaas charges per customer notification, so customer notifications are **disabled** in the account. Every billing message — the reminder before each charge, the payment-failed notice and the suspension notice — is sent by our own `charge_reminder` / billing jobs. Baseline channel is e-mail (Resend, domain verified); WhatsApp and Telegram are extra channels when the user opted in. The reminder goes **3 days before each charge**, states the date and the amount that will be charged, is idempotent per (subscription, due date), and is never sent for a cancelled subscription.
+
 **Promocional price change:** a daily job `promo_price_change` (1) emails founders whose `promo_ends_on` is 30 days away, and (2) on `promo_ends_on` updates the Asaas subscription value from R$ 26.00 to R$ 57.00 and sets `plan = essencial`. Never charge the new price without the notice having been sent.
 
 ---
@@ -545,7 +547,7 @@ Ready-made queries (simple protected `/admin` page):
 Public Landing (10-13), Asaas subscriptions in production (Promocional R$ 26 for 6 months → R$ 57; Essencial R$ 57; Pro R$ 98), webhook, 1-click cancellation, deep analysis with quota, awards for concierge segments. Subscription link to the 48 founders on 10-29.
 
 **v1 · Essencial (6–8 weeks after gate 0)**
-Daily alerts, ME/EPP and value filters, `sync_awards` + winning price range by state, target price and margin calculator, billing reminder 3 days before each charge.
+Daily alerts, ME/EPP and value filters, `sync_awards` + winning price range by state, target price and margin calculator, (The 3-day charge reminder moved to Phase 0 / M5 — see §10, task F4.)
 
 **v2 · Pro**
 Competitors with name and CNPJ, market price (SearchApi), opportunity score, WhatsApp and triggers, OCR for scanned PDFs, more answer keys (construction, continuous services).

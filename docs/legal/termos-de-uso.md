@@ -1,8 +1,8 @@
 # Termos de Uso — LicitaQui
 
-**Minuta v1.1 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. O único campo pendente é a data de publicação.
+**Minuta v1.2 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. O único campo pendente é a data de publicação.
 
-**Última atualização:** 20/09/2026 · **Vigência:** 20/09/2026
+**Última atualização:** 21/09/2026 · **Vigência:** 21/09/2026
 
 ---
 
@@ -66,6 +66,7 @@ Esta é a cláusula mais importante do contrato para quem entra pelo plano Promo
 
 - A cobrança é feita pelo **Asaas** (meio de pagamento), por cartão de crédito ou pix, conforme as opções disponíveis no checkout. **Não temos acesso ao número do seu cartão.**
 - A assinatura é **recorrente**: renova automaticamente a cada mês na mesma data, até que você cancele.
+- **Avisamos você por e-mail 3 (três) dias antes de cada cobrança**, informando a data e o valor que será cobrado. Se você tiver conectado WhatsApp ou Telegram, avisamos também por lá.
 - Falha no pagamento: tentaremos novamente e avisaremos você. Se não houver pagamento em **10 (dez) dias corridos** contados do vencimento, o acesso aos recursos pagos é suspenso e a conta volta ao plano Básico. Nada é excluído nesse momento (ver seção 12).
 - Valores são em reais e incluem os tributos aplicáveis. A emissão de documento fiscal segue a legislação vigente.
 
@@ -143,6 +144,7 @@ Antes de qualquer medida judicial, escreva para contato@licitaquiapp.com.br ou c
 | Versão | Data | O que mudou |
 |---|---|---|
 | 1.0 | 20/09/2026 | Primeira versão publicada |
+| 1.1 | 21/09/2026 | §7: aviso por e-mail 3 dias antes de cada cobrança |
 
 ---
 
