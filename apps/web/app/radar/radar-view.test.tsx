@@ -296,3 +296,72 @@ describe('the visitor strip', () => {
     expect(render({ visitor: null })).not.toContain(copy.visitor.label)
   })
 })
+
+/**
+ * "Ver mais editais". The copy existed and nothing rendered it, so `/radar`
+ * showed the badge `Compatíveis 79` above a list of 20 and the other 59 were
+ * unreachable — no control, and no request carrying a `cursor` in the trace.
+ */
+describe('the next page', () => {
+  const twenty = Array.from({ length: 20 }, (_, index) => ({
+    ...TENDER,
+    id: `${TENDER.id}-${index}`,
+  }))
+  const paged = {
+    tenders: twenty,
+    counts: { compatible: 79, check: 7, keyword: 3 },
+    nextCursor: 'cursor-2',
+    onLoadMore: () => {},
+  }
+
+  it('offers the control the catalogue has always had a word for', () => {
+    const out = render(paged)
+    expect(out).toContain(copy.list.more)
+    expect(out).toContain('<button')
+  })
+
+  it('hides it at the end of the list, where there is nothing to fetch', () => {
+    const out = render({ ...paged, nextCursor: null })
+    expect(out).not.toContain(copy.list.more)
+    // The line saying where you are stays: the list did not become shorter.
+    expect(out).toContain(format(copy.list.showing, { shown: 20, total: 79 }))
+  })
+
+  it('renders nothing at all without a handler, the way onRetry does', () => {
+    const out = render({ ...paged, onLoadMore: undefined })
+    expect(out).not.toContain(copy.list.more)
+    expect(out).not.toContain(format(copy.list.showing, { shown: 20, total: 79 }))
+  })
+
+  it('says how far into the total you are, and announces it politely', () => {
+    const out = render(paged)
+    expect(out).toContain(format(copy.list.showing, { shown: 20, total: 79 }))
+    expect(out).toContain('aria-live="polite"')
+  })
+
+  it('leaves the tab badge alone while a page is loading: 79 is still 79', () => {
+    const out = render({ ...paged, loadingMore: true })
+    expect(out).toContain(copy.list.moreLoading)
+    expect(out).not.toContain(copy.list.more)
+    expect(out).toContain('aria-busy="true"')
+    expect(out).toMatch(/\sdisabled(=|\s|>)/)
+    // The badge and the count line both keep the numbers they had.
+    expect(out).toContain('79')
+    expect(out).toContain(format(copy.list.showing, { shown: 20, total: 79 }))
+  })
+
+  it('stays away from every state that is not a list', () => {
+    for (const status of [
+      { kind: 'analyzing', what: 'list' },
+      { kind: 'timeout' },
+      { kind: 'needCnpj' },
+      { kind: 'noSegments' },
+    ] as RadarStatus[]) {
+      expect(render({ ...paged, status })).not.toContain(copy.list.more)
+    }
+  })
+
+  it('is absent from an empty group, which has no next page by definition', () => {
+    expect(render({ ...paged, tenders: [] })).not.toContain(copy.list.more)
+  })
+})

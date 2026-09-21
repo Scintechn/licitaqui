@@ -797,6 +797,8 @@
       "filtersHide": "Esconder filtros",
       "sort": "Ordenar: prazo",
       "more": "Ver mais editais",
+    "moreLoading": "Carregando…",
+    "showing": "Mostrando {shown} de {total}",
       "apply": "Aplicar filtros",
       "keywordOnly": "Busca por palavra-chave"
     },

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { format, messages } from '@/lib/messages'
 import type { SegmentFit, TenderDetail } from '@/lib/radar/contract'
+import { ACCOUNT_HREF } from '@/lib/routes'
 import { OpportunityView, matchKind, reasons, type OpportunityViewProps } from './opportunity-view'
 
 const NOW = new Date('2026-09-17T15:00:00.000Z')
@@ -159,7 +160,7 @@ describe('the Opportunity screen', () => {
   it('locks the files behind the account, as a real link and not a disabled control', () => {
     const out = render()
     expect(out).toContain(page.filesLocked)
-    expect(out).toContain('href="/conta/criar"')
+    expect(out).toContain(`href="${ACCOUNT_HREF}"`)
     expect(out).toContain('border-dashed')
     expect(out).not.toMatch(/\sdisabled(=|\s|>)/)
   })
