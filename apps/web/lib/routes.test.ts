@@ -2,7 +2,15 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { ACCOUNT_CREATE_PATH, ACCOUNT_HREF, ALERTS_HREF, ALERTS_PATH } from './routes'
+import {
+  ACCOUNT_CREATE_PATH,
+  ACCOUNT_HREF,
+  ACCOUNT_PATH,
+  ALERTS_HREF,
+  ALERTS_PATH,
+  PLAN_HREF,
+  accountHref,
+} from './routes'
 
 /**
  * Nothing may link to a route that does not exist.
@@ -15,14 +23,33 @@ import { ACCOUNT_CREATE_PATH, ACCOUNT_HREF, ALERTS_HREF, ALERTS_PATH } from './r
  * href anywhere under `app/`, including in the server components that cannot be
  * rendered without a database.
  *
- * When U1 and E1 build the screens, flip `ACCOUNT_HREF` / `ALERTS_HREF` in
- * `routes.ts` and add `/conta` to `BUILT` here.
+ * U1 built `/conta` and `/conta/criar`, so `/conta` is in `BUILT` and
+ * `ACCOUNT_HREF` is the real screen. `ALERTS_HREF` still is not: E1 owns
+ * `/conta/alertas`, and until that page exists the bell must keep pointing
+ * somewhere that answers 200. When E1 and F2 ship, flip their constant in
+ * `routes.ts` — nothing here needs to change, because `/conta` already covers
+ * every child route.
  */
 
 const APP = fileURLToPath(new URL('../app', import.meta.url))
 
 /** Route prefixes that resolve to a page today. */
-const BUILT = ['/', '/radar', '/fundadores', '/termos', '/privacidade', '/admin']
+const BUILT = ['/', '/radar', '/fundadores', '/termos', '/privacidade', '/admin', '/conta']
+
+/**
+ * Whether `href` is under a built prefix.
+ *
+ * A prefix match, not equality: `/conta` is one page *and* the root of
+ * `/conta/criar`, while `/conta/alertas` — E1's, unbuilt — must still be
+ * caught. So a prefix only covers itself and what is nested under it, and the
+ * unbuilt children are listed by name below.
+ */
+function isBuilt(href: string): boolean {
+  return BUILT.some((prefix) => href === prefix || href.startsWith(`${prefix}/`))
+}
+
+/** Addresses that are named in `routes.ts` but have no page yet. */
+const UNBUILT = [ALERTS_PATH, '/conta/plano']
 
 function sources(directory: string): string[] {
   const out: string[] = []
@@ -35,13 +62,27 @@ function sources(directory: string): string[] {
 }
 
 describe('the account destinations', () => {
-  it('point somewhere that exists, and both move in one edit', () => {
-    expect(BUILT).toContain(ACCOUNT_HREF)
-    expect(BUILT).toContain(ALERTS_HREF)
-    // The addresses the canvases give them, kept so U1 and E1 do not guess.
+  it('point somewhere that exists, and each moves in one edit', () => {
+    expect(isBuilt(ACCOUNT_HREF)).toBe(true)
+    expect(isBuilt(ALERTS_HREF)).toBe(true)
+    expect(isBuilt(PLAN_HREF)).toBe(true)
+    // The addresses the canvases give them, kept so E1 and F2 do not guess.
     expect(ACCOUNT_CREATE_PATH).toBe('/conta/criar')
+    expect(ACCOUNT_PATH).toBe('/conta')
     expect(ALERTS_PATH).toBe('/conta/alertas')
-    expect(BUILT).not.toContain(ACCOUNT_CREATE_PATH)
+  })
+
+  it('never point at a screen nobody has built', () => {
+    for (const href of [ACCOUNT_HREF, ALERTS_HREF, PLAN_HREF]) {
+      expect(UNBUILT).not.toContain(href)
+    }
+  })
+
+  it('round-trip the visitor back to where they were, now that U1 has a screen', () => {
+    expect(accountHref('/radar/edital/x/triagem')).toBe(
+      `${ACCOUNT_CREATE_PATH}?next=${encodeURIComponent('/radar/edital/x/triagem')}`,
+    )
+    expect(accountHref()).toBe(ACCOUNT_HREF)
   })
 
   it('are the only way app/ names them: no hard-coded /conta href survives', () => {

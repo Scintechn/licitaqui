@@ -1043,5 +1043,53 @@
       "months": "{count, plural, one {1 mês} other {# meses}}",
       "percent": "{valor}%"
     }
+  },
+  "account": {
+    "meta": {
+      "createTitle": "Entrar · LicitaQui",
+      "createDescription": "Crie sua conta grátis na LicitaQui e continue acompanhando os editais do seu CNPJ.",
+      "title": "Sua conta · LicitaQui",
+      "description": "Seu plano, suas leituras de edital e seus dados na LicitaQui."
+    },
+    "signIn": {
+      "title": "Entre ou crie sua conta grátis",
+      "subtitle": "Com a conta, o edital e os anexos ficam liberados, você ganha mais leituras por IA todo mês e um aviso por semana no Telegram. É de graça e não pede cartão.",
+      "google": "Entrar com Google",
+      "or": "ou",
+      "emailLabel": "Seu e-mail",
+      "emailPlaceholder": "voce@empresa.com.br",
+      "emailSubmit": "Receber link de acesso",
+      "emailHelp": "A gente manda um link para o seu e-mail. Clique nele e pronto, sem senha.",
+      "sentTitle": "Link enviado",
+      "sentBody": "Abra o seu e-mail e clique no link para entrar. Se não chegar em alguns minutos, olhe o spam.",
+      "keepBrowsing": "Continuar sem conta",
+      "errorTitle": "Não deu para entrar",
+      "errorBody": "Alguma coisa falhou no caminho de volta. Tente de novo.",
+      "emailMissing": "Digite o seu e-mail para receber o link.",
+      "unavailableTitle": "Entrar não funciona neste endereço",
+      "unavailablePreview": "Esta é uma versão de teste do site, com endereço temporário, e o login com Google só aceita o endereço oficial. Use o site publicado para entrar. Buscar editais aqui continua funcionando normalmente.",
+      "unavailableConfig": "O login ainda não está configurado neste ambiente.",
+      "radar": "Ir para o Radar"
+    },
+    "screen": {
+      "title": "Sua conta",
+      "planLabel": "Seu plano",
+      "screeningsLabel": "Leituras de edital por IA",
+      "screeningsMonth": "{usadas} de {total} neste mês",
+      "screeningsTotal": "{usadas} de {total}",
+      "screeningsUnlimited": "Sem limite",
+      "screeningsNone": "Não incluídas neste plano",
+      "companyLabel": "Empresa",
+      "companyNone": "Você ainda não buscou nenhum CNPJ.",
+      "founderLabel": "Vaga de fundador",
+      "founderSeat": "Vaga {numero} de {total}",
+      "founderNote": "Sua vaga está reservada. Quando a assinatura abrir, o preço de fundador é seu.",
+      "radar": "Ir para o Radar",
+      "alerts": "Avisos no Telegram",
+      "plans": "Ver planos",
+      "signOut": "Sair",
+      "dataTitle": "Seus dados",
+      "dataBody": "A gente guarda seu e-mail, o CNPJ que você buscou e o que você já leu por IA."
+    }
   }
 }

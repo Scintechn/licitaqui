@@ -1,15 +1,22 @@
 import { NextResponse } from 'next/server'
 import { sql } from 'drizzle-orm'
+import {
+  cnpjOf,
+  planOf,
+  readOrCreateViewer,
+  readViewer,
+  spenderOf,
+  visitorWindow,
+  type Viewer,
+} from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
-import { db } from '@/lib/db'
+import { db, type Executor } from '@/lib/db'
 import { recordEventSafely } from '@/lib/events'
 import type { ScreeningResponse } from '@/lib/radar/contract'
 import type { ScreeningReadResponse } from '@/lib/radar/contract'
 import { countUsage, FEATURES, hasSpentOn, quotaView, readLimit } from '@/lib/radar/quota'
 import { readScreening, requestScreening } from '@/lib/radar/screening'
 import {
-  loadOrCreateVisitor,
-  loadVisitor,
   visitorCookie,
   visitorView,
   VISITOR_DAYS_FALLBACK,
@@ -33,9 +40,11 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  * 3. **the quota** — `plan_limits` + `usage`, checked and charged in one
  *    statement so a race cannot spend the same last screening twice.
  *
- * Accounts are task U1. Every caller is a visitor for now, which is the
- * strictest of the plans (2 total, not 5 a month), so nothing here has to be
- * loosened when sessions arrive — only `plan` and `spender` change.
+ * U1 added accounts, and exactly as the note that stood here predicted, only
+ * `plan` and `spender` changed: `lib/auth/viewer.ts` answers who is asking, the
+ * plan is theirs rather than always `visitor`, and refusal 2 does not apply to
+ * someone with an account — §10 gives the three days to "Visitante (sem
+ * conta)". Nothing about the anonymous path moved.
  */
 
 export const runtime = 'nodejs'
@@ -78,14 +87,19 @@ export async function POST(
 
   try {
     const executor = db()
-    const visitor = await loadOrCreateVisitor({
-      cookieHeader: request.headers.get('cookie'),
-      ip: request.headers.get('x-forwarded-for'),
-      userAgent: request.headers.get('user-agent'),
-    })
+    const viewer = await readOrCreateViewer(
+      {
+        cookieHeader: request.headers.get('cookie'),
+        ip: request.headers.get('x-forwarded-for'),
+        userAgent: request.headers.get('user-agent'),
+      },
+      executor,
+    )
 
     const headers: Record<string, string> = { 'cache-control': PRIVATE_NO_STORE }
-    if (visitor.isNew) headers['set-cookie'] = visitorCookie(visitor.id)
+    if (viewer.kind === 'visitor' && viewer.visitor.isNew) {
+      headers['set-cookie'] = visitorCookie(viewer.visitor.id)
+    }
 
     const exists = await executor.execute<{ id: string }>(
       sql`select id from tenders where id = ${id}`,
@@ -94,17 +108,21 @@ export async function POST(
       return fail({ state: 'error', error: 'not_found' }, 404, headers)
     }
 
-    const days = await readLimit(VISITOR_PLAN, FEATURES.days, executor)
-    const startedAt = await windowStartedAt(visitor, visitor.cnpj, executor)
-    const window = visitorView(startedAt, days.quantity ?? VISITOR_DAYS_FALLBACK, {
-      used: 0,
-      limit: null,
-    })
-    if (window.expired) {
-      return fail({ state: 'error', error: 'visitor_expired' }, 403, headers)
+    // The 3-day window belongs to "Visitante (sem conta)" (§10). An account has
+    // a monthly quota and no expiry, so there is nothing to check for them.
+    const startedAt = await windowStarted(viewer, executor)
+    if (startedAt) {
+      const days = await readLimit(VISITOR_PLAN, FEATURES.days, executor)
+      const window = visitorView(startedAt, days.quantity ?? VISITOR_DAYS_FALLBACK, {
+        used: 0,
+        limit: null,
+      })
+      if (window.expired) {
+        return fail({ state: 'error', error: 'visitor_expired' }, 403, headers)
+      }
     }
 
-    const outcome = await requestScreening(id, { visitorId: visitor.id }, VISITOR_PLAN, executor)
+    const outcome = await requestScreening(id, spenderOf(viewer), planOf(viewer), executor)
 
     if (outcome.state === 'quota_exceeded') {
       return fail({ state: 'error', error: 'quota_exceeded', quota: outcome.quota }, 402, headers)
@@ -112,16 +130,17 @@ export async function POST(
 
     // The banner canvas 02 and 04 both draw: the same window as above, now with
     // the screening count the spend just settled rather than the `0` the expiry
-    // check did not need.
+    // check did not need. `null` for an account — the banner is a visitor-only
+    // affordance, which is why the contract has always had it nullable.
     const spent = outcome.state === 'ready' ? outcome.body.quota : outcome.quota
-    const banner = visitorView(startedAt, days.quantity ?? VISITOR_DAYS_FALLBACK, {
-      used: spent.used,
-      limit: spent.limit,
-    })
+    const banner = startedAt
+      ? await visitorWindow(viewer, startedAt, { used: spent.used, limit: spent.limit }, executor)
+      : null
 
     await recordEventSafely({
       name: outcome.state === 'ready' ? 'screening_viewed' : 'screening_requested',
-      visitorId: visitor.id,
+      userId: viewer.kind === 'user' ? viewer.user.userId : null,
+      visitorId: viewer.kind === 'visitor' ? viewer.visitor.id : null,
       props: { tender_id: id, cached: outcome.state === 'ready' },
     })
 
@@ -185,24 +204,23 @@ export async function GET(
 
   try {
     const executor = db()
-    const visitor = await loadVisitor(request.headers.get('cookie'), executor)
-    if (!visitor) {
+    const viewer = await readViewer(request.headers.get('cookie'), executor)
+    if (!viewer) {
       return fail({ state: 'error', error: 'not_found' }, 404)
     }
 
-    const limit = await readLimit(VISITOR_PLAN, FEATURES.screening, executor)
-    const paid = await hasSpentOn({ visitorId: visitor.id }, limit, id, executor)
+    const spender = spenderOf(viewer)
+    const limit = await readLimit(planOf(viewer), FEATURES.screening, executor)
+    const paid = await hasSpentOn(spender, limit, id, executor)
     if (!paid) {
       return fail({ state: 'error', error: 'not_found' }, 404)
     }
 
-    const used = await countUsage({ visitorId: visitor.id }, limit, executor)
-    const days = await readLimit(VISITOR_PLAN, FEATURES.days, executor)
-    const startedAt = await windowStartedAt(visitor, visitor.cnpj, executor)
-    const window = visitorView(startedAt, days.quantity ?? VISITOR_DAYS_FALLBACK, {
-      used,
-      limit: limit.quantity,
-    })
+    const used = await countUsage(spender, limit, executor)
+    const startedAt = await windowStarted(viewer, executor)
+    const window = startedAt
+      ? await visitorWindow(viewer, startedAt, { used, limit: limit.quantity }, executor)
+      : null
 
     const quota = quotaView(limit, used)
     const cached = await readScreening(id, executor)
@@ -234,4 +252,16 @@ export async function GET(
     console.error(`GET /api/tenders/:id/screening failed (${code})`)
     return fail({ state: 'error', error: 'server_error' }, 500)
   }
+}
+
+/**
+ * When this caller's free window started, or `null` when they have an account.
+ *
+ * The earlier of the device's own `created_at` and the first time **any**
+ * device searched their CNPJ (§8, decision 5 in §17) — the half of the rule
+ * that an incognito window cannot undo.
+ */
+async function windowStarted(viewer: Viewer, executor: Executor): Promise<Date | null> {
+  if (viewer.kind !== 'visitor') return null
+  return windowStartedAt(viewer.visitor, cnpjOf(viewer), executor)
 }
