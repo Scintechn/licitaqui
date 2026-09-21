@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { rememberUserCnpj } from '@/lib/auth/session'
+import { readOrCreateViewer, visitorWindow, type Viewer } from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { normaliseCnpj } from '@/lib/cnpj'
 import { db } from '@/lib/db'
@@ -7,15 +9,7 @@ import { recordEventSafely } from '@/lib/events'
 import { companyOrLookup } from '@/lib/radar/company'
 import type { CnpjResponse } from '@/lib/radar/contract'
 import { countUsage, FEATURES, readLimit } from '@/lib/radar/quota'
-import {
-  attachCnpj,
-  loadOrCreateVisitor,
-  visitorCookie,
-  visitorView,
-  VISITOR_DAYS_FALLBACK,
-  VISITOR_PLAN,
-  windowStartedAt,
-} from '@/lib/radar/visitor'
+import { attachCnpj, visitorCookie, VISITOR_PLAN, windowStartedAt } from '@/lib/radar/visitor'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
 /**
@@ -79,12 +73,16 @@ export async function POST(request: Request): Promise<NextResponse<CnpjResponse>
   const { cnpj } = parsed.data
 
   try {
-    const visitor = await loadOrCreateVisitor({
+    const viewer = await readOrCreateViewer({
       cookieHeader: request.headers.get('cookie'),
       ip: request.headers.get('x-forwarded-for'),
       userAgent: request.headers.get('user-agent'),
     })
-    await attachCnpj(visitor.id, cnpj)
+    // Where the CNPJ is remembered depends on who asked: a device remembers it
+    // on its `visitors` row, which is what carries the 3-day clock across an
+    // incognito window; an account remembers it on `users.cnpj` (§6.2), which
+    // is what E1's weekly digest will search for.
+    if (viewer.kind === 'visitor') await attachCnpj(viewer.visitor.id, cnpj)
 
     const cached = await companyOrLookup(cnpj)
 
@@ -92,12 +90,15 @@ export async function POST(request: Request): Promise<NextResponse<CnpjResponse>
     // `visitors.cnpj` already holds it and the gate only counts searches.
     await recordEventSafely({
       name: 'cnpj_searched',
-      visitorId: visitor.id,
+      userId: viewer.kind === 'user' ? viewer.user.userId : null,
+      visitorId: viewer.kind === 'visitor' ? viewer.visitor.id : null,
       props: { cache: cached.state, manual_cnae: cached.data?.manualCnae ?? null },
     })
 
     const headers: Record<string, string> = { 'cache-control': PRIVATE_NO_STORE }
-    if (visitor.isNew) headers['set-cookie'] = visitorCookie(visitor.id)
+    if (viewer.kind === 'visitor' && viewer.visitor.isNew) {
+      headers['set-cookie'] = visitorCookie(viewer.visitor.id)
+    }
 
     const found = cached.data
     if (cached.state === 'absent' || !found) {
@@ -107,7 +108,8 @@ export async function POST(request: Request): Promise<NextResponse<CnpjResponse>
       )
     }
 
-    const view = await describeVisitor(visitor.id, visitor.createdAt, cnpj)
+    if (viewer.kind === 'user') await rememberUserCnpj(viewer.user.userId, cnpj)
+    const view = await describeVisitor(viewer, cnpj)
 
     return NextResponse.json(
       {
@@ -137,19 +139,17 @@ export async function POST(request: Request): Promise<NextResponse<CnpjResponse>
  * The window starts at the earlier of this device's `created_at` and the first
  * time any device searched this CNPJ — decision 5 in §17, which is what stops
  * an incognito window from being a reset button.
+ *
+ * `null` for a signed-in account: §10 gives the three days to "Visitante (sem
+ * conta)", and the banner the Radar draws from this is a visitor affordance.
  */
-async function describeVisitor(visitorId: string, createdAt: Date, cnpj: string) {
+async function describeVisitor(viewer: Viewer, cnpj: string) {
+  if (viewer.kind !== 'visitor') return null
   const executor = db()
-  const [days, screenings] = await Promise.all([
-    readLimit(VISITOR_PLAN, FEATURES.days, executor),
-    readLimit(VISITOR_PLAN, FEATURES.screening, executor),
-  ])
+  const screenings = await readLimit(VISITOR_PLAN, FEATURES.screening, executor)
   const [startedAt, used] = await Promise.all([
-    windowStartedAt({ id: visitorId, createdAt, cnpj, screeningsUsed: 0, isNew: false }, cnpj, executor),
-    countUsage({ visitorId }, screenings, executor),
+    windowStartedAt(viewer.visitor, cnpj, executor),
+    countUsage({ visitorId: viewer.visitor.id }, screenings, executor),
   ])
-  return visitorView(startedAt, days.quantity ?? VISITOR_DAYS_FALLBACK, {
-    used,
-    limit: screenings.quantity,
-  })
+  return visitorWindow(viewer, startedAt, { used, limit: screenings.quantity }, executor)
 }

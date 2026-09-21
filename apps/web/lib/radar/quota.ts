@@ -9,7 +9,7 @@ import type { QuotaView } from './contract'
  * > **Quota checks:** always server-side, in a transaction (`usage` in the
  * > period + `plan_limits`).
  *
- * Three rules the rest of the code must not re-invent:
+ * Four rules the rest of the code must not re-invent:
  *
  *  - **`quantity is null` means unlimited**, not zero and not "unset". A plan
  *    with no row at all for a feature means the feature is *not included*,
@@ -22,6 +22,14 @@ import type { QuotaView } from './contract'
  *  - **The check and the write are one statement.** `spend()` inserts the
  *    `usage` row with the count in its `where`, so two requests racing on the
  *    last screening cannot both see "1 left".
+ *  - **The allowance is per spender, not per CNPJ.** §17's decision 5 scopes
+ *    "per device *and* per CNPJ" to the visitor's **3 days** and to nothing
+ *    else, and the terms say the same ("Uso por até 3 dias, contado por
+ *    aparelho e por CNPJ; …; 2 triagens por IA"). So the window is what an
+ *    incognito session cannot reset (`visitor.windowStartedAt`); the two
+ *    screenings are counted per device. U1 tried widening this to the CNPJ and
+ *    put it back: it is a commercial call, not an engineering one, and it is
+ *    written up on the U1 PR.
  */
 
 /** §10's features, as `plan_limits.feature` spells them. */

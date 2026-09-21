@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
+import { cnpjOf, hasAccount, readViewer } from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { db } from '@/lib/db'
 import { recordEventSafely } from '@/lib/events'
 import { readCompany } from '@/lib/radar/company'
 import type { TenderResponse } from '@/lib/radar/contract'
 import { tenderOrRefresh } from '@/lib/radar/tender'
-import { loadVisitor } from '@/lib/radar/visitor'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
 /**
@@ -19,9 +19,10 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  * draws the locked block from; `files: []` would mean the agency published
  * nothing, which is a different thing to tell a user.
  *
- * Accounts arrive with task U1. Until then every request is a visitor and
- * `files` is always `null`; when U1 lands, the one line below that decides
- * `withFiles` is where the session is read.
+ * U1 landed and that is exactly what happened: `withFiles` is now
+ * `hasAccount(viewer)` and nothing else changed. A visitor still gets `null`
+ * and still sees the locked block; a signed-in user on Básico gets the edital
+ * and its annexes, which is the row §10 grants "com conta".
  */
 
 export const runtime = 'nodejs'
@@ -56,16 +57,17 @@ export async function GET(
   }
 
   try {
-    // Read only: a GET never mints an identity (see `loadVisitor`).
-    const visitor = await loadVisitor(request.headers.get('cookie'))
+    const executor = db()
+    // Read only: a GET never mints an identity (see `readViewer`).
+    const viewer = await readViewer(request.headers.get('cookie'), executor)
     const headers: Record<string, string> = { 'cache-control': PRIVATE_NO_STORE }
 
-    const executor = db()
-    const company = visitor?.cnpj ? await readCompany(visitor.cnpj, executor) : null
+    const cnpj = cnpjOf(viewer)
+    const company = cnpj ? await readCompany(cnpj, executor) : null
 
     const cached = await tenderOrRefresh(id, {
-      // Task U1 replaces this with "the request has a session".
-      withFiles: false,
+      // §8: "files only with an account".
+      withFiles: hasAccount(viewer),
       fits: company?.data.company.segments ?? [],
       executor,
     })
@@ -79,7 +81,8 @@ export async function GET(
 
     await recordEventSafely({
       name: 'tender_opened',
-      visitorId: visitor?.id ?? null,
+      userId: viewer?.kind === 'user' ? viewer.user.userId : null,
+      visitorId: viewer?.kind === 'visitor' ? viewer.visitor.id : null,
       props: { tender_id: id, cache: cached.state },
     })
 

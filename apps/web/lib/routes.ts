@@ -1,45 +1,54 @@
 /**
- * Where the account controls point while the account screens do not exist.
+ * Where the account controls point.
  *
- * The approved canvases put "Criar conta" at `/conta/criar` (task U1) and the
- * bell at `/conta/alertas` (task E1). Neither route is built, and the Landing
- * and the Radar both link to them from the live site — so every `<Link>` to
- * one is prefetched into the viewport as a `404`, eight of them in a single
- * page view of `/`, and a visitor who clicks lands on the branded 404 having
- * been invited to sign up. Founders week starts 09-24; that is the wrong first
- * answer to give traffic.
+ * ## U1 flipped the first half of this
  *
- * So both destinations are this constant, and this constant is `/fundadores` —
- * the one thing a visitor can actually do today. Turning the prefetch off
- * would have fixed the network trace and left the dead end, which is the half
- * of the problem that matters.
+ * `/conta/criar` and `/conta` are built, so `ACCOUNT_HREF` is now the real
+ * sign-in screen and every control that reads it — the Landing's "Entrar", the
+ * Radar's person icon, D4's `quota_exceeded` card — leads to an account
+ * instead of to the Offer. `accountHref(next)` therefore starts round-tripping
+ * on its own, exactly as the note below said it would.
  *
- * ## For U1 and E1
+ * `ALERTS_HREF` has **not** moved: `/conta/alertas` is task E1's screen and it
+ * does not exist yet, so the bell still goes to `/fundadores`. One constant,
+ * one edit, on E1's day.
  *
- * Change this file and nothing else: replace `ACCOUNT_HREF` with
- * `ACCOUNT_CREATE_PATH` and `ALERTS_HREF` with `ALERTS_PATH`, both of which are
- * already spelled out below so the intended addresses are not lost. Every
- * control follows, and `routes.test.ts` fails until the screens exist.
+ * ## R2's rule, which has not changed
+ *
+ * Next prefetches a `<Link>` as it enters the viewport, so a control pointing
+ * at an unbuilt route is not merely a dead end when clicked — it is a burst of
+ * 404s on every page view (eight of them on `/` in the trace that found it).
+ * So no screen hard-codes one of these addresses: every account, alert and plan
+ * control reads a constant from this file, `routes.test.ts` sweeps `app/` to
+ * prove it, and moving a destination stays one edit here.
+ *
+ * ## For E1 and F2
+ *
+ * Change this file and nothing else: `ALERTS_HREF` becomes `ALERTS_PATH` when
+ * `/conta/alertas` exists, `PLAN_HREF` becomes `PLAN_PATH` when F2 ships the
+ * checkout, and add the new prefix to `BUILT` in `routes.test.ts`.
  */
 
-/** Task U1's address for "create an account". Not built yet. */
+/** Sign in or create an account. Built by U1. */
 export const ACCOUNT_CREATE_PATH = '/conta/criar'
 
 /** Task E1's address for the alerts screen. Not built yet. */
 export const ALERTS_PATH = '/conta/alertas'
 
-/**
- * The one destination every account and alert control uses until U1 and E1
- * ship. One constant, one edit.
- */
-export const ACCOUNT_HREF: string = '/fundadores'
+/** The account screen itself, for someone who is already signed in. */
+export const ACCOUNT_PATH = '/conta'
 
 /**
- * The bell in the app bar. Separate name, same value: alerts are E1's and the
- * account is U1's, and they will stop pointing at the same page on different
- * days.
+ * Where "Entrar" and "Criar conta" go. U1 built the screen, so this is it.
  */
-export const ALERTS_HREF: string = ACCOUNT_HREF
+export const ACCOUNT_HREF: string = ACCOUNT_CREATE_PATH
+
+/**
+ * The bell in the app bar. Separate name, and no longer the same value: alerts
+ * are E1's and the account is U1's, and they stopped pointing at the same page
+ * on different days, which is what the two names were for.
+ */
+export const ALERTS_HREF: string = '/fundadores'
 
 /** Task F2's address for the plan and checkout screen. Not built yet. */
 export const PLAN_PATH = '/conta/plano'
@@ -47,22 +56,21 @@ export const PLAN_PATH = '/conta/plano'
 /**
  * Where "assinar" and the locked blocks send someone today.
  *
- * Same value and same reasoning as `ACCOUNT_HREF`: `/conta/plano` belongs to
- * F2, billing does not open until M5 (10-29), and during founders week the
- * honest upgrade path is the offer itself. Separate name because it will stop
- * pointing at the same place the day F2 ships.
+ * `/conta/plano` belongs to F2, billing does not open until M5 (10-29), and
+ * during founders week the honest upgrade path is the offer itself. Separate
+ * name because it will stop pointing at the same place the day F2 ships — as
+ * `ACCOUNT_HREF` just did.
  */
-export const PLAN_HREF: string = ACCOUNT_HREF
+export const PLAN_HREF: string = '/fundadores'
 
 /**
  * The account link, carrying where to come back to.
  *
  * The screening screens want `?next=` so a visitor who signs up lands back on
- * the tender they were reading. While `ACCOUNT_HREF` is the offer page that
- * parameter has nowhere to return to, so it is dropped rather than rendered as
- * a promise the page cannot keep. The day U1 flips `ACCOUNT_HREF` to
- * `ACCOUNT_CREATE_PATH`, every call site starts round-tripping with no further
- * change.
+ * the tender they were reading. The guard below is kept rather than deleted:
+ * it is what made the parameter safe to add at every call site before the
+ * screen existed, and it is what will make it safe again if `ACCOUNT_HREF` ever
+ * has to point somewhere with nowhere to return to.
  */
 export function accountHref(next?: string): string {
   if (!next || ACCOUNT_HREF !== ACCOUNT_CREATE_PATH) return ACCOUNT_HREF

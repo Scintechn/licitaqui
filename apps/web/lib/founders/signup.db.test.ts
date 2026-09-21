@@ -201,8 +201,18 @@ suite('founders signup (database)', () => {
     ])
     expect(jobs.rows).toHaveLength(1)
 
+    // Scoped to this suite's own founder, not `select name from events`.
+    // `events` is shared: the Radar suites write `cnpj_searched` and U1's
+    // writes `screening_requested` from another Vitest worker at the same
+    // moment, and an assertion over the whole table fails on their rows rather
+    // than on anything F1 did. Both events F1 writes carry `founders_list_id`
+    // in `props` — the same key `cleanup()` above already deletes by.
     const events = await pool().query<{ name: string }>(
-      'select name from events order by id',
+      `select e.name from events e
+         join founders_list f on f.id = (e.props->>'founders_list_id')::bigint
+        where f.email like $1
+        order by e.id`,
+      [`%@${DOMAIN}`],
     )
     expect(events.rows.map((row) => row.name)).toEqual([SIGNUP_EVENT, DUPLICATE_EVENT])
   })
