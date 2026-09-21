@@ -3,9 +3,9 @@
 # Spec §12 asks for GitHub secret scanning + push protection. Those are part of
 # GitHub Secret Protection, which this private repository does not have: the
 # REST call to enable it answers HTTP 422. Until the repo is public or the paid
-# feature is bought, gitleaks is the substitute — it scans the whole git history
-# on every pull request and on every push to main, and fails the run on any
-# finding.
+# feature is bought, gitleaks is the substitute — a pull request is scanned over
+# its own commits, `main` is scanned over the whole history, and any finding
+# fails the run. See the step comments for why the two differ.
 #
 # Differences from the real thing, recorded so nobody assumes more coverage than
 # exists: this runs *after* the push, so it blocks the merge rather than the
@@ -63,7 +63,35 @@ jobs:
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
-      # --redact keeps any finding out of the public log; the file and commit
-      # are still reported, which is what you need to go rotate the key.
-      - name: Scan git history for secrets
+      # What gets scanned depends on the event, and the difference matters.
+      #
+      # `gitleaks git .` walks **every reachable commit**, so once any branch is
+      # pushed, its commits are reachable from every other branch's checkout. A
+      # single finding therefore failed every open pull request at once — on
+      # 2026-09-21 a fake session cookie in one lane's test reddened an
+      # unrelated migration PR, and the author of that PR had no way to fix it.
+      # A check somebody else's branch can break is a check people learn to
+      # ignore.
+      #
+      # So a pull request is judged on **its own commits**: `merge-base..HEAD`
+      # is exactly what the author is asking to add, and it is the only thing
+      # they can do anything about.
+      #
+      # `main` keeps the full sweep. That is where the guarantee lives — a
+      # secret committed and later deleted is still in the history, and the
+      # scoped scan would miss it. Nothing merges without passing both, so the
+      # coverage is unchanged; only the blame is now correct.
+      - name: Scan the pull request's own commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          base="$(git merge-base "${BASE}" HEAD)"
+          echo "scanning ${base}..HEAD ($(git rev-list --count "${base}"..HEAD) commits)"
+          gitleaks git . --redact --verbose --no-banner --exit-code 1 \
+            --log-opts="${base}..HEAD"
+
+      - name: Scan the whole history for secrets
+        if: github.event_name != 'pull_request'
         run: gitleaks git . --redact --verbose --no-banner --exit-code 1
