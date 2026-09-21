@@ -11,6 +11,7 @@ import {
   type StatusKind,
 } from '@/components'
 import { format, messages } from '@/lib/messages'
+import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { tenderHref } from '@/lib/radar/client'
 import type { ErrorCode, Freshness, TenderDetail, TenderGroup } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
@@ -150,7 +151,7 @@ function Files({ tender }: { tender: TenderDetail }) {
   // `files: []` would mean the agency published nothing, which is different.
   if (tender.files === null) {
     return (
-      <Button variant="locked" href="/conta/criar" fullWidth>
+      <Button variant="locked" href={ACCOUNT_HREF} fullWidth>
         {page.filesLocked}
       </Button>
     )
@@ -257,7 +258,7 @@ export function OpportunityView({
   const bar = (
     <AppBar
       leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>}
-      actions={<AppBarActionLink icon="alert" label={page.follow} href="/conta/alertas" />}
+      actions={<AppBarActionLink icon="alert" label={page.follow} href={ALERTS_HREF} />}
     />
   )
 

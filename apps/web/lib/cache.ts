@@ -1,5 +1,6 @@
 import { db, type Executor } from '@/lib/db'
 import { enqueueJob, PRIORITY_REFRESH, PRIORITY_USER_WAITING, type EnqueuedJob, type JobRequest } from '@/lib/jobs'
+import { wakeWorker } from '@/lib/jobs/wake'
 
 /**
  * `readOrEnqueue()` — spec §3.1, the rule the whole product is shaped around.
@@ -31,6 +32,17 @@ import { enqueueJob, PRIORITY_REFRESH, PRIORITY_USER_WAITING, type EnqueuedJob, 
  * waiting on screen", and a stale refresh that jumped the queue would delay
  * somebody else's blank screen for the sake of somebody else's already-answered
  * one.
+ *
+ * ## Waking the worker
+ *
+ * Priority alone does not make a queued job *start*: the consumer sleeps two
+ * minutes between drains (`DEFAULT_POLL_INTERVAL_SECONDS`), which is what keeps
+ * Neon inside its Free CU-hours. So the `absent` branch — and only that branch
+ * — also calls `wakeWorker()`, which is the entire difference between a first
+ * search answering in seconds and answering in up to two minutes. It is fired
+ * after the response, times out, and swallows every failure: see
+ * `lib/jobs/wake.ts`. A `stale` refresh does not wake anything, because the
+ * user already has an answer on screen.
  *
  * ## De-duplication
  *
@@ -144,6 +156,11 @@ export type ReadOrEnqueueOptions<T> = {
    * well-formed ones are trivial to generate.
    */
   enqueueWhenAbsent?: boolean
+  /**
+   * Cuts the worker's idle poll short once a priority-1 job has been inserted.
+   * Injected by the tests; nothing in the product passes it.
+   */
+  wake?: () => void
 }
 
 export async function readOrEnqueue<T>(options: ReadOrEnqueueOptions<T>): Promise<Cached<T>> {
@@ -159,6 +176,11 @@ export async function readOrEnqueue<T>(options: ReadOrEnqueueOptions<T>): Promis
       mayEnqueue && (options.enqueueWhenAbsent ?? true)
         ? await enqueueJob({ ...options.refresh, priority: PRIORITY_USER_WAITING }, executor)
         : null
+    // Only a row we actually inserted. A `deduped` job is already queued or
+    // running, and the consumer drains the queue to empty before it sleeps
+    // again — so whoever inserted that row already woke the worker, and a
+    // second POST would be load with nothing behind it.
+    if (job && !job.deduped) (options.wake ?? wakeWorker)()
     return { state: 'absent', data: null, updatedAt: null, ageSeconds: null, job, status: 202 }
   }
 
