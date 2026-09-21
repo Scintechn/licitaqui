@@ -47,8 +47,12 @@ export function LockedBlock({
 }
 
 export type LockedValueProps = {
-  /** Bar width in px. The board masks figures at 64 and big numbers at 110. */
-  width?: number
+  /**
+   * Bar width. A number is px — the board masks figures at 64 and big numbers
+   * at 110. A string is any CSS length, for the masked price band on the
+   * Landing, where the two bars are a proportion of the block they sit in.
+   */
+  width?: number | string
   /** Bar height in px: 14 for a table value, 30 for a headline figure. */
   height?: number
   /**

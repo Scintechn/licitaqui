@@ -601,7 +601,145 @@
       "todayLabel": "Hoje no Brasil",
       "todayOpen": "editais abertos",
       "todayMeEpp": "exclusivos ME/EPP",
-      "founders": "Quer entrar antes? São 48 vagas de fundador."
+      "founders": "Quer entrar antes? São 48 vagas de fundador.",
+      "founderStrip": {
+        "label": "Fundadores:",
+        "offer": "{preco}/mês por 6 meses",
+        "seats": "{count, plural, =0 {vagas de fundador esgotadas} one {resta 1 de {total} vagas} other {restam # de {total} vagas}}",
+        "seatsUnknown": "{total} vagas de fundador",
+        "cta": "Ver oferta"
+      },
+      "nav": {
+        "label": "Navegação principal",
+        "howItWorks": "Como funciona",
+        "plans": "Planos",
+        "faq": "Perguntas",
+        "signIn": "Entrar"
+      },
+      "example": {
+        "label": "Exemplo",
+        "panelLabel": "Exemplo do Radar",
+        "company": "{empresa} · comércio varejista",
+        "groupsLabel": "Grupos do exemplo",
+        "caption": "Exemplo com editais reais do PNCP, como estavam em {data}. Não é uma busca ao vivo: digite o CNPJ da sua empresa para ver os editais dela.",
+        "cta": "Ver os editais da minha empresa"
+      },
+      "how": {
+        "label": "Como funciona",
+        "title": "Do CNPJ ao edital certo em três passos.",
+        "steps": [
+          {
+            "eyebrow": "1 · CNPJ",
+            "title": "Digite o CNPJ",
+            "body": "Lemos as atividades registradas da empresa na Receita Federal. Sem senha e sem cartão."
+          },
+          {
+            "eyebrow": "2 · Radar",
+            "title": "Veja o que combina",
+            "body": "Cada edital chega marcado com o que ele é para a sua empresa:"
+          },
+          {
+            "eyebrow": "3 · Decisão",
+            "title": "Peça a triagem e ligue o alerta",
+            "body": "A inteligência artificial resume o edital com a página de cada exigência. Com a conta grátis, os editais novos chegam no Telegram toda semana."
+          }
+        ]
+      },
+      "opportunity": {
+        "label": "Antes de gastar tempo com proposta",
+        "title": "Saiba se vale disputar. E até que preço.",
+        "body": "O valor estimado do edital não é o preço que ganha. Em 8 editais de papel A4, quem venceu ofertou cerca de R$ 20 por resma, contra R$ 36 estimados. No Essencial, cada item mostra a faixa que costuma vencer na sua região e quanto você pode pagar ao fornecedor para ter margem.",
+        "cardLabel": "Oportunidade · exemplo",
+        "tender": "Baterias e pilhas · Campinas/SP",
+        "deadlineLabel": "Proposta até",
+        "deadlineValue": "30/09",
+        "deadlineNote": "08:30",
+        "valueLabel": "Valor estimado",
+        "valueValue": "R$ 48 mil",
+        "scoreLabel": "Nota da triagem",
+        "scoreValue": "9/10",
+        "scoreNote": "por IA",
+        "rows": [
+          { "label": "Atestado, capital e amostra", "value": "Não exige", "page": "p. 43–44" },
+          { "label": "Entrega", "value": "15 dias", "page": "p. 50" },
+          { "label": "Pagamento", "value": "10 dias fora a dezena", "page": "—" }
+        ],
+        "lockedTitle": "Até quanto ofertar com lucro",
+        "lockedCta": "Ver o plano Essencial",
+        "source": "Edital real do PNCP — Campinas/SP, pregão 221/2026 —, como estava em {data}. Os números acima são deste edital, não de uma busca sua."
+      },
+      "alerts": {
+        "label": "Alertas",
+        "title": "Os editais novos chegam no seu Telegram.",
+        "body": "Com a conta grátis, toda segunda você recebe os editais que combinam com o seu CNPJ. No Essencial, todo dia, com até 10 palavras-chave. Um toque liga o alerta: sem número de telefone para cadastrar.",
+        "messageLabel": "Exemplo de mensagem no Telegram",
+        "when": "segunda, 07:00 · exemplo",
+        "heading": "3 editais novos para a sua empresa",
+        "items": [
+          { "text": "Baterias e pilhas · Campinas/SP", "note": "R$ 48 mil · exclusivo ME/EPP · encerra 30/09" },
+          { "text": "Materiais hospitalares · Campinas/SP", "note": "exige licença sanitária própria" },
+          { "text": "Sistema web SaaS · Americana/SP", "note": "R$ 4,3 mi · atestado de 650 usuários" }
+        ],
+        "actions": ["Ver triagens", "Mudar filtros"]
+      },
+      "plans": {
+        "label": "Planos",
+        "title": "Comece no Básico, de graça. Assine quando fizer sentido.",
+        "body": "Plano mensal, sem fidelidade. Cancele em 1 clique e receba aviso 3 dias antes de cada cobrança.",
+        "basicEyebrow": "Para conhecer",
+        "basicVisitorGroup": "Sem cadastro · 3 dias",
+        "basicVisitorScreenings": "2 leituras de edital por inteligência artificial",
+        "basicAccountGroup": "Com conta",
+        "basicCta": "Começar sem cadastro",
+        "essentialEyebrow": "Para começar a vender",
+        "essentialPaymentNote": "Pix ou cartão, pelo checkout seguro do Asaas.",
+        "proEyebrow": "Para escalar",
+        "proSoon": "Em breve",
+        "proNote": "Ainda não está à venda. Entra depois que o Essencial estiver rodando."
+      },
+      "guarantees": [
+        { "title": "Sem fidelidade", "body": "Plano mensal. Nada de contrato anual." },
+        { "title": "Cancele em 1 clique", "body": "Sem ligar e sem pedir para ninguém." },
+        { "title": "Aviso antes de cobrar", "body": "E-mail 3 dias antes de cada renovação." },
+        { "title": "Fonte oficial", "body": "Link direto para o edital e a hora da última atualização." }
+      ],
+      "faq": {
+        "label": "Perguntas",
+        "title": "Dúvidas comuns",
+        "columns": [
+          [
+            {
+              "q": "Preciso criar conta para usar?",
+              "a": "Não nos primeiros 3 dias: você busca editais e faz 2 leituras por inteligência artificial. Para baixar o edital, ligar o aviso no Telegram e continuar usando, crie a conta grátis."
+            },
+            {
+              "q": "Serve para MEI?",
+              "a": "Sim. A LicitaQui foi feita para MEI, ME e EPP, e marca os editais e os itens exclusivos para micro e pequenas empresas."
+            },
+            {
+              "q": "O que é o plano Promocional?",
+              "a": "É o Essencial pelo preço de fundador: R$ 26 por mês nos 6 primeiros meses, para as 48 primeiras empresas. Do 7º mês em diante, R$ 57 por mês, com aviso 30 dias antes. Depois das 48 vagas, o Essencial custa R$ 57 desde o início."
+            }
+          ],
+          [
+            {
+              "q": "De onde vêm os editais?",
+              "a": "Do Portal Nacional de Contratações Públicas, onde os órgãos publicam as compras pela nova Lei de Licitações. Cada edital traz o link para o original."
+            },
+            {
+              "q": "A LicitaQui dá lances por mim?",
+              "a": "Não. Ela ajuda a decidir antes da disputa: quais editais valem a pena e até que preço ofertar."
+            },
+            {
+              "q": "A inteligência artificial pode errar?",
+              "a": "Pode. Cada ponto da leitura mostra a página do edital para você conferir. Não substitui assessoria jurídica ou contábil."
+            }
+          ]
+        ]
+      },
+      "footer": {
+        "label": "Rodapé"
+      }
     },
     "ufAll": "Todo o Brasil",
     "ufNames": {

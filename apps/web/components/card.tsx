@@ -96,8 +96,16 @@ export function SectionLabel({
 }: {
   children: ReactNode
   className?: string
-  /** `inverse` is the same label on a graphite panel (public pages, task D2). */
-  tone?: 'ink' | 'muted' | 'inverse'
+  /**
+   * `inverse` is the same label on a graphite panel (public pages, task D2).
+   * `accent` is the blue eyebrow over the recommended plan on the Landing.
+   *
+   * A tone rather than a `text-blue` from the caller: `lib/cn.ts` is a plain
+   * join, so a colour utility passed in `className` would sit next to this
+   * component's own and be settled by stylesheet order — which is how the
+   * "Para começar a vender" eyebrow first shipped graphite.
+   */
+  tone?: 'ink' | 'muted' | 'inverse' | 'accent'
   /**
    * `label` (11px) is the board's in-app size. `caption` (12px) is the eyebrow
    * on the public pages, which sit on a wider measure (task D2).
@@ -111,6 +119,7 @@ export function SectionLabel({
     ink: 'text-ink',
     muted: 'text-muted',
     inverse: 'text-on-ink-faint',
+    accent: 'text-blue',
   } as const
   return (
     <div
