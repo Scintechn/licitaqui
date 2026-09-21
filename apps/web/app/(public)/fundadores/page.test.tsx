@@ -82,3 +82,38 @@ describe('/fundadores', () => {
     expect(out).toContain(messages.legal.privacyLabel)
   })
 })
+
+describe('the refunds section', () => {
+  /**
+   * Until 2026-09-21 a sweep of the whole catalogue for
+   * `devolv|reembols|garantia|arrepend|estorno` returned **nothing**, while both
+   * refunds were already contractual under terms §8 and `faq-cobranca.md`'s own
+   * placement table said the Offer must carry them. These assertions are what
+   * keeps them from disappearing again.
+   */
+  it('states both refunds, verbatim from the billing FAQ', () => {
+    const { refunds } = messages.foundersPage
+    expect(out).toContain(refunds.title)
+    // The distinguishing clause of each, so a paraphrase fails here.
+    expect(out).toContain('direito de arrependimento do Código de Defesa do Consumidor')
+    expect(out).toContain('uma vez por CNPJ')
+    expect(out).toContain('Promocional e Essencial')
+  })
+
+  it('says the guarantee next to the price, not only in the small print', () => {
+    expect(out).toContain(messages.foundersPage.refunds.ctaLine)
+  })
+
+  it('does not promise a proportional refund it never offered', () => {
+    expect(out).toContain('não há devolução proporcional')
+  })
+})
+
+describe('the competitor comparison', () => {
+  it('records when its claims were last verified', () => {
+    // Comparative advertising has to stay true without anyone touching the
+    // code: a competitor can change terms and make this false on its own.
+    const meta = messages.foundersPage.founderValue._meta
+    expect(meta.verifiedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+})
