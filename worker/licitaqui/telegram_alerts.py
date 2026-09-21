@@ -224,6 +224,35 @@ def first_name(full_name: str | None) -> str | None:
     return parts[0] if parts else None
 
 
+def format_cnpj(cnpj: str) -> str:
+    """``36955612000185`` → ``36.955.612/0001-85``. The web formats it the same."""
+    digits = "".join(ch for ch in str(cnpj) if ch.isdigit())
+    if len(digits) != 14:
+        return str(cnpj).strip()
+    return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+
+
+def company_label(who: Recipient) -> str | None:
+    """What ``{{nome_empresa}}`` says, or ``None`` when there is nothing to say.
+
+    Trade name, then legal name, then **the CNPJ**. The fallback is not
+    cosmetic: `users.cnpj` is set the moment somebody searches, while the
+    `companies` row arrives with the `company_lookup` job a few seconds later,
+    so there is a window in which an account has a company and no name for it.
+    Inside that window a blank `nome_empresa` would raise `MissingPlaceholder`
+    and the person who just linked would get **no confirmation at all** — the
+    one message the whole flow exists to deliver.
+
+    A formatted CNPJ is real, unambiguous and something a Brazilian business
+    owner reads without effort, so the message goes out and the next one has
+    the name. It is deliberately not a generic phrase like "sua empresa": that
+    would be new copy, and the copy is E0's.
+    """
+    if who.company_name:
+        return who.company_name
+    return format_cnpj(who.cnpj) if who.cnpj else None
+
+
 def me_epp_marker(summary: str | None) -> str | None:
     """The ready ME/EPP line, or ``None`` when the tender has no such benefit."""
     return ME_EPP_MARKERS.get(str(summary or "").strip())
@@ -617,7 +646,7 @@ def build_reply_context(template: str, who: Recipient | None) -> dict[str, Any]:
         return {"link_app": app_base_url(), "email_contato": CONTACT_EMAIL}
 
     given = first_name(who.name if who else None)
-    company = who.company_name if who else None
+    company = company_label(who) if who else None
     if not given or not company:
         raise DigestSkipped(SKIP_NO_COMPANY)
     context = telegram.escape_context({"nome": given, "nome_empresa": company})
@@ -714,10 +743,9 @@ def _digest(
     """Quota, then selection, then context. Raises :class:`DigestSkipped`."""
     if not who.alert_active:
         raise DigestSkipped(SKIP_PAUSED)
-    if not who.cnpj:
+    if not who.cnpj or who.user_id is None:
         raise DigestSkipped(SKIP_NO_COMPANY)
 
-    assert who.user_id is not None
     cap = alert_limit(conn, who.plan)
     if cap is not None and digests_sent_this_week(conn, who.user_id, now=moment) >= cap:
         raise DigestSkipped(SKIP_QUOTA_REACHED if cap > 0 else SKIP_ALREADY_SENT)
@@ -742,7 +770,7 @@ def _digest(
         alert_id=who.alert_id,
     )
     template, context = build_digest_context(
-        name=who.name, company_name=who.company_name, tenders=tenders
+        name=who.name, company_name=company_label(who), tenders=tenders
     )
     return tenders, context, template
 

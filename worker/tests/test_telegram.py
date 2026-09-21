@@ -411,6 +411,26 @@ def test_an_empty_week_uses_the_other_template_rather_than_sending_nothing() -> 
     assert "não apareceu nenhum edital" in text
 
 
+def test_a_cnpj_stands_in_for_a_company_name_that_has_not_arrived_yet() -> None:
+    """`users.cnpj` is set on the first search; the `companies` row lands later.
+
+    In that window a blank `nome_empresa` would raise, and the person who just
+    linked would get no confirmation at all.
+    """
+    assert telegram_alerts.format_cnpj("36955612000185") == "36.955.612/0001-85"
+    assert telegram_alerts.company_label(recipient(company_name=None)) == "36.955.612/0001-85"
+    assert telegram_alerts.company_label(recipient()) == "Scint Tecnologia"
+    assert telegram_alerts.company_label(recipient(company_name=None, cnpj=None)) is None
+
+    text = templates.render(
+        "telegram",
+        "start-linked",
+        telegram_alerts.build_reply_context("start-linked", recipient(company_name=None)),
+    )
+    assert "36.955.612/0001-85" in text
+    assert "{{" not in text
+
+
 def test_a_profile_with_no_company_is_skipped_rather_than_half_rendered() -> None:
     with pytest.raises(DigestSkipped) as raised:
         telegram_alerts.build_digest_context(name="Sci", company_name=None, tenders=[])
