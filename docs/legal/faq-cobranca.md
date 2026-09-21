@@ -1,6 +1,6 @@
 # FAQ — assinatura, cancelamento e devolução
 
-**v1.2 · 20/09/2026.** Texto pronto para a FAQ do site e para o suporte responder. Cada resposta é curta de propósito: quem pergunta isso está com o cartão na mão. As regras aqui são as mesmas dos [Termos de Uso](./termos-de-uso.md) §7 e §8 — se um mudar, mude o outro.
+**v1.3 · 21/09/2026.** Texto pronto para a FAQ do site e para o suporte responder. Cada resposta é curta de propósito: quem pergunta isso está com o cartão na mão. As regras aqui são as mesmas dos [Termos de Uso](./termos-de-uso.md) §7 e §8 — se um mudar, mude o outro.
 
 ---
 
@@ -32,6 +32,10 @@ Você paga R$ 26/mês nos 6 primeiros meses. A partir do 7º, R$ 57/mês, que é
 **Se eu cancelar, guardo minha vaga de fundador?**
 
 Não. A vaga volta para a oferta e o preço promocional não é restabelecido em uma nova assinatura. São 48 vagas, e elas são vinculadas ao CNPJ da assinatura.
+
+**Vou ser cobrado de surpresa?**
+
+Não. **Avisamos por e-mail 3 dias antes de cada cobrança**, com a data e o valor. Se você conectar o WhatsApp ou o Telegram, avisamos também por lá. Dá tempo de conferir, trocar o cartão ou cancelar antes.
 
 **E se o meu cartão falhar?**
 
