@@ -9,9 +9,11 @@
  * instead of to the Offer. `accountHref(next)` therefore starts round-tripping
  * on its own, exactly as the note below said it would.
  *
- * `ALERTS_HREF` has **not** moved: `/conta/alertas` is task E1's screen and it
- * does not exist yet, so the bell still goes to `/fundadores`. One constant,
- * one edit, on E1's day.
+ * ## E1 flipped the second half
+ *
+ * `/conta/alertas` is built, so `ALERTS_HREF` is `ALERTS_PATH` and the bell in
+ * the app bar goes to the Telegram screen instead of to the Offer. One
+ * constant, one edit, exactly as this note promised.
  *
  * ## R2's rule, which has not changed
  *
@@ -22,17 +24,17 @@
  * control reads a constant from this file, `routes.test.ts` sweeps `app/` to
  * prove it, and moving a destination stays one edit here.
  *
- * ## For E1 and F2
+ * ## For F2
  *
- * Change this file and nothing else: `ALERTS_HREF` becomes `ALERTS_PATH` when
- * `/conta/alertas` exists, `PLAN_HREF` becomes `PLAN_PATH` when F2 ships the
- * checkout, and add the new prefix to `BUILT` in `routes.test.ts`.
+ * Change this file and nothing else: `PLAN_HREF` becomes `PLAN_PATH` when F2
+ * ships the checkout, and move the path from `UNBUILT` to `BUILT` in
+ * `routes.test.ts`.
  */
 
 /** Sign in or create an account. Built by U1. */
 export const ACCOUNT_CREATE_PATH = '/conta/criar'
 
-/** Task E1's address for the alerts screen. Not built yet. */
+/** The alerts and Telegram screen. Built by E1. */
 export const ALERTS_PATH = '/conta/alertas'
 
 /** The account screen itself, for someone who is already signed in. */
@@ -44,11 +46,11 @@ export const ACCOUNT_PATH = '/conta'
 export const ACCOUNT_HREF: string = ACCOUNT_CREATE_PATH
 
 /**
- * The bell in the app bar. Separate name, and no longer the same value: alerts
- * are E1's and the account is U1's, and they stopped pointing at the same page
- * on different days, which is what the two names were for.
+ * The bell in the app bar. Separate name from `ACCOUNT_HREF`, and it earned
+ * that: alerts are E1's and the account is U1's, and they stopped pointing at
+ * the same page on different days, which is what the two names were for.
  */
-export const ALERTS_HREF: string = '/fundadores'
+export const ALERTS_HREF: string = ALERTS_PATH
 
 /** Task F2's address for the plan and checkout screen. Not built yet. */
 export const PLAN_PATH = '/conta/plano'

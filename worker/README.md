@@ -866,3 +866,110 @@ Measured in CI (`integration (Neon)`, the job that fails on any database skip):
 **600 passed, 1 skipped in 739.51 s**. The one skip is `test_segments.py`'s
 knowledge-base comparison, which is not a database test and is expected off
 Sci's machine.
+
+## E1 — Telegram linking and the weekly digest (spec §7.1, §9, §10)
+
+Two job kinds and one scheduler entry.
+
+| Kind | Enqueued by | Does |
+|---|---|---|
+| `weekly_digest` | the scheduler, **Monday 07:00 BRT** | The sweep. Selects the accounts due a digest and enqueues one `send_telegram` each. Sends nothing itself |
+| `send_telegram` | the sweep, and `POST /api/telegram/webhook` | One outbound message: gates, render, send, log |
+
+### Why the digest fans out
+
+A single job that looped over every user would be retried as a whole (§7.2,
+four attempts), so one failure on user 40 re-sends users 1–39 three more times.
+It would also have nowhere to hang a per-person dedupe: `jobs_dedupe (kind,
+key)` is the only cross-process guarantee that somebody is messaged once, and it
+can only protect a per-person row. So the key is
+
+    digest:<user_id>:<ISO week>
+
+with the week **in** it, which makes two sweeps on the same Monday produce one
+message, and lets all four consumers work at once instead of one.
+
+The tenders are chosen **when the message is sent**, not when the sweep runs:
+the payload is `{template, user_id}` and never a list of tender ids. A retry
+forty minutes later then sends what is open now, and the queue never holds a
+stale shortlist.
+
+### The kill switch: `TELEGRAM_DELIVERY`
+
+Nothing reaches the Bot API unless `TELEGRAM_DELIVERY=send`. Unset — CI, a
+laptop, a fresh container — is `dry_run`: the message is rendered, the delivery
+is logged, and no socket is opened. Same word and same shape as
+`WHATSAPP_DELIVERY`, and deliberately a **second** switch: `@LicitaQuiBot` is
+live and someone is already talking to it, so a worker pointed at the production
+database would message founders for real, and turning WhatsApp on must not turn
+Telegram on with it. The gate is checked in the transport, immediately before
+the request, so no caller can route around it.
+
+### Quotas (§10), and the row that is missing
+
+Básico is **one alert per week, one keyword, one state**, and all three come out
+of `plan_limits` — `alert_limit()` and `state_limit()` in
+`licitaqui/telegram_alerts.py`, never a literal. The week is a **Brasília**
+week: a UTC boundary falls at 21:00 on Sunday in São Paulo, and two digests
+either side of it are one calendar week to the person reading them.
+
+`plan_limits` has an `alert` row for `basico` and for no other plan, because §10
+gives the paid plans *daily* alerts, which are the `daily_alerts` job and not
+this one. A missing cap is therefore read as **uncapped**, not as zero: reading
+it as zero (which `apps/web/lib/radar/quota.ts` rightly does for a feature that
+costs money) would silence every founder on `promocional` during opening week.
+The sweep logs `plan has no alert limit` with the plan name so the gap stays
+visible. It wants a `plan_limits` row, which is a migration, which is its own PR.
+
+### The blank-value trap, and why the ME/EPP line is a block
+
+`templates.py` raises `MissingPlaceholder` on a **blank** value, on purpose. The
+ME/EPP row in `telegram/partial-digest-item.md` is therefore a `[[se: tem_meepp]]`
+block, not a placeholder set to `""`: with the flag false the line is removed
+before substitution and `render_item` passes nothing at all for it.
+`ME_EPP_MARKERS` covers the three values that produce a line and deliberately
+omits `none` and `null`, which produce none. `test_telegram.py` renders an item
+for every value `tenders_me_epp_summary_check` allows.
+
+### Markdown, and the tender whose title contains an underscore
+
+E0's bodies use `*negrito*`, which is Telegram's *legacy* `Markdown` parse mode,
+and that mode cannot escape a stray `*`, `_`, `[` or backtick. The values we
+substitute are PNCP objects and agency names written by whoever published the
+tender, so one object reading `MATERIAL_ESCOLAR` is enough for `400 can't parse
+entities` to drop a whole digest. Two defences: `telegram.escape_markdown` is
+applied to every **value** before it reaches the template (never to the body, so
+E0's own `*…*` still works), and a rejected parse is retried once without
+`parse_mode`. Visible asterisks beat a digest that silently did not arrive.
+
+### LGPD (§12)
+
+A chat id is personal data. It is read from `telegram_links` at send time and is
+never logged, never in an exception, never in `jobs.error` and never in an
+`events` row. Log lines carry `telegram.chat_ref()` instead — a truncated
+SHA-256, the same shape as `company.cnpj_ref`. `httpx` is pinned below INFO
+because its request log line contains the bot token.
+
+### Previewing one without sending it
+
+```bash
+python worker/scripts/preview_digest.py --cnae 4761003 --uf SP     # a sample company
+python worker/scripts/preview_digest.py --user 42                  # a real account
+```
+
+Read-only in both modes — it sets `default_transaction_read_only` and never
+touches the transport — so it is safe against production and is how E1's exit
+criterion was demonstrated.
+
+### E1's test database
+
+| Variable | Used by | Rows it touches |
+|---|---|---|
+| `TEST_DATABASE_URL_E1` | `test_integration_telegram.py` | `users` whose e-mail starts `e1-test-<run>-`, their `companies` (`e1t<run>…`), `telegram_links`, `alerts` and `alert_deliveries` (all by cascade), `tenders` for the fictitious agency `99…1`, and the `events` and `jobs` those users own |
+
+Scoped per **run**, not per task (CLAUDE.md): `users.email` is `citext unique`,
+so a task constant would collide on the index before it could delete anything.
+Cleanup deletes `events` **before** `users` — `events.user_id` is `on delete set
+null`, not cascade, so a delivery-log row otherwise outlives its user and becomes
+unattributable debris. The one cross-run sweep goes through
+`CROSS_RUN_SWEEP_HOURS`, like every other block's.

@@ -44,7 +44,8 @@ def fake_queue(monkeypatch: pytest.MonkeyPatch) -> FakeQueue:
 
 
 def test_the_schedule_holds_only_the_collector_jobs_that_exist():
-    """B1 shipped an empty schedule; B2 added its sweep, B8 the nightly awards one.
+    """B1 shipped an empty schedule; B2 added its sweep, B8 the nightly awards
+    one, E1 the Monday digest.
 
     B3 and B4 do not appear at all: they are enqueued per changed tender by the
     sweep, not on a clock. The property this guards is that the scheduler never
@@ -55,7 +56,11 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
     from licitaqui import handlers
     from licitaqui.registry import REGISTRY
 
-    assert [entry.kind for entry in DEFAULT_SCHEDULE] == ["sync_open_tenders", "sync_awards"]
+    assert [entry.kind for entry in DEFAULT_SCHEDULE] == [
+        "sync_open_tenders",
+        "sync_awards",
+        "weekly_digest",
+    ]
     assert handlers.registered_kinds()  # importing handlers is what completes the registry
     assert {entry.kind for entry in DEFAULT_SCHEDULE} <= set(REGISTRY.kinds())
 

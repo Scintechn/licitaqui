@@ -970,3 +970,158 @@ def _object_storage_off(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr(storage, "build_store", storage.NullStore)
     yield
     storage.reset_store()
+
+
+# -- E1: Telegram linking and the weekly digest ----------------------------
+#
+# Same shape and the same reasons as every block above: an isolated database so
+# two tasks' suites cannot collide, a `Dsn` wrapper so pytest cannot render the
+# credentials into a traceback, and deletes scoped to rows *this run* created.
+#
+# E1's fixtures are the widest in the suite — a digest needs a `users` row, the
+# `companies` row its CNAEs hang off, a `telegram_links` row, an `alerts` row,
+# `tenders` to send, and the `events` the delivery log writes — so the order the
+# cleanup deletes in is load-bearing twice over:
+#
+#   * `events.user_id` is `on delete set null`, **not** cascade, so a delivery
+#     log row outlives its user and becomes unattributable debris. Events go
+#     first, matched by the user ids read before anything is deleted.
+#   * `alert_deliveries` cascades from both `alerts` and `tenders`, so it needs
+#     no statement of its own — but only if the tenders go too, which is why
+#     the tender sweep is here rather than left to another lane.
+#
+# Nothing here takes a founder seat, sets `TELEGRAM_DELIVERY`, or writes a real
+# chat id: the chat ids below are derived from `RUN_ID` and are far outside the
+# range Telegram allocates.
+E1_TEST_DSN_VAR = "TEST_DATABASE_URL_E1"
+
+#: Every user an E1 test writes has an e-mail starting with this. Per **run**,
+#: not per task (see RUN_ID): a task constant looks isolated and is not, and
+#: `users.email` is `citext unique`, so two concurrent runs would collide on the
+#: index before they ever got as far as deleting each other's rows.
+E1_EMAIL_PREFIX = f"e1-test-{RUN_ID}-"
+
+#: `companies.cnpj` is `char(14)` with no digits-only constraint, so — exactly
+#: as B6 does — this prefix carries letters. A run-scoped prefix of pure digits
+#: could in principle prefix-match a real CNPJ, and the delete below must not be
+#: able to reach one.
+E1_CNPJ_PREFIX = f"e1t{RUN_ID}"
+
+#: Not a valid CNPJ, per **run**, with a trailing `1` so it stays distinct from
+#: B2's `…2`, C1's `…3`, B4's `…4` and B8's `…8` inside the same run.
+E1_AGENCY_CNPJ = f"99{int(RUN_ID, 16):011d}1"[:14]
+
+#: Tender ids look like a real `numeroControlePNCP` — the digest puts them in a
+#: URL that `apps/web`'s catch-all route parses — and carry the run's agency, so
+#: cleanup matches exactly this run's rows.
+E1_TENDER_PREFIX = f"{E1_AGENCY_CNPJ}-"
+
+#: The job kinds E1 owns, named here so cleanup cannot drift from the code.
+E1_JOB_KINDS = ("send_telegram", "weekly_digest")
+
+
+def e1_cnpj(suffix: str) -> str:
+    """A 14-character test company id inside this run's prefix. Not a CNPJ."""
+    return f"{E1_CNPJ_PREFIX}{suffix.rjust(14 - len(E1_CNPJ_PREFIX), '0')}"[:14]
+
+
+def e1_email(label: str) -> str:
+    """A run-scoped address on a domain reserved for documentation (RFC 2606)."""
+    return f"{E1_EMAIL_PREFIX}{label}@example.com"
+
+
+def e1_chat_id(n: int) -> int:
+    """A run-scoped chat id. Nothing dials it — the kill switch is off here.
+
+    Negative, because Telegram allocates negative ids to groups and channels
+    only and never to the private chats this product talks to: if one of these
+    ever escaped into a real `sendMessage`, it could not reach a person.
+    """
+    return -(900_000_000_000 + (int(RUN_ID, 16) % 10_000_000) * 100 + n)
+
+
+def e1_tender_id(n: int) -> str:
+    return f"{E1_TENDER_PREFIX}1-{n:06d}/2026"
+
+
+@pytest.fixture(autouse=True)
+def _telegram_delivery_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test can send a Telegram message, whatever the shell has exported.
+
+    Autouse and suite-wide, exactly like `_whatsapp_delivery_off`. The switch is
+    off by default so this changes nothing in CI; it exists for the machine
+    where someone turned it on to send one real message and then ran `pytest`.
+    `@LicitaQuiBot` is live and a person is already talking to it.
+    """
+    monkeypatch.delenv("TELEGRAM_DELIVERY", raising=False)
+
+
+@pytest.fixture(scope="session")
+def e1_dsn() -> str:
+    for root in _candidate_roots():
+        dsn = config.resolve_secret(E1_TEST_DSN_VAR, root=root)
+        if dsn:
+            return Dsn(dsn)
+    pytest.skip(f"{E1_TEST_DSN_VAR} is not configured; skipping E1 database tests")
+
+
+@pytest.fixture
+def e1_clean_dsn(e1_dsn: str) -> Iterator[str]:
+    """E1's test DSN, with this run's rows deleted before and after the test."""
+    _delete_e1_rows(e1_dsn)
+    try:
+        yield e1_dsn
+    finally:
+        _delete_e1_rows(e1_dsn)
+
+
+@pytest.fixture
+def e1_connect(e1_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(e1_clean_dsn, application_name=f"licitaqui-e1-test-{os.getpid()}")
+
+
+@pytest.fixture
+def e1_conn(e1_connect) -> Iterator[psycopg.Connection]:
+    with e1_connect() as connection:
+        yield connection
+
+
+def _delete_e1_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates."""
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        ids = [
+            str(row[0])
+            for row in conn.execute(
+                "select id from users where starts_with(email::text, %s)", (E1_EMAIL_PREFIX,)
+            ).fetchall()
+        ]
+        if ids:
+            # `on delete set null`, not cascade: these must go before the users.
+            conn.execute("delete from events where user_id = any(%s::bigint[])", (ids,))
+            conn.execute(
+                "delete from jobs where kind = any(%s) and split_part(key, ':', 2) = any(%s)",
+                (list(E1_JOB_KINDS), ids),
+            )
+        # `telegram_links`, `alerts` and (through `alerts`) `alert_deliveries`
+        # all cascade from `users`.
+        conn.execute("delete from users where starts_with(email::text, %s)", (E1_EMAIL_PREFIX,))
+        conn.execute("delete from companies where starts_with(cnpj, %s)", (E1_CNPJ_PREFIX,))
+        conn.execute("delete from tenders where agency_cnpj = %s", (E1_AGENCY_CNPJ,))
+        conn.execute(
+            "delete from jobs where kind = any(%s) and starts_with(key, %s)",
+            (list(E1_JOB_KINDS), f"{RUN_ID}-"),
+        )
+        # Debris from a crashed run, whose RUN_ID is unknowable. Narrow on
+        # purpose: the `e1-test-` family and the `99…1` agency belong to these
+        # fixtures alone, and the threshold is the shared one so a live run's
+        # backdated rows can never look like debris.
+        conn.execute(
+            "delete from users where starts_with(email::text, 'e1-test-')"
+            f"   and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+        )
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' "
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+        )
