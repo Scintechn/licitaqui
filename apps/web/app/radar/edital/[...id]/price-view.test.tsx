@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { PLAN_HREF } from '@/lib/routes'
 import { messages } from '@/lib/messages'
 import type { TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { PriceView, chooseItem, unitPrice, type PriceViewProps } from './price-view'
@@ -114,7 +115,11 @@ describe('PriceView', () => {
   })
 
   it('leads to the plan as a real link, never a disabled button', () => {
-    expect(html).toContain('/conta/plano')
+    // The constant, not the literal: `/conta/plano` is F2's and does not exist
+    // until M5, so R2 points every plan control at the offer. Asserting the
+    // address would pin the dead end this project just removed, and would fail
+    // again the day F2 flips it back.
+    expect(html).toContain(PLAN_HREF)
     expect(html).toContain(page.cta)
     expect(html).not.toContain('disabled=""')
   })

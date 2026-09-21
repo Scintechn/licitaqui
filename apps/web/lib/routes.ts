@@ -40,3 +40,31 @@ export const ACCOUNT_HREF: string = '/fundadores'
  * days.
  */
 export const ALERTS_HREF: string = ACCOUNT_HREF
+
+/** Task F2's address for the plan and checkout screen. Not built yet. */
+export const PLAN_PATH = '/conta/plano'
+
+/**
+ * Where "assinar" and the locked blocks send someone today.
+ *
+ * Same value and same reasoning as `ACCOUNT_HREF`: `/conta/plano` belongs to
+ * F2, billing does not open until M5 (10-29), and during founders week the
+ * honest upgrade path is the offer itself. Separate name because it will stop
+ * pointing at the same place the day F2 ships.
+ */
+export const PLAN_HREF: string = ACCOUNT_HREF
+
+/**
+ * The account link, carrying where to come back to.
+ *
+ * The screening screens want `?next=` so a visitor who signs up lands back on
+ * the tender they were reading. While `ACCOUNT_HREF` is the offer page that
+ * parameter has nowhere to return to, so it is dropped rather than rendered as
+ * a promise the page cannot keep. The day U1 flips `ACCOUNT_HREF` to
+ * `ACCOUNT_CREATE_PATH`, every call site starts round-tripping with no further
+ * change.
+ */
+export function accountHref(next?: string): string {
+  if (!next || ACCOUNT_HREF !== ACCOUNT_CREATE_PATH) return ACCOUNT_HREF
+  return `${ACCOUNT_CREATE_PATH}?next=${encodeURIComponent(next)}`
+}

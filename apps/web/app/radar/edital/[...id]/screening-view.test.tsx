@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { ACCOUNT_HREF } from '@/lib/routes'
 import { messages } from '@/lib/messages'
 import type { QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
 import type { ScreeningModel } from '@/lib/radar/screening-result'
@@ -165,7 +166,9 @@ describe('ScreeningView · a finished analysis', () => {
 
   it('locks the documents tab behind an account rather than hiding it', () => {
     expect(html).toContain(page.tabs.files)
-    expect(html).toContain('/conta/criar')
+    // See the note in price-view.test.tsx: the destination is R2's constant
+    // while U1 is unbuilt, so the tab is locked behind a link that resolves.
+    expect(html).toContain(ACCOUNT_HREF)
   })
 
   it('shows the allowance badge and the visitor banner', () => {

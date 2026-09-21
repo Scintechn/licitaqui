@@ -10,6 +10,7 @@ import {
   Tag,
 } from '@/components'
 import { cn } from '@/lib/cn'
+import { PLAN_HREF } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
 import { priceHref } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
@@ -216,7 +217,7 @@ export function PriceView({ tenderId, tender, item, status, backHref, onRetry }:
         )}
 
         <div className="mt-auto pt-2">
-          <Button href="/conta/plano" fullWidth iconEnd="arrowRight">
+          <Button href={PLAN_HREF} fullWidth iconEnd="arrowRight">
             {page.cta}
           </Button>
         </div>

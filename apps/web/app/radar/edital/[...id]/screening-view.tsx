@@ -10,6 +10,7 @@ import {
   Tag,
 } from '@/components'
 import { cn } from '@/lib/cn'
+import { accountHref } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
 import { priceHref, tenderHref } from '@/lib/radar/client'
 import type { ErrorCode, QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
@@ -287,7 +288,7 @@ function Tabs({
       {/* Locked, so it is a link out and never a selectable tab (§8: files
           only with an account). The padlock is the board's own. */}
       <a
-        href={`/conta/criar?next=${encodeURIComponent(tenderHref(tenderId))}`}
+        href={accountHref(tenderHref(tenderId))}
         className="inline-flex min-h-10 items-center gap-1 border-b-2 border-transparent px-0.5 text-body text-muted no-underline"
       >
         <Icon name="locked" size={13} />
@@ -364,7 +365,7 @@ function Pending({
           )}
           action={
             <Button
-              href={`/conta/criar?next=${encodeURIComponent(`${tenderHref(tenderId)}/triagem`)}`}
+              href={accountHref(`${tenderHref(tenderId)}/triagem`)}
             >
               {copy.visitor.createAccount}
             </Button>
