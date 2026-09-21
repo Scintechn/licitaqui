@@ -156,6 +156,51 @@ function Hero() {
   )
 }
 
+/* ------------------------------------------------------------- refunds */
+
+/**
+ * The two refunds, pasted from `docs/legal/faq-cobranca.md` rather than
+ * paraphrased — that file says so itself, and a customer who reads one rule
+ * here and another in the contract files a chargeback.
+ *
+ * It sits directly under the price because `faq-cobranca.md`'s own placement
+ * table puts *devolução* on the Offer, and because until today neither refund
+ * appeared anywhere in the product: a sweep of the whole catalogue for
+ * `devolv|reembols|garantia|arrepend|estorno` returned nothing, while both
+ * promises were already contractual under terms §8.
+ *
+ * `**bold**` is resolved here rather than rendered as Markdown: the catalogue
+ * holds the sentences verbatim so they can be diffed against the legal file,
+ * and this is the only place that needs to display them.
+ */
+function Refunds() {
+  const { refunds } = page
+  return (
+    <Section>
+      <Wrap className="max-w-[46em]">
+        <h2 className="text-lead font-semibold">{refunds.title}</h2>
+        <p className="mt-3 text-body text-ink-soft">{refunds.intro}</p>
+        <ul className="mt-3 flex flex-col gap-3">
+          {refunds.items.map((item) => (
+            <li key={item} className="flex items-start gap-2.5 text-body leading-[1.55]">
+              <Icon name="check" size={18} strokeWidth={2} className="mt-1 shrink-0 text-blue" />
+              <span>{bold(item)}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-meta leading-[1.5] text-muted">{refunds.outro}</p>
+      </Wrap>
+    </Section>
+  )
+}
+
+/** `**x**` → `<strong>x</strong>`, for the verbatim legal sentences above. */
+function bold(text: string) {
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : part,
+  )
+}
+
 /* ---------------------------------------------------------------- why now */
 
 function Pain() {
@@ -607,6 +652,7 @@ export default function FoundersOfferPage() {
         <Screening />
         <FounderValue />
         <Timeline />
+      <Refunds />
         <Faq />
 
         <Section divided={false}>

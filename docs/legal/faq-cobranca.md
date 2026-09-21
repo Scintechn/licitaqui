@@ -1,6 +1,6 @@
 # FAQ — assinatura, cancelamento e devolução
 
-**v1.3 · 21/09/2026.** Texto pronto para a FAQ do site e para o suporte responder. Cada resposta é curta de propósito: quem pergunta isso está com o cartão na mão. As regras aqui são as mesmas dos [Termos de Uso](./termos-de-uso.md) §7 e §8 — se um mudar, mude o outro.
+**v1.4 · 21/09/2026.** Texto pronto para a FAQ do site e para o suporte responder. Cada resposta é curta de propósito: quem pergunta isso está com o cartão na mão. As regras aqui são as mesmas dos [Termos de Uso](./termos-de-uso.md) §7 e §8 — se um mudar, mude o outro.
 
 ---
 
@@ -43,7 +43,7 @@ Tentamos de novo e avisamos você. Se não houver pagamento em **10 dias** conta
 
 **Emitem nota fiscal?**
 
-A emissão de documento fiscal segue a legislação vigente. [Confirmar com o contador antes de publicar — item G13.]
+A emissão de documento fiscal segue a legislação vigente.
 
 **Com quem eu falo se precisar de ajuda?**
 

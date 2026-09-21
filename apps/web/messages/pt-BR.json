@@ -349,7 +349,11 @@
         }
       ],
       "comparisonNote": "Comparação com base nas páginas públicas de ferramentas do mercado em setembro de 2026.",
-      "cta": "Garantir uma das 48 vagas"
+      "cta": "Garantir uma das 48 vagas",
+      "_meta": {
+        "verifiedOn": "2026-09-21",
+        "note": "Data em que os preços e as condições dos concorrentes em comparisonRows foram conferidos nos sites oficiais. Publicidade comparativa precisa continuar verdadeira sem ninguém mexer no código: reconferir antes de cada lançamento."
+      }
     },
     "timeline": {
       "label": "Como funciona a lista",
@@ -428,6 +432,16 @@
     },
     "footer": {
       "company": "LicitaQui é um produto da Scint Tecnologia Serviços Ltda · CNPJ 36.955.612/0001-85 · contato@licitaquiapp.com.br · WhatsApp (11) 96246-0678"
+    },
+    "refunds": {
+      "title": "Vocês devolvem o dinheiro?",
+      "intro": "Em dois casos:",
+      "items": [
+        "**Nos primeiros 7 dias da primeira assinatura**, você pode desistir e recebe tudo de volta — é o direito de arrependimento do Código de Defesa do Consumidor. Vale na primeira contratação; a renovação automática dos meses seguintes não reabre esse prazo.",
+        "**Nos primeiros 30 dias**, se você achar que não valeu, devolvemos o valor do primeiro mês. Sem justificar. Vale uma vez por CNPJ, sobre a primeira cobrança, nos planos Promocional e Essencial."
+      ],
+      "outro": "Fora desses casos não há devolução proporcional, porque o período em curso continua disponível para você até o fim.",
+      "ctaLine": "Garantia de 30 dias: não gostou, devolvemos o primeiro mês."
     }
   },
   "plans": {
@@ -560,7 +574,7 @@
     "digestLabel": "Resumo semanal de editais",
     "digestHelp": "Até 3 editais por semana, escolhidos pelas atividades do seu CNPJ.",
     "billingLabel": "Avisos de cobrança",
-    "billingHelp": "Confirmação de pagamento e aviso de mudança de preço. Esses não dá para desligar, porque a gente precisa te avisar.",
+    "billingHelp": "Confirmação de pagamento, aviso de mudança de preço, aviso 3 dias antes de cada cobrança, aviso de pagamento não aprovado e aviso de suspensão. Esses não dá para desligar, porque a gente precisa te avisar.",
     "saved": "Preferências salvas.",
     "saveError": "Não conseguimos salvar agora. Tente de novo em instantes."
   },
@@ -661,9 +675,21 @@
         "scoreValue": "9/10",
         "scoreNote": "por IA",
         "rows": [
-          { "label": "Atestado, capital e amostra", "value": "Não exige", "page": "p. 43–44" },
-          { "label": "Entrega", "value": "15 dias", "page": "p. 50" },
-          { "label": "Pagamento", "value": "10 dias fora a dezena", "page": "—" }
+          {
+            "label": "Atestado, capital e amostra",
+            "value": "Não exige",
+            "page": "p. 43–44"
+          },
+          {
+            "label": "Entrega",
+            "value": "15 dias",
+            "page": "p. 50"
+          },
+          {
+            "label": "Pagamento",
+            "value": "10 dias fora a dezena",
+            "page": "—"
+          }
         ],
         "lockedTitle": "Até quanto ofertar com lucro",
         "lockedCta": "Ver o plano Essencial",
@@ -677,11 +703,23 @@
         "when": "segunda, 07:00 · exemplo",
         "heading": "3 editais novos para a sua empresa",
         "items": [
-          { "text": "Baterias e pilhas · Campinas/SP", "note": "R$ 48 mil · exclusivo ME/EPP · encerra 30/09" },
-          { "text": "Materiais hospitalares · Campinas/SP", "note": "exige licença sanitária própria" },
-          { "text": "Sistema web SaaS · Americana/SP", "note": "R$ 4,3 mi · atestado de 650 usuários" }
+          {
+            "text": "Baterias e pilhas · Campinas/SP",
+            "note": "R$ 48 mil · exclusivo ME/EPP · encerra 30/09"
+          },
+          {
+            "text": "Materiais hospitalares · Campinas/SP",
+            "note": "exige licença sanitária própria"
+          },
+          {
+            "text": "Sistema web SaaS · Americana/SP",
+            "note": "R$ 4,3 mi · atestado de 650 usuários"
+          }
         ],
-        "actions": ["Ver triagens", "Mudar filtros"]
+        "actions": [
+          "Ver triagens",
+          "Mudar filtros"
+        ]
       },
       "plans": {
         "label": "Planos",
@@ -699,10 +737,22 @@
         "proNote": "Ainda não está à venda. Entra depois que o Essencial estiver rodando."
       },
       "guarantees": [
-        { "title": "Sem fidelidade", "body": "Plano mensal. Nada de contrato anual." },
-        { "title": "Cancele em 1 clique", "body": "Sem ligar e sem pedir para ninguém." },
-        { "title": "Aviso antes de cobrar", "body": "E-mail 3 dias antes de cada renovação." },
-        { "title": "Fonte oficial", "body": "Link direto para o edital e a hora da última atualização." }
+        {
+          "title": "Sem fidelidade",
+          "body": "Plano mensal. Nada de contrato anual."
+        },
+        {
+          "title": "Cancele em 1 clique",
+          "body": "Sem ligar e sem pedir para ninguém."
+        },
+        {
+          "title": "Aviso antes de cobrar",
+          "body": "E-mail 3 dias antes de cada cobrança."
+        },
+        {
+          "title": "Fonte oficial",
+          "body": "Link direto para o edital e a hora da última atualização."
+        }
       ],
       "faq": {
         "label": "Perguntas",
@@ -797,8 +847,8 @@
       "filtersHide": "Esconder filtros",
       "sort": "Ordenar: prazo",
       "more": "Ver mais editais",
-    "moreLoading": "Carregando…",
-    "showing": "Mostrando {shown} de {total}",
+      "moreLoading": "Carregando…",
+      "showing": "Mostrando {shown} de {total}",
       "apply": "Aplicar filtros",
       "keywordOnly": "Busca por palavra-chave"
     },

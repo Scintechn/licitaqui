@@ -1,8 +1,8 @@
 # Política de Privacidade — LicitaQui
 
-**Minuta v1.1 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. O único campo pendente é a data de publicação.
+**Minuta v1.2 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Publicado em 21/09/2026; este aviso é metadado de trabalho e é removido na renderização das páginas públicas.
 
-**Última atualização:** 20/09/2026 · **Vigência:** 20/09/2026
+**Última atualização:** 21/09/2026 · **Vigência:** 21/09/2026
 
 ---
 
@@ -170,4 +170,4 @@ Esta política é regida pela lei brasileira, e as questões dela decorrentes se
 
 | Versão | Data | O que mudou |
 |---|---|---|
-| 1.0 | 20/09/2026 | Primeira versão publicada |
+| 1.0 | 21/09/2026 | Primeira versão publicada |

@@ -163,6 +163,17 @@ export function SignupForm() {
       </div>
       <p className="-mt-2 text-meta leading-[1.45] text-muted">{copy.priceNote}</p>
 
+      {/*
+        The 30-day guarantee, next to the price rather than buried in the FAQ.
+        It is contractual (terms §8) and it is a reason to subscribe, not fine
+        print — and until today it appeared nowhere in the product at all, while
+        `faq-cobranca.md` said the Offer must carry it.
+      */}
+      <p className="-mt-1 flex items-start gap-2 text-meta leading-[1.45] text-ink-soft">
+        <Icon name="check" size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-blue" />
+        {messages.foundersPage.refunds.ctaLine}
+      </p>
+
       <SeatGauge taken={taken} />
 
       <Field
