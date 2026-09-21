@@ -13,7 +13,13 @@ import { sessionTokenFromCookies } from './session'
  * takes a day to see.
  */
 
-const TOKEN = 'a5a9f0c6-0c8f-4f2e-9a2f-0f1a2b3c4d5e'
+/**
+ * Deliberately a sentence rather than a UUID: a real-looking opaque token trips
+ * the repo's `gitleaks` scan, and because `security.yml` scans every reachable
+ * commit, a high-entropy fixture on one branch reddens unrelated PRs. What this
+ * file tests is cookie *parsing* — the value only has to be recognisable.
+ */
+const TOKEN = 'session-token-for-the-test'
 
 describe('sessionTokenFromCookies', () => {
   it('finds the cookie among the others the site sets', () => {
