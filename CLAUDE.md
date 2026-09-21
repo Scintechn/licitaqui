@@ -1,6 +1,9 @@
 # LicitaQui — agent guide
 
-- Read `docs/TECHNICAL_SPEC.md` and `docs/DEVELOPMENT_PLAN.md` before any task. The task card is the scope; do not widen it.
+- Read `docs/TECHNICAL_SPEC.md` and `docs/DEVELOPMENT_PLAN.md` before any task.
+- `docs/TO_VALIDATE.md` lists contradictions waiting on Sci. Check it before
+  changing billing copy, legal text or the `subscriptions` schema — the answer may
+  already be known to be undecided. The task card is the scope; do not widen it.
 - Code, identifiers, tables, commits: English. User-facing copy: Brazilian Portuguese in `apps/web/messages/pt-BR.json`.
 - Never read PNCP/BrasilAPI/OpenRouter inside a web request; enqueue a job (spec §3).
 - Never commit secrets. Use `.env.example`. Never log CPF, emails or tokens.
