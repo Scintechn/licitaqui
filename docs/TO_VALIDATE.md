@@ -177,8 +177,12 @@ that file. Left alone, an agent reading it will eventually edit the wrong copy.
 
 From brief §6, unchanged:
 
-- **Lawyer review** of terms §11 (liability cap), §6 (price clause), §8 (refunds) —
-  before the first real charge, not before launch.
+- ~~**Lawyer review**~~ — **decided 2026-09-21: not happening.** There is no budget for it
+  before the first charge, so the exposure is managed by **how the product describes
+  itself** instead. Brief §2.2 carries the six rules that replace it, terms §2 states the
+  same limits in the customer's language, and every UI string is now checked against
+  them before shipping. Under CDC art. 30 advertising binds the supplier, which is why
+  accurate copy is a real substitute and not a consolation prize.
 - **NFS-e with the accountant (G13)** — municipal obligation, blocks item 3 above.
 - **ANPD standard contractual clauses** with Vercel, Neon, AWS, OpenRouter, Asaas,
   Resend, Sentry, Google and Cloudflare — compliance of privacy §9, not code.
@@ -257,3 +261,44 @@ Visitor limits (3 days, 2 triagens), Básico's 5/month, the R$ 26 → R$ 57 chan
 notice, "sem fidelidade", "cancela em 1 clique", Pix/cartão via Asaas, the AI disclaimer and
 "não substitui assessoria jurídica ou contábil", and the footer identification — all consistent
 with the legal texts. No copy anywhere promises a nota fiscal, which brief §2 forbids until G13.
+
+---
+
+# Framing sweep — 2026-09-21
+
+Against brief §2.2 rules 1–3, after Sci replaced the lawyer review with product-framing
+rules. **No strings changed.**
+
+## Breaks rule 2 — one string
+
+`radar.opportunity.whyTitle` — **"Por que você pode participar"**. Verbatim one of the two
+phrasings rule 2 bans, and it is a heading on the live Opportunity screen. The content
+beneath it already complies (it shows *which* CNPJ activity matched); only the heading
+turns a reading into a verdict. Nothing anywhere says "está habilitada".
+
+## Borderline on rule 1 — two strings
+
+`foundersPage.hero.promises[2]` and `foundersPage.pillars.items[2].body` both say
+**"costuma vencer"**. Describing past awards is factual; "tends to win" edges into a claim
+about the reader's next bid. Not on the banned list, close to its spirit. Sci's call.
+
+## Prospective gap on rule 3
+
+Rule 3 requires every price labelled *"estimativa a partir dos dados do edital"*. That
+wording appears **nowhere**; the only labelling is `radar.price.estimated` =
+"Edital paga (estimado)".
+
+It does not bite today only by accident: D4 renders the winning band and the market price
+as **locked** bars, so there is no figure to mislabel. Every one of those numbers needs
+the label the moment B8's data unlocks the band at v1 Essencial. Belongs in that card now.
+
+Also flagged, not condemned: **"preço-alvo"** (4 strings). Rule 3 bans "preço ideal", and
+this is adjacent — though it means the maximum paid to a *supplier*, not what to bid.
+
+## Checked and clear
+
+"Garantir minha vaga" / "Vaga garantida" guarantee a founder **seat**, which F1 assigns in
+a transaction. "Garantia contratual" is the edital's own bid-bond field. "quem venceu
+ofertou…" describes public results and is sourced (`ruler.source`). "Até quanto ofertar
+com lucro" is a ceiling derived from the reader's own margin, not "oferte R$ X" — worth
+Sci's explicit blessing since it is the core value proposition, but compliant as written.

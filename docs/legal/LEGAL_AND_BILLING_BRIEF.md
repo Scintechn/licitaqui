@@ -1,6 +1,6 @@
 # LicitaQui — Legal & Billing Brief for Claude Code
 
-**v1.4 · 2026-09-21 · English.** This is the entry point for anything touching **money, contracts, personal data or customer-facing legal copy**. Read this file first; then open only the files listed in §3 that your task needs. Do not restate or re-derive these rules from other documents — when another file disagrees with this one, this one wins and you tell Sci.
+**v1.6 · 2026-09-21 · English.** This is the entry point for anything touching **money, contracts, personal data or customer-facing legal copy**. Read this file first; then open only the files listed in §3 that your task needs. Do not restate or re-derive these rules from other documents — when another file disagrees with this one, this one wins and you tell Sci.
 
 Talk to Sci in Brazilian Portuguese. All customer-facing copy is Brazilian Portuguese. Code, comments and commits in English.
 
@@ -86,6 +86,19 @@ A promise only exists if all three columns are filled. If copy claims something 
 
 **Lesson recorded 2026-09-21:** the Offer page shipped "aviso 3 dias antes de cada cobrança" while no clause and no job existed, and billing goes live ~10 weeks before the milestone that was going to build it. Sci chose to make the promise true rather than drop it. Keep this table updated whenever billing copy changes.
 
+### 2.2 Product framing rules — the free substitute for a lawyer
+
+There is no budget for legal review before the first charge, so the exposure is managed by **how the product describes itself**. Under CDC art. 30 advertising binds the supplier: what the copy claims becomes part of the contract. That cuts both ways — sloppy copy creates obligations, accurate copy removes them. These rules are not style preferences; they are the defence.
+
+1. **Never promise an outcome.** Banned in any copy: "garanta", "vença", "ganhe licitações", "aumente suas chances em X%", "aprovado". The product finds, organises and calculates; it does not win anything. Flag any string like this to Sci instead of shipping it.
+2. **A compatibility verdict is a reading, not a judgement.** "Compatível" and "Verificar" must always show **why** — which activity of the CNPJ matched what the edital declares — and must never be phrased as "você pode participar" or "sua empresa está habilitada".
+3. **A price is always an estimate with its arithmetic visible.** Label every figure as calculated from data the edital or the public results declare. Never "oferte R$ X", never "preço ideal". The wording is "estimativa a partir dos dados do edital".
+4. **Every extracted fact cites its page.** The citation is what makes the tool a transparent aid rather than an oracle, and it is the single strongest thing we have if a customer ever says the tool misled them. A screen that shows a conclusion without a source is a defect, not a design choice.
+5. **The AI notice appears on every result screen**, not only in the terms.
+6. **Keep the evidence trail**, because it costs nothing now and is what a lawyer would ask for later: version history on the legal texts, consent records with timestamp and wording version, `promo_notice_sent_at`, `billing_reminders`, and the copy sweep results.
+
+Terms §2 states the same limits in the customer's language: the tool does not bid, does not decide, does not recommend a price. Product copy must stay inside that boundary.
+
 ## 3. Files — open only what your task needs
 
 All paths are relative to the knowledge-base root (the folder that holds `CLAUDE.md`).
@@ -155,7 +168,7 @@ Terms §§ referenced below are sections of `legal/termos-de-uso.md`; privacy §
 | Item | Blocks | Note |
 |---|---|---|
 | ~~Publication date~~ | — | **Closed:** pages went live **21/09/2026**; both documents carry that date. The Offer form was already collecting, so the rule "pages live before the first e-mail" decided it over the 10-01 target |
-| Lawyer review | Nothing in development; do it before the first real charge | Focus: terms §11 liability cap, §6 price clause, §8 refunds |
+| Lawyer review | Nothing in development; do it **before the first real charge** (M5, 29/10), not before launch | Scope: terms **§11** liability cap, **§6** price change, **§7** the 3-day reminder (now a self-imposed contractual obligation, so it has its own exposure), **§8** refunds. The briefing to send is `legal/BRIEFING_ADVOGADO.md` — it carries the context and the specific questions. Answer due 20/10 |
 | NFS-e with the accountant (G13) | The first real charge | Municipal obligation, not a commercial choice. If required, automating it via Asaas becomes a task. The customer-facing wording stays "segue a legislação vigente" and carries no internal note |
 | ANPD standard contractual clauses with the processors | Legal compliance of privacy §9, not the code | Vercel, Neon, AWS, OpenRouter, Asaas, Resend, Sentry, Google, Cloudflare |
 | Physical address | Nothing for now. Revisit if a marketplace, a payment partner or the lawyer requires it | Decreto 7.962/2013 expects an address in e-commerce; we are publishing CNPJ, e-mails and WhatsApp instead, which is the pragmatic minimum and matches what the company already does elsewhere |
@@ -168,5 +181,7 @@ Terms §§ referenced below are sections of `legal/termos-de-uso.md`; privacy §
 | 1.0 | 2026-09-20 | First version. Company identification without address, no elected forum, refunds and cancellation model locked |
 | 1.1 | 2026-09-20 | Added §0 (how to use this file, and the pointer to `CLAUDE.md` for everything else), support hours, and the 2026-10-01 publication target |
 | 1.2 | 2026-09-21 | 3-day charge reminder made contractual and scheduled (F4, M5); Asaas notifications off, so all billing messaging is ours; added the promise register (§2.1) and the rule that no billing promise ships without a clause and a job |
+| 1.6 | 2026-09-21 | Terms §2 rewritten with what the tool does and does not do (no bidding, no decision, price is an estimate). Added §2.2 product framing rules — the interim substitute for legal review, which has no budget before the first charge |
+| 1.5 | 2026-09-21 | Lawyer scope now includes §7; `BRIEFING_ADVOGADO.md` written, answer due 20/10 |
 | 1.4 | 2026-09-21 | Missed-reminder policy: never block the charge, but alarm loudly and refund without argument if a customer is surprised; the price-change notice remains the one that blocks. Alarm requirements in spec §14 and F4 |
 | 1.3 | 2026-09-21 | Legal pages published 21/09. Billing columns specified (`ends_on`, `next_charge_on`, refund fields, `companies.guarantee_used_at`, `billing_reminders`). Drafting-banner rule written down. NFS-e bracket removed from the FAQ so `/ajuda` can ship. `docs/legal/` in the repo is the published source; `legal/` here is the authoring copy |
