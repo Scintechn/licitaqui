@@ -334,6 +334,9 @@ create table subscriptions (user_id bigint, asaas_customer_id text, asaas_subscr
                             plan text, amount numeric(10,2), status text, next_charge_on date,
                             promo_ends_on date,              -- promocional: first charge + 6 months; then amount → 57.00
                             promo_notice_sent_at timestamptz, -- email 30 days before the price change
+                            ends_on date,                    -- cancelled: paid access runs to this date (terms §8)
+                            refunded_at timestamptz,         -- a refund was issued; null = never
+                            refund_reason text,              -- 'withdrawal_7d' (CDC art. 49) | 'guarantee_30d' (once per CNPJ)
                             updated_at timestamptz);
 create table webhook_events (id text primary key, source text, event text, body jsonb, processed_at timestamptz);
 
