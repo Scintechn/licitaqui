@@ -921,6 +921,22 @@ costs money) would silence every founder on `promocional` during opening week.
 The sweep logs `plan has no alert limit` with the plan name so the gap stays
 visible. It wants a `plan_limits` row, which is a migration, which is its own PR.
 
+### The quota and the delivery record are one fact
+
+Two things are written after a digest: the **quota** (this account has had its
+message this week, counted from `events`) and the **deliveries** (these tenders
+have been offered, `alert_deliveries`, so next week differs). They are the same
+fact seen from two sides and must agree.
+
+They did not, and the integration suite caught it on 2026-09-21: the quota
+counted a dry run and the delivery record only fired on a real send. With
+`TELEGRAM_DELIVERY` off — the default everywhere, and the state of production
+until it is set — every week consumed the quota and marked nothing, so the same
+three tenders came back forever. Both now key off
+`COMPLETED_EVENTS` / `Delivery.completed`, which is one named pairing rather
+than two lists that can drift. A *failure* still records neither: it raises for
+the backoff or returns `outcome="failed"`, both before the recording line.
+
 ### The blank-value trap, and why the ME/EPP line is a block
 
 `templates.py` raises `MissingPlaceholder` on a **blank** value, on purpose. The

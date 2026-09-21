@@ -119,6 +119,14 @@ CONTACT_EMAIL = "contato@licitaquiapp.com.br"
 #: is a migration, and migrations are their own PR).
 EVENT_SENT = "telegram.sent"
 EVENT_DRY_RUN = "telegram.dry_run"
+#: The two outcomes that mean "this digest happened".
+#:
+#: Named once, and used by **both** things that are written afterwards — the
+#: weekly quota (:func:`digests_sent_this_week`) and the delivery record
+#: (:attr:`Delivery.completed`). They are one fact seen from two sides, and the
+#: integration suite caught them disagreeing; keeping the pair in one place is
+#: what stops them drifting apart again.
+COMPLETED_EVENTS = (EVENT_SENT, EVENT_DRY_RUN)
 EVENT_SKIPPED = "telegram.skipped"
 EVENT_FAILED = "telegram.failed"
 #: Spec §14's gate metric, written only for a digest that actually went out.
@@ -131,7 +139,9 @@ SKIP_NOT_LINKED = "not_linked"
 SKIP_PAUSED = "paused"
 SKIP_NO_COMPANY = "no_company"
 SKIP_QUOTA_REACHED = "quota_reached"
-SKIP_ALREADY_SENT = "already_sent"
+#: An explicit `alert` row of 0 — the plan includes no weekly digest at all.
+#: Distinct from `quota_reached`, which means they had theirs this week.
+SKIP_NOT_IN_PLAN = "not_in_plan"
 
 MONTHS_PT = (
     "janeiro",
@@ -463,7 +473,31 @@ class Delivery:
 
     @property
     def delivered(self) -> bool:
+        """It reached a person. False in a dry run — nobody read it."""
         return self.outcome == "sent"
+
+    @property
+    def completed(self) -> bool:
+        """The send ran to the end, whether or not the switch let it out.
+
+        The distinction from :attr:`delivered` is the whole of the bug the
+        integration suite found on 2026-09-21, so it is worth stating plainly.
+
+        Two things are recorded after a digest: the **quota** (this account has
+        had its message this week) and the **deliveries** (these tenders have
+        been offered, do not repeat them). They must agree, because together
+        they are one fact — "this digest happened". They did not: the quota
+        counted a dry run and the delivery record did not, so with the kill
+        switch off — which is the default everywhere, production included until
+        `TELEGRAM_DELIVERY=send` is set — every week consumed the quota and
+        marked nothing, and the same three tenders came back forever.
+
+        A *failure* still records nothing: it either raises for the backoff or
+        returns ``outcome="failed"``, both before the recording line. That was
+        the original intent, and it is unchanged. A dry run is not a failure —
+        it is the configured behaviour, and it happened.
+        """
+        return self.outcome in ("sent", telegram.DELIVERY_DRY_RUN)
 
 
 def default_client() -> TelegramClient:
@@ -532,12 +566,16 @@ def state_limit(conn: psycopg.Connection, plan: str) -> int | None:
 def digests_sent_this_week(
     conn: psycopg.Connection, user_id: int, *, now: datetime | None = None
 ) -> int:
-    """Digests already delivered in the current Brasília week.
+    """Digests already produced for this account in the current Brasília week.
 
-    A dry run counts. The point of the number is "did this account already get
-    its message this week", and on a machine with the kill switch off the
-    answer is yes as far as every other gate is concerned — counting only real
-    sends would make a dry-run environment loop.
+    Counts :data:`COMPLETED_EVENTS`, so **a dry run counts**: the question is
+    "did this account already get its message this week", and with the kill
+    switch off the answer is yes as far as every other gate is concerned —
+    counting only real sends would make a dry-run environment loop.
+
+    Whatever this counts, :attr:`Delivery.completed` must record. They are the
+    two halves of one fact; see that property for what happened when they
+    disagreed.
     """
     moment = now or datetime.now(UTC)
     with conn.cursor() as cur:
@@ -545,7 +583,7 @@ def digests_sent_this_week(
             DIGESTS_SENT_SQL,
             {
                 "user_id": user_id,
-                "names": [EVENT_SENT, EVENT_DRY_RUN],
+                "names": list(COMPLETED_EVENTS),
                 "templates": sorted(DIGEST_TEMPLATES),
                 "since": week_start(moment),
             },
@@ -730,9 +768,11 @@ def send(
         return Delivery(outcome="failed", reason=exc.reason, **common)
 
     delivery = _record_success(conn, log, common, result, job_id, attempt, target, len(tenders))
-    if delivery.delivered and who is not None and who.alert_id is not None:
-        # Only after it left: a tender marked delivered by a send that failed
-        # would never be offered again.
+    if delivery.completed and who is not None and who.alert_id is not None:
+        # `completed`, not `delivered`: this has to hold whenever the quota
+        # holds, and `digests_sent_this_week` counts a dry run. See
+        # `Delivery.completed` for what happened when the two disagreed.
+        # A failure reaches neither — it raised or returned above.
         record_deliveries(conn, who.alert_id, [tender.id for tender in tenders])
     return delivery
 
@@ -748,7 +788,7 @@ def _digest(
 
     cap = alert_limit(conn, who.plan)
     if cap is not None and digests_sent_this_week(conn, who.user_id, now=moment) >= cap:
-        raise DigestSkipped(SKIP_QUOTA_REACHED if cap > 0 else SKIP_ALREADY_SENT)
+        raise DigestSkipped(SKIP_QUOTA_REACHED if cap > 0 else SKIP_NOT_IN_PLAN)
 
     states = who.states
     allowed = state_limit(conn, who.plan)

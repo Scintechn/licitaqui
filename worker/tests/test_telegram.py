@@ -383,6 +383,48 @@ def test_a_tender_with_no_deadline_is_not_a_digest_row() -> None:
         telegram_alerts.render_item(tender(proposals_close_at=None))
 
 
+# -- the quota and the delivery record are one fact ------------------------
+
+
+def test_a_dry_run_counts_as_a_digest_that_happened() -> None:
+    """The bug the integration suite found on 2026-09-21.
+
+    Two things are written after a digest — the weekly quota and the record of
+    which tenders were offered — and they have to agree. They did not:
+    `digests_sent_this_week` counted a dry run and the delivery record only
+    fired on a real send. With the kill switch off, which is the default
+    everywhere and was the state of production, every week consumed the quota
+    and marked nothing, so the same three tenders came back forever.
+    """
+    dry = telegram_alerts.Delivery(outcome=telegram.DELIVERY_DRY_RUN, template="weekly-digest")
+    sent = telegram_alerts.Delivery(outcome="sent", template="weekly-digest")
+    failed = telegram_alerts.Delivery(outcome="failed", template="weekly-digest")
+    skipped = telegram_alerts.Delivery(outcome="skipped", template="weekly-digest")
+
+    # Both halves record for both of these…
+    assert dry.completed and sent.completed
+    # …and neither records for these.
+    assert not failed.completed and not skipped.completed
+
+    # Only a real send reached a person, which is what §14's `alert_sent` means.
+    assert sent.delivered
+    assert not dry.delivered
+
+
+def test_the_quota_counts_exactly_the_outcomes_the_record_writes_for() -> None:
+    """One pairing, one constant. The drift is what caused the bug above."""
+    assert set(telegram_alerts.COMPLETED_EVENTS) == {
+        telegram_alerts.EVENT_SENT,
+        telegram_alerts.EVENT_DRY_RUN,
+    }
+    for outcome, event in (
+        ("sent", telegram_alerts.EVENT_SENT),
+        (telegram.DELIVERY_DRY_RUN, telegram_alerts.EVENT_DRY_RUN),
+    ):
+        delivery = telegram_alerts.Delivery(outcome=outcome, template="weekly-digest")
+        assert delivery.completed is (event in telegram_alerts.COMPLETED_EVENTS)
+
+
 # -- the digest context ----------------------------------------------------
 
 
