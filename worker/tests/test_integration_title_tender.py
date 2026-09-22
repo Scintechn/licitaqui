@@ -335,3 +335,40 @@ def test_the_kind_is_registered() -> None:
     from licitaqui import handlers
 
     assert title_tender.KIND in handlers.registered_kinds()
+
+
+def test_the_sweep_kind_queues_the_per_tender_jobs(
+    title_conn: psycopg.Connection,
+) -> None:
+    """`sweep_titles` is what makes the work happen at all."""
+    tid = insert_tender(title_conn, 18, BOILERPLATE)
+    handler = REGISTRY.get(title_tender.SWEEP_KIND)
+    job = Job(
+        id=2,
+        kind=title_tender.SWEEP_KIND,
+        key="sweep",
+        payload={"limit": 500},
+        priority=8,
+        attempts=0,
+    )
+    handler(
+        JobContext(
+            job=job,
+            conn=title_conn,
+            connect=lambda: title_conn,
+            log=logging.getLogger("test.title"),
+        )
+    )
+    queued = title_conn.execute(
+        "select count(*) from jobs where kind = %s and key = %s",
+        (title_tender.KIND, tid),
+    ).fetchone()[0]
+    assert queued == 1
+
+
+def test_the_sweep_is_scheduled() -> None:
+    """Registering the kind is not enough — something has to run it."""
+    from licitaqui.scheduler import DEFAULT_SCHEDULE
+
+    entry = next(e for e in DEFAULT_SCHEDULE if e.kind == title_tender.SWEEP_KIND)
+    assert entry.every_seconds == 60 * 60

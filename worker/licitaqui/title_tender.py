@@ -48,6 +48,18 @@ from .registry import REGISTRY, JobContext
 #: The job kind. One tender per job, keyed by its id.
 KIND = "title_tender"
 
+#: The sweep that finds work for it. A *scheduled* sweep rather than a
+#: follow-up hung off `sync_open_tenders`, because a title also goes stale when
+#: the **items** change — `sync_items` runs on its own 12 h TTL and a
+#: tender-level follow-up would never see it. The staleness test reads the
+#: current item set, so one periodic sweep covers both causes and the backfill
+#: with the same query.
+SWEEP_KIND = "sweep_titles"
+
+#: How many tenders one sweep may queue. The backfill is a script, not this —
+#: this is sized so a sweep cannot flood the queue ahead of the collectors.
+SWEEP_LIMIT = 500
+
 #: Priority: below the collectors that keep the Radar's facts fresh, above
 #: nothing in particular. A missing title degrades a card; a missing tender
 #: loses it.
@@ -232,7 +244,14 @@ def pending(conn: psycopg.Connection, *, limit: int = 500) -> list[str]:
         return [row[0] for row in cur.fetchall()]
 
 
-def enqueue_pending(conn: psycopg.Connection, *, limit: int = 500) -> int:
+@REGISTRY.job(SWEEP_KIND)
+def sweep_titles(ctx: JobContext) -> None:
+    """Queue a `title_tender` for every tender lacking a current title."""
+    queued = enqueue_pending(ctx.conn, limit=int(ctx.payload.get("limit") or SWEEP_LIMIT))
+    ctx.log.info("titles swept", extra={"queued": queued})
+
+
+def enqueue_pending(conn: psycopg.Connection, *, limit: int = SWEEP_LIMIT) -> int:
     """Enqueue a `title_tender` job for every tender lacking a current title.
 
     Returns how many were actually queued. :func:`licitaqui.queue.enqueue`
