@@ -1,6 +1,6 @@
 # LicitaQui — Legal & Billing Brief for Claude Code
 
-**v1.7 · 2026-09-21 · English.** This is the entry point for anything touching **money, contracts, personal data or customer-facing legal copy**. Read this file first; then open only the files listed in §3 that your task needs. Do not restate or re-derive these rules from other documents — when another file disagrees with this one, this one wins and you tell Sci.
+**v1.8 · 2026-09-22 · English.** This is the entry point for anything touching **money, contracts, personal data or customer-facing legal copy**. Read this file first; then open only the files listed in §3 that your task needs. Do not restate or re-derive these rules from other documents — when another file disagrees with this one, this one wins and you tell Sci.
 
 Talk to Sci in Brazilian Portuguese. All customer-facing copy is Brazilian Portuguese. Code, comments and commits in English.
 
@@ -95,7 +95,8 @@ There is no budget for legal review before the first charge, so the exposure is 
 3. **A price is always an estimate with its arithmetic visible.** Label every figure as calculated from data the edital or the public results declare. Never "oferte R$ X", never "preço ideal". The wording is "estimativa a partir dos dados do edital".
 4. **Every extracted fact cites its page.** The citation is what makes the tool a transparent aid rather than an oracle, and it is the single strongest thing we have if a customer ever says the tool misled them. A screen that shows a conclusion without a source is a defect, not a design choice.
 5. **The AI notice appears on every result screen**, not only in the terms.
-6. **Keep the evidence trail**, because it costs nothing now and is what a lawyer would ask for later: version history on the legal texts, consent records with timestamp and wording version, `promo_notice_sent_at`, `billing_reminders`, and the copy sweep results.
+6. **Never show urgency without checking the tender's status.** `situacaoCompraId` is 1 Divulgada, 2 Revogada, 3 Anulada, 4 Suspensa. Anything other than 1 forbids "último dia", "ainda dá tempo", countdowns and any other call to hurry — those are factual claims about the world, and on a suspended tender they are false. Status is a first-class state of the screen, not a metadata row at the bottom.
+7. **Keep the evidence trail**, because it costs nothing now and is what a lawyer would ask for later: version history on the legal texts, consent records with timestamp and wording version, `promo_notice_sent_at`, `billing_reminders`, and the copy sweep results.
 
 Terms §2 states the same limits in the customer's language: the tool does not bid, does not decide, does not recommend a price. Product copy must stay inside that boundary.
 
@@ -191,6 +192,7 @@ Terms §§ referenced below are sections of `legal/termos-de-uso.md`; privacy §
 | 1.0 | 2026-09-20 | First version. Company identification without address, no elected forum, refunds and cancellation model locked |
 | 1.1 | 2026-09-20 | Added §0 (how to use this file, and the pointer to `CLAUDE.md` for everything else), support hours, and the 2026-10-01 publication target |
 | 1.2 | 2026-09-21 | 3-day charge reminder made contractual and scheduled (F4, M5); Asaas notifications off, so all billing messaging is ours; added the promise register (§2.1) and the rule that no billing promise ships without a clause and a job |
+| 1.8 | 2026-09-22 | Rule 6 added to §2.2: no urgency copy on a tender whose `situacaoCompraId` is not 1. Found live — a suspended tender was showing "último dia" and "ainda dá tempo" |
 | 1.7 | 2026-09-21 | Framing-sweep rulings recorded in §2.2; lawyer review is **deferred, not cancelled** |
 | 1.6 | 2026-09-21 | Terms §2 rewritten with what the tool does and does not do (no bidding, no decision, price is an estimate). Added §2.2 product framing rules — the interim substitute for legal review, which has no budget before the first charge |
 | 1.5 | 2026-09-21 | Lawyer scope now includes §7; `BRIEFING_ADVOGADO.md` written, answer due 20/10 |

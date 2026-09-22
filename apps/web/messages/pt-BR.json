@@ -972,6 +972,7 @@
       "whyEmptyTitle": "Este edital veio da busca por palavra",
       "whyEmptyBody": "Ele não bate com as atividades do seu CNPJ. Leia com atenção o que o órgão pede antes de disputar.",
       "requirementsNote": "Atestado técnico, capital mínimo, amostra e licenças aparecem na triagem por IA, cada um com a página do edital.",
+      "objectTitle": "Objeto",
       "operationTitle": "Operação",
       "operation": {
         "modality": "Modalidade",
@@ -981,8 +982,14 @@
         "opensAt": "Propostas abrem",
         "closesAt": "Propostas encerram",
         "items": "Itens",
-        "status": "Situação"
+        "status": "Situação",
+        "pncpId": "Id PNCP"
       },
+      "copyId": "Copiar",
+      "copyIdContext": "o Id PNCP",
+      "copiedId": "Copiado",
+      "pncpLink": "Ver no PNCP · registro oficial",
+      "pncpLinkNewTab": "(abre em uma nova aba)",
       "systemLink": "Abrir no portal de compras",
       "screeningCta": "Ver triagem por IA",
       "filesLocked": "Edital e anexos · criar conta",
