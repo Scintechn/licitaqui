@@ -1106,7 +1106,7 @@
       },
       "analyzingTitle": "Lendo o edital…",
       "timeoutTitle": "A leitura está demorando mais que o normal",
-      "timeoutBody": "Ela continua rodando por aqui e fica guardada quando terminar. Atualize em alguns instantes.",
+      "timeoutBody": "Ela continua rodando por aqui e aparece nesta tela assim que terminar. Não precisa sair nem pedir de novo.",
       "failedTitle": "Não conseguimos ler este edital",
       "failedBody": "O documento pode estar fora do ar no PNCP ou em um formato que ainda não lemos. Tente de novo em alguns minutos.",
       "noTextTitle": "Este edital é um PDF digitalizado",

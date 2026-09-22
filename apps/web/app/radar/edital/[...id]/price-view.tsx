@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/cn'
 import { PLAN_HREF } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
-import { priceHref } from '@/lib/radar/client'
+import { priceHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { trimObject } from '@/lib/radar/format'
@@ -75,6 +75,8 @@ export type PriceViewProps = {
   item: number | null
   status: PriceStatus
   backHref: string
+  /** The search that got the user here — the item chips below carry it on. */
+  search: RadarSearch
   onRetry?: () => void
 }
 
@@ -95,7 +97,15 @@ function LockedRow({ label, last = false }: { label: string; last?: boolean }) {
   )
 }
 
-export function PriceView({ tenderId, tender, item, status, backHref, onRetry }: PriceViewProps) {
+export function PriceView({
+  tenderId,
+  tender,
+  item,
+  status,
+  backHref,
+  search,
+  onRetry,
+}: PriceViewProps) {
   const bar = (
     <AppBar
       leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>}
@@ -177,7 +187,7 @@ export function PriceView({ tenderId, tender, item, status, backHref, onRetry }:
                 {tender.items.map((other) => (
                   <a
                     key={other.number}
-                    href={priceHref(tenderId, other.number)}
+                    href={priceHref(tenderId, search, other.number)}
                     aria-current={other.number === chosen.number ? 'page' : undefined}
                     className={cn(
                       'inline-flex min-h-8 items-center rounded-badge border px-2 font-mono text-label no-underline',

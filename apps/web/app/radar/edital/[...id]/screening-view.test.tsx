@@ -95,6 +95,9 @@ const VISITOR: VisitorView = {
   screeningsLeft: 1,
 }
 
+/** A real search, so every outbound link in these views is asserted to carry it. */
+const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+
 function render(overrides: Partial<ScreeningViewProps> = {}): string {
   const props: ScreeningViewProps = {
     tenderId: TENDER.id,
@@ -104,6 +107,7 @@ function render(overrides: Partial<ScreeningViewProps> = {}): string {
     visitor: VISITOR,
     status: { kind: 'ready' },
     backHref: `/radar/edital/${TENDER.id}`,
+    search: SEARCH,
     now: new Date('2026-09-21T12:00:00.000Z'),
     // The real screen always has one; the states that offer a retry only offer
     // it when there is something to retry with.
@@ -276,5 +280,35 @@ describe('ScreeningView · every state has an answer', () => {
     ] as const) {
       expect(render({ status, model: null })).toContain(`href="/radar/edital/${TENDER.id}"`)
     }
+  })
+})
+
+/**
+ * Every address that leaves canvas 04. All three were bare, so a visitor who
+ * pressed Documentos, or the price block, or "Criar conta" came back to a
+ * Radar with no CNPJ and no tab — the search gone, exactly as on the screen
+ * before this one.
+ */
+describe('the links out of this screen carry the search', () => {
+  const SEARCH_QUERY = 'cnpj=51885242000140&amp;uf=SP&amp;q=papel&amp;group=check'
+
+  it('sends the price block the search', () => {
+    expect(render()).toContain(`/radar/edital/${TENDER.id}/preco?${SEARCH_QUERY}`)
+  })
+
+  it('sends the Documentos tab the search, through the account round trip', () => {
+    const html = render()
+    expect(html).toContain(encodeURIComponent(`/radar/edital/${TENDER.id}?cnpj=51885242000140`))
+  })
+
+  it('comes back to this same triagem after creating an account', () => {
+    const html = render({ status: { kind: 'quota' } })
+    expect(html).toContain(
+      encodeURIComponent(`/radar/edital/${TENDER.id}/triagem?cnpj=51885242000140`),
+    )
+  })
+
+  it('never links to a bare preço', () => {
+    expect(render()).not.toContain(`href="/radar/edital/${TENDER.id}/preco"`)
   })
 })

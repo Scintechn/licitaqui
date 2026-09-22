@@ -55,12 +55,16 @@ const TENDER: TenderDetail = {
   closed: false,
 }
 
+/** A real search, so every outbound link in these views is asserted to carry it. */
+const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+
 function render(overrides: Partial<OpportunityViewProps> = {}): string {
   const props: OpportunityViewProps = {
     tender: TENDER,
     freshness: { state: 'fresh', updatedAt: '2026-09-17T14:30:00.000Z', ageSeconds: 1_800 },
     status: { kind: 'ready' },
-    backHref: '/radar?cnpj=51885242000140',
+    backHref: '/radar?cnpj=51885242000140&group=check',
+    search: SEARCH,
     now: NOW,
     ...overrides,
   }
@@ -172,9 +176,7 @@ describe('the Opportunity screen', () => {
   })
 
   it('leads to the screening at the address the design gives it', () => {
-    expect(render()).toContain(
-      'href="/radar/edital/51885242000140-1-000744/2026/triagem"',
-    )
+    expect(render()).toContain('href="/radar/edital/51885242000140-1-000744/2026/triagem?')
   })
 
   it('opens the agency portal in a new tab, safely', () => {
@@ -607,5 +609,24 @@ describe('OpportunityView · the tabs and the B9 status gate', () => {
     const value = out.slice(out.indexOf(page.estimatedValue), out.indexOf('role="tablist"'))
     expect(value).not.toContain('2.988.571,02')
     expect(out).toContain(messages.radar.opportunity.items.sumNote)
+  })
+})
+
+/**
+ * Sci, on production, the same evening the card → tender link was fixed: *"I
+ * lost the list of items after I came back from seeing the AI triagem."* The
+ * CTA below was `${tenderHref(id)}/triagem` — the tender's address with a word
+ * stuck on the end and the search left behind — so the triagem screen, which
+ * reads its own "Voltar" out of its query string, had nothing to read.
+ */
+describe('the link out of this screen carries the search', () => {
+  it('sends the CTA the CNPJ, the UF, the words and the tab', () => {
+    expect(render()).toContain(
+      `href="/radar/edital/${TENDER.id}/triagem?cnpj=51885242000140&amp;uf=SP&amp;q=papel&amp;group=check"`,
+    )
+  })
+
+  it('never links to a bare triagem', () => {
+    expect(render()).not.toContain(`href="/radar/edital/${TENDER.id}/triagem"`)
   })
 })

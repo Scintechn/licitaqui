@@ -2,11 +2,10 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { getJobStatus, getTender, radarHref } from '@/lib/radar/client'
+import { getJobStatus, getTender, radarHref, readSearch } from '@/lib/radar/client'
 import type { Freshness, TenderDetail, TenderResponse } from '@/lib/radar/contract'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
-import { normaliseUf } from '@/lib/radar/ufs'
 import { OpportunityView, type OpportunityStatus, type OpportunityTab } from './opportunity-view'
 import { ITEMS_PAGE } from './tender-items'
 
@@ -43,13 +42,14 @@ export function OpportunityScreen({ id }: { id: string }) {
   const [tab, setTab] = useState<OpportunityTab>('items')
   const [itemsVisible, setItemsVisible] = useState(ITEMS_PAGE)
 
-  const from = params.get('group')
-  const backHref = radarHref({
-    cnpj: (params.get('cnpj') ?? '').replace(/\D+/g, '') || null,
-    state: normaliseUf(params.get('uf')),
-    q: (params.get('q') ?? '').trim() || null,
-    group: from === 'check' || from === 'keyword' ? from : 'compatible',
-  })
+  /**
+   * The search this screen is carrying — read once and used for every address
+   * it draws, both the "Voltar" below and the triagem link the view puts at
+   * the bottom of the page. Two readings of the same query string were how the
+   * back link kept the search and the forward link dropped it.
+   */
+  const search = readSearch(params)
+  const backHref = radarHref(search)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -111,6 +111,7 @@ export function OpportunityScreen({ id }: { id: string }) {
       freshness={data.freshness}
       status={data.status}
       backHref={backHref}
+      search={search}
       onRetry={onRetry}
       tab={tab}
       onSelectTab={setTab}

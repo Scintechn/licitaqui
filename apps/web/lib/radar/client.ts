@@ -7,7 +7,9 @@ import type {
   TenderListResponse,
   TenderResponse,
 } from './contract'
+import { readGroup } from './group'
 import type { JobStatus } from './poll'
+import { normaliseUf } from './ufs'
 
 /**
  * The browser's side of the Radar routes (spec §8).
@@ -48,32 +50,87 @@ export function tenderApiPath(id: string): string {
   return encodeURIComponent(id)
 }
 
-/** The Radar's own URL for a tender. A catch-all route, so the slash survives. */
-export function tenderHref(id: string): string {
+/**
+ * The search a Radar screen is carrying: the four things that decide which
+ * list the user came from, spelled the way the Radar itself reads them (`uf`,
+ * not `state`).
+ *
+ * It is the same four fields `lib/radar/list-cache.ts` keys a snapshot on, and
+ * that is not a coincidence — a link that drops one of them lands on a
+ * different key and the restore misses, which to a user is indistinguishable
+ * from having lost the search.
+ */
+export type RadarSearch = {
+  cnpj?: string | null
+  state?: string | null
+  q?: string | null
+  group?: TenderGroup | null
+}
+
+/**
+ * Every address out of a Radar screen carries the search. **Required, on
+ * purpose** — see the note on `screeningHref` below.
+ */
+function searchParams(search: RadarSearch): URLSearchParams {
+  const params = new URLSearchParams()
+  if (search.cnpj) params.set('cnpj', search.cnpj)
+  if (search.state) params.set('uf', search.state)
+  if (search.q) params.set('q', search.q)
+  if (search.group) params.set('group', search.group)
+  return params
+}
+
+function withParams(base: string, params: URLSearchParams): string {
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+/** The Radar's own path for a tender. A catch-all route, so the slash survives. */
+function editalPath(id: string): string {
   return `/radar/edital/${tenderPath(id)}`
 }
 
 /**
- * The same URL, carrying the search that found the tender.
+ * The tender's page on the Radar, carrying the search that found it.
  *
  * `opportunity-screen.tsx` builds its "Voltar" link out of `cnpj`, `uf`, `q`
  * and `group` read from its own query string — and the Radar's cards linked to
- * the bare `/radar/edital/…`, so those parameters were never there and the
- * link went to a bare `/radar`: no CNPJ, no keyword, no tab. Sci's "I move
- * back to the list of editais, I lost the search" is that link. The parameters
- * are spelled the way the Radar itself reads them (`uf`, not `state`).
+ * a bare `/radar/edital/…`, so those parameters were never there and the link
+ * went to a bare `/radar`: no CNPJ, no keyword, no tab. Sci's "I move back to
+ * the list of editais, I lost the search" is that link.
  */
-export function tenderHrefFrom(
-  id: string,
-  query: { cnpj?: string | null; state?: string | null; q?: string | null; group?: TenderGroup },
-): string {
-  const params = new URLSearchParams()
-  if (query.cnpj) params.set('cnpj', query.cnpj)
-  if (query.state) params.set('uf', query.state)
-  if (query.q) params.set('q', query.q)
-  if (query.group) params.set('group', query.group)
-  const search = params.toString()
-  return search ? `${tenderHref(id)}?${search}` : tenderHref(id)
+export function tenderHref(id: string, search: RadarSearch): string {
+  return withParams(editalPath(id), searchParams(search))
+}
+
+/**
+ * The Radar's URL for a tender's AI screening — canvas 04.
+ *
+ * ## Why `search` is a required argument here, and on every function above
+ *
+ * The first cure for the bug above added a *second* function next to the bare
+ * one and converted a single call site. The bare form stayed the shortest
+ * thing to type and the default thing to reach for, so the same bug was still
+ * there one screen further along: the triagem link, the preço link, and the
+ * two "Criar conta" links all dropped the search, and back-navigation out of
+ * the triagem landed on a stripped list. Sci found it the same evening.
+ *
+ * So there is no bare form any more. A Radar screen has exactly one `search`
+ * and every address it draws is built from it; omitting it is a type error
+ * rather than a link that looks fine until someone presses Voltar twice. A
+ * caller that genuinely has nothing to carry writes `{}`, which is visible in
+ * review and in a grep — and `client.test.ts` pins that no screen builds one
+ * of these URLs by hand instead.
+ */
+export function screeningHref(id: string, search: RadarSearch): string {
+  return withParams(`${editalPath(id)}/triagem`, searchParams(search))
+}
+
+/** …and the locked price block behind it — canvas 05. */
+export function priceHref(id: string, search: RadarSearch, item?: number | null): string {
+  const params = searchParams(search)
+  if (item) params.set('item', String(item))
+  return withParams(`${editalPath(id)}/preco`, params)
 }
 
 /**
@@ -93,19 +150,25 @@ export function tenderHrefFrom(
  * the Landing's form — still gets a URL with no `group` at all, which is what
  * "I have not chosen" looks like.
  */
-export function radarHref(query: {
-  cnpj?: string | null
-  state?: string | null
-  q?: string | null
-  group?: TenderGroup | null
-}): string {
-  const params = new URLSearchParams()
-  if (query.cnpj) params.set('cnpj', query.cnpj)
-  if (query.state) params.set('uf', query.state)
-  if (query.q) params.set('q', query.q)
-  if (query.group) params.set('group', query.group)
-  const search = params.toString()
-  return search ? `/radar?${search}` : '/radar'
+export function radarHref(search: RadarSearch): string {
+  return withParams('/radar', searchParams(search))
+}
+
+/**
+ * The search a screen was opened with, read back out of its own query string.
+ *
+ * One reader for all three tender screens, so "which parameters travel" is
+ * decided once. `group` is `null` when the user has not chosen a tab
+ * (`readGroup`), which is a different address from `group=compatible` and must
+ * stay one; `restoreList` already bridges the two when it looks for a snapshot.
+ */
+export function readSearch(params: { get(name: string): string | null }): RadarSearch {
+  return {
+    cnpj: (params.get('cnpj') ?? '').replace(/\D+/g, '') || null,
+    state: normaliseUf(params.get('uf')),
+    q: (params.get('q') ?? '').trim() || null,
+    group: readGroup(params.get('group')),
+  }
 }
 
 async function envelope<T>(response: Response): Promise<T> {
@@ -164,17 +227,6 @@ export async function getJobStatus(id: number, signal?: AbortSignal): Promise<Jo
   if (response.status === 404) return 'gone'
   const body = await envelope<JobResponse>(response)
   return body.state === 'ready' ? body.job.status : 'gone'
-}
-
-/** The Radar's URL for a tender's AI screening — canvas 04. */
-export function screeningHref(id: string): string {
-  return `${tenderHref(id)}/triagem`
-}
-
-/** …and for the locked price block behind it — canvas 05. */
-export function priceHref(id: string, item?: number | null): string {
-  const base = `${tenderHref(id)}/preco`
-  return item ? `${base}?item=${item}` : base
 }
 
 /**

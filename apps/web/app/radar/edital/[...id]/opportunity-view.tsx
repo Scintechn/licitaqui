@@ -18,7 +18,7 @@ import {
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
-import { tenderHref } from '@/lib/radar/client'
+import { screeningHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, Freshness, TenderDetail, TenderGroup } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { pncpEditalUrl } from '@/lib/radar/pncp'
@@ -502,6 +502,15 @@ export type OpportunityViewProps = {
   status: OpportunityStatus
   /** Where "Voltar" goes: the Radar, with the filters the user came from. */
   backHref: string
+  /**
+   * The same filters, for the links that leave this screen *forwards*.
+   *
+   * Required, and not derived from `backHref`: the triagem CTA below used to
+   * be built from the tender id alone, so it dropped the search and the
+   * triagem screen — which reads its own "Voltar" out of its query string —
+   * had nothing to read. Two presses of Voltar then landed on a bare `/radar`.
+   */
+  search: RadarSearch
   now?: Date
   onRetry?: () => void
   /** Which tab of the record is open. The screen owns it; this stays pure. */
@@ -517,6 +526,7 @@ export function OpportunityView({
   freshness,
   status,
   backHref,
+  search,
   now = new Date(),
   onRetry,
   tab = 'items',
@@ -725,7 +735,7 @@ export function OpportunityView({
               the call to action, which is where the reading stops being read
               and starts being acted on. */}
           <p className="text-caption leading-relaxed text-muted">{aiNotice}</p>
-          <Button href={`${tenderHref(tender.id)}/triagem`} fullWidth iconEnd="arrowRight">
+          <Button href={screeningHref(tender.id, search)} fullWidth iconEnd="arrowRight">
             {page.screeningCta}
           </Button>
           {/* The source of every fact above. PNCP is the official record
