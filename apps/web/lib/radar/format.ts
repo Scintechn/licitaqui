@@ -212,3 +212,120 @@ export function trimObject(object: string, max = 120): string {
   const space = cut.lastIndexOf(' ')
   return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[.,;:·-]+$/, '')}…`
 }
+
+/* ------------------------------------------------------------------ titles */
+
+/**
+ * PNCP objects arrive with the sourcing portal bolted on the front, in block
+ * capitals, and with a full stop at the end:
+ *
+ *   `[Portal de Compras Públicas] - Aquisição de drones.`
+ *   `AQUISIÇÃO DE EQUIPAMENTOS DESTINADOS À SECRETARIA DE SAÚDE.`
+ *
+ * Next to the Landing's clean example the real list reads like a different
+ * product. This is **presentation only**: the database keeps what PNCP
+ * published, because it is the string the edital itself carries and the one a
+ * screening cites. Nothing here writes, and nothing here is fed back to the
+ * API — `tenderTitle()` is called at the point of render and nowhere else.
+ */
+
+/** `[Portal de Compras Públicas] - ` and any separator behind it. */
+const PORTAL_PREFIX = /^\s*\[[^\]]*\]\s*[-–—:·]*\s*/
+
+/** A full stop the agency typed at the end of a title that is not a sentence. */
+const TRAILING_STOP = /[.\s]+$/
+
+/**
+ * Words that stay lowercase when a shouted title is brought back to sentence
+ * case. Portuguese connectives only — they are the short tokens that would
+ * otherwise be mistaken for acronyms by the length rule below.
+ */
+const LOWERCASE_WORDS = new Set([
+  'a', 'ao', 'aos', 'as', 'às', 'à', 'com', 'como', 'da', 'das', 'de', 'do',
+  'dos', 'e', 'em', 'entre', 'na', 'nas', 'no', 'nos', 'o', 'os', 'ou', 'para',
+  'pela', 'pelas', 'pelo', 'pelos', 'por', 'sem', 'sob', 'sobre', 'um', 'uma',
+])
+
+/**
+ * Acronyms that must survive the lowercasing, because they are read as letters
+ * and not as words. Deliberately short and domain-specific: this list only has
+ * to cover what turns up in a tender object, and a missed one costs a lowercase
+ * word, not a wrong fact.
+ */
+const ACRONYMS = new Set([
+  'ABNT', 'ANVISA', 'CNPJ', 'CNAE', 'CRAS', 'CREAS', 'EIRELI', 'EPI', 'EPIS',
+  'EPP', 'INMETRO', 'LED', 'LTDA', 'ME', 'MEI', 'PNAE', 'PNCP', 'SAMU', 'SEBRAE',
+  'SENAC', 'SENAI', 'SESC', 'SESI', 'SIASG', 'SRP', 'SUS', 'TI', 'UASG', 'UBS',
+  'UPA', 'UTI',
+])
+
+/**
+ * De-shouting is decided **per word**, not for the title as a whole.
+ *
+ * The obvious rule — "if the string has no lowercase letter, lowercase it" —
+ * fails on the commonest real shape. Agencies shout the object and then paste
+ * the legal basis in prose after it:
+ *
+ *   `AQUISICAO DE MATERIAIS TERAPEUTICOS PARA AS UNIDADES DO NUCLEO … por meio
+ *    de Dispensa Eletronica de Licitacao com fundamento no art. 75 …`
+ *
+ * One lowercase letter three hundred characters in made the whole title "not
+ * shouting", so nothing was cased — and the card, which shows the first 120
+ * characters, displayed the shouted half untouched. Judging each word instead
+ * fixes that and leaves the prose half alone, because its words are not in
+ * block capitals to begin with.
+ *
+ * ## What this cannot do
+ *
+ * Nothing distinguishes `NUCLEO` (a shouted word) from `NIDI` (an acronym)
+ * without a dictionary, so a four-letter acronym outside `ACRONYMS` below is
+ * lowercased. That is the accepted cost: these sources are unaccented anyway
+ * (`AQUISICAO`, `ATENCAO`), so this was never restoration — it is stopping the
+ * list from shouting. Add to `ACRONYMS` when a real one turns up.
+ */
+function isShoutedWord(letters: string): boolean {
+  return letters.length > 0 && letters === letters.toLocaleUpperCase('pt-BR')
+}
+
+function deShout(text: string): string {
+  return (
+    text
+      // Split on the slash as well as on whitespace, so "ME/EPP" is judged as
+      // "ME" and "EPP" — two acronyms — and not as the 5-letter word "MEEPP".
+      .split(/([\s/]+)/)
+      .map((token) => {
+        if (!token.trim()) return token
+        const letters = token.replace(/[^\p{L}]/gu, '')
+        if (!letters) return token
+        // A code, not a word: "01/2026", "RSD-02011", "N°3".
+        if (/\d/.test(token)) return token
+        // Already prose — only block capitals are being undone here.
+        if (!isShoutedWord(letters)) return token
+        const lower = letters.toLocaleLowerCase('pt-BR')
+        if (LOWERCASE_WORDS.has(lower)) return token.toLocaleLowerCase('pt-BR')
+        if (ACRONYMS.has(letters)) return token
+        // SUS, EPI, TI: too short to be a shouted Portuguese word worth fixing.
+        if (letters.length <= 3) return token
+        return token.toLocaleLowerCase('pt-BR')
+      })
+      .join('')
+  )
+}
+
+/** The portal prefix, the shouting and the trailing full stop, all removed. */
+export function cleanTitle(object: string): string {
+  const clean = object.replace(/\s+/g, ' ').trim().replace(PORTAL_PREFIX, '')
+  const stopped = clean.replace(TRAILING_STOP, '')
+  const body = stopped || clean
+  const cased = deShout(body)
+
+  // Restore the opening capital only if the source had one — a title that
+  // deliberately starts lowercase ("iPhone…") is left exactly as it came.
+  if (!/^[^\p{L}]*\p{Lu}/u.test(body)) return cased
+  return cased.replace(/\p{L}/u, (first) => first.toLocaleUpperCase('pt-BR'))
+}
+
+/** What a screen prints as a tender's title: cleaned, then trimmed to fit. */
+export function tenderTitle(object: string, max = 120): string {
+  return trimObject(cleanTitle(object), max)
+}

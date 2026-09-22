@@ -206,6 +206,25 @@ function GroupTabs({
 }
 
 /**
+ * What the selected tab actually means, in one line, under the tabs.
+ *
+ * The three hints — "seu CNAE atende", "pode haver exigências", "achado pela
+ * busca" — existed only inside "Como funciona" on the marketing landing, which
+ * is a page a founder arriving from an e-mail link never passes. Inside the
+ * Radar the tabs were bare labels, so "Verificar" was a word with no stated
+ * meaning on the screen where it decides whether someone opens an edital.
+ *
+ * It is also the framing rule doing its job: brief §2.2 rule 2 says a
+ * compatibility verdict must always show why, and "pode haver exigências" is
+ * the sentence that keeps "Verificar" a reading rather than a judgement.
+ */
+function GroupHint({ group }: { group: TenderGroup }) {
+  return (
+    <p className="px-gutter pb-1 text-meta text-muted">{list.groupHint[group]}</p>
+  )
+}
+
+/**
  * "Filtros" and "Ordenar: prazo". The filters are a `<details>` holding a real
  * GET form, so they work before React has hydrated and the result is a URL the
  * user can share or bookmark. Sorting is by deadline and is not a choice: the
@@ -547,6 +566,7 @@ export function RadarView({
         {visitor ? <VisitorBanner visitor={visitor} now={now} /> : null}
 
         <GroupTabs active={query.group} counts={counts} query={query} />
+        <GroupHint group={query.group} />
 
         <FilterRow query={query} onNavigate={onNavigate} />
 

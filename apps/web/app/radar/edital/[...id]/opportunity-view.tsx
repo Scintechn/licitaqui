@@ -23,7 +23,7 @@ import {
   deadlineTall,
   meEppSummary,
   money,
-  trimObject,
+  tenderTitle,
 } from '@/lib/radar/format'
 import { TenderTags } from '../../tender-card'
 
@@ -283,8 +283,11 @@ export function OpportunityView({
   const badge = BADGE[matchKind(tender)]
   const days = daysUntil(tender.proposalsCloseAt, now)
   const why = reasons(tender, now)
-  const value = tender.confidentialBudget ? copy.card.confidential : money(tender.estimatedValue)
+  // `null` means there is no figure to set in Archivo — either the agency
+  // declared the budget confidential, or it published none at all.
+  const value = tender.confidentialBudget ? null : money(tender.estimatedValue)
   const age = ageParts(freshness?.ageSeconds)
+  const aiNotice = `${messages.ai.disclaimer} ${messages.ai.notLegalAdvice}`
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -293,7 +296,7 @@ export function OpportunityView({
       <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3.5 px-gutter pb-10">
         <div className="flex flex-col gap-1">
           <h1 className="font-display text-[24px] leading-tight font-semibold text-balance">
-            {trimObject(tender.object, 180)}
+            {tenderTitle(tender.object, 180)}
           </h1>
           <p className="text-body text-muted">{agencyLine(tender)}</p>
         </div>
@@ -330,9 +333,20 @@ export function OpportunityView({
           <div>
             <SectionLabel tone="muted">{page.estimatedValue}</SectionLabel>
             <div className="flex items-baseline justify-between gap-3 pt-1">
-              <span className="font-display text-[28px] leading-none font-semibold tabular-nums">
-                {value ?? copy.card.noValue}
-              </span>
+              {/* Same rule as the Radar card: the 28px Archivo slot is for a
+                  figure, and PNCP withholds the budget on most tenders. With no
+                  figure the slot collapses to a quiet line and the deadline
+                  block directly above — already the card's other half — stays
+                  the biggest thing on the screen. */}
+              {value === null ? (
+                <span className="text-meta text-muted">
+                  {tender.confidentialBudget ? copy.card.confidential : copy.card.noValue}
+                </span>
+              ) : (
+                <span className="font-display text-[28px] leading-none font-semibold tabular-nums">
+                  {value}
+                </span>
+              )}
               {tender.itemCount === null ? null : (
                 <span className="text-meta text-muted">
                   {format(copy.card.items, { count: tender.itemCount })}
@@ -364,6 +378,13 @@ export function OpportunityView({
         </div>
 
         <div className="mt-auto flex flex-col gap-2 pt-2">
+          {/* Legal brief §2.2 rule 5: the AI notice appears on EVERY result
+              screen, not only in the terms. This screen prints a compatibility
+              reading — "Por que este edital apareceu para você" — so it is a
+              result screen, and the notice was missing from it. It sits above
+              the call to action, which is where the reading stops being read
+              and starts being acted on. */}
+          <p className="text-caption leading-relaxed text-muted">{aiNotice}</p>
           <Button href={`${tenderHref(tender.id)}/triagem`} fullWidth iconEnd="arrowRight">
             {page.screeningCta}
           </Button>

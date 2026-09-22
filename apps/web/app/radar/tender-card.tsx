@@ -1,8 +1,11 @@
 import { Card, CardLink, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
 import { tenderHref } from '@/lib/radar/client'
 import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
-import { agencyLine, daysUntil, deadlineShort, meEppSummary, money, trimObject } from '@/lib/radar/format'
+import { agencyLine, deadlineShort, meEppSummary, tenderTitle } from '@/lib/radar/format'
+import { cardHeadline, deadlineLabel } from '@/lib/radar/headline'
 import { format, messages } from '@/lib/messages'
+
+export { deadlineLabel }
 
 /**
  * One tender in the Radar list — canvas 02, `Editais.dc.html`, the card that
@@ -11,6 +14,15 @@ import { format, messages } from '@/lib/messages'
  * Transcribed row for row from the board: status badge and countdown, title,
  * agency line, the value in Archivo with the item count beside it, the ME/EPP
  * tags, and the deadline line closed by a chevron.
+ *
+ * Two things the board could not know, because it was drawn against a tender
+ * that had a budget and a hand-written title:
+ *
+ *  - the Archivo slot holds whichever fact `cardHeadline()` elects, because on
+ *    real data the estimated value is absent on almost every card and an anchor
+ *    that reads "Valor não informado" nineteen times is not an anchor;
+ *  - the title is `tenderTitle()`, not the raw PNCP object, which arrives
+ *    shouted and with the sourcing portal bolted on the front.
  *
  * The whole card is one `<a>` (`CardLink`), not a div with a click handler and
  * a nested link: one keyboard stop, one screen-reader target, and the middle
@@ -28,14 +40,6 @@ const STATUS: Record<TenderGroup, { kind: StatusKind; label: string }> = {
   compatible: { kind: 'compatible', label: list.badges.compatible },
   check: { kind: 'check', label: list.badges.check },
   keyword: { kind: 'keyword', label: list.badges.keyword },
-}
-
-/** The countdown on the top right: "13 dias", "último dia", "encerrado". */
-export function deadlineLabel(iso: string | null, now: Date): string {
-  const days = daysUntil(iso, now)
-  if (days === null) return copy.card.noDeadline
-  if (days < 0) return copy.card.closed
-  return format(copy.card.daysLeft, { count: days })
 }
 
 /**
@@ -91,29 +95,48 @@ export function TenderCardView({
   href?: string | null
 }) {
   const status = STATUS[tender.group]
-  const value = tender.confidentialBudget ? copy.card.confidential : money(tender.estimatedValue)
+  const headline = cardHeadline(tender, now)
   const deadline = deadlineShort(tender.proposalsCloseAt)
   const target = href === undefined ? tenderHref(tender.id) : href
+
+  // When the deadline has been promoted into the anchor it is the same string
+  // the top-right countdown prints, so the countdown steps aside rather than
+  // saying "13 dias" twice on one card.
+  const countdown =
+    headline.anchor?.fact === 'deadline' ? null : deadlineLabel(tender.proposalsCloseAt, now)
 
   const body = (
     <>
       <div className="flex items-center justify-between gap-2">
         <Status kind={status.kind}>{status.label}</Status>
-        <span className="text-caption text-muted">{deadlineLabel(tender.proposalsCloseAt, now)}</span>
+        {countdown === null ? null : (
+          <span className="text-caption text-muted">{countdown}</span>
+        )}
       </div>
 
-      <div className="text-lead leading-[1.3] font-semibold">{trimObject(tender.object)}</div>
+      <div className="text-lead leading-[1.3] font-semibold">{tenderTitle(tender.object)}</div>
 
       <div className="text-meta text-muted">{agencyLine(tender)}</div>
 
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="font-display text-[22px] leading-none font-semibold tabular-nums">
-          {value ?? copy.card.noValue}
-        </span>
-        {tender.itemCount === null ? null : (
-          <span className="text-caption text-muted">
-            {format(copy.card.items, { count: tender.itemCount })}
-          </span>
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-baseline justify-between gap-2">
+          {headline.anchor === null ? (
+            <span />
+          ) : (
+            <span className="font-display text-[22px] leading-none font-semibold tabular-nums">
+              {headline.anchor.text}
+            </span>
+          )}
+          {/* The item count keeps its place beside the anchor unless it *is*
+              the anchor, which would print it twice. */}
+          {tender.itemCount === null || headline.anchor?.fact === 'items' ? null : (
+            <span className="text-caption text-muted">
+              {format(copy.card.items, { count: tender.itemCount })}
+            </span>
+          )}
+        </div>
+        {headline.note === null ? null : (
+          <span className="text-meta text-muted">{headline.note}</span>
         )}
       </div>
 

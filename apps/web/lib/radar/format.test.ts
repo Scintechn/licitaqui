@@ -9,7 +9,9 @@ import {
   deadlineTall,
   meEppSummary,
   money,
+  cleanTitle,
   shortDate,
+  tenderTitle,
   trimObject,
 } from './format'
 
@@ -148,5 +150,96 @@ describe('trimObject', () => {
 
   it('collapses the whitespace PNCP leaves in the middle of an object', () => {
     expect(trimObject('Aquisição   de\n  material')).toBe('Aquisição de material')
+  })
+})
+
+describe('cleanTitle', () => {
+  it('strips the sourcing portal PNCP bolts onto the front of a title', () => {
+    expect(cleanTitle('[Portal de Compras Públicas] - Aquisição de drones.')).toBe(
+      'Aquisição de drones',
+    )
+    expect(cleanTitle('[Compras.gov.br] Aquisição de drones')).toBe('Aquisição de drones')
+    // An em dash, an en dash, a colon: agencies use all of them as the joint.
+    expect(cleanTitle('[BLL] — Aquisição de drones')).toBe('Aquisição de drones')
+  })
+
+  it('brings a shouted title back to sentence case', () => {
+    expect(cleanTitle('AQUISIÇÃO DE EQUIPAMENTOS DESTINADOS À SECRETARIA DE SAÚDE.')).toBe(
+      'Aquisição de equipamentos destinados à secretaria de saúde',
+    )
+  })
+
+  it('drops the full stop an agency typed at the end of a title', () => {
+    expect(cleanTitle('Baterias e pilhas.')).toBe('Baterias e pilhas')
+    expect(cleanTitle('Baterias e pilhas...')).toBe('Baterias e pilhas')
+  })
+
+  it('de-shouts the shouted half of a title that turns to prose halfway', () => {
+    // The commonest real shape, and the one a whole-string "is it shouting?"
+    // check gets wrong: the card shows the first 120 characters, so a single
+    // lowercase letter 300 characters in used to leave the visible half
+    // shouting.
+    expect(
+      cleanTitle(
+        'AQUISICAO DE MATERIAIS TERAPEUTICOS PARA AS UNIDADES DO NUCLEO ' +
+          'por meio de Dispensa Eletronica de Licitacao',
+      ),
+    ).toBe(
+      'Aquisicao de materiais terapeuticos para as unidades do nucleo ' +
+        'por meio de Dispensa Eletronica de Licitacao',
+    )
+  })
+
+  it('leaves a title that deliberately starts lowercase alone', () => {
+    expect(cleanTitle('iPhone e acessórios')).toBe('iPhone e acessórios')
+  })
+
+  it('leaves a title that was already written like prose alone', () => {
+    expect(cleanTitle('Registro de preços de baterias e pilhas')).toBe(
+      'Registro de preços de baterias e pilhas',
+    )
+    // Mixed case is not shouting, so nothing is lowercased.
+    expect(cleanTitle('Aquisição de EPIs para a Defesa Civil')).toBe(
+      'Aquisição de EPIs para a Defesa Civil',
+    )
+  })
+
+  it('keeps acronyms and codes capitals while lowercasing the words', () => {
+    expect(cleanTitle('AQUISIÇÃO DE INSUMOS PARA O SUS')).toBe('Aquisição de insumos para o SUS')
+    expect(cleanTitle('CONTRATAÇÃO EXCLUSIVA ME/EPP')).toBe('Contratação exclusiva ME/EPP')
+    expect(cleanTitle('PREGÃO ELETRÔNICO 01/2026 DE MATERIAL')).toBe(
+      'Pregão eletrônico 01/2026 de material',
+    )
+  })
+
+  it('collapses the whitespace PNCP leaves inside an object', () => {
+    expect(cleanTitle('Aquisição   de\n  material')).toBe('Aquisição de material')
+  })
+
+  it('never returns an empty string for a title that was only punctuation', () => {
+    expect(cleanTitle('...')).toBe('...')
+  })
+})
+
+describe('tenderTitle', () => {
+  const real =
+    '[Portal de Compras Públicas] - REGISTRO DE PREÇO VISANDO FUTURA E EVENTUAL SELEÇÃO DAS ' +
+    'MELHORES PROPOSTAS PARA CONTRATAÇÃO DE EMPRESA ESPECIALIZADA NA CONFECÇÃO DE MATERIAL ' +
+    'GRÁFICO, PARA ATENDER A DEMANDA DO FUNDO MUNICIPAL DE SAÚDE.'
+
+  it('cleans first and trims second, so the cut counts the cleaned string', () => {
+    const out = tenderTitle(real)
+    expect(out.startsWith('Registro de preço visando futura')).toBe(true)
+    expect(out).not.toContain('[Portal')
+    expect(out.length).toBeLessThanOrEqual(121)
+    expect(out.endsWith('…')).toBe(true)
+  })
+
+  it('is display only — it never reports back the stored object', () => {
+    // A guard for the rule, not for the arithmetic: the argument is not
+    // mutated and the raw object stays available to whatever cites it.
+    const object = 'AQUISIÇÃO DE DRONES.'
+    expect(tenderTitle(object)).toBe('Aquisição de drones')
+    expect(object).toBe('AQUISIÇÃO DE DRONES.')
   })
 })

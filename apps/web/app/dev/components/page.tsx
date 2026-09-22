@@ -75,7 +75,7 @@ const PALETTE: { name: string; hex: string; swatch: string; utility: string }[] 
   { name: 'Cinza · secundário', hex: '#6B6B67', swatch: 'bg-muted', utility: 'muted' },
   { name: 'Azul · ação', hex: '#2457D6', swatch: 'bg-blue', utility: 'blue' },
   { name: 'Sucesso', hex: '#18794E', swatch: 'bg-success', utility: 'success' },
-  { name: 'Atenção', hex: '#A15C00', swatch: 'bg-attention', utility: 'attention' },
+  { name: 'Atenção', hex: '#8F5200', swatch: 'bg-attention', utility: 'attention' },
   { name: 'Erro', hex: '#B42318', swatch: 'bg-error', utility: 'error' },
 ]
 

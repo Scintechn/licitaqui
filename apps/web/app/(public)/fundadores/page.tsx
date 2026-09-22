@@ -52,7 +52,7 @@ function Wrap({ children, className }: { children: ReactNode; className?: string
   )
 }
 
-/** The source's `section` rhythm: 48px of air on a phone, 64px from 560px up. */
+/** The public-page rhythm, 40/48 — see `page-parts.tsx` for why it stepped down. */
 function Section({
   children,
   divided = true,
@@ -64,7 +64,7 @@ function Section({
   className?: string
 }) {
   return (
-    <section className={cn('py-12 min-[560px]:py-16', divided && 'border-t border-line', className)}>
+    <section className={cn('py-10 min-[560px]:py-12', divided && 'border-t border-line', className)}>
       {children}
     </section>
   )

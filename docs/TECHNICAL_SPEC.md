@@ -470,7 +470,7 @@ Numbers live in `plan_limits`, not in code.
 Source: `Marca/assest/LEIAME.md`.
 
 - **Name:** always `LicitaQui` — never `licitaqui`, `Licitaqui` or `LICITAQUI` (lowercase only in domains, repo and bot handles). Only "Qui" in Blue `#2457D6`.
-- **Wordmark type:** Archivo 800, width 85%, letter-spacing −3%. Load Archivo with the width axis (`Archivo:wdth,wght@62..125,100..900`).
+- **Wordmark type:** Archivo 800, width 85%, letter-spacing −3% — shipped as **outlines** in `components/logo.tsx`, not as live text. The width axis is therefore **not** loaded in the web app: it had exactly one reader, the wordmark, and carrying it cost 90KB of preloaded Latin on every route. `app/fonts.ts` pins Archivo to the weights the product sets (600/700/800). Anything drawing the wordmark outside this repo still needs `Archivo:wdth,wght@62..125,100..900`, or outlines of its own. *(Changed 2026-09-22, task prelaunch-fixes — the geometry is unchanged, only how it is rendered.)*
 - **Symbol:** three bars on a 64 grid (height 11, gaps 4): blue x34 y12 w22 · graphite x8 y27 w48 · graphite x14 y42 w42. Never right-align or sort the bars. Light Blue `#5C86EC` only on dark backgrounds.
 - **Clear space:** at least twice a bar height (22 on the 64 grid).
 - **PWA manifest:** `icone-192.png`, `icone-512.png` (`purpose: "any"`), `icone-maskable-512.png` (`purpose: "maskable"`), `theme_color #FBF7F3`, `background_color #FBF7F3`. Favicons `favicon-16.png`, `favicon-32.png`; dark variant `icone-512-escuro.png`.

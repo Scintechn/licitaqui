@@ -37,8 +37,23 @@
   --color-success: #18794e;
   --color-success-soft: #e3f1ea;
 
-  /* Attention · "Verificar" — 4.9:1 on ivory */
-  --color-attention: #a15c00;
+  /*
+   * Attention · "Verificar".
+   *
+   * The old #a15c00 was chosen against Ivory (4.87:1) but the badge, the quota
+   * chip and the visitor banner all paint it on --color-attention-soft, its own
+   * fill, where it measured **4.42:1** — under AA for normal text, on 11px
+   * uppercase mono. Darkened until the pairing that actually ships clears it:
+   *
+   *   #8f5200 on #f7ebdd (soft)    5.30:1
+   *   #8f5200 on #fbf7f3 (ivory)   5.84:1
+   *   #8f5200 on #ffffff (surface) 6.22:1
+   *
+   * Measure a colour against the fill it is painted on, not against the page.
+   * success/muted were checked at the same time and stay as they are: 4.64:1
+   * each on their own soft fill, passing, and lightening either would break it.
+   */
+  --color-attention: #8f5200;
   --color-attention-soft: #f7ebdd;
   --color-attention-line: #e8cfae;
 
@@ -63,7 +78,9 @@
   --color-blue-on-ink: #9db6f2; /* icon blue on graphite: --color-blue-light is too dark there */
 
   /* ------------------------------------------------------------ typography */
-  /* Archivo carries the wdth axis: the wordmark is 800 / wdth 85% / -3%. */
+  /* Archivo is pinned to 600/700/800 (see app/fonts.ts). The wordmark is
+     800 / wdth 85% / -3%, drawn as outlines in components/logo.tsx, so no
+     width axis is loaded. */
   --font-display: var(--font-archivo), 'IBM Plex Sans', system-ui, sans-serif;
   --font-sans: var(--font-plex-sans), system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
