@@ -222,6 +222,18 @@ def b2_conn(b2_connect) -> Iterator[psycopg.Connection]:
         yield connection
 
 
+#: Every job kind a B2 cycle can enqueue, so cleanup cannot fall behind the code.
+#:
+#: It was a literal `('sync_items', 'sync_files')` inside the delete, and that is
+#: exactly how it went stale: the value lane taught the search fallback to
+#: enqueue `refresh_tender_value`, the cleanup did not know about it, and those
+#: rows survived from one test into the next. The test that broke asserts on
+#: **every** kind under `B2_CNPJ-%`, so it saw three tenders' worth of leftovers
+#: from the two `consulta_status=500` tests above it and failed on a list it had
+#: not created. Adding a follow-up kind must mean adding it here.
+B2_JOB_KINDS = ("sync_items", "sync_files", "refresh_tender_value")
+
+
 def _delete_b2_rows(dsn: str) -> None:
     """Remove only the rows B2's tests create. Never truncates."""
     with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
@@ -231,8 +243,8 @@ def _delete_b2_rows(dsn: str) -> None:
             ("sync_open_tenders.%", f"{B2_UF}:%"),
         )
         conn.execute(
-            "delete from jobs where kind in ('sync_items', 'sync_files') and key like %s",
-            (f"{B2_CNPJ}-%",),
+            "delete from jobs where kind = any(%s) and key like %s",
+            (list(B2_JOB_KINDS), f"{B2_CNPJ}-%"),
         )
 
 

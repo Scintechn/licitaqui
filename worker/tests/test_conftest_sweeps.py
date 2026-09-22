@@ -43,3 +43,28 @@ def test_no_sweep_uses_a_hard_coded_interval() -> None:
     source = Path(__file__).with_name("conftest.py").read_text(encoding="utf-8")
     stragglers = re.findall(r"< now\(\) - interval '(?!\{CROSS_RUN_SWEEP_HOURS\})[^']+'", source)
     assert not stragglers, f"age predicates bypassing CROSS_RUN_SWEEP_HOURS: {stragglers}"
+
+
+def test_b2_cleanup_covers_every_kind_its_sweep_can_enqueue() -> None:
+    """Cleanup must not fall behind the code that creates the rows.
+
+    `test_followups_are_queued_as_soon_as_a_handler_exists` asserts on **every**
+    job kind under `B2_CNPJ-%`, so a kind the sweep enqueues and the cleanup does
+    not delete survives into the next test and fails it with rows it never
+    created. That is how `refresh_tender_value` broke that test on main: it was
+    added to the search fallback's follow-ups while `_delete_b2_rows` still
+    named two kinds in a SQL literal.
+
+    Read off the sweep module rather than restated here, so adding a follow-up
+    kind fails this test instead of a distant one two hundred lines away.
+    """
+    from licitaqui.sync_tenders import FOLLOWUP_KINDS, UPGRADE_KIND
+
+    from .conftest import B2_JOB_KINDS
+
+    enqueueable = set(FOLLOWUP_KINDS) | {UPGRADE_KIND}
+    missing = enqueueable - set(B2_JOB_KINDS)
+    assert not missing, (
+        f"B2's cleanup does not delete {sorted(missing)}, which its sweep can "
+        f"enqueue. Those rows will leak into the next test."
+    )
