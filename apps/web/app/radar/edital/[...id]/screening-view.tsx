@@ -15,7 +15,7 @@ import {
 import { cn } from '@/lib/cn'
 import { accountHref } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
-import { priceHref, tenderHref } from '@/lib/radar/client'
+import { priceHref, screeningHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { agencyLine, tenderTitle } from '@/lib/radar/format'
@@ -91,6 +91,13 @@ export type ScreeningViewProps = {
   onSelectTab?: (tab: ScreeningTab) => void
   /** Back to the Opportunity screen this came from. */
   backHref: string
+  /**
+   * The search that got the user here, for every link that leaves this screen
+   * — Documentos, the price block and the two "Criar conta" buttons. Required
+   * for the same reason `client.ts` makes it required: a link that drops it
+   * strands the user on a Radar with no CNPJ and no tab.
+   */
+  search: RadarSearch
   onRetry?: () => void
   now?: Date
 }
@@ -271,17 +278,19 @@ function ScreeningTabs({
   active,
   onSelect,
   tenderId,
+  search,
 }: {
   active: ScreeningTab
   onSelect?: (tab: ScreeningTab) => void
   tenderId: string
+  search: RadarSearch
 }) {
   const items: TabItem<ScreeningTab | 'files'>[] = [
     { id: 'summary', label: page.tabs.summary },
     {
       id: 'files',
       label: page.tabs.files,
-      href: accountHref(tenderHref(tenderId)),
+      href: accountHref(tenderHref(tenderId, search)),
       icon: 'locked',
     },
     { id: 'requirements', label: page.tabs.requirements },
@@ -307,12 +316,14 @@ function Pending({
   status,
   tenderId,
   backHref,
+  search,
   quota,
   onRetry,
 }: {
   status: Exclude<ScreeningStatus, { kind: 'ready' }>
   tenderId: string
   backHref: string
+  search: RadarSearch
   quota: QuotaView | null
   onRetry?: () => void
 }) {
@@ -362,7 +373,7 @@ function Pending({
           )}
           action={
             <Button
-              href={accountHref(`${tenderHref(tenderId)}/triagem`)}
+              href={accountHref(screeningHref(tenderId, search))}
             >
               {copy.visitor.createAccount}
             </Button>
@@ -406,6 +417,7 @@ export function ScreeningView({
   tab = 'summary',
   onSelectTab,
   backHref,
+  search,
   onRetry,
   now = new Date(),
 }: ScreeningViewProps) {
@@ -450,7 +462,7 @@ export function ScreeningView({
         </div>
 
         {ready ? (
-          <ScreeningTabs active={tab} onSelect={onSelectTab} tenderId={tenderId} />
+          <ScreeningTabs active={tab} onSelect={onSelectTab} tenderId={tenderId} search={search} />
         ) : null}
 
         {ready && model ? (
@@ -466,7 +478,7 @@ export function ScreeningView({
 
                 <LockedBlock
                   icon="margin"
-                  href={priceHref(tenderId)}
+                  href={priceHref(tenderId, search)}
                   title={page.priceTitle}
                   description={page.priceBody}
                 />
@@ -499,6 +511,7 @@ export function ScreeningView({
             status={pending}
             tenderId={tenderId}
             backHref={backHref}
+            search={search}
             quota={quota}
             onRetry={onRetry}
           />

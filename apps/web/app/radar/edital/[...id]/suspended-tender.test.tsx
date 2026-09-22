@@ -30,6 +30,7 @@ function opportunity(tender: TenderDetail): string {
       freshness={{ state: 'fresh', updatedAt: '2026-09-22T10:30:00.000Z', ageSeconds: 1_800 }}
       status={{ kind: 'ready' }}
       backHref="/radar"
+      search={{}}
       now={HUPE_NOW}
     />,
   )
@@ -118,10 +119,10 @@ describe('Opportunity · the Divulgada control is unchanged', () => {
 
 describe('Radar card · the list item obeys the same gate', () => {
   const suspended = renderToStaticMarkup(
-    <TenderCardView tender={HUPE_SUSPENDED} now={HUPE_NOW} />,
+    <TenderCardView tender={HUPE_SUSPENDED} now={HUPE_NOW} href={null} />,
   )
   const control = renderToStaticMarkup(
-    <TenderCardView tender={HUPE_DIVULGADA} now={HUPE_NOW} />,
+    <TenderCardView tender={HUPE_DIVULGADA} now={HUPE_NOW} href={null} />,
   )
 
   it('drops the countdown from the card', () => {
@@ -155,6 +156,7 @@ describe('AI result screens carry the same banner (§3.5)', () => {
         item={1}
         status={{ kind: 'ready' }}
         backHref="/radar"
+        search={{}}
       />,
     )
     expect(html).toContain('Edital SUSPENSO pelo órgão')
@@ -171,6 +173,7 @@ describe('AI result screens carry the same banner (§3.5)', () => {
         item={1}
         status={{ kind: 'ready' }}
         backHref="/radar"
+        search={{}}
       />,
     )
     expect(html).not.toContain('pelo órgão em')

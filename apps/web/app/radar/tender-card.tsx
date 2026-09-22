@@ -1,5 +1,4 @@
 import { Card, CardLink, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
-import { tenderHref } from '@/lib/radar/client'
 import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
 import { agencyLine, deadlineShort, meEppSummary, tenderTitle } from '@/lib/radar/format'
 import { cardHeadline, deadlineLabel } from '@/lib/radar/headline'
@@ -94,7 +93,10 @@ export function TenderCardView({
   tender: TenderCard
   now?: Date
   /**
-   * Where the card goes. Defaults to this tender's page on the Radar.
+   * Where the card goes. **Required**, because the one thing this link must
+   * carry is the search that found the tender (`client.ts`'s `tenderHref`), and
+   * a default would be a link that silently drops it — which is the bug the
+   * Radar has now had twice.
    *
    * `null` renders the same card as a plain surface instead of a link — the
    * Landing's "Exemplo" panel, which shows three real tenders frozen at a past
@@ -103,12 +105,11 @@ export function TenderCardView({
    * leads nowhere must also not be a keyboard stop, so it is not an `<a>` with
    * the href removed: it is not an anchor at all.
    */
-  href?: string | null
+  href: string | null
 }) {
   const status = STATUS[tender.group]
   const headline = cardHeadline(tender, now)
   const deadline = deadlineShort(tender.proposalsCloseAt)
-  const target = href === undefined ? tenderHref(tender.id) : href
   const title = tenderTitle(tender.object)
   // The gate (§2.2 rule 6), asked once for the whole card.
   const urgency = mayShowUrgency(tender)
@@ -177,7 +178,7 @@ export function TenderCardView({
               })
             : copy.card.noDeadline}
         </span>
-        {target === null ? null : <Icon name="chevronRight" size={16} />}
+        {href === null ? null : <Icon name="chevronRight" size={16} />}
       </div>
     </>
   )
@@ -185,7 +186,7 @@ export function TenderCardView({
   // `w-full` matters: the list item is a flex container so the cards stretch
   // to equal height in the desktop grid, and a block child of a flex parent
   // is shrink-to-fit, not full width.
-  if (target === null) {
+  if (href === null) {
     return (
       <Card padding="sm" className="flex w-full grow flex-col gap-2">
         {body}
@@ -194,7 +195,7 @@ export function TenderCardView({
   }
 
   return (
-    <CardLink href={target} className="flex w-full grow flex-col gap-2">
+    <CardLink href={href} className="flex w-full grow flex-col gap-2">
       {body}
     </CardLink>
   )
