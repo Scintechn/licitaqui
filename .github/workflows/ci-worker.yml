@@ -69,7 +69,21 @@ jobs:
   integration:
     name: integration (Neon)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A STOPGAP, not a fix. This job grows about a minute per PR — 24m16s (#54),
+    # 27m24s (#60), then past 30 and cancelled on #67 — because every card adds
+    # integration tests and none are ever removed. 45 buys roughly fifteen
+    # minutes of headroom at that rate, which is a few weeks, and then this line
+    # gets raised again by whoever is unlucky.
+    #
+    # The durable answer is a separate piece of work: ~1,000 tests in 30 min is
+    # 1.8 s each against Neon in sa-east-1 where a round trip is ~200 ms, so
+    # most of it is per-test fixture setup rather than assertions. See the
+    # `--durations` profile on the PR that raised this.
+    #
+    # Note when reading a run: `gh pr checks` prints a **cancelled** job as
+    # `fail`, so a timeout here looks exactly like a test failure from the CLI.
+    # Check `conclusion` on the job before concluding a test broke.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: worker
