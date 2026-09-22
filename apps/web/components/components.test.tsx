@@ -11,7 +11,12 @@ import {
   Select,
   StateCard,
   Status,
+  TabPanel,
+  Tabs,
   Tag,
+  panelId,
+  tabId,
+  type TabItem,
 } from './index'
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(node)
@@ -293,5 +298,73 @@ describe('Icon (D3)', () => {
     expect(out).toContain('viewBox="0 0 24 24"')
     expect(out).toContain('stroke-width="1.8"')
     expect(out).toContain('M4 7h16M4 12h16M4 17h16')
+  })
+})
+
+/**
+ * The tab strip, now that both tender screens draw it.
+ *
+ * It lived inside `screening-view.tsx` and the Opportunity screen had none, so
+ * the same tender had tabs after the AI reading and a loose block before it.
+ * These tests pin the two shapes the product needs from one implementation.
+ */
+describe('Tabs', () => {
+  const ITEMS: TabItem[] = [
+    { id: 'items', label: 'Itens' },
+    { id: 'files', label: 'Documentos' },
+  ]
+
+  it('renders a real <button role="tab"> per selectable item', () => {
+    const out = html(<Tabs items={ITEMS} active="items" idPrefix="tender" />)
+    expect(out.match(/role="tab"/g)).toHaveLength(2)
+    expect(out).toContain('role="tablist"')
+    expect(out).toContain('type="button"')
+  })
+
+  it('marks exactly one tab selected, and gives it the blue underline', () => {
+    const out = html(<Tabs items={ITEMS} active="files" idPrefix="tender" />)
+    expect(out.match(/aria-selected="true"/g)).toHaveLength(1)
+    expect(out).toMatch(/aria-selected="true"[^>]*class="[^"]*border-blue/)
+  })
+
+  it('points each tab at the panel it controls, and back again', () => {
+    const strip = html(<Tabs items={ITEMS} active="items" idPrefix="tender" />)
+    const panel = html(
+      <TabPanel idPrefix="tender" id="items">
+        conteúdo
+      </TabPanel>,
+    )
+    expect(strip).toContain(`id="${tabId('tender', 'items')}"`)
+    expect(strip).toContain(`aria-controls="${panelId('tender', 'items')}"`)
+    expect(panel).toContain(`id="${panelId('tender', 'items')}"`)
+    expect(panel).toContain(`aria-labelledby="${tabId('tender', 'items')}"`)
+    expect(panel).toContain('role="tabpanel"')
+  })
+
+  it('namespaces the ids, so two strips on one page cannot collide', () => {
+    const a = html(<Tabs items={ITEMS} active="items" idPrefix="tender" />)
+    const b = html(<Tabs items={ITEMS} active="items" idPrefix="screening" />)
+    expect(a).toContain('tender-tab-items')
+    expect(b).toContain('screening-tab-items')
+    expect(a).not.toContain('screening-tab-items')
+  })
+
+  it('renders a locked item as a real link, never a disabled tab', () => {
+    const out = html(
+      <Tabs
+        items={[{ id: 'summary', label: 'Resumo' }, { id: 'files', label: 'Documentos', href: '/conta/criar', icon: 'locked' }]}
+        active="summary"
+        idPrefix="screening"
+      />,
+    )
+    expect(out).toContain('href="/conta/criar"')
+    expect(out).not.toMatch(/\sdisabled(=|\s|>)/)
+    // One tab, one link — the link is not counted as a selectable tab.
+    expect(out.match(/role="tab"/g)).toHaveLength(1)
+  })
+
+  it('gives every stop the board’s 40px height', () => {
+    const out = html(<Tabs items={ITEMS} active="items" idPrefix="tender" />)
+    expect(out.match(/min-h-10/g)).toHaveLength(2)
   })
 })

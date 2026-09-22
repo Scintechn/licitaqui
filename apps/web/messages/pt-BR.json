@@ -873,9 +873,6 @@
       "showing": "Mostrando {shown} de {total}",
       "apply": "Aplicar filtros",
       "keywordOnly": "Busca por palavra-chave",
-      "object": {
-        "label": "Objeto completo"
-      },
       "seeOther": "Ver {quantos} em {grupo}",
       "allEmpty": {
         "title": "Nada aberto com esses filtros",
@@ -1026,6 +1023,30 @@
       "pncpLinkNewTab": "(abre em uma nova aba)",
       "systemLink": "Abrir no portal de compras",
       "screeningCta": "Ver triagem por IA",
+      "tabs": {
+        "items": "Itens",
+        "files": "Documentos"
+      },
+      "items": {
+        "caption": "Itens do edital, com quantidade e valores estimados pelo órgão.",
+        "number": "Nº",
+        "description": "Descrição",
+        "quantity": "Quantidade",
+        "unitValue": "Valor unitário estimado",
+        "totalValue": "Valor total estimado",
+        "more": "Ver descrição completa",
+        "less": "Ver menos",
+        "showMore": "Ver mais itens",
+        "showing": "Mostrando {shown} de {total} itens",
+        "sum": "Soma dos {count, plural, one {# item} other {# itens}} deste edital",
+        "sumNote": "Estimativa a partir dos dados do edital: é a soma dos valores totais das linhas acima. Não é o valor total da compra declarado pelo órgão.",
+        "emptyTitle": "Sem lista de itens",
+        "emptyBody": "O órgão não publicou os itens deste edital no PNCP, ou eles ainda não chegaram até nós. O edital e seus anexos trazem a especificação completa."
+      },
+      "files": {
+        "emptyTitle": "Nenhum arquivo publicado",
+        "emptyBody": "O órgão não publicou arquivos deste edital no PNCP. Confira no portal de compras."
+      },
       "filesLocked": "Edital e anexos · criar conta",
       "filesLockedNote": "Crie sua conta gratuita para baixar o edital e os anexos.",
       "closedNotice": "As propostas deste edital já encerraram. Ele fica aqui para consulta.",

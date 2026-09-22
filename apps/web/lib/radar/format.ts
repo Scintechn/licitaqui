@@ -158,6 +158,51 @@ export function money(value: string | null | undefined): string | null {
   return `R$ ${INTEGER.format(amount)}`
 }
 
+/**
+ * `R$ 326.668,00`, `R$ 816,67` — the items table, to the centavo.
+ *
+ * `money()` above scales and drops the centavos, which is right for a card
+ * whose 22px slot holds an order of magnitude and wrong here: the Itens tab
+ * exists so a reader can check our rows against PNCP's table line by line, and
+ * `R$ 2,99 mi` cannot be checked against anything. PNCP prints two decimals,
+ * so we print two decimals.
+ *
+ * Unit values carry four decimals in the database (`816.6700`); the currency
+ * format rounds them to two the way PNCP's own table does, which is also what
+ * makes `quantidade × unitário` come out to the total the agency published.
+ */
+const CURRENCY = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+export function moneyExact(value: string | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return null
+  // Intl uses a non-breaking space after "R$"; the tests and the DOM both read
+  // better with an ordinary one, and the figure is `tabular-nums` either way.
+  return CURRENCY.format(amount).replace(/ /g, ' ')
+}
+
+/**
+ * `400`, `1,5`, `12.000` — a quantity as the agency declared it.
+ *
+ * `numeric(…)` comes off the wire as `400.0`, and "400,0 Hora" is noise. Up to
+ * four decimals are kept because agencies really do publish fractional
+ * quantities (metres, tonnes); trailing zeros are not.
+ */
+const QUANTITY = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 })
+
+export function quantity(value: string | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return null
+  return QUANTITY.format(amount)
+}
+
 export type AgeParts =
   | { unit: 'now'; count: 0 }
   | { unit: 'minutes' | 'hours' | 'days'; count: number }

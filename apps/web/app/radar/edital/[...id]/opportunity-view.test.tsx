@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { format, messages } from '@/lib/messages'
 import type { SegmentFit, TenderDetail } from '@/lib/radar/contract'
 import { ACCOUNT_HREF } from '@/lib/routes'
+import { TENDER_ITEMS_FIXTURE } from '@/lib/radar/items-fixture'
 import { OpportunityView, matchKind, reasons, type OpportunityViewProps } from './opportunity-view'
 
 const NOW = new Date('2026-09-17T15:00:00.000Z')
@@ -163,7 +164,7 @@ describe('the Opportunity screen', () => {
   })
 
   it('locks the files behind the account, as a real link and not a disabled control', () => {
-    const out = render()
+    const out = render({ tab: 'files' })
     expect(out).toContain(page.filesLocked)
     expect(out).toContain(`href="${ACCOUNT_HREF}"`)
     expect(out).toContain('border-dashed')
@@ -370,6 +371,64 @@ describe('OpportunityView · the whole Objeto', () => {
     expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf(page.screeningCta))
   })
 
+  /**
+   * The order, pinned — restored from task #56, which wrote it and proved it
+   * guards by reverting the move and watching these fail.
+   *
+   * The Objeto is what the edital *is*, "Por que este edital apareceu para
+   * você" is our commentary on it, "Operação" is metadata about it, and the
+   * `Itens`/`Documentos` tabs are its parts. A person reads the thing before
+   * reading what we say about the thing. Moving this block back under the
+   * two-column grid must fail here.
+   *
+   * These three tests were **deleted** by `task/b9-tender-status`, whose merge
+   * (`cc4b766`) also put the block back under the grid and restored
+   * `max-w-[62ch]`. B9's own diff touches `FullObject` zero times, so none of
+   * it was decided — and with the guards gone CI stayed green while undoing a
+   * change Sci had asked for by name. That is the failure mode a pinned order
+   * is supposed to make impossible, so they are back, and the fourth one below
+   * extends the same guard over the tabs this PR adds.
+   */
+  it('comes after the deadline/value box and before everything we say about it', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    const at = (needle: string) => {
+      const i = out.indexOf(needle)
+      expect(i).toBeGreaterThan(-1)
+      return i
+    }
+    expect(at(page.estimatedValue)).toBeLessThan(at(page.objectTitle))
+    expect(at(page.objectTitle)).toBeLessThan(at(page.whyTitle))
+    expect(at(page.objectTitle)).toBeLessThan(at(page.operationTitle))
+  })
+
+  it('spans the content column instead of sharing the two-column grid', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    // The grid wrapper must open *after* the Objeto block, never around it.
+    expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf('min-[900px]:grid'))
+  })
+
+  it('caps the measure rather than setting type across the whole column', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    // 68ch ≈ 570px: inside the 45–75 character band, wider than the 444px
+    // left column it no longer lives in, well short of the 920px container.
+    expect(out).toMatch(/max-w-\[68ch\][^>]*>CONTRATAÇÃO DE EMPRESAS/)
+  })
+
+  it('stays above the record’s tabs: the object is read before its parts', () => {
+    // The fourth guard, and the reason it is its own named test rather than a
+    // side effect of a tab assertion: the last test that pinned this order was
+    // deleted by a lane that had no idea it was load-bearing.
+    const out = render({
+      tender: { ...TENDER, object: LONG, items: TENDER_ITEMS_FIXTURE, itemCount: 15 },
+    })
+    const strip = out.indexOf('role="tablist"')
+    expect(strip).toBeGreaterThan(-1)
+    expect(out.indexOf(page.objectTitle)).toBeLessThan(strip)
+    // …and the tabs still come after the commentary, so the whole chain holds:
+    // box → Objeto → why → Operação → tabs.
+    expect(out.indexOf(page.operationTitle)).toBeLessThan(strip)
+  })
+
   it('is prose, not a second h1', () => {
     const out = render({ tender: { ...TENDER, object: LONG } })
     expect(out.match(/<h1/g)).toHaveLength(1)
@@ -378,5 +437,153 @@ describe('OpportunityView · the whole Objeto', () => {
   it('disappears rather than printing an empty label', () => {
     const out = render({ tender: { ...TENDER, object: '   ' } })
     expect(out).not.toContain(page.objectTitle)
+  })
+})
+
+/**
+ * The record's tabs — the same strip the triagem screen has, on the screen
+ * that comes before it.
+ *
+ * Sci, on the two screens of the same tender: *"I believe we need to keep the
+ * same design system and have the file in the same tabs, not placed surfing
+ * anywhere."* Before this the screen ended in a loose
+ * `EDITAL E ANEXOS · CRIAR CONTA` button with a bare `.zip` link under the
+ * call to action.
+ */
+describe('OpportunityView · the record’s tabs', () => {
+  const WITH_ITEMS: TenderDetail = { ...TENDER, items: TENDER_ITEMS_FIXTURE, itemCount: 15 }
+
+  it('draws the strip the design system already has, not a second one', () => {
+    const out = render({ tender: WITH_ITEMS })
+    expect(out).toContain('role="tablist"')
+    expect(out).toContain('role="tabpanel"')
+    expect(out).toContain(page.tabs.items)
+    expect(out).toContain(page.tabs.files)
+  })
+
+  it('opens on Itens, which is why Sci was opening PNCP beside us', () => {
+    const out = render({ tender: WITH_ITEMS })
+    expect(out).toMatch(/aria-selected="true"[^>]*>[\s\S]{0,40}Itens/)
+    expect(out).toContain('FILMAGEM COM CAMÊRA')
+    expect(out).toContain('R$ 326.668,00')
+  })
+
+  it('carries no stray files block outside the tabs any more', () => {
+    const out = render({ tender: WITH_ITEMS })
+    const panel = out.slice(out.indexOf('role="tablist"'))
+    // The only occurrence of the locked label is inside the Documentos panel…
+    expect(out.match(new RegExp(page.filesLocked, 'g'))).toBeNull()
+    // …and on the Itens tab it is not on the screen at all.
+    expect(panel).not.toContain(page.filesLocked)
+  })
+
+  it('puts the tabs after the Objeto, the way PNCP puts them after the object', () => {
+    const out = render({ tender: WITH_ITEMS })
+    expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf('role="tablist"'))
+  })
+
+  it('never puts the Objeto, the why-list or Operação behind a tab', () => {
+    const out = render({ tender: WITH_ITEMS })
+    const strip = out.indexOf('role="tablist"')
+    for (const outside of [page.objectTitle, page.whyTitle, page.operationTitle]) {
+      expect(out.indexOf(outside)).toBeLessThan(strip)
+    }
+  })
+
+  it('keeps the deadline and value card above the tabs', () => {
+    const out = render({ tender: WITH_ITEMS })
+    expect(out.indexOf(page.proposalsUntil)).toBeLessThan(out.indexOf('role="tablist"'))
+    expect(out.indexOf(page.estimatedValue)).toBeLessThan(out.indexOf('role="tablist"'))
+  })
+})
+
+describe('OpportunityView · the Documentos tab', () => {
+  const FILE = {
+    sequence: 1,
+    title: 'TR, Edital e seus anexos 32.2026.zip',
+    docType: 'Edital',
+    url: 'https://pncp.gov.br/arquivo/32-2026.zip',
+    publishedAt: '2026-09-14T12:00:00.000Z',
+    pages: null,
+    noText: false,
+  }
+
+  it('shows a visitor that documents exist and that an account opens them', () => {
+    const out = render({ tab: 'files' })
+    expect(out).toContain(page.filesLocked)
+    expect(out).toContain(page.filesLockedNote)
+    // The dashed upsell surface, inside the panel, as a real link.
+    expect(out).toContain('border-dashed')
+    expect(out).toContain(`href="${ACCOUNT_HREF}"`)
+  })
+
+  it('marks the locked tab with the padlock before it is opened', () => {
+    const out = render({ tab: 'items' })
+    const strip = out.slice(out.indexOf('role="tablist"'), out.indexOf('role="tabpanel"'))
+    expect(strip).toContain(page.tabs.files)
+    expect(strip).toContain('<svg')
+  })
+
+  it('keeps the tab selectable for a visitor rather than linking straight out', () => {
+    // The screening screen locks Documentos as a link because the files are
+    // elsewhere; here the panel is the explanation, so it has to be openable.
+    const out = render({ tab: 'items' })
+    const strip = out.slice(out.indexOf('role="tablist"'), out.indexOf('role="tabpanel"'))
+    expect(strip.match(/role="tab"/g)).toHaveLength(2)
+    expect(strip).not.toContain('href=')
+  })
+
+  it('lists the real files for someone who has an account', () => {
+    const out = render({ tab: 'files', tender: { ...TENDER, files: [FILE] } })
+    expect(out).toContain('TR, Edital e seus anexos 32.2026.zip')
+    expect(out).toContain(FILE.url)
+    expect(out).not.toContain(page.filesLocked)
+  })
+
+  it('says the agency published nothing rather than showing an empty tab', () => {
+    const out = render({ tab: 'files', tender: { ...TENDER, files: [] } })
+    expect(out).toContain(page.files.emptyTitle)
+    expect(out).toContain(page.files.emptyBody)
+    expect(out).not.toContain(page.filesLocked)
+  })
+})
+
+describe('OpportunityView · the tabs and the B9 status gate', () => {
+  const SUSPENDED: TenderDetail = {
+    ...TENDER,
+    status: 'Suspensa',
+    items: TENDER_ITEMS_FIXTURE,
+    itemCount: 15,
+  }
+
+  it('still banners the suspension above everything, tabs and all', () => {
+    const out = render({ tender: SUSPENDED })
+    expect(out).toContain(copy.status.chip.suspensa)
+    expect(out.indexOf(copy.status.chip.suspensa)).toBeLessThan(out.indexOf('role="tablist"'))
+  })
+
+  it('adds no urgency of its own: the items tab says nothing about the clock', () => {
+    const out = render({ tender: SUSPENDED })
+    for (const urgency of ['último dia', 'restantes', 'Ainda dá tempo', 'dias']) {
+      expect(out).not.toContain(urgency)
+    }
+  })
+
+  it('shows the items anyway — suppressing urgency is not hiding the tender', () => {
+    const out = render({ tender: SUSPENDED })
+    expect(out).toContain('R$ 326.668,00')
+    expect(out).toContain('R$ 2.988.571,02')
+  })
+
+  it('never lets the sum of the items pass for the tender’s own value', () => {
+    // `estimated_value` is null on this tender in production; the card above
+    // must say so and the tab below must not quietly fill the gap.
+    const out = render({
+      tender: { ...SUSPENDED, estimatedValue: null },
+    })
+    expect(out).toContain(copy.card.noValue)
+    const value = out.slice(out.indexOf(page.estimatedValue), out.indexOf('role="tablist"'))
+    expect(value).not.toContain('2.988.571,02')
+    expect(out).toContain(messages.radar.opportunity.items.sumNote)
   })
 })
