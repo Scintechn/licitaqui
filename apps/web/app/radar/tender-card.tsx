@@ -4,6 +4,7 @@ import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
 import { agencyLine, deadlineShort, meEppSummary } from '@/lib/radar/format'
 import { cardHeadline, deadlineLabel } from '@/lib/radar/headline'
 import { tenderObject } from '@/lib/radar/object'
+import { mayShowUrgency, statusChipLabel } from '@/lib/radar/tender-status'
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
 
@@ -157,17 +158,28 @@ export function TenderCardView({
   const deadline = deadlineShort(tender.proposalsCloseAt)
   const target = href === undefined ? tenderHref(tender.id) : href
   const object = tenderObject(tender.object)
+  // The gate (§2.2 rule 6), asked once for the whole card.
+  const urgency = mayShowUrgency(tender)
+  const statusChip = statusChipLabel(tender)
 
   // When the deadline has been promoted into the anchor it is the same string
   // the top-right countdown prints, so the countdown steps aside rather than
   // saying "13 dias" twice on one card.
   const countdown =
-    headline.anchor?.fact === 'deadline' ? null : deadlineLabel(tender.proposalsCloseAt, now)
+    !urgency || headline.anchor?.fact === 'deadline'
+      ? null
+      : deadlineLabel(tender.proposalsCloseAt, now)
 
   const body = (
     <>
       <div className="flex items-center justify-between gap-2">
-        <Status kind={status.kind}>{status.label}</Status>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Status kind={status.kind}>{status.label}</Status>
+          {/* §3.3: the state has to be visible *before* the tender is opened,
+              or the user spends the click to find out. Where the countdown
+              used to be is exactly where they were already looking. */}
+          {statusChip === null ? null : <Status kind="check">{statusChip}</Status>}
+        </div>
         {countdown === null ? null : (
           <span className="text-caption text-muted">{countdown}</span>
         )}
@@ -201,10 +213,17 @@ export function TenderCardView({
 
       <TenderTags tender={tender} />
 
+      {/* The date stays — a user tracking this tender needs to know which one
+          lapsed — but "Proposta até 30/09" asserts the window is still open,
+          so on a stopped tender it is relabelled "Data anterior". */}
       <div className="flex items-center gap-2 text-meta text-muted">
         <Icon name="deadline" size={16} />
         <span className="grow">
-          {deadline ? format(copy.card.proposalsUntil, { quando: deadline }) : copy.card.noDeadline}
+          {deadline
+            ? format(urgency ? copy.card.proposalsUntil : copy.card.previousDeadline, {
+                quando: deadline,
+              })
+            : copy.card.noDeadline}
         </span>
         {target === null ? null : <Icon name="chevronRight" size={16} />}
       </div>

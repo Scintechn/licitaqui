@@ -62,6 +62,7 @@ type HeaderRow = {
   favored_treatment: boolean | null
   segments: string[] | null
   updated_at: Date | string
+  pncp_updated_at: Date | string | null
   /** The older of the header and the oldest item — see the note above. */
   cache_updated_at: Date | string
   closed: boolean
@@ -111,7 +112,7 @@ export async function readTender(
            t.modality_name, t.status, t.price_registration, t.proposals_open_at,
            t.proposals_close_at, t.estimated_value, t.confidential_budget,
            t.bidding_system_url, t.me_epp_summary, t.favored_treatment, t.segments,
-           t.updated_at,
+           t.updated_at, t.pncp_updated_at,
            least(t.updated_at, coalesce((select min(i.updated_at) from tender_items i
                                           where i.tender_id = t.id), t.updated_at))
              as cache_updated_at,
@@ -154,6 +155,9 @@ export async function readTender(
     state: row.state,
     modalityName: row.modality_name,
     status: row.status,
+    pncpUpdatedAt: row.pncp_updated_at
+      ? new Date(row.pncp_updated_at).toISOString()
+      : null,
     priceRegistration: Boolean(row.price_registration),
     proposalsOpenAt: row.proposals_open_at ? new Date(row.proposals_open_at).toISOString() : null,
     proposalsCloseAt: row.proposals_close_at

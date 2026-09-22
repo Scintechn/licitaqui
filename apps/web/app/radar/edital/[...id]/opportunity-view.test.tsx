@@ -31,7 +31,12 @@ const TENDER: TenderDetail = {
   city: 'Campinas',
   state: 'SP',
   modalityName: 'Pregão eletrônico',
-  status: 'Recebendo propostas',
+  // PNCP's own vocabulary. It used to read 'Recebendo propostas', which is a
+  // value the domain table does not have — and under the gate an unrecognised
+  // status means no urgency, so the invented string would have silently turned
+  // this control fixture into a suspended one.
+  status: 'Divulgada no PNCP',
+  pncpUpdatedAt: '2026-09-16T10:00:00.000Z',
   priceRegistration: true,
   proposalsOpenAt: '2026-09-16T13:00:00.000Z',
   proposalsCloseAt: '2026-09-30T11:30:00.000Z',

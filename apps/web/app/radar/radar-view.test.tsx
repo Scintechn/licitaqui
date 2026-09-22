@@ -48,6 +48,8 @@ const TENDER: TenderCard = {
   itemCount: 7,
   segments: ['Gráfico / Escritório'],
   matchedSegments: [COMPANY.segments[0]],
+  status: 'Divulgada no PNCP',
+  pncpUpdatedAt: '2026-09-16T10:00:00.000Z',
   group: 'compatible',
 }
 

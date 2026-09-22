@@ -51,6 +51,12 @@ const AA_NORMAL = 4.5
 const PAIRS: [string, string, string][] = [
   // The one this file was written for: Status kind="check", Tag tone="attention".
   ['attention', 'attention-soft', 'the VERIFICAR badge and the quota chip, 11px'],
+  // B9's tender-status banner and the SUSPENSA/REVOGADA/ANULADA chip paint the
+  // same pair. Listed separately because it is a different surface, and because
+  // the first draft quieted the banner's source line with `opacity-90` — which
+  // blends this 5.30:1 down to 4.37:1 and fails. Opacity over a soft fill is
+  // not a free way to make text secondary.
+  ['attention', 'attention-soft', 'the tender-status banner and its status chip'],
   ['attention', 'ivory', 'admin counters and the screening page marker'],
   ['attention', 'surface', 'a Tag tone="attention" on a card'],
 

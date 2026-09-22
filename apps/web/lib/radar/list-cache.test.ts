@@ -76,6 +76,8 @@ function tender(id: string, close = '2026-09-30T11:30:00.000Z'): TenderCard {
     city: 'Campinas',
     state: 'SP',
     modalityName: 'Pregão eletrônico',
+    status: 'Divulgada no PNCP',
+    pncpUpdatedAt: null,
     proposalsCloseAt: close,
     estimatedValue: null,
     confidentialBudget: false,

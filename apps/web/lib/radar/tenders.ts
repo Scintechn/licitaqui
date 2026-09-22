@@ -3,6 +3,7 @@ import { readOrEnqueue, TTL, type Cached } from '@/lib/cache'
 import { db, type Executor } from '@/lib/db'
 import { JOB_KINDS } from '@/lib/jobs'
 import type { SegmentFit, TenderCard, TenderGroup } from './contract'
+import { DIVULGADA } from './tender-status'
 
 /**
  * The Radar list (spec §8 `GET /api/radar/tenders`): every open tender that
@@ -81,30 +82,59 @@ type TenderRow = {
   item_count: string | number | null
   segments: string[] | null
   grp: TenderGroup
+  status: string | null
+  halted: boolean
   updated_at: Date | string
+  pncp_updated_at: Date | string | null
 }
 
 /**
- * A keyset cursor over the sort key `(proposals_close_at, id)`.
+ * Non-Divulgada tenders sort below Divulgada ones (`TENDER_STATUS_AND_WATCH`
+ * §3.4), and this is the expression that says so — one definition, shared by
+ * the `order by`, the projection and the cursor, because a sort key that does
+ * not match its cursor silently skips rows at every page boundary.
+ *
+ * `is distinct from` rather than `<>`: a null status must be *halted*, not
+ * null, or it would sort as unknown and the gate in `tender-status.ts` (which
+ * treats unknown as "no urgency") and the list would disagree about the same
+ * row. Postgres sorts `false` before `true`, so Divulgada comes first.
+ *
+ * They are sorted down, never filtered out: a user may be tracking exactly the
+ * tender that was suspended, and hiding it is how they would find out too late.
+ */
+const HALTED = sql`(t.status is distinct from ${DIVULGADA})`
+
+/**
+ * A keyset cursor over the sort key `(halted, proposals_close_at, id)`.
  *
  * Offset pagination would skip or repeat a tender every time the 30-minute
  * sweep inserts one between two page loads, which on a deadline-ordered list is
  * exactly the tender the user was scrolling towards.
+ *
+ * `halted` joined the key when B9 pushed stopped tenders below open ones. A
+ * cursor minted before that carries two fields; it is read as `halted=false`
+ * rather than rejected, so a page-2 request already in flight during the deploy
+ * lands on the Divulgada run instead of silently restarting at page 1.
  */
 function encodeCursor(row: TenderRow): string {
   const closeAt = row.proposals_close_at ? new Date(row.proposals_close_at).toISOString() : ''
-  return Buffer.from(`${closeAt}|${row.id}`, 'utf8').toString('base64url')
+  return Buffer.from(`${row.halted ? '1' : '0'}|${closeAt}|${row.id}`, 'utf8').toString(
+    'base64url',
+  )
 }
 
-function decodeCursor(cursor: string): { closeAt: string | null; id: string } | null {
+function decodeCursor(
+  cursor: string,
+): { halted: boolean; closeAt: string | null; id: string } | null {
   try {
     const raw = Buffer.from(cursor, 'base64url').toString('utf8')
-    const separator = raw.indexOf('|')
-    if (separator < 0) return null
-    const closeAt = raw.slice(0, separator)
-    const id = raw.slice(separator + 1)
+    const parts = raw.split('|')
+    // An id may itself contain no `|` (it is `cnpj-1-sequence/year`), so the
+    // field count alone tells the two formats apart.
+    const [halted, closeAt, id] =
+      parts.length >= 3 ? parts : ['0', parts[0] ?? '', parts[1] ?? '']
     if (!id) return null
-    return { closeAt: closeAt || null, id }
+    return { halted: halted === '1', closeAt: closeAt || null, id }
   } catch {
     return null
   }
@@ -182,9 +212,11 @@ export async function listTenders(
   const after: SQL[] = cursor
     ? [
         sql`(
+          ${HALTED},
           coalesce(t.proposals_close_at, 'infinity'::timestamptz),
           t.id
         ) > (
+          ${cursor.halted}::boolean,
           coalesce(${cursor.closeAt}::timestamptz, 'infinity'::timestamptz),
           ${cursor.id}::text
         )`,
@@ -196,7 +228,8 @@ export async function listTenders(
       select t.id, t.object, t.agency_name, t.city, t.state, t.modality_name,
              t.proposals_close_at, t.estimated_value, t.confidential_budget,
              t.price_registration, t.me_epp_summary, t.favored_treatment,
-             t.segments, t.updated_at,
+             t.segments, t.updated_at, t.status, t.pncp_updated_at,
+             ${HALTED} as halted,
              -- The board's "7 itens" on the card. One indexed count per row of
              -- the page (at most 50), not per row of the tenders table.
              (select count(*) from tender_items i where i.tender_id = t.id) as item_count,
@@ -205,7 +238,7 @@ export async function listTenders(
     )
     select * from matched
      where grp = ${group}
-     order by coalesce(proposals_close_at, 'infinity'::timestamptz), id
+     order by halted, coalesce(proposals_close_at, 'infinity'::timestamptz), id
      limit ${limit + 1}
   `)
 
@@ -253,6 +286,10 @@ function toCard(row: TenderRow, match: CompanyMatch): TenderCard {
     segments,
     matchedSegments: match.fits.filter((fit) => segments.includes(fit.segment)),
     group: row.grp,
+    status: row.status,
+    pncpUpdatedAt: row.pncp_updated_at
+      ? new Date(row.pncp_updated_at).toISOString()
+      : null,
   }
 }
 
