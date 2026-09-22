@@ -117,3 +117,34 @@ describe('the competitor comparison', () => {
     expect(meta.verifiedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 })
+
+describe('brief §2.2 framing rules', () => {
+  /**
+   * Rules 1-3 of the product-framing section, which exists because there is no
+   * budget for legal review before the first charge. Under CDC art. 30 the copy
+   * *is* the obligation, so these are not style preferences — they are the
+   * mitigation, and a regression here is a legal one.
+   */
+  it('never claims the reader can participate or is eligible (rule 2)', () => {
+    expect(out).not.toContain('pode participar')
+    expect(out).not.toMatch(/está habilitad|sua empresa está apta/i)
+  })
+
+  it('describes past winners, never a tendency about the next bid (rule 1)', () => {
+    // "costuma vencer" puts the tendency on the reader's own bid; the winners
+    // closing at a price is a fact about results that already happened.
+    expect(out).not.toContain('costuma vencer')
+  })
+
+  it('never promises an outcome (rule 1)', () => {
+    expect(out).not.toMatch(/\bvença\b|ganhe licitaç|aumente suas chances|\baprovado\b/i)
+  })
+
+  it('never leaves "preço-alvo" without saying what it is (rule 3)', () => {
+    // A MEI reading "preço-alvo" beside an edital will assume it is the bid.
+    const at = out.indexOf('preço-alvo')
+    if (at !== -1) {
+      expect(out.slice(at, at + 220)).toMatch(/máximo a pagar ao fornecedor/)
+    }
+  })
+})

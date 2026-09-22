@@ -1,6 +1,6 @@
 # LicitaQui — Legal & Billing Brief for Claude Code
 
-**v1.6 · 2026-09-21 · English.** This is the entry point for anything touching **money, contracts, personal data or customer-facing legal copy**. Read this file first; then open only the files listed in §3 that your task needs. Do not restate or re-derive these rules from other documents — when another file disagrees with this one, this one wins and you tell Sci.
+**v1.7 · 2026-09-21 · English.** This is the entry point for anything touching **money, contracts, personal data or customer-facing legal copy**. Read this file first; then open only the files listed in §3 that your task needs. Do not restate or re-derive these rules from other documents — when another file disagrees with this one, this one wins and you tell Sci.
 
 Talk to Sci in Brazilian Portuguese. All customer-facing copy is Brazilian Portuguese. Code, comments and commits in English.
 
@@ -99,6 +99,16 @@ There is no budget for legal review before the first charge, so the exposure is 
 
 Terms §2 states the same limits in the customer's language: the tool does not bid, does not decide, does not recommend a price. Product copy must stay inside that boundary.
 
+**Rulings from the framing sweep of 2026-09-21** — decided, not open:
+
+| String | Ruling |
+|---|---|
+| `radar.opportunity.whyTitle` = "Por que você pode participar" | **Change to "Por que este edital apareceu para você".** The body already complies; the heading was the only place a reading became a verdict. "Pode participar" is a habilitação judgement we do not make |
+| "costuma vencer" (2 strings) | **Reword to the past, with the subject being the data, not the reader:** "a faixa em que os vencedores fecharam na sua região". Describing past public results is factual; "costuma vencer" attaches a tendency to the reader's next bid |
+| "preço-alvo" (4 strings) | **Keep, never alone.** Always paired with what it means: "preço-alvo de compra — o máximo a pagar ao fornecedor para manter a sua margem". A MEI reading "preço-alvo" next to an edital will assume it is the bid |
+| "Até quanto ofertar com lucro" | **Keep as the promise; constrain the screen.** It is the core value proposition and it is honest — a ceiling derived from the reader's own margin. But the result screen never shows the number alone: it shows the inputs (valor estimado do edital, faixa dos vencedores, custo do fornecedor, margem informada pelo usuário) and labels the output "teto para manter a margem que você informou" |
+| `radar.price.estimated` = "Edital paga (estimado)" | Acceptable today. **Rule 3's full label becomes mandatory at B8**, when the winning band unlocks and there are real figures on screen |
+
 ## 3. Files — open only what your task needs
 
 All paths are relative to the knowledge-base root (the folder that holds `CLAUDE.md`).
@@ -168,7 +178,7 @@ Terms §§ referenced below are sections of `legal/termos-de-uso.md`; privacy §
 | Item | Blocks | Note |
 |---|---|---|
 | ~~Publication date~~ | — | **Closed:** pages went live **21/09/2026**; both documents carry that date. The Offer form was already collecting, so the rule "pages live before the first e-mail" decided it over the 10-01 target |
-| Lawyer review | Nothing in development; do it **before the first real charge** (M5, 29/10), not before launch | Scope: terms **§11** liability cap, **§6** price change, **§7** the 3-day reminder (now a self-imposed contractual obligation, so it has its own exposure), **§8** refunds. The briefing to send is `legal/BRIEFING_ADVOGADO.md` — it carries the context and the specific questions. Answer due 20/10 |
+| Lawyer review — **deferred, not cancelled** | Nothing in development. No budget before the first charge, so §2.2 carries the interim mitigation. Revisit after **Gate 0 (06/11)**, when the product has either sold or not | Scope: terms **§11** liability cap, **§6** price change, **§7** the 3-day reminder (now a self-imposed contractual obligation, so it has its own exposure), **§8** refunds. The briefing to send is `legal/BRIEFING_ADVOGADO.md` — it carries the context and the specific questions. Answer due 20/10 |
 | NFS-e with the accountant (G13) | The first real charge | Municipal obligation, not a commercial choice. If required, automating it via Asaas becomes a task. The customer-facing wording stays "segue a legislação vigente" and carries no internal note |
 | ANPD standard contractual clauses with the processors | Legal compliance of privacy §9, not the code | Vercel, Neon, AWS, OpenRouter, Asaas, Resend, Sentry, Google, Cloudflare |
 | Physical address | Nothing for now. Revisit if a marketplace, a payment partner or the lawyer requires it | Decreto 7.962/2013 expects an address in e-commerce; we are publishing CNPJ, e-mails and WhatsApp instead, which is the pragmatic minimum and matches what the company already does elsewhere |
@@ -181,6 +191,7 @@ Terms §§ referenced below are sections of `legal/termos-de-uso.md`; privacy §
 | 1.0 | 2026-09-20 | First version. Company identification without address, no elected forum, refunds and cancellation model locked |
 | 1.1 | 2026-09-20 | Added §0 (how to use this file, and the pointer to `CLAUDE.md` for everything else), support hours, and the 2026-10-01 publication target |
 | 1.2 | 2026-09-21 | 3-day charge reminder made contractual and scheduled (F4, M5); Asaas notifications off, so all billing messaging is ours; added the promise register (§2.1) and the rule that no billing promise ships without a clause and a job |
+| 1.7 | 2026-09-21 | Framing-sweep rulings recorded in §2.2; lawyer review is **deferred, not cancelled** |
 | 1.6 | 2026-09-21 | Terms §2 rewritten with what the tool does and does not do (no bidding, no decision, price is an estimate). Added §2.2 product framing rules — the interim substitute for legal review, which has no budget before the first charge |
 | 1.5 | 2026-09-21 | Lawyer scope now includes §7; `BRIEFING_ADVOGADO.md` written, answer due 20/10 |
 | 1.4 | 2026-09-21 | Missed-reminder policy: never block the charge, but alarm loudly and refund without argument if a customer is surprised; the price-change notice remains the one that blocks. Alarm requirements in spec §14 and F4 |

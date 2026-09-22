@@ -17,9 +17,9 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 2 | Offer omits refunds, which the FAQ says it must carry | M1, 09-24 | medium |
 | 3 | `faq-cobranca.md` carries an internal note | publishing `/ajuda` | medium |
 | 4 | Drafting note stripped at render, not at source | nothing | low |
-| 5 | Publication date is 20/09, brief targeted 10-01 | nothing | low |
+| ~~5~~ | ~~Publication date~~ | — | **closed 21/09** |
 | 6 | Two `subscriptions` columns the brief requires do not exist | F2/F3, M5 | medium |
-| 7 | `/conta/criar` and `/conta/alertas` 404 from live pages | conversion, now | medium |
+| ~~7~~ | ~~`/conta/criar` and `/conta/alertas` 404~~ | — | **closed 21/09** |
 | 8 | Spec still calls the Telegram bot temporary | nothing | low |
 | 9 | Knowledge base and repo disagree on who owns legal copy | future edits | low |
 
@@ -98,7 +98,7 @@ rather than in your Markdown, because brief §5 says nobody else edits the wordi
 at the source and remove the `DRAFTING_NOTE` constant. One or the other; having both
 the note and the stripper is the state that will confuse the next reader.
 
-## 5. The publication date is 20/09/2026, not the 10-01 target
+## ~~5. The publication date~~ — closed, and it is 21/09/2026
 
 Brief §6 targeted **2026-10-01 or later**, reasoning that Essencial should be in beta
 before the date could be estimated. `legal/README.md` says something stricter and
@@ -134,7 +134,7 @@ change, and schema changes are their own PR.
 **To close:** confirm the two columns and their types, and they go into a migration
 with the billing card.
 
-## 7. `/conta/criar` and `/conta/alertas` 404 from live pages
+## ~~7. `/conta/criar` and `/conta/alertas` 404 from live pages~~ — closed 21/09
 
 The live `/` links to `/conta/criar`; `/radar` links to both. Both return 404 behind the
 branded not-found page. D3 documented this as expected until U1 and E1 land, and that
@@ -177,12 +177,13 @@ that file. Left alone, an agent reading it will eventually edit the wrong copy.
 
 From brief §6, unchanged:
 
-- ~~**Lawyer review**~~ — **decided 2026-09-21: not happening.** There is no budget for it
-  before the first charge, so the exposure is managed by **how the product describes
-  itself** instead. Brief §2.2 carries the six rules that replace it, terms §2 states the
-  same limits in the customer's language, and every UI string is now checked against
-  them before shipping. Under CDC art. 30 advertising binds the supplier, which is why
-  accurate copy is a real substitute and not a consolation prize.
+- **Lawyer review — deferred, not cancelled.** There is no budget for it **before the
+  first charge**, so brief §2.2's product-framing rules are the **interim** mitigation and
+  terms §2 states the same limits in the customer's language. **Revisit after Gate 0 on
+  2026-11-06.** Recorded this way deliberately: a document that outlives its budget
+  constraint and says we decided never to review is worse than one that says we ran out of
+  money in September.
+
 - **NFS-e with the accountant (G13)** — municipal obligation, blocks item 3 above.
 - **ANPD standard contractual clauses** with Vercel, Neon, AWS, OpenRouter, Asaas,
   Resend, Sentry, Google and Cloudflare — compliance of privacy §9, not code.
@@ -302,3 +303,24 @@ a transaction. "Garantia contratual" is the edital's own bid-bond field. "quem v
 ofertou…" describes public results and is sourced (`ruler.source`). "Até quanto ofertar
 com lucro" is a ceiling derived from the reader's own margin, not "oferte R$ X" — worth
 Sci's explicit blessing since it is the core value proposition, but compliant as written.
+
+---
+
+# Framing rulings — 2026-09-21
+
+Sci's decisions on the sweep above. All six are in brief §2.2 v1.7; repeated here so a
+reader of this file does not have to hold both open.
+
+| # | Ruling | Applied |
+|---|---|---|
+| 1 | `whyTitle` → "Por que este edital apareceu para você" | ✅ |
+| 2 | "costuma vencer" → "a faixa em que os vencedores fecharam" — the fix is the **subject**, not the verb | ✅ **3 strings, not 2** |
+| 3 | "preço-alvo" kept, **never alone** — always paired with "o máximo a pagar ao fornecedor para manter a sua margem" | ✅ 4 strings |
+| 4 | "Até quanto ofertar com lucro" blessed in marketing; the **result screen** must show the inputs and label the output "teto para manter a margem que você informou" | keys added; the screen lands with the band |
+| 5 | `radar.price.estimated` acceptable today; rule 3's full label **mandatory at B8** | ✅ in B8's acceptance criteria |
+
+**On ruling 2 — I had under-reported.** The sweep listed `radar.landing.opportunity.body`
+under rule 1 but did not flag it, so the ruling named two strings when three carried the
+phrasing. The ruling is about the pattern, so all three are fixed. Worth noting as a
+failure of the sweep rather than of the ruling: a list that matches loosely and triages
+silently can drop a real one.
