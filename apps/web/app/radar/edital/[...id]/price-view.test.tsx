@@ -55,6 +55,9 @@ const TENDER = {
   items: ITEMS,
 } as unknown as TenderDetail
 
+/** A real search, so every outbound link in these views is asserted to carry it. */
+const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+
 function render(overrides: Partial<PriceViewProps> = {}): string {
   const props: PriceViewProps = {
     tenderId: TENDER.id,
@@ -62,6 +65,7 @@ function render(overrides: Partial<PriceViewProps> = {}): string {
     item: null,
     status: { kind: 'ready' },
     backHref: `/radar/edital/${TENDER.id}/triagem`,
+    search: SEARCH,
     ...overrides,
   }
   return renderToStaticMarkup(<PriceView {...props} />)
@@ -125,7 +129,8 @@ describe('PriceView', () => {
   })
 
   it('lets the reader move between the tender’s items', () => {
-    expect(html).toContain(`/radar/edital/${TENDER.id}/preco?item=2`)
+    expect(html).toContain(`/radar/edital/${TENDER.id}/preco?`)
+    expect(html).toContain('item=2')
     expect(html).toContain('aria-current="page"')
   })
 
@@ -165,5 +170,15 @@ describe('PriceView · the AI notice (legal brief §2.2 rule 5)', () => {
   it('keeps the notice off the states that show no result at all', () => {
     expect(render({ status: { kind: 'analyzing' }, tender: null })).not.toContain(notice)
     expect(render({ status: { kind: 'notFound' }, tender: null })).not.toContain(notice)
+  })
+})
+
+/** The item chips are links too, and were the last ones still dropping it. */
+describe('the item chips carry the search', () => {
+  it('keeps the search alongside the item, not instead of it', () => {
+    const html = render({ item: 1 })
+    expect(html).toContain('cnpj=51885242000140')
+    expect(html).toContain('item=2')
+    expect(html).not.toContain(`href="/radar/edital/${TENDER.id}/preco?item=`)
   })
 })

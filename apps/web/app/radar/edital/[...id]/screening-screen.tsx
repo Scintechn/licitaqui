@@ -2,7 +2,14 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { getJobStatus, getScreening, getTender, postScreening, tenderHref } from '@/lib/radar/client'
+import {
+  getJobStatus,
+  getScreening,
+  getTender,
+  postScreening,
+  readSearch,
+  tenderHref,
+} from '@/lib/radar/client'
 import type {
   QuotaView,
   ScreeningReadResponse,
@@ -10,7 +17,7 @@ import type {
   VisitorView,
 } from '@/lib/radar/contract'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
-import { waitForData, type JobStatus } from '@/lib/radar/poll'
+import { waitThenWatch, type JobStatus } from '@/lib/radar/poll'
 import { parseScreening, type ScreeningModel } from '@/lib/radar/screening-result'
 import { ScreeningView, type ScreeningStatus, type ScreeningTab } from './screening-view'
 
@@ -37,6 +44,30 @@ import { ScreeningView, type ScreeningStatus, type ScreeningTab } from './screen
  * Three ways out, and the screen has a different sentence for each: the row
  * arrives (`ready` / `noText`), the job failed (`failed`), or 60 s went by and
  * it is still running (`timeout`, which offers a retry rather than spinning).
+ *
+ * ## …and why 60 s is not where the waiting stops
+ *
+ * §3.1's sixty seconds is the deadline for a read whose job writes a row in
+ * one hop. An `ai_screening` is not that: it is `sync_files`, a PDF download
+ * (§7.2 allows 120 s), `extract_text`, then the lite model (90 s). The two
+ * budgets never agreed, so the poll was structurally certain to give up first.
+ *
+ * Measured on production, 2026-09-22, CNPJ 36955612000185 on
+ * `13654405000195-1-000033/2026`: the screen showed "está demorando" at 60 s
+ * and made no further request; `GET /api/tenders/:id/screening` answered
+ * `ready` at **≈178 s**, to a probe, while the screen that had asked for it
+ * sat on the timeout card. Pressing Voltar and opening the triagem again
+ * showed the analysis at once — Sci's report, exactly.
+ *
+ * So the deadline is no longer where the reading stops. When it passes, the
+ * screen says so — the honest card, with its retry — and **keeps reading
+ * behind it** every ten seconds, which is §3.1's own shape ("respond with what
+ * we have, refresh behind it") applied to a screen instead of a route. The
+ * result replaces the card the moment it lands, with no second navigation and
+ * no second request. Nothing is persisted for this: a completed screening is a
+ * row in `ai_analyses`, so a document that *does* unload re-reads it on the
+ * way back (the `POST` answers `200 ready` from cache and charges nothing —
+ * `quota.spend` de-duplicates on the tender id).
  */
 
 type Data = {
@@ -71,10 +102,11 @@ export function ScreeningScreen({ id }: { id: string }) {
   const [tab, setTab] = useState<ScreeningTab>('summary')
   const [data, setData] = useState<Data>(INITIAL)
 
-  // Back to the Opportunity screen, carrying the Radar filters through so the
-  // second "Voltar" still lands on the list the user came from.
-  const query = params.toString()
-  const backHref = `${tenderHref(id)}${query ? `?${query}` : ''}`
+  // The search this screen is carrying, read once. "Voltar" goes back to the
+  // Opportunity screen with it, so the *second* "Voltar" still lands on the
+  // list the user came from; the view builds its own outbound links from it.
+  const search = readSearch(params)
+  const backHref = tenderHref(id, search)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -122,8 +154,9 @@ export function ScreeningScreen({ id }: { id: string }) {
       }
 
       // 202: queued. Show the spinner immediately, then poll the read route.
+      const tender = await header
       setData({
-        tender: await header,
+        tender,
         model: null,
         quota: asked.quota,
         visitor: asked.visitor ?? null,
@@ -133,18 +166,27 @@ export function ScreeningScreen({ id }: { id: string }) {
       const job = asked.job
       let lastStatus: JobStatus | null = null
 
-      const { value, timedOut } = await waitForData<ScreeningReadResponse>({
+      const { value, timedOut, watched } = await waitThenWatch<ScreeningReadResponse>({
         read: () => getScreening(id, signal),
-        analyzing: (answer) =>
-          answer.state === 'pending' && lastStatus !== 'failed' ? job : null,
+        analyzing: (answer) => (answer.state === 'pending' && lastStatus !== 'failed' ? job : null),
         pollJob: async (jobId) => {
           lastStatus = await getJobStatus(jobId, signal)
           return lastStatus
         },
+        // §3.1's sixty seconds are up and the job is still running: say so, and
+        // go on reading behind the card rather than stopping on it.
+        onTimeout: (answer) => {
+          if (answer.state !== 'pending') return
+          setData({
+            tender,
+            model: null,
+            quota: answer.quota,
+            visitor: answer.visitor ?? null,
+            status: { kind: 'timeout' },
+          })
+        },
         signal,
       })
-
-      const tender = await header
 
       if (value.state === 'error') {
         setData({
@@ -161,6 +203,9 @@ export function ScreeningScreen({ id }: { id: string }) {
       }
 
       if (value.state === 'pending') {
+        // The watch ran its five minutes and the card it put on screen is
+        // still the right one: re-setting it would re-render for nothing.
+        if (watched && timedOut) return
         setData({
           tender,
           model: null,
@@ -195,6 +240,51 @@ export function ScreeningScreen({ id }: { id: string }) {
     return () => controller.abort()
   }, [id, attempt])
 
+  /**
+   * Coming back to a screen that was left waiting.
+   *
+   * The watch above covers the case where the tab stays in front. It does not
+   * cover a phone: a backgrounded tab has its timers throttled to roughly one
+   * a minute, and a user who left for longer than the watch comes back to a
+   * card about a screening that finished while they were away. So returning is
+   * itself a reason to re-read — one `GET`, which never spends and never
+   * enqueues — and the answer takes the card's place.
+   *
+   * `pageshow` as well as `visibilitychange`, because a bfcache restore (the
+   * browser's own Back, on iOS especially) puts this component back on screen
+   * with its state intact and fires neither an effect nor a visibility change.
+   */
+  const waiting = data.status.kind === 'analyzing' || data.status.kind === 'timeout'
+  useEffect(() => {
+    if (!waiting) return
+    const controller = new AbortController()
+    const reread = () => {
+      if (document.visibilityState !== 'visible') return
+      getScreening(id, controller.signal)
+        .then((answer) => {
+          if (answer.state !== 'ready') return
+          const model = parseScreening(answer.result, answer.citationCheck, answer.rules)
+          setData((previous) => ({
+            ...previous,
+            model,
+            quota: answer.quota,
+            visitor: answer.visitor ?? previous.visitor,
+            status: readyStatus(answer.status, model),
+          }))
+        })
+        // A refresh that fails behind a card which is on screen and honest
+        // must not turn that card into an error.
+        .catch(() => {})
+    }
+    document.addEventListener('visibilitychange', reread)
+    window.addEventListener('pageshow', reread)
+    return () => {
+      controller.abort()
+      document.removeEventListener('visibilitychange', reread)
+      window.removeEventListener('pageshow', reread)
+    }
+  }, [id, waiting])
+
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
 
   return (
@@ -208,6 +298,7 @@ export function ScreeningScreen({ id }: { id: string }) {
       tab={tab}
       onSelectTab={setTab}
       backHref={backHref}
+      search={search}
       onRetry={onRetry}
     />
   )

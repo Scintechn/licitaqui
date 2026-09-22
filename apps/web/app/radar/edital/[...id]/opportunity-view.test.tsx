@@ -55,12 +55,24 @@ const TENDER: TenderDetail = {
   closed: false,
 }
 
+/** A real search, so every outbound link in these views is asserted to carry it. */
+const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+
+/**
+ * The state Sci was actually in when he reported the button: a reading exists
+ * and he had already paid for it. The default here so the rest of the file
+ * renders a realistic screen rather than one with the state missing.
+ */
+const SCREENED = { ready: true, spent: true } as const
+
 function render(overrides: Partial<OpportunityViewProps> = {}): string {
   const props: OpportunityViewProps = {
     tender: TENDER,
     freshness: { state: 'fresh', updatedAt: '2026-09-17T14:30:00.000Z', ageSeconds: 1_800 },
     status: { kind: 'ready' },
-    backHref: '/radar?cnpj=51885242000140',
+    backHref: '/radar?cnpj=51885242000140&group=check',
+    search: SEARCH,
+    screening: SCREENED,
     now: NOW,
     ...overrides,
   }
@@ -172,9 +184,7 @@ describe('the Opportunity screen', () => {
   })
 
   it('leads to the screening at the address the design gives it', () => {
-    expect(render()).toContain(
-      'href="/radar/edital/51885242000140-1-000744/2026/triagem"',
-    )
+    expect(render()).toContain('href="/radar/edital/51885242000140-1-000744/2026/triagem?')
   })
 
   it('opens the agency portal in a new tab, safely', () => {
@@ -607,5 +617,78 @@ describe('OpportunityView · the tabs and the B9 status gate', () => {
     const value = out.slice(out.indexOf(page.estimatedValue), out.indexOf('role="tablist"'))
     expect(value).not.toContain('2.988.571,02')
     expect(out).toContain(messages.radar.opportunity.items.sumNote)
+  })
+})
+
+/**
+ * Sci, on production, the same evening the card → tender link was fixed: *"I
+ * lost the list of items after I came back from seeing the AI triagem."* The
+ * CTA below was `${tenderHref(id)}/triagem` — the tender's address with a word
+ * stuck on the end and the search left behind — so the triagem screen, which
+ * reads its own "Voltar" out of its query string, had nothing to read.
+ */
+describe('the link out of this screen carries the search', () => {
+  it('sends the CTA the CNPJ, the UF, the words and the tab', () => {
+    expect(render()).toContain(
+      `href="/radar/edital/${TENDER.id}/triagem?cnpj=51885242000140&amp;uf=SP&amp;q=papel&amp;group=check"`,
+    )
+  })
+
+  it('never links to a bare triagem', () => {
+    expect(render()).not.toContain(`href="/radar/edital/${TENDER.id}/triagem"`)
+  })
+})
+
+/**
+ * Sci, on production: *"I already have the AI Triage for this item … but the
+ * button remains like the first time, for my user."* It did: the CTA was one
+ * fixed string, because nothing in the tender payload knew a screening had
+ * ever happened. Opening a reading you have paid for is free; opening one you
+ * have not spends from §10's allowance **whether or not the shared analysis
+ * already exists** (§3.2) — two actions that were sharing a label.
+ */
+describe('the call to action says which of the two actions it is', () => {
+  it('offers to open, and says it is free, once this caller has paid', () => {
+    const out = render({ screening: { ready: true, spent: true } })
+    expect(out).toContain(page.screeningCta)
+    expect(out).toContain(page.screeningDone)
+    expect(out).not.toContain(page.screeningCtaNew)
+  })
+
+  it('warns that it costs a triagem when this caller has not paid', () => {
+    const out = render({ screening: { ready: false, spent: false } })
+    expect(out).toContain(page.screeningCtaNew)
+    expect(out).toContain(page.screeningCost)
+    expect(out).not.toContain(page.screeningDone)
+  })
+
+  /**
+   * The case §3.2 creates and §10 charges for: somebody else's screening of
+   * this edital is already in `ai_analyses`, and this user still spends one to
+   * read it. Saying "Ver" here would promise a free look at a paid door.
+   */
+  it('still warns when a reading exists that this caller has not paid for', () => {
+    const out = render({ screening: { ready: true, spent: false } })
+    expect(out).toContain(page.screeningCtaNew)
+    expect(out).toContain(page.screeningCostReady)
+    expect(out).not.toContain(page.screeningDone)
+  })
+
+  /**
+   * Paid, but nothing to show yet — the job is still running, or the agency
+   * republished the edital and `files_hash` moved, so `readScreening` no
+   * longer matches. Free to open either way, and the screen behind it is the
+   * one that says what it found.
+   */
+  it('is free to open when paid for even if the reading is not current', () => {
+    const out = render({ screening: { ready: false, spent: true } })
+    expect(out).toContain(page.screeningCta)
+    expect(out).toContain(page.screeningDone)
+  })
+
+  it('says nothing about cost before the route has answered', () => {
+    const out = render({ screening: null })
+    expect(out).not.toContain(page.screeningDone)
+    expect(out).not.toContain(page.screeningCost)
   })
 })

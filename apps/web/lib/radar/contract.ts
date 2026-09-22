@@ -224,10 +224,27 @@ export type TenderDetail = TenderCard & {
   closed: boolean
 }
 
+/**
+ * Whether this tender already has an AI reading, and whether *this* caller has
+ * paid for it — so the Opportunity screen can name its own button.
+ *
+ * On the response rather than inside `TenderDetail`, the way `freshness` is:
+ * `TenderDetail` extends `TenderCard`, which is shared tender data, and `spent`
+ * is a fact about the viewer. `ai_analyses` has no `user_id` at all (§3.2: the
+ * analysis is shared), which is exactly why these are two fields.
+ */
+export type ScreeningAvailability = {
+  /** A reading of the edital **as it stands now** exists. */
+  ready: boolean
+  /** This caller already spent a screening on this tender, so opening is free. */
+  spent: boolean
+}
+
 export type TenderOk = {
   state: 'ready'
   tender: TenderDetail
   freshness: Freshness
+  screening: ScreeningAvailability
 }
 
 export type TenderResponse = TenderOk | Analyzing | ApiError

@@ -2,7 +2,15 @@ import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 import { enqueueJob, JOB_KINDS, PRIORITY_USER_WAITING, screeningJobKey, type EnqueuedJob } from '@/lib/jobs'
 import type { ScreeningOk, QuotaView } from './contract'
-import { FEATURES, readLimit, spend, type Spender } from './quota'
+import {
+  FEATURES,
+  periodStart,
+  readLimit,
+  spend,
+  spenderPredicate,
+  type Limit,
+  type Spender,
+} from './quota'
 
 /**
  * `POST /api/tenders/:id/screening` — the triagem (spec §8, §3.2).
@@ -101,18 +109,19 @@ function syncMarkerName(tenderId: string) {
   return `sync_files:${tenderId}`
 }
 
-export async function readScreening(
-  tenderId: string,
-  database: Executor = db(),
-): Promise<CachedAnalysis | null> {
-  // The `coalesce` is the "no marker means no filter" rule above, kept in the
-  // same statement rather than in a second round trip: with a marker the row's
-  // `files_hash` must equal it, without one the row is compared to itself and
-  // every usable row stays eligible. `is not distinct from` so that a row
-  // written with no hash at all is excluded once a real digest is known,
-  // instead of vanishing into a NULL comparison.
-  const found = await database.execute<AnalysisRow>(sql`
-    select status, result, citation_check, rules, created_at
+/**
+ * **Which row is this tender's current analysis** — the whole rule above, in
+ * one place, because it is the definition of "we have read this edital" and a
+ * second copy of it would be a second definition.
+ *
+ * The `coalesce` is the "no marker means no filter" rule: with a marker the
+ * row's `files_hash` must equal it, without one the row is compared to itself
+ * and every usable row stays eligible. `is not distinct from` so that a row
+ * written with no hash at all is excluded once a real digest is known, instead
+ * of vanishing into a NULL comparison.
+ */
+function currentAnalysis(tenderId: string) {
+  return sql`
       from ai_analyses a
      where a.tender_id = ${tenderId}
        and a.mode = ${SCREENING_MODE}
@@ -126,6 +135,16 @@ export async function readScreening(
              a.files_hash)
      order by extraction_version desc nulls last, created_at desc
      limit 1
+  `
+}
+
+export async function readScreening(
+  tenderId: string,
+  database: Executor = db(),
+): Promise<CachedAnalysis | null> {
+  const found = await database.execute<AnalysisRow>(sql`
+    select status, result, citation_check, rules, created_at
+    ${currentAnalysis(tenderId)}
   `)
   const row = found.rows[0]
   if (!row) return null
@@ -136,6 +155,65 @@ export async function readScreening(
     rules: row.rules,
     createdAt: new Date(row.created_at),
   }
+}
+
+/**
+ * What the Opportunity screen has to know before it can name its own button.
+ *
+ * Sci, on production: *"I already have the AI Triage for this item … but the
+ * button remains like the first time."* It did, because nothing in the tender
+ * payload knew anything about screenings — `opportunity-view.tsx` rendered one
+ * fixed string — so "Ver triagem por IA" was shown to someone who had already
+ * read it, and to someone about to spend one of two, in the same words.
+ *
+ * Two facts, and deliberately not one:
+ *
+ * | | |
+ * |---|---|
+ * | `ready` | a reading **of the edital as it stands now** exists. Shared across users (§3.2) — there is no `user_id` on `ai_analyses` — so this is a fact about the tender, not about the caller |
+ * | `spent` | **this** caller already has a `usage` row for this tender, so opening it costs nothing (`quota.spend` de-duplicates on the reference) |
+ *
+ * They come apart in both directions and the button has to tell them apart. A
+ * reading can exist that this user has not paid for: §3.2 shares the analysis,
+ * §10 allocates the *reading* per user, and `requestScreening` spends **before**
+ * it looks in the cache — deliberately, and documented on the route: "if an
+ * analysis for the current version exists, returns it and records usage". And a
+ * user can have paid with no reading to show for it: the job is still running,
+ * or the agency republished the edital and `files_hash` moved, which is exactly
+ * the case `ready` must answer `false` to. Nothing new decides that — it is
+ * `currentAnalysis`, the same predicate `readScreening` hands the triagem
+ * screen, so the button can never promise something the next screen will not do.
+ *
+ * One statement, because this rides on `GET /api/tenders/:id` and Neon may have
+ * to wake up for it.
+ */
+export type ScreeningAvailability = { ready: boolean; spent: boolean }
+
+export async function screeningAvailability(
+  tenderId: string,
+  spender: Spender | null,
+  limit: Limit,
+  database: Executor = db(),
+): Promise<ScreeningAvailability> {
+  const since = spender ? periodStart(limit.period) : null
+  const found = await database.execute<{ ready: boolean; spent: boolean }>(sql`
+    select
+      exists (select 1 ${currentAnalysis(tenderId)}) as ready,
+      ${
+        spender
+          ? sql`exists (
+              select 1
+                from usage u
+               where ${spenderPredicate(spender)}
+                 and u.feature = ${limit.feature}
+                 and u.reference = ${tenderId}
+                 ${since ? sql`and u.created_at >= ${since}` : sql``}
+            )`
+          : sql`false`
+      } as spent
+  `)
+  const row = found.rows[0]
+  return { ready: Boolean(row?.ready), spent: Boolean(row?.spent) }
 }
 
 export type ScreeningOutcome =

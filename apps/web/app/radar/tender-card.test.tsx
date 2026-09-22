@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
+import { tenderHref } from '@/lib/radar/client'
 import type { TenderCard } from '@/lib/radar/contract'
 import { TenderCardView } from './tender-card'
 
@@ -34,8 +35,13 @@ const TENDER: TenderCard = {
   pncpUpdatedAt: '2026-09-16T10:00:00.000Z',
 }
 
+/** The card's whole job as a link: carry the search that found the tender. */
+const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+
 function render(over: Partial<TenderCard> = {}): string {
-  return renderToStaticMarkup(<TenderCardView tender={{ ...TENDER, ...over }} now={NOW} />)
+  return renderToStaticMarkup(
+    <TenderCardView tender={{ ...TENDER, ...over }} now={NOW} href={tenderHref(TENDER.id, SEARCH)} />,
+  )
 }
 
 /** The 22px Archivo slot — the card's visual anchor. */

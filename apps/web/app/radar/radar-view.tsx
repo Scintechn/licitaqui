@@ -12,7 +12,7 @@ import type {
 import { ageParts } from '@/lib/radar/format'
 import { errorText } from '@/lib/radar/error-text'
 import { format, messages } from '@/lib/messages'
-import { radarHref, tenderHrefFrom } from '@/lib/radar/client'
+import { radarHref, tenderHref } from '@/lib/radar/client'
 import { everyGroupEmpty, otherPopulatedGroup } from '@/lib/radar/group'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { TENDER_GROUPS } from '@/lib/radar/contract'
@@ -615,7 +615,7 @@ function Body({
           <TenderCardView
             tender={tender}
             now={now}
-            href={tenderHrefFrom(tender.id, { ...query, group })}
+            href={tenderHref(tender.id, { ...query, group })}
           />
         </li>
       ))}

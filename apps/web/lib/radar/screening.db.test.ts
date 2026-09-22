@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { closeDb, db, pool } from '@/lib/db'
 import { testDatabaseUrl } from '@/lib/db/test-url'
-import { readScreening } from './screening'
+import { readLimit, FEATURES } from './quota'
+import { readScreening, requestScreening, screeningAvailability } from './screening'
 
 /**
  * `readScreening` and an amended tender (spec §3.2).
@@ -68,9 +69,35 @@ async function givenSyncMarker(tender: string, filesHash: string) {
   ])
 }
 
+/** One visitor per run, so `usage` rows are isolated the way the tenders are. */
+const VISITOR_ID = `00000000-0000-4000-8000-${RUN_ID}0000`
+
+async function givenVisitor() {
+  await pool().query('insert into visitors (id) values ($1) on conflict (id) do nothing', [
+    VISITOR_ID,
+  ])
+}
+
+async function givenSpentOn(tender: string) {
+  await givenVisitor()
+  await pool().query(
+    `insert into usage (visitor_id, feature, reference) values ($1, $2, $3)`,
+    [VISITOR_ID, FEATURES.screening, tender],
+  )
+}
+
+async function usageCount(tender: string): Promise<number> {
+  const found = await pool().query<{ n: string }>(
+    'select count(*) as n from usage where visitor_id = $1 and reference = $2',
+    [VISITOR_ID, tender],
+  )
+  return Number(found.rows[0]?.n ?? 0)
+}
+
 async function cleanup() {
   await pool().query('delete from events where name like $1', [`sync_files:${AGENCY_CNPJ}-%`])
-  // `ai_analyses` cascades from `tenders`.
+  // `usage` cascades from `visitors`; `ai_analyses` cascades from `tenders`.
+  await pool().query('delete from visitors where id = $1', [VISITOR_ID])
   await pool().query('delete from tenders where agency_cnpj = $1', [AGENCY_CNPJ])
 }
 
@@ -147,5 +174,120 @@ suite('readScreening and the file list it was keyed on', () => {
     await givenSyncMarker(tender, HASH_BEFORE)
 
     expect(await readScreening(tender, db())).toBeNull()
+  })
+})
+
+/**
+ * What the Opportunity screen's button is allowed to say.
+ *
+ * Sci: *"I already have the AI Triage for this item … but the button remains
+ * like the first time, for my user."* The screen had no way to know, so these
+ * pin the two facts it now reads — and, with them, the answer to the question
+ * the button turns on: **does opening a triagem whose analysis already exists
+ * charge the user?**
+ */
+suite('screeningAvailability, and what a cached analysis costs', () => {
+  beforeAll(() => {
+    process.env.DATABASE_URL = url
+  })
+  beforeEach(cleanup)
+  afterAll(async () => {
+    await cleanup()
+    await closeDb()
+  })
+
+  const spender = { visitorId: VISITOR_ID }
+  const limit = () => readLimit('visitor', FEATURES.screening, db())
+
+  it('is neither ready nor spent on a tender nobody has read', async () => {
+    const tender = await givenTender(20)
+    await givenVisitor()
+    expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
+      ready: false,
+      spent: false,
+    })
+  })
+
+  /**
+   * The case that decides the copy. `ai_analyses` has no `user_id` — the
+   * reading is shared (§3.2) — but §10 allocates it per user, so a reading can
+   * exist that this caller has not paid for. The button must not say "Ver".
+   */
+  it('is ready but not spent when somebody else paid for the reading', async () => {
+    const tender = await givenTender(21)
+    await givenAnalysis(tender, HASH_BEFORE, 'original')
+    await givenSyncMarker(tender, HASH_BEFORE)
+    await givenVisitor()
+
+    expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
+      ready: true,
+      spent: false,
+    })
+  })
+
+  it('is ready and spent once this caller has paid — Sci’s case', async () => {
+    const tender = await givenTender(22)
+    await givenAnalysis(tender, HASH_BEFORE, 'original')
+    await givenSyncMarker(tender, HASH_BEFORE)
+    await givenSpentOn(tender)
+
+    expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
+      ready: true,
+      spent: true,
+    })
+  })
+
+  /**
+   * `ready` is not "a row exists", it is `readScreening`'s own predicate — so
+   * a republished edital makes the button honest again without a second notion
+   * of freshness being invented for it.
+   */
+  it('stops being ready when the agency replaces the documents', async () => {
+    const tender = await givenTender(23)
+    await givenAnalysis(tender, HASH_BEFORE, 'original')
+    await givenSyncMarker(tender, HASH_AFTER)
+    await givenSpentOn(tender)
+
+    expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
+      ready: false,
+      spent: true,
+    })
+    // …and it agrees with what the triagem screen would actually show.
+    expect(await readScreening(tender, db())).toBeNull()
+  })
+
+  it('never reports spent for a caller with no identity yet', async () => {
+    const tender = await givenTender(24)
+    await givenAnalysis(tender, HASH_BEFORE, 'original')
+    expect(await screeningAvailability(tender, null, await limit(), db())).toEqual({
+      ready: true,
+      spent: false,
+    })
+  })
+
+  /**
+   * The charge itself, through the function the route calls — because the
+   * button's warning is only honest if this is what happens.
+   *
+   * Reading a **cached** analysis you have not paid for **does** record usage:
+   * `requestScreening` spends before it looks in the cache, which is §8's
+   * "returns it and records usage" and §10's allowance counting editais read
+   * rather than AI calls made. Reading it **again** is free.
+   */
+  it('charges a cached reading once, and never again for the same tender', async () => {
+    const tender = await givenTender(25)
+    await givenAnalysis(tender, HASH_BEFORE, 'original')
+    await givenSyncMarker(tender, HASH_BEFORE)
+    await givenVisitor()
+
+    const first = await requestScreening(tender, spender, 'visitor', db())
+    expect(first.state).toBe('ready')
+    expect(await usageCount(tender)).toBe(1)
+
+    const second = await requestScreening(tender, spender, 'visitor', db())
+    expect(second.state).toBe('ready')
+    // Still one: `spend()` de-duplicates on the tender id, which is why Sci
+    // re-opening his own triagem costs him nothing.
+    expect(await usageCount(tender)).toBe(1)
   })
 })

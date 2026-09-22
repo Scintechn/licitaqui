@@ -82,6 +82,64 @@ export function delay(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
+/**
+ * §3.1's deadline is written for a read whose job writes its row in one hop —
+ * `company_lookup`, one BrasilAPI call. An `ai_screening` is not that: §7.1 and
+ * §7.2 give it `sync_files`, a PDF download (120 s), `extract_text` and then the
+ * lite model (90 s). The two budgets never agreed, so the poll was structurally
+ * certain to give up first, and it gave up *silently*: it stopped reading.
+ *
+ * Measured on production on 2026-09-22 (CNPJ 36955612000185, tender
+ * `13654405000195-1-000033/2026`): the screen said "está demorando" at 60 s and
+ * made no further request; the row was readable at **≈178 s**. The user's only
+ * way to see their own answer was to navigate away and come back, which is
+ * exactly what Sci did and reported.
+ *
+ * So the deadline stops being where the waiting ends. `waitThenWatch` runs
+ * §3.1's twenty three-second ticks, and if they run out with the job still
+ * alive it tells the caller — which puts an honest card on screen — and goes on
+ * reading, slowly, until the answer lands. That is §3.1's own rule ("respond
+ * with what we have, refresh behind it") applied to a screen: the user sees the
+ * truth at 60 s and the result replaces it when there is one.
+ *
+ * Ten seconds is six reads a minute against a route whose limit is forty; five
+ * minutes is past the worst case the worker's own timeouts allow.
+ */
+export const WATCH_INTERVAL_MS = 10_000
+export const WATCH_TIMEOUT_MS = 5 * 60_000
+
+export type WatchOptions<T> = WaitOptions<T> & {
+  /**
+   * The first deadline passed and the job is still running. Called once, with
+   * the last value read, before the slow phase starts — this is where a screen
+   * says "está demorando" without also saying "and I have stopped looking".
+   */
+  onTimeout?: (value: T) => void
+  intervalMs?: number
+  timeoutMs?: number
+  watchIntervalMs?: number
+  watchTimeoutMs?: number
+}
+
+export type WatchResult<T> = WaitResult<T> & {
+  /** The slow phase ran, so `onTimeout` has already been called. */
+  watched: boolean
+}
+
+export async function waitThenWatch<T>(options: WatchOptions<T>): Promise<WatchResult<T>> {
+  const first = await waitForData(options)
+  if (!first.timedOut) return { ...first, watched: false }
+
+  options.onTimeout?.(first.value)
+
+  const second = await waitForData({
+    ...options,
+    intervalMs: options.watchIntervalMs ?? WATCH_INTERVAL_MS,
+    timeoutMs: options.watchTimeoutMs ?? WATCH_TIMEOUT_MS,
+  })
+  return { ...second, ticks: first.ticks + second.ticks, watched: true }
+}
+
 export async function waitForData<T>(options: WaitOptions<T>): Promise<WaitResult<T>> {
   const interval = options.intervalMs ?? POLL_INTERVAL_MS
   const timeout = options.timeoutMs ?? POLL_TIMEOUT_MS

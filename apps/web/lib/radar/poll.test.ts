@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { JobRef } from './contract'
-import { delay, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, waitForData, type JobStatus } from './poll'
+import {
+  delay,
+  POLL_INTERVAL_MS,
+  POLL_TIMEOUT_MS,
+  waitForData,
+  waitThenWatch,
+  WATCH_INTERVAL_MS,
+  WATCH_TIMEOUT_MS,
+  type JobStatus,
+} from './poll'
 
 /**
  * Spec §3.1: "The client polls every 3 s (max 60 s)". These tests are the
@@ -124,6 +133,87 @@ describe('waitForData', () => {
   it('honours the spec numbers by default', () => {
     expect(POLL_INTERVAL_MS).toBe(3_000)
     expect(POLL_TIMEOUT_MS).toBe(60_000)
+  })
+})
+
+/**
+ * The defect: the screen gave up reading at 60 s, said "está demorando", and
+ * stopped. The `ai_screening` it was waiting on finished at ≈178 s on
+ * production and its result sat unread in `ai_analyses` until the user
+ * navigated away and came back — a screening they had already paid for, shown
+ * only on the second visit.
+ */
+describe('waitThenWatch', () => {
+  /** 60 s at 3 s, then 5 min at 10 s: the tick the answer arrives on. */
+  const WATCH_TICKS = WATCH_TIMEOUT_MS / WATCH_INTERVAL_MS
+
+  it('is plain waitForData when the answer comes inside the 60 s', async () => {
+    const { read } = scripted([analyzing(7), READY])
+    let timeouts = 0
+
+    const result = await waitThenWatch({
+      read,
+      analyzing: isAnalyzing,
+      onTimeout: () => {
+        timeouts += 1
+      },
+      ...clock(),
+    })
+
+    expect(result.watched).toBe(false)
+    expect(result.timedOut).toBe(false)
+    expect(timeouts).toBe(0)
+  })
+
+  it('keeps reading past 60 s, and finds the answer the old poll never saw', async () => {
+    // Eleven analyzing reads: twenty ticks of §3.1 cannot get there, because
+    // each of them is spent on the cheap job poll while the job is running.
+    const script: Answer[] = [...Array<Answer>(11).fill(analyzing(7)), READY]
+    const { read } = scripted(script)
+    let jobStatus: JobStatus = 'running'
+    const timedOutAt: Answer[] = []
+
+    const result = await waitThenWatch({
+      read,
+      analyzing: isAnalyzing,
+      // The job stays `running` through §3.1's window and finishes during the
+      // watch — the production shape, where the AI call alone may take 90 s.
+      pollJob: async () => jobStatus,
+      onTimeout: (value) => {
+        timedOutAt.push(value)
+        jobStatus = 'done'
+      },
+      ...clock(),
+    })
+
+    // The screen was told, once, that the deadline had passed…
+    expect(timedOutAt).toHaveLength(1)
+    expect(timedOutAt[0].state).toBe('analyzing')
+    // …and then the answer arrived anyway, with no second navigation.
+    expect(result.watched).toBe(true)
+    expect(result.timedOut).toBe(false)
+    expect(result.value).toEqual(READY)
+  })
+
+  it('gives up for good only after the watch, and still says it timed out', async () => {
+    const { read } = scripted([analyzing(1)])
+    const result = await waitThenWatch({
+      read,
+      analyzing: isAnalyzing,
+      pollJob: async () => 'running',
+      ...clock(),
+    })
+
+    expect(result.watched).toBe(true)
+    expect(result.timedOut).toBe(true)
+    expect(result.ticks).toBe(POLL_TIMEOUT_MS / POLL_INTERVAL_MS + WATCH_TICKS)
+  })
+
+  it('reads six times a minute while watching, well under the route’s forty', async () => {
+    expect(WATCH_INTERVAL_MS).toBe(10_000)
+    expect(60_000 / WATCH_INTERVAL_MS).toBeLessThan(40)
+    // Past the worst case §7.2 allows: a 120 s download plus a 90 s AI call.
+    expect(WATCH_TIMEOUT_MS).toBeGreaterThan(120_000 + 90_000)
   })
 })
 

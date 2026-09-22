@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { getJobStatus, getTender, screeningHref } from '@/lib/radar/client'
+import { getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
 import type { TenderDetail, TenderResponse } from '@/lib/radar/contract'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
@@ -34,11 +34,10 @@ export function PriceScreen({ id }: { id: string }) {
   const item = Number.isInteger(itemParam) && itemParam > 0 ? itemParam : null
 
   // "Voltar" goes back to the screening, keeping the Radar filters but not the
-  // item: they belong to different screens.
-  const carried = new URLSearchParams(params.toString())
-  carried.delete('item')
-  const query = carried.toString()
-  const backHref = `${screeningHref(id)}${query ? `?${query}` : ''}`
+  // item: they belong to different screens. `readSearch` takes exactly the four
+  // that travel, so `?item=` is left behind by construction rather than deleted.
+  const search = readSearch(params)
+  const backHref = screeningHref(id, search)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -90,6 +89,7 @@ export function PriceScreen({ id }: { id: string }) {
       item={item}
       status={data.status}
       backHref={backHref}
+      search={search}
       onRetry={onRetry}
     />
   )
