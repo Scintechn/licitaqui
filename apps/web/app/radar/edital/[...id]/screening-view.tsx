@@ -7,7 +7,10 @@ import {
   LockedBlock,
   SectionLabel,
   StateCard,
+  TabPanel,
+  Tabs,
   Tag,
+  type TabItem,
 } from '@/components'
 import { cn } from '@/lib/cn'
 import { accountHref } from '@/lib/routes'
@@ -255,7 +258,16 @@ function Verdict({ model }: { model: ScreeningModel }) {
   )
 }
 
-function Tabs({
+/**
+ * Canvas 04's strip, now drawn by `components/tabs.tsx` — the one tab
+ * implementation, which the Opportunity screen also uses. The set is this
+ * screen's own: Resumo and Exigências are panels, Documentos is a link out,
+ * because on *this* screen the files are not merely locked, they are somewhere
+ * else entirely (§8: files only with an account).
+ */
+const TAB_PREFIX = 'screening'
+
+function ScreeningTabs({
   active,
   onSelect,
   tenderId,
@@ -264,39 +276,23 @@ function Tabs({
   onSelect?: (tab: ScreeningTab) => void
   tenderId: string
 }) {
-  const item = (tab: ScreeningTab, label: string) => {
-    const on = tab === active
-    return (
-      <button
-        key={tab}
-        type="button"
-        role="tab"
-        aria-selected={on}
-        onClick={onSelect ? () => onSelect(tab) : undefined}
-        className={cn(
-          'inline-flex min-h-10 items-center gap-1 border-0 border-b-2 bg-transparent px-0.5 text-body',
-          on ? 'border-blue font-semibold text-blue' : 'border-transparent text-muted',
-        )}
-      >
-        {label}
-      </button>
-    )
-  }
-
+  const items: TabItem<ScreeningTab | 'files'>[] = [
+    { id: 'summary', label: page.tabs.summary },
+    {
+      id: 'files',
+      label: page.tabs.files,
+      href: accountHref(tenderHref(tenderId)),
+      icon: 'locked',
+    },
+    { id: 'requirements', label: page.tabs.requirements },
+  ]
   return (
-    <div role="tablist" className="flex gap-5 border-b border-line">
-      {item('summary', page.tabs.summary)}
-      {/* Locked, so it is a link out and never a selectable tab (§8: files
-          only with an account). The padlock is the board's own. */}
-      <a
-        href={accountHref(tenderHref(tenderId))}
-        className="inline-flex min-h-10 items-center gap-1 border-b-2 border-transparent px-0.5 text-body text-muted no-underline"
-      >
-        <Icon name="locked" size={13} />
-        {page.tabs.files}
-      </a>
-      {item('requirements', page.tabs.requirements)}
-    </div>
+    <Tabs
+      items={items}
+      active={active}
+      onSelect={onSelect as ((tab: ScreeningTab | 'files') => void) | undefined}
+      idPrefix={TAB_PREFIX}
+    />
   )
 }
 
@@ -453,12 +449,14 @@ export function ScreeningView({
           ) : null}
         </div>
 
-        {ready ? <Tabs active={tab} onSelect={onSelectTab} tenderId={tenderId} /> : null}
+        {ready ? (
+          <ScreeningTabs active={tab} onSelect={onSelectTab} tenderId={tenderId} />
+        ) : null}
 
         {ready && model ? (
           <>
             {tab === 'summary' ? (
-              <div className="flex flex-col gap-3" role="tabpanel">
+              <TabPanel idPrefix={TAB_PREFIX} id="summary" className="flex flex-col gap-3">
                 <Verdict model={model} />
 
                 <section className="flex flex-col gap-1">
@@ -472,15 +470,15 @@ export function ScreeningView({
                   title={page.priceTitle}
                   description={page.priceBody}
                 />
-              </div>
+              </TabPanel>
             ) : (
-              <div className="flex flex-col gap-3.5" role="tabpanel">
+              <TabPanel idPrefix={TAB_PREFIX} id="requirements" className="flex flex-col gap-3.5">
                 <section className="flex flex-col gap-1">
                   <SectionLabel tone="muted">{page.requirementsTitle}</SectionLabel>
                   <FindingRows findings={model.requirements} />
                 </section>
                 <Blockers blockers={model.blockers} />
-              </div>
+              </TabPanel>
             )}
 
             <div className="flex flex-col gap-1 pt-1 text-caption leading-relaxed text-muted">

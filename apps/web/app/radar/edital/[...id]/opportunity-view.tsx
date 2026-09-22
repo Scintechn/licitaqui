@@ -6,10 +6,14 @@ import {
   Button,
   Card,
   Icon,
+  LockedBlock,
   SectionLabel,
   StateCard,
   Status,
+  TabPanel,
+  Tabs,
   type StatusKind,
+  type TabItem,
 } from '@/components'
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
@@ -32,6 +36,7 @@ import { mayShowUrgency, statusChipLabel, statusNotice } from '@/lib/radar/tende
 import { TenderTags } from '../../tender-card'
 import { TenderStatusBanner } from '../../tender-status-banner'
 import { CopyId } from './copy-id'
+import { ITEMS_PAGE, TenderItems } from './tender-items'
 
 /**
  * The Opportunity screen — canvas 03, `Oportunidade.dc.html`.
@@ -255,33 +260,124 @@ function FullObject({ object }: { object: string }) {
   )
 }
 
+/**
+ * The Documentos tab.
+ *
+ * It used to be a loose "EDITAL E ANEXOS · CRIAR CONTA" button under the call
+ * to action with, for a signed-in user, a bare
+ * `TR, Edital e seus anexos 32.2026.zip` link hanging beneath it. Same tender,
+ * two screens, two design systems — tabs after the AI reading and a stray
+ * block before it.
+ *
+ * The gate itself does not move: §8 is "files only with an account", and
+ * `files: null` means the request never asked for the URLs, so an
+ * unauthenticated response cannot carry them. What changes is that the lock is
+ * now a *state of the tab* rather than an absence outside it. The tab is
+ * selectable for a visitor precisely so they can open it and find out that the
+ * agency published documents and that an account opens them — a padlocked
+ * link straight out to the sign-up, which is what the screening screen does,
+ * would answer the question by refusing to let them ask it.
+ *
+ * `files: []` is the third state and a different fact: the agency published
+ * nothing. It gets its own sentence rather than the upsell.
+ */
 function Files({ tender }: { tender: TenderDetail }) {
-  // `files: null` is the locked block (§8: "files only with an account");
-  // `files: []` would mean the agency published nothing, which is different.
   if (tender.files === null) {
     return (
-      <Button variant="locked" href={ACCOUNT_HREF} fullWidth>
-        {page.filesLocked}
-      </Button>
+      <LockedBlock
+        href={ACCOUNT_HREF}
+        title={page.filesLocked}
+        description={page.filesLockedNote}
+      />
     )
   }
-  if (tender.files.length === 0) return null
+  if (tender.files.length === 0) {
+    return (
+      <StateCard kind="empty" title={page.files.emptyTitle} description={page.files.emptyBody} />
+    )
+  }
   return (
-    <section className="flex flex-col gap-2">
-      <SectionLabel tone="muted">{page.filesLocked}</SectionLabel>
-      <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-        {tender.files.map((file) => (
-          <li key={file.sequence}>
-            <a
-              href={file.url ?? '#'}
-              className="inline-flex min-h-touch items-center gap-2 text-body text-blue"
-            >
-              <Icon name="tender" size={16} />
-              {file.title ?? file.docType ?? `#${file.sequence}`}
-            </a>
-          </li>
-        ))}
-      </ul>
+    <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+      {tender.files.map((file) => (
+        <li key={file.sequence}>
+          <a
+            href={file.url ?? '#'}
+            className="inline-flex min-h-touch items-center gap-2 text-body text-blue"
+          >
+            <Icon name="tender" size={16} />
+            {file.title ?? file.docType ?? `#${file.sequence}`}
+          </a>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * The record, in the shape PNCP gives it — the object above, then tabs.
+ *
+ * PNCP puts `Itens · Arquivos · Atas de Registro de Preço · Contratos/Empenhos
+ * · Histórico` under the object, and it is the page people cross-check us
+ * against. Matching the shape is not imitation; it is not making someone learn
+ * two mental models for the same record.
+ *
+ * Two tabs and not five, because we hold two: `tender_items` and
+ * `tender_files`. Atas, contratos and histórico are PNCP endpoints nothing in
+ * this product syncs, and a tab that opens on "não temos isto" is worse than
+ * no tab.
+ *
+ * **Itens is the default.** It is the reason Sci was opening PNCP beside us,
+ * it is PNCP's own first tab, and it is the one that is never locked.
+ *
+ * What stays *outside*: the status banner, the title, the deadline/value card,
+ * "Por que este edital apareceu para você", "Operação" and the whole Objeto.
+ * The Objeto in particular is never going behind a tab — §2.2 rule 4 wants the
+ * agency's own words read before any reading of ours, and a tab is one click
+ * more than "already on the screen".
+ */
+const TAB_PREFIX = 'tender'
+export type OpportunityTab = 'items' | 'files'
+
+function Record({
+  tender,
+  tab,
+  onSelectTab,
+  itemsVisible,
+  onShowMoreItems,
+}: {
+  tender: TenderDetail
+  tab: OpportunityTab
+  onSelectTab?: (tab: OpportunityTab) => void
+  itemsVisible?: number
+  onShowMoreItems?: () => void
+}) {
+  const tabs: TabItem<OpportunityTab>[] = [
+    { id: 'items', label: page.tabs.items },
+    {
+      id: 'files',
+      label: page.tabs.files,
+      // The padlock says the state before the tab is opened; the panel says
+      // what to do about it. No `href`, so it stays a tab and not a link out.
+      icon: tender.files === null ? 'locked' : undefined,
+    },
+  ]
+
+  return (
+    <section className="flex flex-col gap-3">
+      <Tabs items={tabs} active={tab} onSelect={onSelectTab} idPrefix={TAB_PREFIX} />
+      {tab === 'items' ? (
+        <TabPanel idPrefix={TAB_PREFIX} id="items">
+          <TenderItems
+            items={tender.items}
+            visible={itemsVisible}
+            onShowMore={onShowMoreItems}
+          />
+        </TabPanel>
+      ) : (
+        <TabPanel idPrefix={TAB_PREFIX} id="files">
+          <Files tender={tender} />
+        </TabPanel>
+      )}
     </section>
   )
 }
@@ -354,6 +450,12 @@ export type OpportunityViewProps = {
   backHref: string
   now?: Date
   onRetry?: () => void
+  /** Which tab of the record is open. The screen owns it; this stays pure. */
+  tab?: OpportunityTab
+  onSelectTab?: (tab: OpportunityTab) => void
+  /** How many item rows the Itens tab has grown to. */
+  itemsVisible?: number
+  onShowMoreItems?: () => void
 }
 
 export function OpportunityView({
@@ -363,6 +465,10 @@ export function OpportunityView({
   backHref,
   now = new Date(),
   onRetry,
+  tab = 'items',
+  onSelectTab,
+  itemsVisible = ITEMS_PAGE,
+  onShowMoreItems,
 }: OpportunityViewProps) {
   const bar = (
     <AppBar
@@ -523,6 +629,15 @@ export function OpportunityView({
 
         <FullObject object={tender.object} />
 
+        {/* PNCP's shape: the object, then the record's tabs. */}
+        <Record
+          tender={tender}
+          tab={tab}
+          onSelectTab={onSelectTab}
+          itemsVisible={itemsVisible}
+          onShowMoreItems={onShowMoreItems}
+        />
+
         <div className="mt-auto flex flex-col gap-2 pt-2">
           {/* Legal brief §2.2 rule 5: the AI notice appears on EVERY result
               screen, not only in the terms. This screen prints a compatibility
@@ -534,7 +649,6 @@ export function OpportunityView({
           <Button href={`${tenderHref(tender.id)}/triagem`} fullWidth iconEnd="arrowRight">
             {page.screeningCta}
           </Button>
-          <Files tender={tender} />
           {/* The source of every fact above. PNCP is the official record
               (Lei 14.133 art. 174); the bidding system below it is where the
               dispute happens, which is a different place and a different

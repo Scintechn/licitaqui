@@ -64,6 +64,9 @@ const PAIRS: [string, string, string][] = [
   // headroom, so lightening either one breaks them.
   ['success', 'success-soft', 'a satisfied finding on the screening screen'],
   ['muted', 'fill-muted', 'the keyword badge and muted tags'],
+  // The Itens tab's total sits in Archivo on the muted fill, with its label
+  // beside it in `muted` — the pair above. Both are pinned rather than one.
+  ['ink', 'fill-muted', 'the sum of the items on the Opportunity screen'],
   ['muted', 'ivory', 'every secondary line in the app'],
   ['muted', 'surface', 'secondary lines inside a card'],
 
