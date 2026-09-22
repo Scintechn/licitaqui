@@ -18,7 +18,21 @@ export function Wrap({ children, className }: { children: ReactNode; className?:
   return <div className={cn('mx-auto w-full max-w-[1120px] px-gutter', className)}>{children}</div>
 }
 
-/** `section` — 48px of air on a phone, 64px from 560px up, hairline on top. */
+/**
+ * `section` — the public pages' vertical rhythm, and the page's density dial.
+ *
+ * The board drew 48px on a phone and 64px from 560px up. Measured on
+ * `/fundadores` at 1280px that is 288px of the page's 5909px spent on the air
+ * *between* sections — 4.9% of the document, across nine of them — while the
+ * signup card beside the hero is comparatively tight. Sci asked the page to
+ * read closer to that card, so the rhythm steps down to 40/48.
+ *
+ * It is deliberately the one place the change is made: every public section
+ * inherits it, so the rhythm stays even and the diff stays reviewable. Air
+ * *inside* a block (body line-height, `SectionHead`'s own gap, touch targets,
+ * the 20px gutter) is untouched — the air worth reclaiming is between blocks,
+ * not within them.
+ */
 export function Section({
   children,
   divided = true,
@@ -35,7 +49,7 @@ export function Section({
   return (
     <section
       {...rest}
-      className={cn('py-12 min-[560px]:py-16', divided && 'border-t border-line', className)}
+      className={cn('py-10 min-[560px]:py-12', divided && 'border-t border-line', className)}
     >
       {children}
     </section>

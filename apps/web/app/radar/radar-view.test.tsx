@@ -365,3 +365,28 @@ describe('the next page', () => {
     expect(render({ ...paged, tenders: [] })).not.toContain(copy.list.more)
   })
 })
+
+const BASE_QUERY = { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible' } as const
+
+describe('the group hint, inside the Radar', () => {
+  it('says what the selected tab means, under the tabs', () => {
+    // The three hints existed only inside "Como funciona" on the marketing
+    // landing. A founder arriving from an e-mail link lands on /radar and
+    // never passes the page where the words are defined, so "Verificar" was a
+    // bare label on the screen where it decides whether to open an edital.
+    expect(render({ query: { ...BASE_QUERY, group: 'compatible' } })).toContain(
+      copy.list.groupHint.compatible,
+    )
+    expect(render({ query: { ...BASE_QUERY, group: 'check' } })).toContain(copy.list.groupHint.check)
+    expect(render({ query: { ...BASE_QUERY, group: 'keyword' } })).toContain(
+      copy.list.groupHint.keyword,
+    )
+  })
+
+  it('shows one hint at a time — the one for the tab you are on', () => {
+    const out = render({ query: { ...BASE_QUERY, group: 'check' } })
+    expect(out).toContain(copy.list.groupHint.check)
+    expect(out).not.toContain(copy.list.groupHint.compatible)
+    expect(out).not.toContain(copy.list.groupHint.keyword)
+  })
+})

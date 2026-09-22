@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { messages } from '@/lib/messages'
+import { format, messages } from '@/lib/messages'
 import type { QuotaView } from '@/lib/radar/contract'
 import { ALERTS_HREF, PLAN_HREF } from '@/lib/routes'
 import { AccountView, formatCnpj, screeningsLabel, type AccountViewProps } from './account-view'
@@ -162,3 +162,28 @@ describe('changing the company', () => {
     )
   })
 })
+
+describe('the LGPD data-subject line (legal brief §1)', () => {
+  it('is rendered, now that there is a real address to name', () => {
+    // `support.email` was the string "TODO(Sci): endereço de contato", so this
+    // sentence was suppressed rather than ship a placeholder. Brief §1 calls
+    // the channel mandatory, which made a suppressed sentence the wrong fix
+    // and a missing address the actual bug.
+    expect(render()).toContain(messages.legal.dataRequest.split('{email}')[0])
+  })
+
+  it('names privacidade@, the mandatory channel — not contato@', () => {
+    const out = render()
+    expect(out).toContain('privacidade@licitaquiapp.com.br')
+    expect(out).toContain(
+      format(messages.legal.dataRequest, { email: messages.support.privacyEmail }),
+    )
+  })
+
+  it('never ships a TODO to a data subject', () => {
+    expect(render()).not.toContain('TODO')
+    expect(messages.support.email).not.toContain('TODO')
+    expect(messages.support.privacyEmail).not.toContain('TODO')
+  })
+})
+

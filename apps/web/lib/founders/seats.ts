@@ -30,10 +30,29 @@ export function seatsFilledLabel(taken: number): string {
 }
 
 /**
+ * Whether the 48-cell grid is worth drawing at all.
+ *
+ * Scarcity framing only works above zero. With no seat taken the grid is forty
+ * eight visibly empty boxes under "Restam 48 vagas" — a picture of an empty
+ * room, on the page traffic lands on during founders week. The sentence alone
+ * says the same thing without the picture contradicting it.
+ *
+ * `null` — the live count has not arrived, or failed — is the case that made
+ * this necessary rather than merely nicer. `/fundadores` is statically rendered
+ * (spec §3.3), so `taken` is **always** null in the HTML: before this, every
+ * first paint drew the empty room, for every visitor, no matter how many seats
+ * had actually sold. The grid now appears when the count arrives and says there
+ * is something to show, which is also the moment it starts meaning something.
+ */
+export function showSeatGrid(taken: number | null): boolean {
+  return taken !== null && seatsTaken(taken) > 0
+}
+
+/**
  * One entry per seat, for the 48-cell grid on the offer page.
  *
- * The page is statically rendered, so today every cell is drawn empty: the live
- * count comes from `GET /api/founders/seats`, which is task F1.
+ * Only rendered once `showSeatGrid()` agrees there is a seat to show; the live
+ * count comes from `GET /api/founders/seats` (task F1).
  */
 export function seatGrid(taken = 0): { seat: number; filled: boolean }[] {
   const filled = seatsTaken(taken)

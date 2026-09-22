@@ -224,3 +224,37 @@ describe('the Opportunity screen before it has a tender', () => {
     expect(out.length).toBeGreaterThan(1_000)
   })
 })
+
+describe('OpportunityView · the AI notice (legal brief §2.2 rule 5)', () => {
+  const notice = `${messages.ai.disclaimer} ${messages.ai.notLegalAdvice}`
+
+  it('carries the notice, because this screen shows a compatibility reading', () => {
+    expect(render({})).toContain(notice)
+  })
+
+  it('keeps it off the states that show no reading at all', () => {
+    expect(render({ status: { kind: 'analyzing' }, tender: null })).not.toContain(notice)
+    expect(render({ status: { kind: 'notFound' }, tender: null })).not.toContain(notice)
+  })
+})
+
+describe('OpportunityView · the value slot', () => {
+  it('sets a real figure in Archivo at 28px', () => {
+    const out = render({})
+    expect(out).toContain('text-[28px]')
+    expect(out).toContain('R$ 48.196')
+  })
+
+  it('collapses to a quiet line when the agency published no value', () => {
+    const out = render({ tender: { ...TENDER, estimatedValue: null } })
+    expect(out).toContain(copy.card.noValue)
+    // The 28px Archivo slot is for a figure; an absence does not get it.
+    expect(out).not.toMatch(/text-\[28px\][^>]*>\s*Valor/)
+  })
+
+  it('names a confidential budget rather than printing whatever the row holds', () => {
+    const out = render({ tender: { ...TENDER, confidentialBudget: true } })
+    expect(out).toContain(copy.card.confidential)
+    expect(out).not.toContain('R$ 48.196')
+  })
+})

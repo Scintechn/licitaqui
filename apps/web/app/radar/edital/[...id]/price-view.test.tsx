@@ -147,3 +147,23 @@ describe('PriceView', () => {
     expect(html).toContain(`href="/radar/edital/${TENDER.id}/triagem"`)
   })
 })
+
+describe('PriceView · the AI notice (legal brief §2.2 rule 5)', () => {
+  const notice = `${messages.ai.disclaimer} ${messages.ai.notLegalAdvice}`
+
+  it('carries the notice, because this screen shows money', () => {
+    // Rule 5 says every result screen, not only the screening. This one prints
+    // an estimate read out of the edital and a ceiling derived from it, which
+    // makes it the screen where a number is most likely to be read as advice.
+    expect(render()).toContain(notice)
+  })
+
+  it('does not claim to be legal or accounting advice', () => {
+    expect(render()).toContain(messages.ai.notLegalAdvice)
+  })
+
+  it('keeps the notice off the states that show no result at all', () => {
+    expect(render({ status: { kind: 'analyzing' }, tender: null })).not.toContain(notice)
+    expect(render({ status: { kind: 'notFound' }, tender: null })).not.toContain(notice)
+  })
+})

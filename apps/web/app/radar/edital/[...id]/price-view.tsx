@@ -144,6 +144,7 @@ export function PriceView({ tenderId, tender, item, status, backHref, onRetry }:
 
   const chosen = chooseItem(tender.items, item)
   const estimate = unitPrice(chosen?.unitEstimatedValue)
+  const aiNotice = `${messages.ai.disclaimer} ${messages.ai.notLegalAdvice}`
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -213,6 +214,14 @@ export function PriceView({ tenderId, tender, item, status, backHref, onRetry }:
                 <strong>{page.exampleLead}</strong> {page.exampleBody}
               </p>
             </div>
+
+            {/* Legal brief §2.2 rule 5: every result screen carries the notice.
+                This one shows money — an estimate read out of the edital, and
+                a ceiling derived from it — which makes it the screen where a
+                reader is most likely to treat a number as advice. Rule 3 is
+                already satisfied by `page.estimated` and `page.maxNote`; this
+                is the AI notice those two do not stand in for. */}
+            <p className="text-caption leading-relaxed text-muted">{aiNotice}</p>
           </>
         )}
 

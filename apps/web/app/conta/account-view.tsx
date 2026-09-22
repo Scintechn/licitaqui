@@ -46,16 +46,18 @@ export type AccountViewProps = {
 export type AccountNotice = 'company' | 'cnpj-invalid' | null
 
 /**
- * "Para corrigir ou apagar seus dados, escreva para …" (§12), or nothing.
+ * "Para corrigir ou apagar seus dados, escreva para …" (§12).
  *
- * `support.email` is still E0's `TODO(Sci)` placeholder. Task F1 hit the same
- * thing and took the same decision: a sentence naming an address that does not
- * exist is worse than no sentence, so the line is omitted until the address is
- * decided and appears here the moment it is.
+ * This is the **LGPD data-subject channel**, so it names `privacidade@`, not
+ * `contato@`: legal brief §1 makes that address the mandatory channel for
+ * correction and deletion requests, and the one that must never bounce.
+ * Support, refunds and contractual notices go to `contato@` — a different
+ * inbox for a different duty, and the line is always rendered now that both
+ * addresses exist (they were an E0 `TODO(Sci)` until this task).
  */
-const DATA_REQUEST = messages.support.email.startsWith('TODO')
-  ? null
-  : format(messages.legal.dataRequest, { email: messages.support.email })
+const DATA_REQUEST = format(messages.legal.dataRequest, {
+  email: messages.support.privacyEmail,
+})
 
 const PLAN_NAMES: Record<string, string> = {
   basico: messages.plans.basic.name,
@@ -168,9 +170,7 @@ export function AccountView({
         <section className="flex flex-col gap-2 pt-2">
           <SectionLabel>{copy.dataTitle}</SectionLabel>
           <p className="text-meta leading-relaxed text-muted">{copy.dataBody}</p>
-          {DATA_REQUEST ? (
-            <p className="text-meta leading-relaxed text-muted">{DATA_REQUEST}</p>
-          ) : null}
+          <p className="text-meta leading-relaxed text-muted">{DATA_REQUEST}</p>
         </section>
 
         <form action={signOutAction} className="pt-2">
