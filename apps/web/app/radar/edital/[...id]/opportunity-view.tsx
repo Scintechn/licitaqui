@@ -217,20 +217,34 @@ function Operation({ tender }: { tender: TenderDetail }) {
  * is expanded, always, however long it runs. The screen already scrolls, the
  * call to action is `mt-auto` at the end of it, and nothing above moves.
  *
- * ## Why it sits before the screening call to action
+ * ## Why it sits directly under the deadline/value box
  *
- * §2.2 rule 4 — a conclusion without its source is a defect. The AI screening
- * is a reading *of this text*; a person should be able to read what the órgão
- * wrote and form their own view before being offered ours. That ordering is
- * the argument, so the block goes above the CTA rather than below it.
+ * The Objeto is what the edital **is**. "Por que este edital apareceu para
+ * você" is our commentary on it and "Operação" is metadata about it, so both
+ * follow it: a person reads the thing before reading what we say about the
+ * thing. That is §2.2 rule 4 — a conclusion without its source is a defect —
+ * applied to the whole screen rather than only to the screening CTA further
+ * down, which it also still sits above.
+ *
+ * It is a sibling of the two-column block, not a cell inside it, so it spans
+ * the whole content column and carries the weight immediately under the box.
  *
  * ## Verbatim, with the agency's own line breaks
  *
  * No `trimObject`, no ellipsis. `whitespace-pre-line` keeps the newlines PNCP
  * published — many órgãos paragraph these, and flattening them turns a list of
  * lots into a wall — while still collapsing the runs of padding spaces that
- * come out of their form fields. `max-w-[62ch]` holds the measure readable on
- * a 1280px window; at 390px the gutter is already the constraint.
+ * come out of their form fields.
+ *
+ * ## The measure is not the container
+ *
+ * Spanning the column does not mean setting the type across it. At the 920px
+ * content width an unconstrained line runs past 105 characters of dense,
+ * often uppercase legal prose, which is where a long measure hurts most.
+ * `max-w-[68ch]` — about 570px — keeps it inside the 45–75 character band
+ * that reads comfortably while being half again the 444px left column it no
+ * longer lives in, so the block still reads as the wide one. At 390px the
+ * gutter is the constraint and this cap never applies.
  *
  * It does not assume the `h1` above is a prefix of this text. When the `h1`
  * becomes a generated short title, this block is unchanged and becomes the
@@ -241,7 +255,7 @@ function FullObject({ object }: { object: string }) {
   return (
     <section className="flex flex-col gap-2">
       <SectionLabel tone="muted">{page.objectTitle}</SectionLabel>
-      <p className="m-0 max-w-[62ch] text-body leading-relaxed whitespace-pre-line">{object}</p>
+      <p className="m-0 max-w-[68ch] text-body leading-relaxed whitespace-pre-line">{object}</p>
     </section>
   )
 }
@@ -459,6 +473,8 @@ export function OpportunityView({
           </div>
         </Card>
 
+        <FullObject object={tender.object} />
+
         <div className="flex flex-col gap-3.5 min-[900px]:grid min-[900px]:grid-cols-2 min-[900px]:items-start min-[900px]:gap-8">
           <section className="flex flex-col gap-2">
             <SectionLabel tone="muted">{page.whyTitle}</SectionLabel>
@@ -479,8 +495,6 @@ export function OpportunityView({
 
           <Operation tender={tender} />
         </div>
-
-        <FullObject object={tender.object} />
 
         <div className="mt-auto flex flex-col gap-2 pt-2">
           {/* Legal brief §2.2 rule 5: the AI notice appears on EVERY result

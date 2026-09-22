@@ -365,6 +365,38 @@ describe('OpportunityView · the whole Objeto', () => {
     expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf(page.screeningCta))
   })
 
+  /**
+   * The order is the decision, not an accident of where the JSX landed: the
+   * Objeto is what the edital *is*, "Por que este edital apareceu para você"
+   * is our commentary on it and "Operação" is metadata about it. A person
+   * reads the thing before reading what we say about the thing. Moving this
+   * block back under the two-column grid must fail here.
+   */
+  it('comes after the deadline/value box and before everything we say about it', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    const at = (needle: string) => {
+      const i = out.indexOf(needle)
+      expect(i).toBeGreaterThan(-1)
+      return i
+    }
+    expect(at(page.estimatedValue)).toBeLessThan(at(page.objectTitle))
+    expect(at(page.objectTitle)).toBeLessThan(at(page.whyTitle))
+    expect(at(page.objectTitle)).toBeLessThan(at(page.operationTitle))
+  })
+
+  it('spans the content column instead of sharing the two-column grid', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    // The grid wrapper must open *after* the Objeto block, never around it.
+    expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf('min-[900px]:grid'))
+  })
+
+  it('caps the measure rather than setting type across the whole column', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    // 68ch ≈ 570px: inside the 45–75 character band, wider than the 444px
+    // left column it no longer lives in, well short of the 920px container.
+    expect(out).toMatch(/max-w-\[68ch\][^>]*>CONTRATAÇÃO DE EMPRESAS/)
+  })
+
   it('is prose, not a second h1', () => {
     const out = render({ tender: { ...TENDER, object: LONG } })
     expect(out.match(/<h1/g)).toHaveLength(1)
