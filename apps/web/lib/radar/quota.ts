@@ -63,7 +63,7 @@ const BRT = 'America/Sao_Paulo'
  * converts the timestamptz to Brasília wall-clock, truncates there, and the
  * second `at time zone` puts the boundary back on the absolute timeline.
  */
-function periodStart(period: string | null) {
+export function periodStart(period: string | null) {
   if (period === 'month') {
     return sql`date_trunc('month', now() at time zone ${BRT}) at time zone ${BRT}`
   }
@@ -92,7 +92,12 @@ export async function readLimit(
   }
 }
 
-function spenderPredicate(spender: Spender) {
+/**
+ * Exported so a caller that needs "has this spender paid for X?" *alongside*
+ * another fact can ask both in one statement rather than two round trips —
+ * `screeningAvailability` does, on a route Neon may have to wake up for.
+ */
+export function spenderPredicate(spender: Spender) {
   return spender.userId !== undefined
     ? sql`user_id = ${spender.userId}::bigint`
     : sql`visitor_id = ${spender.visitorId}::uuid`

@@ -3,7 +3,12 @@
 import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { getJobStatus, getTender, radarHref, readSearch } from '@/lib/radar/client'
-import type { Freshness, TenderDetail, TenderResponse } from '@/lib/radar/contract'
+import type {
+  Freshness,
+  ScreeningAvailability,
+  TenderDetail,
+  TenderResponse,
+} from '@/lib/radar/contract'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
 import { OpportunityView, type OpportunityStatus, type OpportunityTab } from './opportunity-view'
@@ -23,10 +28,17 @@ import { ITEMS_PAGE } from './tender-items'
 type Data = {
   tender: TenderDetail | null
   freshness: Freshness | null
+  /** Whether a reading exists and whether this caller has paid for it. */
+  screening: ScreeningAvailability | null
   status: OpportunityStatus
 }
 
-const INITIAL: Data = { tender: null, freshness: null, status: { kind: 'analyzing' } }
+const INITIAL: Data = {
+  tender: null,
+  freshness: null,
+  screening: null,
+  status: { kind: 'analyzing' },
+}
 
 function aborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
@@ -72,6 +84,7 @@ export function OpportunityScreen({ id }: { id: string }) {
         setData({
           tender: null,
           freshness: null,
+          screening: null,
           status:
             value.error === 'not_found' || value.error === 'validation'
               ? { kind: 'notFound' }
@@ -80,11 +93,16 @@ export function OpportunityScreen({ id }: { id: string }) {
         return
       }
       if (timedOut || value.state === 'analyzing') {
-        setData({ tender: null, freshness: null, status: { kind: 'notFound' } })
+        setData({ tender: null, freshness: null, screening: null, status: { kind: 'notFound' } })
         return
       }
 
-      setData({ tender: value.tender, freshness: value.freshness, status: { kind: 'ready' } })
+      setData({
+        tender: value.tender,
+        freshness: value.freshness,
+        screening: value.screening,
+        status: { kind: 'ready' },
+      })
     }
 
     load().catch((error: unknown) => {
@@ -92,6 +110,7 @@ export function OpportunityScreen({ id }: { id: string }) {
       setData({
         tender: null,
         freshness: null,
+        screening: null,
         status: { kind: 'error', code: 'server_error', text: NETWORK_ERROR },
       })
     })
@@ -112,6 +131,7 @@ export function OpportunityScreen({ id }: { id: string }) {
       status={data.status}
       backHref={backHref}
       search={search}
+      screening={data.screening}
       onRetry={onRetry}
       tab={tab}
       onSelectTab={setTab}

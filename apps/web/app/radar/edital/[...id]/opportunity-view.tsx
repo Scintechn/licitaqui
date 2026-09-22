@@ -19,7 +19,13 @@ import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { screeningHref, type RadarSearch } from '@/lib/radar/client'
-import type { ErrorCode, Freshness, TenderDetail, TenderGroup } from '@/lib/radar/contract'
+import type {
+  ErrorCode,
+  Freshness,
+  ScreeningAvailability,
+  TenderDetail,
+  TenderGroup,
+} from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { pncpEditalUrl } from '@/lib/radar/pncp'
 import {
@@ -511,6 +517,12 @@ export type OpportunityViewProps = {
    * had nothing to read. Two presses of Voltar then landed on a bare `/radar`.
    */
   search: RadarSearch
+  /**
+   * Whether a reading of this edital exists, and whether this caller has paid
+   * for it. `null` while the route has not answered — the CTA is not drawn
+   * then, because `tender` is null too.
+   */
+  screening?: ScreeningAvailability | null
   now?: Date
   onRetry?: () => void
   /** Which tab of the record is open. The screen owns it; this stays pure. */
@@ -527,6 +539,7 @@ export function OpportunityView({
   status,
   backHref,
   search,
+  screening = null,
   now = new Date(),
   onRetry,
   tab = 'items',
@@ -735,9 +748,26 @@ export function OpportunityView({
               the call to action, which is where the reading stops being read
               and starts being acted on. */}
           <p className="text-caption leading-relaxed text-muted">{aiNotice}</p>
+          {/* Two different actions, and until now one label. Sci: *"I already
+              have the AI Triage for this item … but the button remains like
+              the first time."* Opening a triagem the caller has already paid
+              for is free and instant; opening one they have not spends a
+              screening whether or not the shared reading already exists
+              (§3.2 shares the analysis, §10 allocates the reading). The
+              caption under the button is where that difference is said,
+              because it is a sentence and not a label. */}
           <Button href={screeningHref(tender.id, search)} fullWidth iconEnd="arrowRight">
-            {page.screeningCta}
+            {screening?.spent ? page.screeningCta : page.screeningCtaNew}
           </Button>
+          {screening === null ? null : (
+            <p className="text-caption leading-relaxed text-muted">
+              {screening.spent
+                ? page.screeningDone
+                : screening.ready
+                  ? page.screeningCostReady
+                  : page.screeningCost}
+            </p>
+          )}
           {/* The source of every fact above. PNCP is the official record
               (Lei 14.133 art. 174); the bidding system below it is where the
               dispute happens, which is a different place and a different

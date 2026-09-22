@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
-import { cnpjOf, hasAccount, readViewer } from '@/lib/auth/viewer'
+import { cnpjOf, hasAccount, planOf, readViewer, spenderOf } from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { db } from '@/lib/db'
 import { recordEventSafely } from '@/lib/events'
 import { readCompany } from '@/lib/radar/company'
 import type { TenderResponse } from '@/lib/radar/contract'
+import { FEATURES, readLimit } from '@/lib/radar/quota'
+import { screeningAvailability } from '@/lib/radar/screening'
 import { tenderOrRefresh } from '@/lib/radar/tender'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
@@ -23,6 +25,16 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  * `hasAccount(viewer)` and nothing else changed. A visitor still gets `null`
  * and still sees the locked block; a signed-in user on Básico gets the edital
  * and its annexes, which is the row §10 grants "com conta".
+ *
+ * ## Why the screening state rides along here
+ *
+ * The screen's call to action has to be right on **first paint** — a button
+ * that says "Ver triagem por IA" and then changes its mind under the user's
+ * finger is worse than one that is merely wrong. A second request could not
+ * promise that, and this route is already the one query the list does not
+ * make, so `screeningAvailability` joins it: two small reads on a route that
+ * was doing three, against one extra round trip plus a render the user watches
+ * change. It is read-only and spends nothing.
  */
 
 export const runtime = 'nodejs'
@@ -79,6 +91,12 @@ export async function GET(
       return fail({ state: 'error', error: 'not_found' }, 404, headers)
     }
 
+    // What the CTA needs to be honest: whether a reading of *this* edital
+    // exists, and whether this caller has already paid for it (§3.2, §10).
+    const spender = viewer ? spenderOf(viewer) : null
+    const limit = await readLimit(planOf(viewer), FEATURES.screening, executor)
+    const screening = await screeningAvailability(id, spender, limit, executor)
+
     await recordEventSafely({
       name: 'tender_opened',
       userId: viewer?.kind === 'user' ? viewer.user.userId : null,
@@ -95,6 +113,7 @@ export async function GET(
           updatedAt: cached.updatedAt?.toISOString() ?? null,
           ageSeconds: cached.ageSeconds,
         },
+        screening,
       },
       { status: 200, headers },
     )
