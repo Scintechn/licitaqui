@@ -116,6 +116,13 @@ class ScheduleEntry:
 DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     ScheduleEntry(kind="sync_open_tenders", every_seconds=30 * 60, priority=5),
     ScheduleEntry(kind="sync_awards", daily_at="03:00", priority=9),
+    # Hourly, and off the collectors' priority. A missing title degrades a
+    # card; a missing tender loses it, so this never competes with B2/B3. An
+    # hour is well inside `sync_open_tenders`' own 30 min cycle, so a tender
+    # published today is titled the same day without the sweep running hot —
+    # and the sweep is cheap when there is nothing to do, which after the
+    # backfill is the normal case.
+    ScheduleEntry(kind="sweep_titles", every_seconds=60 * 60, priority=8),
     ScheduleEntry(kind="weekly_digest", daily_at="07:00", priority=9, weekday=0),
 )
 

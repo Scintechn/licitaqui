@@ -1,0 +1,56 @@
+{
+  "nota": "Objeto do terceiro caso de fabricação: virou '… para moradores de Rio Claro'.",
+  "tender_id": "49576416000141-1-000285/2026",
+  "objeto": "CONTRATAÇÃO de empresa especializada em pavimentação para a execução de recapeamento asfáltico em Concreto Betuminoso Usinado a Quente (CBUQ), incluindo fresagem, reciclagem asfáltica, imprimação ligante, pintura de ligação, aplicação de camada de rolamento, execução de Binder e sinalização horizontal, em vias urbanas do Município de Penápolis/SP",
+  "itens": [
+    {
+      "description": "Execução de recapeamento asfáltico em Concreto Betuminoso Usinado a Quente (CBUQ), incluindo fresagem, reciclagem asfáltica, imprimação ligante, pintura de ligação, aplicação de camada de rolamento, execução de Binder e sinalização horizontal, em vias urbanas do Município de Penápolis/SP",
+      "quantity": 1.0,
+      "unit": "Serviço"
+    }
+  ],
+  "checks": [
+    {
+      "nome": "objeto burocrático vai ao modelo",
+      "tipo": "ramo",
+      "valor": "ai"
+    },
+    {
+      "nome": "diz o que é a obra",
+      "tipo": "contem_algum",
+      "valor": [
+        "recapeamento",
+        "asfáltico",
+        "pavimentação"
+      ]
+    },
+    {
+      "nome": "não inventa destinatário",
+      "tipo": "proibido",
+      "valor": [
+        "mei",
+        "moradores",
+        "população",
+        "cidadãos"
+      ]
+    },
+    {
+      "nome": "sem valores nem datas",
+      "tipo": "proibido",
+      "valor": [
+        "r$",
+        "2026",
+        "2027"
+      ]
+    },
+    {
+      "nome": "curto",
+      "tipo": "maximo_palavras",
+      "valor": 12
+    },
+    {
+      "nome": "não nomeia destinatário (sensível ao prompt)",
+      "tipo": "sem_destinatario"
+    }
+  ]
+}

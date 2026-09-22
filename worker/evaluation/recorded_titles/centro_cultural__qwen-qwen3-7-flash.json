@@ -1,0 +1,12 @@
+{
+  "case": "centro_cultural",
+  "model": "qwen/qwen3.7-flash",
+  "prompt_version": "t1",
+  "rules_version": 1,
+  "recorded_at": "2026-09-22T14:44:45+00:00",
+  "answer": {
+    "title": "Construção de um centro cultural na localidade rural Pimenta",
+    "source": "ai",
+    "rejected": null
+  }
+}

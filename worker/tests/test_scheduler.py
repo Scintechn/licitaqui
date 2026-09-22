@@ -45,13 +45,17 @@ def fake_queue(monkeypatch: pytest.MonkeyPatch) -> FakeQueue:
 
 def test_the_schedule_holds_only_the_collector_jobs_that_exist():
     """B1 shipped an empty schedule; B2 added its sweep, B8 the nightly awards
-    one, E1 the Monday digest.
+    one, E1 the Monday digest, and the short titles their hourly one.
 
     B3 and B4 do not appear at all: they are enqueued per changed tender by the
-    sweep, not on a clock. The property this guards is that the scheduler never
-    enqueues a kind nothing can run — every such row would burn four attempts
-    before landing in `failed` — so the list is checked against the registry
-    below rather than only against itself.
+    sweep, not on a clock. `sweep_titles` is the opposite case and is on the
+    clock deliberately — a title also goes stale when the *items* change, which
+    a tender-level follow-up would never see.
+
+    The property this guards is that the scheduler never enqueues a kind
+    nothing can run — every such row would burn four attempts before landing in
+    `failed` — so the list is checked against the registry below rather than
+    only against itself.
     """
     from licitaqui import handlers
     from licitaqui.registry import REGISTRY
@@ -59,6 +63,7 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
     assert [entry.kind for entry in DEFAULT_SCHEDULE] == [
         "sync_open_tenders",
         "sync_awards",
+        "sweep_titles",
         "weekly_digest",
     ]
     assert handlers.registered_kinds()  # importing handlers is what completes the registry

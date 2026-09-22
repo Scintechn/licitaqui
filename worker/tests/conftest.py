@@ -1231,3 +1231,64 @@ def _delete_pn_rows(dsn: str) -> None:
             "delete from jobs where kind = any(%s) and starts_with(key, %s)",
             (list(PN_JOB_KINDS), PN_TENDER_PREFIX),
         )
+
+
+# -- Short titles: the `title_tender` job's own rows -----------------------
+#
+# This suite shares `TEST_DATABASE_URL` rather than asking for a database of
+# its own, because it writes nothing but `tenders` and `tender_items` rows
+# under its own fictitious agency. That agency carries `RUN_ID`, so two
+# concurrent runs of this suite title different tenders and neither cleanup can
+# delete the other's fixtures — the rule in CLAUDE.md, and the reason this is a
+# new block rather than another user of `B2_CNPJ`.
+#
+# The cross-run statement is the same shape as every block above: it can only
+# match this suite's own fictitious `98…` family, and only rows older than
+# `CROSS_RUN_SWEEP_HOURS`, which is far longer than this suite takes. Nothing
+# here backdates a row, so the threshold is not load-bearing for this block.
+
+#: `98` + this run's id as digits. The other blocks use the `99…` family; a
+#: different leading pair keeps this suite's rows out of their cross-run sweeps
+#: and theirs out of this one, which matters because this is the only one of
+#: them sharing the general `TEST_DATABASE_URL`.
+TITLE_CNPJ = f"98{int(RUN_ID, 16):012d}"[:14]
+
+
+@pytest.fixture
+def title_clean_dsn(test_dsn: str) -> Iterator[str]:
+    """The shared test DSN, with this run's titling rows gone before and after."""
+    _delete_title_rows(test_dsn)
+    try:
+        yield test_dsn
+    finally:
+        _delete_title_rows(test_dsn)
+
+
+@pytest.fixture
+def title_conn(title_clean_dsn: str) -> Iterator[psycopg.Connection]:
+    from licitaqui import db
+
+    factory = db.factory(title_clean_dsn, application_name=f"licitaqui-title-test-{os.getpid()}")
+    with factory() as connection:
+        yield connection
+
+
+def _delete_title_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates.
+
+    `tender_items` goes with the tender (`on delete cascade`). The `jobs` rows
+    are keyed by the tender id, which starts with this run's fictitious CNPJ.
+    """
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute(
+            "delete from jobs where kind = 'title_tender' and starts_with(key, %s)", (TITLE_CNPJ,)
+        )
+        conn.execute("delete from tenders where agency_cnpj = %s", (TITLE_CNPJ,))
+        # Debris from a crashed run of *this* suite: its RUN_ID is unknowable,
+        # so age is the only signal. Matched on the exact 14-digit shape this
+        # block generates rather than a bare `98%` wildcard, so the statement
+        # cannot reach a real agency whose CNPJ merely begins with 98.
+        conn.execute(
+            "delete from tenders where agency_cnpj ~ '^98[0-9]{12}$' "
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+        )

@@ -18,9 +18,9 @@ import {
   forgetList,
   listKey,
   readCompany,
-  readList,
   refreshTenders,
   rememberScroll,
+  restoreList,
   saveCompany,
   saveList,
   type ListSnapshot,
@@ -179,7 +179,7 @@ export function RadarScreen() {
    * and those mounts have no server-rendered HTML to disagree with.
    */
   const [data, setData] = useState<Data>(() => {
-    const restored = readList(key)
+    const restored = restoreList({ cnpj, state, q, group: chosenGroup })
     return restored ? fromSnapshot(restored.snapshot) : INITIAL
   })
 
@@ -248,9 +248,22 @@ export function RadarScreen() {
     })
   }, [key, data])
 
-  /** Leaving: remember where they were, so coming back can put them there. */
+  /**
+   * Leaving: remember where they were, so coming back can put them there.
+   *
+   * Twice over, because there are two ways out and only one of them unmounts
+   * anything. A tender card is a plain `<a>` — the whole card is one link, one
+   * keyboard stop — so opening a tender **unloads the document** and React
+   * cleanups never run. `pagehide` is the event that does fire, on desktop and
+   * on iOS where `beforeunload` does not.
+   */
   useEffect(() => {
-    return () => rememberScroll(key, scrollY.current)
+    const remember = () => rememberScroll(key, scrollY.current)
+    window.addEventListener('pagehide', remember)
+    return () => {
+      window.removeEventListener('pagehide', remember)
+      remember()
+    }
   }, [key])
 
   /**
@@ -260,7 +273,7 @@ export function RadarScreen() {
    */
   useBeforePaint(() => {
     if (data.tenders.length === 0) return
-    const restored = readList(key)
+    const restored = restoreList({ cnpj, state, q, group: chosenGroup })
     if (restored && restored.snapshot.scrollY > 0) window.scrollTo(0, restored.snapshot.scrollY)
   }, [])
 
@@ -323,7 +336,7 @@ export function RadarScreen() {
         return
       }
 
-      const restored = readList(key)
+      const restored = restoreList({ cnpj, state, q, group: chosenGroup })
       if (restored) {
         // The mount initializer may already have rendered this exact snapshot;
         // setting it again would replace an identical view model and re-render
