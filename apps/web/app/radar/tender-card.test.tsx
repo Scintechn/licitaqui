@@ -106,3 +106,58 @@ describe('the title', () => {
     expect(render()).toContain('Registro de preços de baterias e pilhas')
   })
 })
+
+/**
+ * Item 2 of the three UX failures. Sci: *"Like we have in PNCP I just need one
+ * click to see the brief description in 'Objeto'. In our application we need at
+ * least 2 or 3 clicks, or to request the AI — for something that is already
+ * there, free."*
+ *
+ * The full object ships in the list payload, so the only question these tests
+ * ask is whether the card lets him read it: yes when there is more to read, no
+ * control at all when there is not.
+ */
+const LONG =
+  'AQUISICAO DE MATERIAIS TERAPEUTICOS PARA AS UNIDADES DO NUCLEO DE INTEGRACAO DE ' +
+  'DESENVOLVIMENTO INFANTIL NIDI  CENTRO DE ATENCAO PSICOSSOCIAL INFANTIL CAPSI E ' +
+  'POLICLINICA DA CRIANCA  por meio de Dispensa Eletronica de Licitacao com fundamento ' +
+  'no art. 75  inc. II da Lei n  14.133 21  visando atender as necessidades da ' +
+  'Secretaria de Saude do Municipio de Olinda'
+
+describe('the object, readable from the list', () => {
+  it('puts the whole text on the card, collapsed, behind one control', () => {
+    const out = render({ object: LONG })
+    expect(out).toContain('<details')
+    expect(out).not.toContain('<details open')
+    expect(out).toContain(copy.list.object.label)
+    // The tail of the object — the part the 120-character title cuts off.
+    expect(out).toContain('Secretaria de Saude do Municipio de Olinda')
+  })
+
+  it('costs no request and no screening: it is the string the list already sent', () => {
+    // Nothing in this component fetches; the assertion that matters is that
+    // the text rendered is the tender's own `object` and not a summary.
+    const out = render({ object: LONG })
+    expect(out).toContain('materiais terapeuticos')
+  })
+
+  it('renders no control at all when the title is already the whole object', () => {
+    const out = render({ object: 'Registro de preços de baterias e pilhas' })
+    expect(out).not.toContain('<details')
+    expect(out).not.toContain(copy.list.object.label)
+  })
+
+  it('is a real disclosure, so it is a keyboard stop and works unhydrated', () => {
+    const out = render({ object: LONG })
+    expect(out).toContain('<summary')
+    // 44px: the board's minimum touch target, on the whole row.
+    expect(out).toMatch(/<summary[^>]*min-h-touch/)
+  })
+
+  it('does not put interactive content inside the card’s link', () => {
+    // `<details>` inside an `<a>` is invalid HTML and would swallow the click.
+    const out = render({ object: LONG })
+    const link = out.slice(out.indexOf('<a '), out.indexOf('</a>'))
+    expect(link).not.toContain('<details')
+  })
+})
