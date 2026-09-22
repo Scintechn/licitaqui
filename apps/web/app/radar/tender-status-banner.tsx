@@ -49,7 +49,11 @@ export function TenderStatusBanner({
       <div className="flex min-w-0 flex-col gap-1">
         <p className="m-0 text-meta font-semibold">{notice.title}</p>
         <p className="m-0 text-meta leading-relaxed">{notice.body}</p>
-        <p className="m-0 text-caption leading-relaxed opacity-90">{notice.source}</p>
+        {/* No `opacity` to quiet this line: `--color-attention` on
+            `--color-attention-soft` is 5.30:1, and 90% opacity blends it to
+            **4.37:1** — under the 4.5 AA needs, on 11px text. The hierarchy is
+            carried by size and weight instead, which cost no contrast. */}
+        <p className="m-0 text-caption leading-relaxed">{notice.source}</p>
       </div>
     </div>
   )
