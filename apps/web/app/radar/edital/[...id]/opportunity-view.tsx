@@ -6,10 +6,14 @@ import {
   Button,
   Card,
   Icon,
+  LockedBlock,
   SectionLabel,
   StateCard,
   Status,
+  TabPanel,
+  Tabs,
   type StatusKind,
+  type TabItem,
 } from '@/components'
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
@@ -32,6 +36,7 @@ import { mayShowUrgency, statusChipLabel, statusNotice } from '@/lib/radar/tende
 import { TenderTags } from '../../tender-card'
 import { TenderStatusBanner } from '../../tender-status-banner'
 import { CopyId } from './copy-id'
+import { ITEMS_PAGE, TenderItems } from './tender-items'
 
 /**
  * The Opportunity screen — canvas 03, `Oportunidade.dc.html`.
@@ -213,8 +218,8 @@ function Operation({ tender }: { tender: TenderDetail }) {
 }
 
 /**
- * The Objeto, whole, in the agency's own words — the last thing on the screen
- * before the AI is offered.
+ * The Objeto, whole, in the agency's own words — directly under the
+ * deadline/value box.
  *
  * ## Why it is not collapsed
  *
@@ -226,20 +231,51 @@ function Operation({ tender }: { tender: TenderDetail }) {
  * is expanded, always, however long it runs. The screen already scrolls, the
  * call to action is `mt-auto` at the end of it, and nothing above moves.
  *
- * ## Why it sits before the screening call to action
+ * ## Why it sits directly under the deadline/value box
  *
- * §2.2 rule 4 — a conclusion without its source is a defect. The AI screening
- * is a reading *of this text*; a person should be able to read what the órgão
- * wrote and form their own view before being offered ours. That ordering is
- * the argument, so the block goes above the CTA rather than below it.
+ * The Objeto is what the edital **is**. "Por que este edital apareceu para
+ * você" is our commentary on it, "Operação" is metadata about it, and the
+ * `Itens`/`Documentos` tabs below are its parts — so all three follow it: a
+ * person reads the thing before reading what we say about the thing. That is
+ * §2.2 rule 4 — a conclusion without its source is a defect — applied to the
+ * whole screen rather than only to the screening CTA further down, which it
+ * also still sits above.
+ *
+ * It is a sibling of the two-column block, not a cell inside it, so it spans
+ * the whole content column and carries the weight immediately under the box.
+ * Sci asked for exactly this by name: *"The Objeto should be right after the
+ * box with the price, and below to them, like we have now 'Por que este edital
+ * apareceu para você' and 'Operação'. The Objeto will place the entire weight
+ * below to the box."*
+ *
+ * ## This order has been silently reverted once — it is pinned
+ *
+ * Task #56 made the move; `task/b9-tender-status` branched before it landed
+ * and its merge (`cc4b766`) resolved the conflict in its own favour, putting
+ * the block back under the grid, restoring `max-w-[62ch]` and **deleting the
+ * three tests that guarded the order**. B9's own diff touches this component
+ * zero times, so nobody decided any of it — and with the guards gone CI stayed
+ * green while undoing a change Sci had asked for. The tests are back, under
+ * `OpportunityView · the whole Objeto`, and one of them now also pins the
+ * Objeto above `role="tablist"`. If you are moving this block, they are what
+ * you have to argue with.
  *
  * ## Verbatim, with the agency's own line breaks
  *
  * No `trimObject`, no ellipsis. `whitespace-pre-line` keeps the newlines PNCP
  * published — many órgãos paragraph these, and flattening them turns a list of
  * lots into a wall — while still collapsing the runs of padding spaces that
- * come out of their form fields. `max-w-[62ch]` holds the measure readable on
- * a 1280px window; at 390px the gutter is already the constraint.
+ * come out of their form fields.
+ *
+ * ## The measure is not the container
+ *
+ * Spanning the column does not mean setting the type across it. At the 920px
+ * content width an unconstrained line runs past 105 characters of dense,
+ * often uppercase legal prose, which is where a long measure hurts most.
+ * `max-w-[68ch]` — about 570px — keeps it inside the 45–75 character band
+ * that reads comfortably while being half again the 444px left column it no
+ * longer lives in, so the block still reads as the wide one. At 390px the
+ * gutter is the constraint and this cap never applies.
  *
  * It does not assume the `h1` above is a prefix of this text. When the `h1`
  * becomes a generated short title, this block is unchanged and becomes the
@@ -250,38 +286,129 @@ function FullObject({ object }: { object: string }) {
   return (
     <section className="flex flex-col gap-2">
       <SectionLabel tone="muted">{page.objectTitle}</SectionLabel>
-      <p className="m-0 max-w-[62ch] text-body leading-relaxed whitespace-pre-line">{object}</p>
+      <p className="m-0 max-w-[68ch] text-body leading-relaxed whitespace-pre-line">{object}</p>
     </section>
   )
 }
 
+/**
+ * The Documentos tab.
+ *
+ * It used to be a loose "EDITAL E ANEXOS · CRIAR CONTA" button under the call
+ * to action with, for a signed-in user, a bare
+ * `TR, Edital e seus anexos 32.2026.zip` link hanging beneath it. Same tender,
+ * two screens, two design systems — tabs after the AI reading and a stray
+ * block before it.
+ *
+ * The gate itself does not move: §8 is "files only with an account", and
+ * `files: null` means the request never asked for the URLs, so an
+ * unauthenticated response cannot carry them. What changes is that the lock is
+ * now a *state of the tab* rather than an absence outside it. The tab is
+ * selectable for a visitor precisely so they can open it and find out that the
+ * agency published documents and that an account opens them — a padlocked
+ * link straight out to the sign-up, which is what the screening screen does,
+ * would answer the question by refusing to let them ask it.
+ *
+ * `files: []` is the third state and a different fact: the agency published
+ * nothing. It gets its own sentence rather than the upsell.
+ */
 function Files({ tender }: { tender: TenderDetail }) {
-  // `files: null` is the locked block (§8: "files only with an account");
-  // `files: []` would mean the agency published nothing, which is different.
   if (tender.files === null) {
     return (
-      <Button variant="locked" href={ACCOUNT_HREF} fullWidth>
-        {page.filesLocked}
-      </Button>
+      <LockedBlock
+        href={ACCOUNT_HREF}
+        title={page.filesLocked}
+        description={page.filesLockedNote}
+      />
     )
   }
-  if (tender.files.length === 0) return null
+  if (tender.files.length === 0) {
+    return (
+      <StateCard kind="empty" title={page.files.emptyTitle} description={page.files.emptyBody} />
+    )
+  }
   return (
-    <section className="flex flex-col gap-2">
-      <SectionLabel tone="muted">{page.filesLocked}</SectionLabel>
-      <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-        {tender.files.map((file) => (
-          <li key={file.sequence}>
-            <a
-              href={file.url ?? '#'}
-              className="inline-flex min-h-touch items-center gap-2 text-body text-blue"
-            >
-              <Icon name="tender" size={16} />
-              {file.title ?? file.docType ?? `#${file.sequence}`}
-            </a>
-          </li>
-        ))}
-      </ul>
+    <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+      {tender.files.map((file) => (
+        <li key={file.sequence}>
+          <a
+            href={file.url ?? '#'}
+            className="inline-flex min-h-touch items-center gap-2 text-body text-blue"
+          >
+            <Icon name="tender" size={16} />
+            {file.title ?? file.docType ?? `#${file.sequence}`}
+          </a>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * The record, in the shape PNCP gives it — the object above, then tabs.
+ *
+ * PNCP puts `Itens · Arquivos · Atas de Registro de Preço · Contratos/Empenhos
+ * · Histórico` under the object, and it is the page people cross-check us
+ * against. Matching the shape is not imitation; it is not making someone learn
+ * two mental models for the same record.
+ *
+ * Two tabs and not five, because we hold two: `tender_items` and
+ * `tender_files`. Atas, contratos and histórico are PNCP endpoints nothing in
+ * this product syncs, and a tab that opens on "não temos isto" is worse than
+ * no tab.
+ *
+ * **Itens is the default.** It is the reason Sci was opening PNCP beside us,
+ * it is PNCP's own first tab, and it is the one that is never locked.
+ *
+ * What stays *outside*: the status banner, the title, the deadline/value card,
+ * "Por que este edital apareceu para você", "Operação" and the whole Objeto.
+ * The Objeto in particular is never going behind a tab — §2.2 rule 4 wants the
+ * agency's own words read before any reading of ours, and a tab is one click
+ * more than "already on the screen".
+ */
+const TAB_PREFIX = 'tender'
+export type OpportunityTab = 'items' | 'files'
+
+function Record({
+  tender,
+  tab,
+  onSelectTab,
+  itemsVisible,
+  onShowMoreItems,
+}: {
+  tender: TenderDetail
+  tab: OpportunityTab
+  onSelectTab?: (tab: OpportunityTab) => void
+  itemsVisible?: number
+  onShowMoreItems?: () => void
+}) {
+  const tabs: TabItem<OpportunityTab>[] = [
+    { id: 'items', label: page.tabs.items },
+    {
+      id: 'files',
+      label: page.tabs.files,
+      // The padlock says the state before the tab is opened; the panel says
+      // what to do about it. No `href`, so it stays a tab and not a link out.
+      icon: tender.files === null ? 'locked' : undefined,
+    },
+  ]
+
+  return (
+    <section className="flex flex-col gap-3">
+      <Tabs items={tabs} active={tab} onSelect={onSelectTab} idPrefix={TAB_PREFIX} />
+      {tab === 'items' ? (
+        <TabPanel idPrefix={TAB_PREFIX} id="items">
+          <TenderItems
+            items={tender.items}
+            visible={itemsVisible}
+            onShowMore={onShowMoreItems}
+          />
+        </TabPanel>
+      ) : (
+        <TabPanel idPrefix={TAB_PREFIX} id="files">
+          <Files tender={tender} />
+        </TabPanel>
+      )}
     </section>
   )
 }
@@ -354,6 +481,12 @@ export type OpportunityViewProps = {
   backHref: string
   now?: Date
   onRetry?: () => void
+  /** Which tab of the record is open. The screen owns it; this stays pure. */
+  tab?: OpportunityTab
+  onSelectTab?: (tab: OpportunityTab) => void
+  /** How many item rows the Itens tab has grown to. */
+  itemsVisible?: number
+  onShowMoreItems?: () => void
 }
 
 export function OpportunityView({
@@ -363,6 +496,10 @@ export function OpportunityView({
   backHref,
   now = new Date(),
   onRetry,
+  tab = 'items',
+  onSelectTab,
+  itemsVisible = ITEMS_PAGE,
+  onShowMoreItems,
 }: OpportunityViewProps) {
   const bar = (
     <AppBar
@@ -500,6 +637,10 @@ export function OpportunityView({
           </div>
         </Card>
 
+        {/* Directly under the box, spanning the column — a sibling of the
+            two-column block and never a cell inside it. See `FullObject`. */}
+        <FullObject object={tender.object} />
+
         <div className="flex flex-col gap-3.5 min-[900px]:grid min-[900px]:grid-cols-2 min-[900px]:items-start min-[900px]:gap-8">
           <section className="flex flex-col gap-2">
             <SectionLabel tone="muted">{page.whyTitle}</SectionLabel>
@@ -521,7 +662,14 @@ export function OpportunityView({
           <Operation tender={tender} />
         </div>
 
-        <FullObject object={tender.object} />
+        {/* PNCP's shape: the object, then the record's tabs. */}
+        <Record
+          tender={tender}
+          tab={tab}
+          onSelectTab={onSelectTab}
+          itemsVisible={itemsVisible}
+          onShowMoreItems={onShowMoreItems}
+        />
 
         <div className="mt-auto flex flex-col gap-2 pt-2">
           {/* Legal brief §2.2 rule 5: the AI notice appears on EVERY result
@@ -534,7 +682,6 @@ export function OpportunityView({
           <Button href={`${tenderHref(tender.id)}/triagem`} fullWidth iconEnd="arrowRight">
             {page.screeningCta}
           </Button>
-          <Files tender={tender} />
           {/* The source of every fact above. PNCP is the official record
               (Lei 14.133 art. 174); the bidding system below it is where the
               dispute happens, which is a different place and a different

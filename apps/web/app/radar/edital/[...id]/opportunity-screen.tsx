@@ -7,7 +7,8 @@ import type { Freshness, TenderDetail, TenderResponse } from '@/lib/radar/contra
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
 import { normaliseUf } from '@/lib/radar/ufs'
-import { OpportunityView, type OpportunityStatus } from './opportunity-view'
+import { OpportunityView, type OpportunityStatus, type OpportunityTab } from './opportunity-view'
+import { ITEMS_PAGE } from './tender-items'
 
 /**
  * `GET /api/tenders/:id` for one tender, and the back link that remembers
@@ -36,6 +37,11 @@ export function OpportunityScreen({ id }: { id: string }) {
   const params = useSearchParams()
   const [attempt, setAttempt] = useState(0)
   const [data, setData] = useState<Data>(INITIAL)
+  // The record's tab and how far the Itens list has been unrolled live here,
+  // the way the screening screen's tab does, so `opportunity-view.tsx` stays a
+  // pure function of props and every page of the table renders in a test.
+  const [tab, setTab] = useState<OpportunityTab>('items')
+  const [itemsVisible, setItemsVisible] = useState(ITEMS_PAGE)
 
   const from = params.get('group')
   const backHref = radarHref({
@@ -51,6 +57,10 @@ export function OpportunityScreen({ id }: { id: string }) {
 
     async function load() {
       setData(INITIAL)
+      // A different tender is a different table: keep neither the open tab nor
+      // how far the last one had been scrolled.
+      setTab('items')
+      setItemsVisible(ITEMS_PAGE)
       const { value, timedOut } = await waitForData<TenderResponse>({
         read: () => getTender(id, signal),
         analyzing: (answer) => (answer.state === 'analyzing' ? answer.job : null),
@@ -90,6 +100,10 @@ export function OpportunityScreen({ id }: { id: string }) {
   }, [id, attempt])
 
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
+  const onShowMoreItems = useCallback(
+    () => setItemsVisible((value) => value + ITEMS_PAGE),
+    [],
+  )
 
   return (
     <OpportunityView
@@ -98,6 +112,10 @@ export function OpportunityScreen({ id }: { id: string }) {
       status={data.status}
       backHref={backHref}
       onRetry={onRetry}
+      tab={tab}
+      onSelectTab={setTab}
+      itemsVisible={itemsVisible}
+      onShowMoreItems={onShowMoreItems}
     />
   )
 }

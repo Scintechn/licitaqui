@@ -28,5 +28,8 @@ export type { StateCardProps, StateKind } from './state-card'
 export { Status } from './status'
 export type { StatusKind, StatusProps } from './status'
 
+export { Tabs, TabPanel, panelId, tabId } from './tabs'
+export type { TabItem, TabPanelProps, TabsProps } from './tabs'
+
 export { Tag, TagList } from './tag'
 export type { TagProps, TagTone } from './tag'

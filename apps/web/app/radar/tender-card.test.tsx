@@ -110,14 +110,18 @@ describe('the title', () => {
 })
 
 /**
- * Item 2 of the three UX failures. Sci: *"Like we have in PNCP I just need one
- * click to see the brief description in 'Objeto'. In our application we need at
- * least 2 or 3 clicks, or to request the AI — for something that is already
- * there, free."*
+ * "Objeto completo" is gone from the card.
  *
- * The full object ships in the list payload, so the only question these tests
- * ask is whether the card lets him read it: yes when there is more to read, no
- * control at all when there is not.
+ * It was added because reading the tail of a 200-character object otherwise
+ * cost a click, and Sci has now taken it back out: *"I don't think it's
+ * needed, because we will have the whole description inside the item."* The
+ * Opportunity screen prints the whole Objeto expanded, directly above the
+ * Itens tab, so the tail is one tap away on the screen that also has the
+ * items, the files and the deadline — and the list goes back to being a list.
+ *
+ * These tests pin the removal rather than delete the old ones, because a
+ * `<details>` on the card is also what forced the card to stop being a single
+ * link, and that regression must not come back by accident.
  */
 const LONG =
   'AQUISICAO DE MATERIAIS TERAPEUTICOS PARA AS UNIDADES DO NUCLEO DE INTEGRACAO DE ' +
@@ -126,40 +130,32 @@ const LONG =
   'no art. 75  inc. II da Lei n  14.133 21  visando atender as necessidades da ' +
   'Secretaria de Saude do Municipio de Olinda'
 
-describe('the object, readable from the list', () => {
-  it('puts the whole text on the card, collapsed, behind one control', () => {
+describe('the card is a list row again, not an expander', () => {
+  it('carries no disclosure, however long the object is', () => {
     const out = render({ object: LONG })
-    expect(out).toContain('<details')
-    expect(out).not.toContain('<details open')
-    expect(out).toContain(copy.list.object.label)
-    // The tail of the object — the part the 120-character title cuts off.
-    expect(out).toContain('Secretaria de Saude do Municipio de Olinda')
+    expect(out).not.toContain('<details')
+    expect(out).not.toContain('<summary')
+    expect(out).not.toContain('Objeto completo')
   })
 
-  it('costs no request and no screening: it is the string the list already sent', () => {
-    // Nothing in this component fetches; the assertion that matters is that
-    // the text rendered is the tender's own `object` and not a summary.
+  it('still shows the object, trimmed, as the headline it always was', () => {
     const out = render({ object: LONG })
     expect(out).toContain('materiais terapeuticos')
+    // …and not the tail, which is the Opportunity screen’s job now.
+    expect(out).not.toContain('Secretaria de Saude do Municipio de Olinda')
   })
 
-  it('renders no control at all when the title is already the whole object', () => {
-    const out = render({ object: 'Registro de preços de baterias e pilhas' })
-    expect(out).not.toContain('<details')
-    expect(out).not.toContain(copy.list.object.label)
-  })
-
-  it('is a real disclosure, so it is a keyboard stop and works unhydrated', () => {
+  it('is one link and therefore one keyboard stop for the whole tender', () => {
     const out = render({ object: LONG })
-    expect(out).toContain('<summary')
-    // 44px: the board's minimum touch target, on the whole row.
-    expect(out).toMatch(/<summary[^>]*min-h-touch/)
+    expect(out.match(/<a /g)).toHaveLength(1)
+    expect(out).toMatch(/^<a /)
   })
 
-  it('does not put interactive content inside the card’s link', () => {
-    // `<details>` inside an `<a>` is invalid HTML and would swallow the click.
-    const out = render({ object: LONG })
-    const link = out.slice(out.indexOf('<a '), out.indexOf('</a>'))
-    expect(link).not.toContain('<details')
+  it('renders as a plain surface, and no link at all, for the Landing example', () => {
+    const out = renderToStaticMarkup(
+      <TenderCardView tender={{ ...TENDER, object: LONG }} now={NOW} href={null} />,
+    )
+    expect(out).not.toContain('<a ')
+    expect(out).toContain('materiais terapeuticos')
   })
 })
