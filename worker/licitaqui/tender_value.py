@@ -641,8 +641,8 @@ def due_tenders(conn: psycopg.Connection, limit: int = SWEEP_BATCH) -> list[str]
 
     All three empty themselves — once Consulta answers, the marker says
     ``consulta`` and the row stops being offered — and each cycle is bounded by
-    :data:`SWEEP_BATCH`. That matters at the ~53 % success rate measured on
-    2026-09-22: roughly half of each cycle's attempts land, so a backlog
+    :data:`SWEEP_BATCH`. That matters at the 62 % success rate measured on
+    2026-09-22 over 50 probes: most of each cycle's attempts land, so a backlog
     converges over a day or so rather than in one pass.
 
     `is distinct from` rather than `<>`, because the common case is a NULL

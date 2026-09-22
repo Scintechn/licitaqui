@@ -317,10 +317,13 @@ answers.
 
 The hourly probe it requests has still not been run for a full day, and the
 evidence from this work says it should be. During roughly three hours on
-2026-09-22 the detail endpoint was **flapping, not down**: over 19 consecutive
-minute-spaced probes, **10 × HTTP 200 (~0.8 s), 2 × HTTP 502, 1 × HTTP 503 and
-6 × read timeout** — a **53 % success rate** — while `/api/search/` and
-`/api/pncp/v1/.../itens` answered every request in under 2 s throughout.
+2026-09-22 the detail endpoint was **flapping, not down**: over **50**
+consecutive minute-spaced probes, **31 × HTTP 200 (~0.8 s), 3 × HTTP 502,
+1 × HTTP 503 and 15 × read timeout** — a **62 % success rate** — while
+`/api/search/` and `/api/pncp/v1/.../itens` answered every request in under 2 s
+throughout. The failures were not evenly spread: they arrived in runs of two to
+four minutes separated by longer healthy stretches, which is what makes a
+consecutive-failure breaker fire so readily against it.
 
 That is a third failure mode this ADR has not characterised: neither the clean
 outage of §2 nor the healthy stretch of §1. It matters for two reasons.
@@ -330,8 +333,8 @@ outage of §2 nor the healthy stretch of §1. It matters for two reasons.
   it — the queue's backoff covers a miss and the sweep returns for the row — but
   a full pass is paced by PNCP, not by us.
 - **It is invisible to a breaker tuned for outages.** Two consecutive failures
-  open the circuit for 15 minutes, and at a 53 % success rate two consecutive
-  failures arrive roughly every four requests. A job that needs many consulta
+  open the circuit for 15 minutes, and this service fails in *runs*, so a
+  62 % overall success rate still produces two-in-a-row often. A job that needs many consulta
   calls will spend most of its time circuit-broken even though half the service's
   answers are fine. Nothing here changes the breaker — it is doing what §7.2
   specifies — but whoever re-measures should decide whether a flapping service
