@@ -974,8 +974,9 @@
         "status": "Situação",
         "pncpId": "Id PNCP"
       },
-      "copyId": "Copiar o Id PNCP",
-      "copiedId": "Id PNCP copiado",
+      "copyId": "Copiar",
+      "copyIdContext": "o Id PNCP",
+      "copiedId": "Copiado",
       "pncpLink": "Ver no PNCP · registro oficial",
       "pncpLinkNewTab": "(abre em uma nova aba)",
       "systemLink": "Abrir no portal de compras",

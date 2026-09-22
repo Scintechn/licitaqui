@@ -49,19 +49,25 @@ export function CopyId({ id }: { id: string }) {
   }, [id])
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={onCopy}
-        title={page.copyId}
-        className="-my-1 inline-flex size-6 shrink-0 items-center justify-center rounded-badge text-muted transition-colors hover:bg-fill-muted hover:text-ink"
-      >
-        <Icon name={copied ? 'check' : 'copy'} size={14} title={page.copyId} />
-      </button>
-      {/* Announced on success; empty until then, so it is not read on load. */}
-      <span role="status" className="sr-only">
-        {copied ? page.copiedId : ''}
-      </span>
-    </>
+    /*
+     * Labelled, not icon-only. At 390px the id already fills the row, so the
+     * button wraps to a line of its own — and a bare glyph sitting under an
+     * identifier is a guess, not an affordance. "Copiar" costs 45px on a line
+     * that was empty anyway, and at 1280px it still sits inline after the id.
+     *
+     * The accessible name is the visible word plus a hidden "o Id PNCP", so it
+     * says which thing it copies while still containing its visible label
+     * (WCAG 2.5.3). `aria-live` announces the swap to "Copiado"; the icon is
+     * decorative, because the word beside it already says the same.
+     */
+    <button
+      type="button"
+      onClick={onCopy}
+      className="-my-1 inline-flex min-h-6 shrink-0 items-center gap-1 rounded-badge px-1 text-meta text-muted transition-colors hover:bg-fill-muted hover:text-ink"
+    >
+      <Icon name={copied ? 'check' : 'copy'} size={14} />
+      <span aria-live="polite">{copied ? page.copiedId : page.copyId}</span>
+      <span className="sr-only"> {page.copyIdContext}</span>
+    </button>
   )
 }

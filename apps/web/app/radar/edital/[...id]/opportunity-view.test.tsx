@@ -276,7 +276,10 @@ describe('OpportunityView · traceability back to PNCP', () => {
   it('leaves the id selectable, and offers a copy button beside it', () => {
     const out = render({})
     expect(out).toMatch(/select-all[^>]*>51885242000140-1-000744\/2026/)
+    // Labelled, and the accessible name says which id it copies while still
+    // containing the visible word (WCAG 2.5.3).
     expect(out).toContain(page.copyId)
+    expect(out).toContain(page.copyIdContext)
     // The id is not *inside* the button: a click in a <button> does not select
     // its text, and pasting the id into PNCP's search is the point.
     expect(out).not.toMatch(/<button[^>]*>[^<]*51885242000140/)
