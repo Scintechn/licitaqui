@@ -487,32 +487,39 @@ def refresh_one(
 
     agrees = _agreement(header, item_sum)
 
-    # The item sum may only fill an **empty** cell. A tender PNCP published a
-    # zero for already carries PNCP's answer, and replacing it with ours would
-    # be exactly the substitution Sci's rule forbids — see APPLY_ITEM_SUM_SQL.
-    # `state` is the value as it was *before* APPLY_DETAIL_SQL ran, which is
-    # what makes this readable: a detail fetch that supplied a number lands in
-    # `header` and wins through `pick_total` anyway.
-    fallback = item_sum if state.estimated_value is None else None
+    # **What we may write** and **what the tender is worth** are two different
+    # questions, and conflating them is a bug this suite caught: on a *re-visit*
+    # of a row already valued from its items, there is nothing new to write, and
+    # answering "no value" would report NONE for a tender that plainly shows a
+    # number — and hand it the short six-hour horizon, re-offering it four times
+    # a day for ever. Exactly the churn UPGRADE_TTL_HOURS exists to prevent.
 
-    # One expression decides which number wins, shared with the
-    # `favored_treatment` the card prints beside it, so the value and the ME/EPP
-    # claim can never come from different arithmetic.
-    value = pick_total(header, fallback)
+    # What we may write. The item sum only ever fills an **empty** cell: a
+    # tender PNCP published a zero for already carries PNCP's answer, and
+    # replacing it with ours is the substitution Sci's rule forbids (see
+    # APPLY_ITEM_SUM_SQL). `state` is the value as it was *before*
+    # APPLY_DETAIL_SQL ran, so a detail fetch that supplied a number lands in
+    # `header` and wins through `pick_total` regardless.
+    writable = pick_total(header, item_sum if state.estimated_value is None else None)
+    if writable is not None and writable != header:
+        conn.execute(APPLY_ITEM_SUM_SQL, {"tender_id": tender_id, "estimated_value": writable})
 
-    if value is not None and value != header:
-        conn.execute(APPLY_ITEM_SUM_SQL, {"tender_id": tender_id, "estimated_value": value})
+    # What the tender is worth now, which is what the outcome reports and what
+    # the horizon is chosen from. `pick_total` is the one expression that
+    # decides, shared with the `favored_treatment` printed beside it, so a
+    # card's value and its ME/EPP claim can never come from different arithmetic.
+    value = pick_total(header, writable if writable is not None else state.estimated_value)
 
     if value is None:
         source = VALUE_SOURCE_NONE
-    elif value == header:
+    elif header is not None and value == header:
         source = VALUE_SOURCE_CONSULTA
     else:
         source = VALUE_SOURCE_ITEMS
 
-    # Always, on every path: see PARK_SQL. A tender that now shows a number is
-    # no longer urgent even when that number is ours rather than PNCP's, so it
-    # waits a week for its upgrade instead of six hours (§14.1, UPGRADE_TTL_HOURS).
+    # Always, on every path: see PARK_SQL. A tender that shows a number is not
+    # urgent even when that number is ours rather than PNCP's, so it waits a
+    # week for its upgrade instead of six hours (§14.1, UPGRADE_TTL_HOURS).
     horizon = REFRESH_TTL_HOURS if source == VALUE_SOURCE_NONE else UPGRADE_TTL_HOURS
     conn.execute(PARK_SQL, {"tender_id": tender_id, "next_refresh_at": _in_hours(horizon)})
 
