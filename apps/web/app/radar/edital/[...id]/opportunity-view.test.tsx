@@ -371,6 +371,64 @@ describe('OpportunityView · the whole Objeto', () => {
     expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf(page.screeningCta))
   })
 
+  /**
+   * The order, pinned — restored from task #56, which wrote it and proved it
+   * guards by reverting the move and watching these fail.
+   *
+   * The Objeto is what the edital *is*, "Por que este edital apareceu para
+   * você" is our commentary on it, "Operação" is metadata about it, and the
+   * `Itens`/`Documentos` tabs are its parts. A person reads the thing before
+   * reading what we say about the thing. Moving this block back under the
+   * two-column grid must fail here.
+   *
+   * These three tests were **deleted** by `task/b9-tender-status`, whose merge
+   * (`cc4b766`) also put the block back under the grid and restored
+   * `max-w-[62ch]`. B9's own diff touches `FullObject` zero times, so none of
+   * it was decided — and with the guards gone CI stayed green while undoing a
+   * change Sci had asked for by name. That is the failure mode a pinned order
+   * is supposed to make impossible, so they are back, and the fourth one below
+   * extends the same guard over the tabs this PR adds.
+   */
+  it('comes after the deadline/value box and before everything we say about it', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    const at = (needle: string) => {
+      const i = out.indexOf(needle)
+      expect(i).toBeGreaterThan(-1)
+      return i
+    }
+    expect(at(page.estimatedValue)).toBeLessThan(at(page.objectTitle))
+    expect(at(page.objectTitle)).toBeLessThan(at(page.whyTitle))
+    expect(at(page.objectTitle)).toBeLessThan(at(page.operationTitle))
+  })
+
+  it('spans the content column instead of sharing the two-column grid', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    // The grid wrapper must open *after* the Objeto block, never around it.
+    expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf('min-[900px]:grid'))
+  })
+
+  it('caps the measure rather than setting type across the whole column', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    // 68ch ≈ 570px: inside the 45–75 character band, wider than the 444px
+    // left column it no longer lives in, well short of the 920px container.
+    expect(out).toMatch(/max-w-\[68ch\][^>]*>CONTRATAÇÃO DE EMPRESAS/)
+  })
+
+  it('stays above the record’s tabs: the object is read before its parts', () => {
+    // The fourth guard, and the reason it is its own named test rather than a
+    // side effect of a tab assertion: the last test that pinned this order was
+    // deleted by a lane that had no idea it was load-bearing.
+    const out = render({
+      tender: { ...TENDER, object: LONG, items: TENDER_ITEMS_FIXTURE, itemCount: 15 },
+    })
+    const strip = out.indexOf('role="tablist"')
+    expect(strip).toBeGreaterThan(-1)
+    expect(out.indexOf(page.objectTitle)).toBeLessThan(strip)
+    // …and the tabs still come after the commentary, so the whole chain holds:
+    // box → Objeto → why → Operação → tabs.
+    expect(out.indexOf(page.operationTitle)).toBeLessThan(strip)
+  })
+
   it('is prose, not a second h1', () => {
     const out = render({ tender: { ...TENDER, object: LONG } })
     expect(out.match(/<h1/g)).toHaveLength(1)
