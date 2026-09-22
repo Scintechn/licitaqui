@@ -274,9 +274,7 @@ class TestItemSumFallback:
         # let the item sum win.
         tid = given_search_tender(ev_conn, 9)
         given_items(ev_conn, tid, ["999999.99"])
-        ev_conn.execute(
-            "update tenders set estimated_value = 271350.31 where id = %s", (tid,)
-        )
+        ev_conn.execute("update tenders set estimated_value = 271350.31 where id = %s", (tid,))
         ev_conn.execute(
             tender_value_module.APPLY_ITEM_SUM_SQL,
             {"tender_id": tid, "estimated_value": Decimal("999999.99")},
@@ -477,12 +475,29 @@ class TestTheJob:
         ).fetchone()[0]
         assert count == 1
 
-    def test_an_already_valued_tender_costs_no_pncp_call(self, ev_conn, monkeypatch):
+    def test_a_consulta_valued_tender_costs_no_pncp_call(self, ev_conn, monkeypatch):
+        # "Already valued" is not enough to skip the call — only "already valued
+        # from PNCP's own header" is. The marker is what says so.
         tid = given_search_tender(ev_conn, 19)
-        ev_conn.execute("update tenders set estimated_value = 42000 where id = %s", (tid,))
+        with consulta_client(tid)() as client:
+            mark(ev_conn, refresh_one(ev_conn, client, tid, read_state(ev_conn, tid)))
+
         factory = consulta_client(tid)
         run_job(monkeypatch, ev_conn, factory, tid)
         assert factory.calls == []
+
+    def test_an_unmarked_value_is_still_checked_against_pncp(self, ev_conn, monkeypatch):
+        # `items.roll_up` fills `estimated_value` from the item sum, so a number
+        # with no marker is one nobody checked. Skipping it would freeze our
+        # arithmetic in place of PNCP's figure — on every new tender, since the
+        # fallback enqueues `sync_items` and the refresh together, unordered.
+        tid = given_search_tender(ev_conn, 34)
+        ev_conn.execute("update tenders set estimated_value = 42000 where id = %s", (tid,))
+        factory = consulta_client(tid)
+        run_job(monkeypatch, ev_conn, factory, tid)
+
+        assert factory.calls != [], "an unchecked number was taken as final"
+        assert value_of(ev_conn, tid)[0] == Decimal("271350.31")
 
     def test_items_only_makes_no_pncp_call(self, ev_conn, monkeypatch):
         tid = given_search_tender(ev_conn, 20)
@@ -509,10 +524,15 @@ class TestTheJob:
 
 
 class TestTheSweep:
-    def test_it_enqueues_only_unvalued_tenders(self, ev_conn):
+    def test_it_enqueues_everything_not_yet_settled(self, ev_conn):
+        # "Settled" is a consulta marker, not a non-null column: a number
+        # `items.roll_up` supplied is still owed a check against PNCP's own.
         unvalued = given_search_tender(ev_conn, 22)
+        item_valued = given_search_tender(ev_conn, 35)
+        ev_conn.execute("update tenders set estimated_value = 1 where id = %s", (item_valued,))
         valued = given_search_tender(ev_conn, 23)
-        ev_conn.execute("update tenders set estimated_value = 1 where id = %s", (valued,))
+        with consulta_client(valued)() as client:
+            mark(ev_conn, refresh_one(ev_conn, client, valued, read_state(ev_conn, valued)))
 
         job = Job(id=-1, kind="sweep_tender_values", key="k", priority=9, payload={}, attempts=1)
         sweep_tender_values(JobContext(job=job, conn=ev_conn, connect=lambda: ev_conn, log=LOG))
@@ -520,12 +540,12 @@ class TestTheSweep:
         queued = {
             row[0]
             for row in ev_conn.execute(
-                "select key from jobs where kind = 'refresh_tender_value'"
-                " and starts_with(key, %s)",
+                "select key from jobs where kind = 'refresh_tender_value' and starts_with(key, %s)",
                 (f"{EV_CNPJ}-",),
             ).fetchall()
         }
         assert unvalued in queued
+        assert item_valued in queued, "a number nobody checked was taken as final"
         assert valued not in queued
 
     def test_a_second_tick_does_not_duplicate_a_live_job(self, ev_conn):

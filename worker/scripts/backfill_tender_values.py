@@ -309,8 +309,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         for tender_id, header, item_sum in disagreements[:10]:
             print(f"  differ: {tender_id} consulta={header} items={item_sum}")
-    print(f"gained {after['valued'] - before['valued']} valued tenders "
-          f"in {time.monotonic() - started:.0f}s")
+    print(
+        f"gained {after['valued'] - before['valued']} valued tenders "
+        f"in {time.monotonic() - started:.0f}s"
+    )
     return 0
 
 

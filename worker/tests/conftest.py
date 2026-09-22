@@ -1336,9 +1336,7 @@ def ev_dsn() -> str:
             dsn = config.resolve_secret(var, root=root)
             if dsn:
                 return Dsn(dsn)
-    pytest.skip(
-        f"none of {', '.join(EV_TEST_DSN_VARS)} is configured; skipping tender-value tests"
-    )
+    pytest.skip(f"none of {', '.join(EV_TEST_DSN_VARS)} is configured; skipping tender-value tests")
 
 
 @pytest.fixture

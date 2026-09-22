@@ -338,9 +338,7 @@ class PncpClient:
 
     # -- the contratação detail (the authoritative header) ----------------
 
-    def fetch_contratacao(
-        self, cnpj: int | str, year: int, sequence: int
-    ) -> dict[str, Any] | None:
+    def fetch_contratacao(self, cnpj: int | str, year: int, sequence: int) -> dict[str, Any] | None:
         """One contratação's Consulta detail record, or ``None`` on a 204.
 
         This is the **same request** :meth:`contratacao_state` makes; the only

@@ -107,15 +107,26 @@ Three things, because the first two each have a hole the next one covers:
   the root-cause fix, and on its own it is not enough: when the fallback fires
   it is *because* Consulta is down, so the follow-up job usually fails too.
 * **a sweep** — :func:`sweep_tender_values` runs on the schedule and enqueues
-  whatever still has no value, oldest first, capped per cycle. It is what
-  actually drains the backlog once Consulta returns, and it is also the
-  backfill: the same job, run repeatedly.
+  everything **not yet settled**, capped per cycle. It is what actually drains
+  the backlog once Consulta returns, and it is also the backfill: the same job,
+  run repeatedly. *Settled* is the load-bearing word and it does **not** mean
+  "has a value" — `items.roll_up` fills one from the item sum, so a tender whose
+  `sync_items` ran first holds a number nobody checked. Only a `consulta` or
+  `gone` marker settles a row (:attr:`ValueState.settled`).
 * **a backoff** — a tender that cannot be upgraded must not be retried every
   half hour forever. `tenders.next_refresh_at` — a column §6.1 already defines,
-  indexed, and which nothing else reads today — holds when this tender may be
-  looked at again, so the sweep walks past it instead of re-queueing it. §3.2's
-  6 h header TTL is the interval for a tender we simply have not reached yet;
-  a withdrawn one is parked for :data:`GONE_BACKOFF_HOURS`.
+  indexed, and which nothing else reads today — holds when it may be looked at
+  again. Three horizons, and the spread is a §14.1 *storage* decision as much as
+  a freshness one, because parking rewrites the row on every visit and on Neon
+  every rewrite costs storage twice:
+
+  =========================== ========================== ==========================
+  state                       wait                       why
+  =========================== ========================== ==========================
+  no value at all             :data:`REFRESH_TTL_HOURS`  the bug's population
+  valued, but from the items  :data:`UPGRADE_TTL_HOURS`  already showing a number
+  `410 GONE`                  :data:`GONE_BACKOFF_HOURS` nothing left to fetch
+  =========================== ========================== ==========================
 
 None of this calls PNCP inside a web request (§3): the web enqueues, the worker
 fetches.
@@ -549,9 +560,7 @@ def refresh_tender_value(ctx: JobContext) -> None:
     if not state.exists:
         # Enqueued by id, so this means the row went away in between. Failing
         # would retry four times over forty minutes against nothing.
-        ctx.log.warning(
-            "refresh_tender_value: unknown tender", extra={"tender_id": tender_id}
-        )
+        ctx.log.warning("refresh_tender_value: unknown tender", extra={"tender_id": tender_id})
         return
     if state.settled and not force:
         # `settled`, not `has_value`: a stored number with no consulta marker is
@@ -636,9 +645,7 @@ def due_tenders(conn: psycopg.Connection, limit: int = SWEEP_BATCH) -> list[str]
     prefix is passed in rather than written in SQL so it has exactly one
     definition (:func:`value_event_name`).
     """
-    rows = conn.execute(
-        DUE_SQL, {"limit": limit, "prefix": VALUE_EVENT_PREFIX}
-    ).fetchall()
+    rows = conn.execute(DUE_SQL, {"limit": limit, "prefix": VALUE_EVENT_PREFIX}).fetchall()
     return [row[0] for row in rows]
 
 
