@@ -1234,9 +1234,21 @@ and `--pause-every` gives autovacuum room during a long run.
 
 ### Storage, and the thing that actually needs attention
 
-Required by §14.1 before any backfill runs at scale. A column-only pass rewrites
-one heap tuple per row and adds **no TOAST**, because `raw` — which holds most
-of the row's bytes — is not touched and keeps its existing TOAST pointer.
+Required by §14.1 before any backfill runs at scale. Measured against
+production with `pg_column_size` and `pg_relation_size`, for the 4,616 rows the
+backfill writes:
+
+| | per row | total |
+|---|---|---|
+| **live growth** | ~10 B — `estimated_value` is 8 B filled, the two booleans 1 B each, and all three were NULL (no tuple space) | **~63 kB** |
+| **dead tuples** | 1,671 B (one rewritten `tenders` heap row) | **~7.4 MB**, reclaimed by autovacuum |
+| **TOAST growth** | 0 — `raw` and `search` are untouched, so their pointers are reused | **0 B** |
+| *(rejected: merging the detail into `raw`)* | *+2,822 B* | *+14 MB, permanent* |
+
+The churn is unavoidable — an UPDATE is an UPDATE — but it is transient, and it
+is a third of what writing the payload would have cost *permanently*.
+`--pause-every` gives autovacuum room to keep up during a long run, and the
+tiered backoff above is what stops the sweep re-paying it every six hours.
 
 Worth recording while the numbers are fresh, because it is the real constraint and
 not this job's to fix: **`tender_items` is 231 MB of the 293 MB database, and
