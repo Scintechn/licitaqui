@@ -1,0 +1,78 @@
+{
+  "nota": "Objeto cujo primeiro prompt trocou 'manutenção de imóveis' por 'pintura e reparos' — mais específico do que a fonte. O título tem de ficar na manutenção.",
+  "tender_id": "07954480000179-1-024429/2026",
+  "objeto": "Aquisição de Outros Serviços de Terceiros Pessoa Jurídica (MANUTENÇÃO E CONSERVAÇÃO DE BENS IMÓVEIS) destinado a atender as necessidades da Escola de Ensino Médio em Tempo Integral Prudêncio de Pinho",
+  "itens": [
+    {
+      "description": "MANUTENCAO E REFORMA PREDIAL - SERVICO DE MANUTENCAO PREVENTIVA, CORRETIVA E REFORMA DAS INSTALACOES FISICAS PREDIAIS EM IMOVEIS, COM O FORNECIMENTO DA MAO DE OBRA ESPECIALIZADA, MATERIAIS E PECAS DE REPOSICAO",
+      "quantity": 1.0,
+      "unit": "Sem unidade de fornecimento"
+    },
+    {
+      "description": "RECUPERACAO E MANUTENCAO - SERVICO DE RECUPERACAO E MANUTENCAO DE TOLDO",
+      "quantity": 1.0,
+      "unit": "Sem unidade de fornecimento"
+    },
+    {
+      "description": "CONSERVACAO E REPAROS EM BENS IMOVEIS, CONSERVACAO E REPAROS EM BENS IMOVEIS - SERVICO DE INSTALACAO DE PIA",
+      "quantity": 3.0,
+      "unit": "Sem unidade de fornecimento"
+    },
+    {
+      "description": "CONSERVACAO E REPAROS EM BENS IMOVEIS - SERVICO DE PINTURA EM LETREIRO",
+      "quantity": 1.0,
+      "unit": "Sem unidade de fornecimento"
+    },
+    {
+      "description": "CONSERVACAO E REPAROS EM BENS IMOVEIS - SUBSTITUICAO DE TORNEIRA",
+      "quantity": 19.0,
+      "unit": "Sem unidade de fornecimento"
+    }
+  ],
+  "checks": [
+    {
+      "nome": "objeto burocrático vai ao modelo",
+      "tipo": "ramo",
+      "valor": "ai"
+    },
+    {
+      "nome": "continua sendo manutenção/conservação de imóveis",
+      "tipo": "contem_algum",
+      "valor": [
+        "manutenção",
+        "conservação",
+        "imóveis",
+        "predial"
+      ]
+    },
+    {
+      "nome": "não inventa destinatário",
+      "tipo": "proibido",
+      "valor": [
+        "mei",
+        "pequenas",
+        "moradores",
+        "população"
+      ]
+    },
+    {
+      "nome": "não avalia",
+      "tipo": "proibido",
+      "valor": [
+        "ótima",
+        "oportunidade",
+        "fácil",
+        "ideal"
+      ]
+    },
+    {
+      "nome": "curto",
+      "tipo": "maximo_palavras",
+      "valor": 12
+    },
+    {
+      "nome": "não nomeia destinatário (sensível ao prompt)",
+      "tipo": "sem_destinatario"
+    }
+  ]
+}

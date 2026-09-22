@@ -1,0 +1,12 @@
+{
+  "case": "obras_comuns",
+  "model": "qwen/qwen3.7-flash",
+  "prompt_version": "t1",
+  "rules_version": 1,
+  "recorded_at": "2026-09-22T14:44:48+00:00",
+  "answer": {
+    "title": "Obras de manutenção e melhoramentos em aerodromos e aeroportos",
+    "source": "ai",
+    "rejected": null
+  }
+}

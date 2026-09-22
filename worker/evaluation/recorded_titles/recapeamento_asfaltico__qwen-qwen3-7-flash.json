@@ -1,0 +1,12 @@
+{
+  "case": "recapeamento_asfaltico",
+  "model": "qwen/qwen3.7-flash",
+  "prompt_version": "t1",
+  "rules_version": 1,
+  "recorded_at": "2026-09-22T14:44:49+00:00",
+  "answer": {
+    "title": "Recapeamento asfáltico em CBUQ com fresagem e sinalização",
+    "source": "ai",
+    "rejected": null
+  }
+}

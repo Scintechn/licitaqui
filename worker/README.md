@@ -989,3 +989,83 @@ Cleanup deletes `events` **before** `users` — `events.user_id` is `on delete s
 null`, not cascade, so a delivery-log row otherwise outlives its user and becomes
 unattributable debris. The one cross-run sweep goes through
 `CROSS_RUN_SWEEP_HOURS`, like every other block's.
+
+## Short titles — `title_tender` (deterministic first, the model as the exception)
+
+The Radar card and the detail heading render `trimObject(tender.object)`. PNCP
+has no short-title field, and `object` is the legal "objeto", so the useful noun
+is usually buried:
+
+> CONTRATAÇÃO DE EMPRESAS PARA FORNECIMENTO DE MATERIAIS PERMANENTES, para
+> Secretaria de Saúde, conforme descrito no Anexo I – Termo de Referência…
+
+`licitaqui/titles.py` turns that into **"Fornecimento de materiais permanentes"**
+and `licitaqui/title_tender.py` stores it in `tenders.short_title`.
+
+### The two branches, and why the order is load-bearing
+
+`deterministic_title()` strips the `[Portal]` prefix, cuts the objeto at its
+first legal connector, drops the trailing stop and un-shouts it. It cannot
+hallucinate and it costs nothing.
+
+`needs_model()` sends a tender to the model only when that result is still
+unfit, for one of three reasons:
+
+| reason | share of 4,760 production rows |
+|---|---|
+| free title is good | **24.8%** |
+| still longer than 80 characters | 66.3% |
+| still opens with procurement boilerplate | 8.0% |
+| says nothing but category words ("Obras comuns") | 0.9% |
+
+The ordering is a correctness constraint, not a cost optimisation. Objeto
+*"Centro Cultural - Etapa 02"* plus its construction line-items came back from
+the model as *"Revestimento cerâmico montagem e desmontagem alvenaria laje e
+caixilho"* — the items swamped a perfectly good objeto. **A good short objeto
+must never reach the model.**
+
+The third reason is the mirror of that: *"Obras comuns"* is short but says
+nothing, and the items are what rescue it — that exact tender becomes *"Obras de
+manutenção e melhoramentos em aeródromos e aeroportos"*, read off the item rows.
+`is_generic()` is what separates "short" from "uninformative".
+
+### The validator is the guarantee; the prompt is only a request
+
+The first prompt measured asked for "o que e **para quem**", and the model
+invented a recipient whenever the text had none — "para MEI", "para pequenas
+empresas", "para moradores de Rio Claro" — and once replaced what was being
+bought with something more specific than the source ("manutenção de imóveis" →
+"pintura e reparos"). Under CDC art. 30 advertising binds the supplier (legal
+brief §2.2 rule 1), so a title claiming a tender is "para MEI" is a promise the
+product cannot keep.
+
+`validate()` rejects a title that uses a content word present in neither the
+objeto nor the item lines **as they were sent**, that carries money, a
+percentage, a date or a year the source never wrote, or that evaluates the
+tender. On rejection the deterministic title ships and the row records
+`short_title_source = 'ai_fallback'` — deliberately distinct from
+`'deterministic'`, because a rising count there is the signal that the prompt
+has drifted.
+
+### Rate limits
+
+The free OpenRouter pool rate-limits (`limit_source:
+upstream_provider_shared_pool`). `model_title()` retries with jittered backoff;
+a tender still rate-limited after that is **left untitled** and raises
+`RateLimited`, so the queue retries it and it is never recorded as titled with
+the unfit deterministic string frozen onto it. A 429 does **not** count toward
+the OpenRouter breaker — it is the provider answering — while a 5xx does.
+
+### Staleness
+
+`titles.BASIS_SQL` digests the objeto, `pncp_updated_at` and the whole item set
+into `tenders.short_title_basis`; a title is current only while the stored
+digest still equals the recomputed one. `titles.STALE_SQL` adds the two version
+columns. A **rules** bump re-titles everything; a **prompt** bump re-titles only
+the rows the model actually saw, which is why they are two columns and not one.
+
+```bash
+python -m scripts.backfill_titles --dry-run     # cost and split, writes nothing
+python -m scripts.backfill_titles               # the real thing
+python -m evaluation.titles --mode recorded     # the gate, offline and free
+```
