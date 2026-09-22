@@ -370,7 +370,7 @@ def test_a_tender_never_synced_is_not_confused_with_one_that_has_no_items(
 def test_the_empty_marker_still_expires_with_the_ttl(
     pn_conn: psycopg.Connection, monkeypatch
 ) -> None:
-    """"Synced, empty" is a 12 h state, not a permanent one: a tender whose
+    """ "Synced, empty" is a 12 h state, not a permanent one: a tender whose
     items arrive late must not be written off forever."""
     tid = given_tender(pn_conn, 13)
     factory = pncp(13, items=404, consulta=200)

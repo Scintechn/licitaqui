@@ -445,9 +445,11 @@ def test_a_404_is_its_own_exception_type():
     """So `sync_items`/`sync_files` can tell it from an outage (see
     :mod:`licitaqui.absence`), while `except PncpError` still catches it."""
     with pytest.raises(PncpNotFound) as raised:
-        list(client(lambda r: httpx.Response(404, text="Compra não encontrada.")).iter_items(
-            "12345678000199", 2026, 7
-        ))
+        list(
+            client(lambda r: httpx.Response(404, text="Compra não encontrada.")).iter_items(
+                "12345678000199", 2026, 7
+            )
+        )
 
     assert isinstance(raised.value, PncpError)
     assert raised.value.status_code == 404
