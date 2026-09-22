@@ -79,6 +79,15 @@ whole timeout budget; the call itself is a single unpaged GET with no retry of
 its own, because the queue owns retries — 2, 8 and 30 minutes, four attempts.
 A failed call raises before anything is written, so an outage can never be
 mistaken for "this tender has no documents any more".
+
+**A 404 is not an outage, and not an empty list either.** It is ambiguous, and
+:mod:`licitaqui.absence` resolves it: an empty list when the contratação is
+still published, a withdrawal when Consulta answers 410, and a *regression*
+(:class:`licitaqui.absence.DataVanished`) when we already hold documents for
+this tender — in which case nothing is written and nothing is pruned, because
+pruning would move `files_hash` and retire a screening on PNCP's say-so alone.
+Either way the job finishes instead of spending four attempts and coming back
+on the next sweep to spend four more.
 """
 
 from __future__ import annotations
@@ -88,8 +97,9 @@ from datetime import datetime
 
 import psycopg
 
+from . import absence
 from .files import map_all, mark_synced, sync_event_name, upsert_files
-from .pncp import PncpClient
+from .pncp import PncpClient, PncpNotFound
 from .registry import REGISTRY, JobContext
 from .tenders import split_control_number
 
@@ -213,21 +223,51 @@ def sync_files(ctx: JobContext) -> None:
         return
 
     cnpj, year, sequence = split_control_number(tender_id)
+    absent: absence.Absence | None = None
     with build_client() as client:
-        records = client.fetch_files(cnpj, year, sequence)
+        try:
+            records = client.fetch_files(cnpj, year, sequence)
+        except PncpNotFound as exc:
+            # A 404 here is ambiguous — "no documents" and "this contratação is
+            # gone" arrive identically. :mod:`licitaqui.absence` has the rule.
+            absent = absence.classify(
+                client,
+                tender_id=tender_id,
+                cnpj=cnpj,
+                year=year,
+                sequence=sequence,
+                stored_rows=state.file_count,
+                error=exc,
+            )
+            records = []
+
+    if absent is not None and absent.is_regression:
+        # Nothing has been written. A tender that had an edital yesterday and
+        # 404s today must not have its file list pruned — that would move
+        # `files_hash` and retire a screening on PNCP's say-so alone.
+        ctx.log.error(
+            "sync_files: stored documents vanished from PNCP",
+            extra={"tender_id": tender_id, **absent.log_fields()},
+        )
+        raise absence.DataVanished(absent.detail)
 
     # Nothing above this line has written anything: a PncpError or a CircuitOpen
     # raises here, the queue retries, and the stored list is untouched.
     result = upsert_files(ctx.conn, tender_id, map_all(tender_id, records))
-    mark_synced(ctx.conn, tender_id, result)
+    mark_synced(ctx.conn, tender_id, result, absent=absent)
 
     extra = {
         "tender_id": tender_id,
         "reason": "forced" if force else state.reason,
         "fetched": len(records),
         **result.log_fields(),
+        **(absent.log_fields() if absent is not None else {}),
     }
-    if result.changed:
+    if absent is not None:
+        # Worth a warning for the same reason `sync_items` logs one: a tender
+        # with no documents at all is either useless to a bidder or gone.
+        ctx.log.warning("sync_files: PNCP has no documents for this tender", extra=extra)
+    elif result.changed:
         # Worth a warning, not an info: this is the moment a cached analysis
         # stopped being current, and it is the line to look for when someone
         # asks why a tender was screened twice.

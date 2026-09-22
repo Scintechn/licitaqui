@@ -397,3 +397,50 @@ def classify_all(tender_id: str, records: Iterable[dict[str, Any]]) -> list[Tend
         seen.add(item.number)
         items.append(item)
     return items
+
+
+# -- the "we looked, and there was nothing" marker -------------------------
+#
+# `tender_items` has a row-level `updated_at`, which answers "when did we last
+# look?" for every tender that *has* items — and for no other. A tender with
+# zero rows is indistinguishable from one never fetched, so `sync_items` read
+# it as stale on every sweep and went back to PNCP forever. That is the half of
+# the 404 bug the 404 itself does not explain: even once the job completes,
+# without a marker nothing records that it did.
+#
+# B4 hit the same wall on `tender_files` and solved it in `events` rather than
+# with a column, because a migration is its own PR (CLAUDE.md) and `events` is
+# writable by the worker's DML-only `app` role. This follows that precedent
+# exactly, down to putting the tender id in `name` so the lookup is an index
+# hit on `events_name_created_idx (name, created_at)` rather than a scan of
+# every tender's marker, and rewriting the row rather than appending so it
+# stays one row per tender.
+#
+# A column on `tenders` would be the better home — see `docs/STATUS.md` for the
+# migration this proposes.
+
+SYNC_EVENT_PREFIX = "sync_items:"
+
+
+def sync_event_name(tender_id: str) -> str:
+    return f"{SYNC_EVENT_PREFIX}{tender_id}"
+
+
+DELETE_MARKER_SQL = "delete from events where name = %s"
+INSERT_MARKER_SQL = "insert into events (name, props) values (%s, %s)"
+
+
+def mark_synced(conn: psycopg.Connection, tender_id: str, props: dict[str, Any]) -> None:
+    """Record that PNCP's item list was read for this tender just now.
+
+    Rewritten rather than appended: it is a marker, not a metric. Nothing here
+    is personal data (§12) — a tender id and counts.
+
+    The two statements are not one transaction and do not need to be: losing
+    between them loses the marker, which reads as `never` and costs one extra
+    fetch. The reverse — a marker for a sync that did not happen — is not
+    reachable.
+    """
+    name = sync_event_name(tender_id)
+    conn.execute(DELETE_MARKER_SQL, (name,))
+    conn.execute(INSERT_MARKER_SQL, (name, Jsonb({"tender_id": tender_id, **props})))
