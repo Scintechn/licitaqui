@@ -1,0 +1,12 @@
+{
+  "case": "manutencao_bens_imoveis",
+  "model": "qwen/qwen3.7-flash",
+  "prompt_version": "t1",
+  "rules_version": 1,
+  "recorded_at": "2026-09-22T14:44:47+00:00",
+  "answer": {
+    "title": "Manutenção e conservação de bens imóveis",
+    "source": "ai",
+    "rejected": null
+  }
+}

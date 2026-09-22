@@ -1,0 +1,43 @@
+{
+  "nota": "Objeto já é o título. Grátis, e o modelo nunca é chamado — foi este objeto que o primeiro prompt transformou em '… para MEI e pequenas empresas'.",
+  "tender_id": "96291141000180-1-006101/2026",
+  "objeto": "serviço de coleta de lixo hospitalar",
+  "itens": [
+    {
+      "description": "Coleta / Tratamento Lixo - Hospitalar Coleta / Tratamento Lixo - Hospitalar",
+      "quantity": 120.0,
+      "unit": "KILOGRAMA"
+    }
+  ],
+  "checks": [
+    {
+      "nome": "resolvido sem custo",
+      "tipo": "ramo",
+      "valor": "deterministic"
+    },
+    {
+      "nome": "diz o que é",
+      "tipo": "contem_todos",
+      "valor": [
+        "coleta",
+        "lixo",
+        "hospitalar"
+      ]
+    },
+    {
+      "nome": "não inventa destinatário",
+      "tipo": "proibido",
+      "valor": [
+        "mei",
+        "pequenas",
+        "empresas",
+        "moradores",
+        "população"
+      ]
+    },
+    {
+      "nome": "não nomeia destinatário (sensível ao prompt)",
+      "tipo": "sem_destinatario"
+    }
+  ]
+}

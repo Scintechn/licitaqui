@@ -1,0 +1,13 @@
+{
+  "nota": "Medido em produção sob o primeiro prompt ('o que e PARA QUEM'). O validador tem de rejeitar: nada no texto diz MEI nem pequenas empresas. CDC art. 30 — o que a propaganda promete vincula o fornecedor (brief §2.2 regra 1).",
+  "objeto": "serviço de coleta de lixo hospitalar",
+  "itens": [
+    {
+      "description": "Coleta / Tratamento Lixo - Hospitalar Coleta / Tratamento Lixo - Hospitalar",
+      "quantity": 120.0,
+      "unit": "KILOGRAMA"
+    }
+  ],
+  "answer": "Coleta de lixo hospitalar para MEI e pequenas empresas",
+  "rejeicao": "invented"
+}

@@ -1,0 +1,7 @@
+{
+  "nota": "O mesmo prompt trocou o que se compra por algo mais específico do que a fonte: 'manutenção e conservação de bens imóveis' virou 'pintura e reparos'. Duas violações numa frase — a substituição e o 'para MEI'.",
+  "objeto": "MANUTENÇÃO E CONSERVAÇÃO DE BENS IMÓVEIS",
+  "itens": [],
+  "answer": "Pintura e reparos em imóveis para MEI",
+  "rejeicao": "invented"
+}

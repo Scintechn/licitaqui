@@ -1,0 +1,48 @@
+{
+  "nota": "Objeto inútil resgatado pelos itens: é por isso que o modelo vale a chamada. Sci mediu este caso — 'Obras comuns' virou 'Obras de manutenção e melhoramentos em aeródromos e aeroportos'. Curto, mas genérico: tem de ir ao modelo.",
+  "tender_id": "02931604000187-1-000355/2026",
+  "objeto": "Obras comuns",
+  "itens": [
+    {
+      "description": "OBRA DE MANUTENCAO, e melhoramentos de aerodromos e aeroportos",
+      "quantity": 1.0,
+      "unit": "Un"
+    }
+  ],
+  "checks": [
+    {
+      "nome": "o modelo foi chamado (objeto só tem palavras de categoria)",
+      "tipo": "ramo",
+      "valor": "ai"
+    },
+    {
+      "nome": "diz o que é a obra, lido dos itens",
+      "tipo": "contem_algum",
+      "valor": [
+        "aeroportos",
+        "aeródromos",
+        "manutenção"
+      ]
+    },
+    {
+      "nome": "não inventa destinatário",
+      "tipo": "proibido",
+      "valor": [
+        "mei",
+        "moradores",
+        "população",
+        "empresas",
+        "crianças"
+      ]
+    },
+    {
+      "nome": "curto",
+      "tipo": "maximo_palavras",
+      "valor": 12
+    },
+    {
+      "nome": "não nomeia destinatário (sensível ao prompt)",
+      "tipo": "sem_destinatario"
+    }
+  ]
+}
