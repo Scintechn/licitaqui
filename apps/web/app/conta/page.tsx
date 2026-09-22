@@ -7,8 +7,8 @@ import { db } from '@/lib/db'
 import { messages } from '@/lib/messages'
 import { countUsage, FEATURES, quotaView, readLimit } from '@/lib/radar/quota'
 import { ACCOUNT_CREATE_PATH } from '@/lib/routes'
-import { AccountView } from './account-view'
-import { signOutEverywhere } from './actions'
+import { AccountView, type AccountNotice } from './account-view'
+import { saveCompany, signOutEverywhere } from './actions'
 
 /**
  * `/conta` — the signed-in account (spec §10, §6.2).
@@ -34,7 +34,16 @@ export const metadata: Metadata = {
 
 type Row = { plan: string; cnpj: string | null; founder_seat: number | null }
 
-export default async function AccountPage() {
+type Search = Promise<{ [key: string]: string | string[] | undefined }>
+
+function noticeFrom(value: string | string[] | undefined): AccountNotice {
+  const one = Array.isArray(value) ? value[0] : value
+  if (one === 'empresa') return 'company'
+  if (one === 'cnpj-invalido') return 'cnpj-invalid'
+  return null
+}
+
+export default async function AccountPage({ searchParams }: { searchParams: Search }) {
   const session = await auth()
   const id = session?.user?.id
   if (!id) redirect(ACCOUNT_CREATE_PATH)
@@ -67,6 +76,8 @@ export default async function AccountPage() {
       founderSeat={user.founder_seat === null ? null : Number(user.founder_seat)}
       seatTotal={MAX_SEAT}
       signOutAction={signOutEverywhere}
+      companyAction={saveCompany}
+      notice={noticeFrom((await searchParams).estado)}
     />
   )
 }

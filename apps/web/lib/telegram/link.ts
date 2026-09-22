@@ -50,6 +50,17 @@ function textArray(values: string[]): SQL {
 /** One Telegram chat belongs to one account, and vice versa. */
 export type LinkStatus = {
   linked: boolean
+  /**
+   * A `/start` token is outstanding and no chat has spent it (task E3).
+   *
+   * `start_token is not null and chat_id is null` — the state an account sits
+   * in between pressing "Conectar o Telegram" and the bot answering. E1 could
+   * not tell it apart from "never tried", so a hand-off that failed looked
+   * exactly like one that had not been attempted, which is how 22/09's broken
+   * link stayed invisible on the screen. No column was added for this: the two
+   * columns the state is made of have been there since migration `0001`.
+   */
+  pending: boolean
   /** The weekly digest is switched on. False when `/pausar` has been used. */
   active: boolean
   /** §10: one keyword on Básico. `null` when the digest is CNAE-only. */
@@ -58,11 +69,24 @@ export type LinkStatus = {
   states: string[]
 }
 
-export const UNLINKED: LinkStatus = { linked: false, active: false, keyword: null, states: [] }
+export const UNLINKED: LinkStatus = {
+  linked: false,
+  pending: false,
+  active: false,
+  keyword: null,
+  states: [],
+}
 
 export type IssuedLink = {
   /** `https://t.me/LicitaQuiBot?start=…`. One tap on a phone. */
   url: string
+  /**
+   * The bare token (task E3). `telegram_links` keeps only `sha256(token)`, so
+   * this is the only moment the plaintext exists — and the manual fallback on
+   * `/conta/alertas` has to print it. The caller puts it in the hand-off
+   * cookie; nothing logs it.
+   */
+  token: string
   expiresAt: Date
 }
 
@@ -91,7 +115,7 @@ export async function issueStartLink(
     on conflict (user_id) do update set start_token = excluded.start_token
   `)
 
-  return { url: deepLink(minted.token, env), expiresAt: minted.expiresAt }
+  return { url: deepLink(minted.token, env), token: minted.token, expiresAt: minted.expiresAt }
 }
 
 export type LinkOutcome =
@@ -200,11 +224,13 @@ export async function readLinkStatus(
 ): Promise<LinkStatus> {
   const found = await database.execute<{
     linked: boolean
+    pending: boolean
     active: boolean | null
     keyword: string | null
     states: string[] | null
   }>(sql`
     select tl.chat_id is not null and tl.linked_at is not null as linked,
+           tl.start_token is not null and tl.chat_id is null as pending,
            a.active, a.value as keyword, a.states
       from telegram_links tl
       left join alerts a
@@ -219,6 +245,7 @@ export async function readLinkStatus(
   if (!row) return UNLINKED
   return {
     linked: Boolean(row.linked),
+    pending: Boolean(row.pending),
     active: Boolean(row.active),
     keyword: row.keyword ?? null,
     states: row.states ?? [],

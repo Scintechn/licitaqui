@@ -1,10 +1,16 @@
 'use server'
 
 import { sql } from 'drizzle-orm'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { ALERTS_PATH } from '@/lib/routes'
+import {
+  HANDOFF_COOKIE,
+  HANDOFF_MAX_AGE,
+  HANDOFF_PATH,
+} from '@/lib/telegram/handoff'
 import {
   ensureAlert,
   issueStartLink,
@@ -50,13 +56,25 @@ async function planOf(userId: number): Promise<string> {
 }
 
 /**
- * Mint a `/start` token and send the browser to Telegram.
+ * Mint a `/start` token and show the hand-off, instead of vanishing into it.
  *
- * This is the one tap. A server round trip rather than a link rendered with
- * the page, because a token minted at render time is already ageing while the
- * page sits open — and a person who leaves the tab and comes back would tap
- * their way to `start-token-invalid`. Minting on the press means the token is
- * always seconds old when Telegram receives it.
+ * E1 redirected this straight to `https://t.me/…`. One tap, and a cliff: once
+ * the browser left, nothing on our side could tell a link that worked from one
+ * that did not, which is how 22/09's failure — a webhook answering 401 to every
+ * delivery because production's secret did not match the one `setWebhook` was
+ * given — showed up on `/conta/alertas` as no change at all.
+ *
+ * So the redirect now lands back on `/conta/alertas`, which renders the deep
+ * link as the primary control plus everything the person needs when tapping it
+ * does not finish the job. That is one extra tap and it buys a hand-off that
+ * can be observed, retried and completed by hand — the whole of task E3's first
+ * problem. The `t.me` link is still one tap from that screen, and it is still
+ * seconds old when it gets there, which is what E1's note about render-time
+ * tokens was actually protecting.
+ *
+ * The plaintext token goes in a short-lived cookie because the database keeps
+ * only its digest and the manual fallback has to print the real thing. See
+ * `lib/telegram/handoff.ts`.
  *
  * The `alerts` row is written first, so a person who completes the link is
  * subscribed to something rather than connected to nothing.
@@ -67,14 +85,40 @@ export async function connectTelegram(): Promise<void> {
   await ensureAlert(userId, executor)
   await setAlertActive(userId, true, executor)
   const link = await issueStartLink(userId, { database: executor })
-  // An external address, which is the point: on a phone this hands the person
-  // to the Telegram app with the token already in the `/start`.
-  redirect(link.url)
+
+  const jar = await cookies()
+  jar.set(HANDOFF_COOKIE, link.token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: HANDOFF_PATH,
+    maxAge: HANDOFF_MAX_AGE,
+  })
+
+  redirect(ALERTS_PATH)
+}
+
+/**
+ * "Já conectei, verificar" — reload the page and look again.
+ *
+ * It does nothing on purpose. The bot's `/start` is what links the account, and
+ * it arrives through the webhook while this page is not looking; the button is
+ * simply a way to ask the question again without teaching anybody to press
+ * F5. A no-op Server Function is also the cheapest honest answer: polling would
+ * mean a client component and an endpoint, for a wait that is normally one
+ * second (`wakeWorker`) and at worst a page refresh.
+ */
+export async function recheckTelegram(): Promise<void> {
+  await currentUserId()
+  redirect(ALERTS_PATH)
 }
 
 export async function disconnectTelegram(): Promise<void> {
   const userId = await currentUserId()
   await unlinkChat(userId)
+  // Otherwise a hand-off cookie left over from the connection being undone
+  // would put the screen straight back into "waiting" (task E3).
+  ;(await cookies()).delete({ name: HANDOFF_COOKIE, path: HANDOFF_PATH })
   redirect(`${ALERTS_PATH}?estado=desconectado`)
 }
 

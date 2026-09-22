@@ -37,6 +37,8 @@ function render(props: Partial<AccountViewProps> = {}) {
       founderSeat={null}
       seatTotal={48}
       signOutAction={noop}
+      companyAction={noop}
+      notice={null}
       {...props}
     />,
   )
@@ -113,5 +115,50 @@ describe('AccountView', () => {
 
   it('leaves no message placeholder unresolved', () => {
     expect(render({ founderSeat: 48, cnpj: '12345678000190' })).not.toMatch(/\{[a-zA-Z]+\}/)
+  })
+})
+
+/**
+ * Task E3's third problem: the company was permanent.
+ *
+ * `rememberUserCnpj` only ever fills a `null`, and its comment says why —
+ * "changing a company is an account setting, not a side effect of one search".
+ * The reasoning was right and the setting it deferred to was never built, so
+ * the first CNPJ anybody happened to search became theirs for good. A
+ * bookkeeper who looked up a client before their own company was stuck.
+ */
+describe('changing the company', () => {
+  it('offers the setting, pre-filled with the CNPJ already on the account', () => {
+    const out = render({ cnpj: '12345678000190', companyName: 'Papelaria Aurora' })
+    expect(out).toContain(copy.companyTitle)
+    expect(out).toContain(copy.companyChange)
+    expect(out).toContain('name="cnpj"')
+    // Pre-filled and punctuated, so changing it is an edit and not a retype.
+    expect(out).toContain('value="12.345.678/0001-90"')
+  })
+
+  it('asks for a first one when the account has none', () => {
+    const out = render()
+    expect(out).toContain(copy.companySave)
+    expect(out).not.toContain(copy.companyChange)
+  })
+
+  it('posts back to /conta rather than trusting whatever sent it', () => {
+    expect(render()).toContain('value="/conta"')
+  })
+
+  it('confirms a change, and reports a CNPJ that failed its check digits', () => {
+    expect(render({ notice: 'company' })).toContain(copy.companySaved)
+    expect(render({ notice: 'cnpj-invalid' })).toContain(copy.companyInvalid)
+    expect(render()).not.toContain(copy.companySaved)
+  })
+
+  it('explains the wait while company_lookup is still running', () => {
+    // `users.cnpj` is set immediately; the `companies` row arrives seconds
+    // later with the job. §3 forbids reading BrasilAPI inside the request.
+    expect(render({ cnpj: '12345678000190', companyName: null })).toContain(copy.companyPending)
+    expect(render({ cnpj: '12345678000190', companyName: 'Papelaria Aurora' })).not.toContain(
+      copy.companyPending,
+    )
   })
 })
