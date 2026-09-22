@@ -566,7 +566,22 @@
       "resume": "Voltar a receber",
       "paused": "Os avisos estão pausados. Sua conta continua funcionando normalmente.",
       "needsCnpj": "Para mandar editais que combinam com você, primeiro precisamos do CNPJ da sua empresa. É só fazer uma busca no Radar.",
-      "filtersTitle": "O que você quer receber"
+      "filtersTitle": "O que você quer receber",
+      "needsCnpjHere": "Para escolher editais que combinam com você, a gente precisa do CNPJ da sua empresa. Informe aqui mesmo:"
+    },
+    "handoff": {
+      "waitingTitle": "Falta tocar em Iniciar no Telegram",
+      "waitingBody": "Abra a conversa com o {bot} e toque em Iniciar. Assim que o robô responder, esta página mostra a conexão.",
+      "open": "Abrir o Telegram",
+      "recheck": "Já toquei em Iniciar, verificar",
+      "validFor": "Este link vale por {minutos} minutos.",
+      "manualTitle": "O Telegram abriu e nada aconteceu?",
+      "manualBody": "Envie esta mensagem na conversa com o {bot}. Ela faz exatamente o que o botão Iniciar faria:",
+      "manualHint": "Toque na mensagem para selecionar e copiar.",
+      "failedTitle": "Não recebemos resposta do Telegram",
+      "failedBody": "O link anterior venceu ou não chegou até o robô. Nada foi perdido: gere outro link e toque em Iniciar na conversa.",
+      "newLink": "Gerar outro link",
+      "stillWaiting": "Ainda não chegou nada do Telegram. Se você acabou de tocar em Iniciar, espere alguns segundos e verifique de novo."
     }
   },
   "notifications": {
@@ -1148,7 +1163,14 @@
       "plans": "Ver planos",
       "signOut": "Sair",
       "dataTitle": "Seus dados",
-      "dataBody": "A gente guarda seu e-mail, o CNPJ que você buscou e o que você já leu por IA."
+      "dataBody": "A gente guarda seu e-mail, o CNPJ que você buscou e o que você já leu por IA.",
+      "companyTitle": "Empresa",
+      "companyChange": "Trocar empresa",
+      "companySave": "Salvar empresa",
+      "companyHelp": "É o CNPJ que a gente usa para escolher os editais que combinam com você. Dá para trocar quando quiser.",
+      "companySaved": "Empresa atualizada. Os próximos avisos usam o novo CNPJ.",
+      "companyInvalid": "Confira o CNPJ: são 14 números.",
+      "companyPending": "Estamos buscando os dados desta empresa. Pode levar alguns segundos."
     }
   }
 }

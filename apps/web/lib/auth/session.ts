@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
+import { ensureCompanyRow } from '@/lib/radar/company'
 import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from './config'
 
 /**
@@ -112,6 +113,12 @@ export async function readSessionUser(
  * §6.2 gives `users.cnpj` for it, and E1's weekly digest has no other way to
  * know which company to search for. Only ever fills a `null`: changing a
  * company is an account setting, not a side effect of one search.
+ *
+ * That reasoning was always right and, until task E3, it deferred to a setting
+ * that did not exist — so the first company somebody happened to search became
+ * theirs permanently, and a bookkeeper who looked up a client before their own
+ * company was stuck with the client. The setting is `setUserCnpj()` below, and
+ * this function's restraint is now a division of labour rather than a dead end.
  */
 export async function rememberUserCnpj(
   userId: number,
@@ -123,5 +130,44 @@ export async function rememberUserCnpj(
      where id = ${userId}::bigint
        and cnpj is null
        and exists (select 1 from companies c where c.cnpj = ${cnpj})
+  `)
+}
+
+/**
+ * Sets the account's company, deliberately, from the account area (task E3).
+ *
+ * The counterpart to `rememberUserCnpj`: this one is the gesture the comment
+ * above defers to, so it **does** overwrite, and it is reached only from a
+ * Server Function that has re-read the session.
+ *
+ * ## It does not need the company to be known yet
+ *
+ * `users.cnpj` is a foreign key to `companies` (migration `0001`), which is the
+ * real reason `rememberUserCnpj` checks for the row: without one the update
+ * does not quietly miss, it raises `users_cnpj_fkey`. The Radar never meets
+ * that because it only remembers a CNPJ it has just looked up. A CNPJ typed
+ * into `/conta` may never have been looked up at all, and §3 forbids waiting on
+ * BrasilAPI inside the request (§9: no SLA) — so `ensureCompanyRow` puts the
+ * key in first, as the placeholder the worker itself writes when BrasilAPI
+ * cannot answer, and `company_lookup` fills it seconds later.
+ *
+ * Both statements take the executor they are given, so a caller that passes a
+ * transaction gets the placeholder and the account change atomically.
+ *
+ * The caller validates the CNPJ with `normaliseCnpj` first: fourteen digits
+ * with good check digits is the guard. A typo must not be able to leave a row
+ * in the BrasilAPI cache that the worker will then spend a request failing to
+ * resolve.
+ *
+ * §12: the CNPJ is never logged here or by the caller.
+ */
+export async function setUserCnpj(
+  userId: number,
+  cnpj: string,
+  database: Executor = db(),
+): Promise<void> {
+  await ensureCompanyRow(cnpj, database)
+  await database.execute(sql`
+    update users set cnpj = ${cnpj} where id = ${userId}::bigint
   `)
 }

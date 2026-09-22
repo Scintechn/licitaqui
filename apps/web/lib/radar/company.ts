@@ -126,6 +126,45 @@ export async function companyOrLookup(
   })
 }
 
+/**
+ * Make sure `companies` has a row for this CNPJ, so something can reference it.
+ *
+ * `users.cnpj` is `char(14) references companies(cnpj)` (migration `0001`), and
+ * that foreign key is the real reason `rememberUserCnpj` carries an
+ * `exists (select 1 from companies …)` guard: without a row, the update does
+ * not quietly do nothing, it raises `users_cnpj_fkey`. The Radar never trips
+ * over it because it only remembers a CNPJ once `companyOrLookup` has answered
+ * `ready` — but task E3's account setting is typed from `/conta`, where the
+ * company may never have been looked up at all.
+ *
+ * So a placeholder goes in: the key, and nothing else. That is not a new shape
+ * for this table — it is exactly what the worker leaves behind when BrasilAPI
+ * cannot answer (`main_cnae is null`, which the Radar reads as `manualCnae`),
+ * and every column but the key is nullable precisely because the cache is
+ * allowed to know a CNPJ before it knows the company.
+ *
+ * ## `updated_at` is the epoch on purpose
+ *
+ * The column defaults to `now()`, and a placeholder stamped *now* would read as
+ * **fresh** to `readOrEnqueue` — so the row would sit there empty and nothing
+ * would ever refill it. Dated to the epoch it is permanently stale, which is
+ * the honest description of a row with no data in it: serve what we have,
+ * queue the refresh (§3.1 step 3), and keep doing so until the worker fills it.
+ *
+ * `on conflict do nothing`: a real company that is already cached must never be
+ * blanked by somebody typing its CNPJ into an account setting.
+ */
+export async function ensureCompanyRow(
+  cnpj: string,
+  database: Executor = db(),
+): Promise<void> {
+  await database.execute(sql`
+    insert into companies (cnpj, updated_at)
+    values (${cnpj}, 'epoch'::timestamptz)
+    on conflict (cnpj) do nothing
+  `)
+}
+
 /** The segment labels the company matches, split the way the Radar groups. */
 export function segmentsByFit(segments: SegmentFit[]): {
   compatible: string[]

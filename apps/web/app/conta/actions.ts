@@ -1,7 +1,11 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { signIn, signOut } from '@/lib/auth'
+import { auth, signIn, signOut } from '@/lib/auth'
+import { setUserCnpj } from '@/lib/auth/session'
+import { normaliseCnpj } from '@/lib/cnpj'
+import { db } from '@/lib/db'
+import { companyOrLookup } from '@/lib/radar/company'
 import { ACCOUNT_CREATE_PATH, ACCOUNT_PATH } from '@/lib/routes'
 
 /**
@@ -43,6 +47,58 @@ export async function signInWithEmail(formData: FormData): Promise<void> {
     redirect(`${ACCOUNT_CREATE_PATH}?erro=email`)
   }
   await signIn('resend', { email, redirectTo: next })
+}
+
+/**
+ * Set or change the company this account is about (task E3).
+ *
+ * The setting `lib/auth/session.ts` has been deferring to since U1. Until now
+ * `rememberUserCnpj` was the only way a CNPJ ever reached an account and it
+ * only ever filled a `null`, so the first company anybody happened to search in
+ * the Radar was theirs for good — and setting up alerts meant leaving the
+ * account area, using a different feature, and coming back.
+ *
+ * ## Both screens post here
+ *
+ * `/conta` changes the company; `/conta/alertas` asks for it when the digest
+ * has nothing to match against. Same write, same validation, one place — and
+ * `next` says which screen to return to, run through `safeNext` because a
+ * Server Function is a POST endpoint anyone can call and an absolute URL in
+ * that field would be an open redirect.
+ *
+ * ## The company row is not waited for, and the order matters
+ *
+ * §3's golden rule: no web request reads BrasilAPI. `companyOrLookup` runs
+ * **first**, exactly as `POST /api/radar/cnpj` does, because an *absent*
+ * company is the case where it queues `company_lookup` at priority 1 and wakes
+ * the worker — so the name lands in about a second. Doing it the other way
+ * round, after `setUserCnpj` has left a placeholder row behind, would turn the
+ * same read into a *stale* one: a background-priority refresh with no wake, and
+ * a person watching a blank company name for up to two minutes.
+ *
+ * The write then happens in one transaction, so the placeholder that satisfies
+ * `users_cnpj_fkey` and the account change are never half-applied.
+ *
+ * §12: the CNPJ is never logged, and never put in the redirect's query string.
+ */
+export async function saveCompany(formData: FormData): Promise<void> {
+  const session = await auth()
+  const id = session?.user?.id
+  const next = await safeNext(String(formData.get('next') ?? '') || undefined)
+  if (!id) redirect(ACCOUNT_CREATE_PATH)
+
+  const cnpj = normaliseCnpj(String(formData.get('cnpj') ?? ''))
+  if (!cnpj) redirect(`${next}?estado=cnpj-invalido`)
+
+  try {
+    await companyOrLookup(cnpj)
+  } catch (error) {
+    // The setting is worth more than the name. A code, never the CNPJ (§12).
+    const code = (error as { code?: string } | null)?.code ?? 'unknown'
+    console.error(`company_lookup could not be enqueued (${code})`)
+  }
+  await db().transaction(async (tx) => setUserCnpj(Number(id), cnpj, tx))
+  redirect(`${next}?estado=empresa`)
 }
 
 export async function signOutEverywhere(): Promise<void> {

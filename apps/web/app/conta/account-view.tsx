@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { AppBar, Button, Card, CardRow, Logo, SectionLabel, Tag } from '@/components'
 import { format, messages } from '@/lib/messages'
 import type { QuotaView } from '@/lib/radar/contract'
-import { ALERTS_HREF, PLAN_HREF } from '@/lib/routes'
+import { ACCOUNT_PATH, ALERTS_HREF, PLAN_HREF } from '@/lib/routes'
+import { CompanyForm } from './company-form'
 
 /**
  * `/conta` — what this account is and what is left of it (spec §10).
@@ -32,7 +33,17 @@ export type AccountViewProps = {
   /** The total number of founder seats — `founders_list.seat`'s check. */
   seatTotal: number
   signOutAction: () => void | Promise<void>
+  /**
+   * `saveCompany` (task E3). The account setting `rememberUserCnpj` has been
+   * deferring to since U1: until it existed, the first company anybody searched
+   * in the Radar was theirs permanently.
+   */
+  companyAction: (formData: FormData) => void | Promise<void>
+  /** `?estado=…` after `saveCompany` redirected back here. */
+  notice: AccountNotice
 }
+
+export type AccountNotice = 'company' | 'cnpj-invalid' | null
 
 /**
  * "Para corrigir ou apagar seus dados, escreva para …" (§12), or nothing.
@@ -77,6 +88,8 @@ export function AccountView({
   founderSeat,
   seatTotal,
   signOutAction,
+  companyAction,
+  notice,
 }: AccountViewProps) {
   return (
     <div className="flex min-h-dvh flex-col">
@@ -113,6 +126,32 @@ export function AccountView({
         {founderSeat ? (
           <p className="text-meta leading-relaxed text-muted">{copy.founderNote}</p>
         ) : null}
+
+        {notice === 'company' ? (
+          <Card accent>
+            <p className="text-meta leading-relaxed">{copy.companySaved}</p>
+          </Card>
+        ) : null}
+        {cnpj && !companyName ? (
+          <p className="text-meta leading-relaxed text-muted">{copy.companyPending}</p>
+        ) : null}
+
+        {/*
+          Task E3. The row above states the company; this changes it. A separate
+          section rather than an inline control on the row, because the CNPJ is
+          the single input that decides which editais this account ever sees —
+          it earns a label and a hint, not a pencil icon.
+        */}
+        <section className="flex flex-col gap-2 pt-2">
+          <SectionLabel>{copy.companyTitle}</SectionLabel>
+          <CompanyForm
+            action={companyAction}
+            next={ACCOUNT_PATH}
+            cnpj={cnpj}
+            invalid={notice === 'cnpj-invalid'}
+            submitLabel={cnpj ? copy.companyChange : copy.companySave}
+          />
+        </section>
 
         <div className="flex flex-col gap-2 min-[560px]:flex-row">
           <Button href="/radar" iconEnd="arrowRight">
