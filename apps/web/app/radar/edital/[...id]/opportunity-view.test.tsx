@@ -407,11 +407,33 @@ describe('OpportunityView · the whole Objeto', () => {
     expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf('min-[900px]:grid'))
   })
 
-  it('caps the measure rather than setting type across the whole column', () => {
+  /**
+   * This test used to assert the opposite, and the flip is the point.
+   *
+   * It shipped as "caps the measure rather than setting type across the whole
+   * column", pinning `max-w-[68ch]` — about 570px — on the typographic
+   * argument that 105 characters of dense uppercase legal prose is a poor
+   * measure. Sci overruled it on 2026-09-22: *"why does the Objeto text not
+   * take the entire width like the table above?"* Everything this block
+   * touches is full width, so at 571px it aligned with nothing on the screen
+   * and read as a mistake.
+   *
+   * Inverted rather than deleted, because the next person to notice the long
+   * line will be right about the typography and still wrong about the screen,
+   * and because a deleted guard on this component is exactly how the block's
+   * position was silently reverted once already (see `FullObject`).
+   */
+  it('spans the full column: any width cap here is a regression', () => {
     const out = render({ tender: { ...TENDER, object: LONG } })
-    // 68ch ≈ 570px: inside the 45–75 character band, wider than the 444px
-    // left column it no longer lives in, well short of the 920px container.
-    expect(out).toMatch(/max-w-\[68ch\][^>]*>CONTRATAÇÃO DE EMPRESAS/)
+    // The Objeto's own <p>, isolated — a `max-w-` anywhere else on the screen
+    // must neither satisfy nor break this.
+    const after = out.slice(out.indexOf(page.objectTitle))
+    const open = after.indexOf('<p')
+    const tag = after.slice(open, after.indexOf('>', open) + 1)
+    expect(tag).toContain('whitespace-pre-line')
+    expect(tag).not.toMatch(/max-w-/)
+    // Belt and braces: the old cap by name, anywhere in the block.
+    expect(after.slice(0, after.indexOf('</section>'))).not.toContain('max-w-[68ch]')
   })
 
   it('stays above the record’s tabs: the object is read before its parts', () => {

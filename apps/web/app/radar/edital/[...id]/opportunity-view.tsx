@@ -267,15 +267,36 @@ function Operation({ tender }: { tender: TenderDetail }) {
  * lots into a wall — while still collapsing the runs of padding spaces that
  * come out of their form fields.
  *
- * ## The measure is not the container
+ * ## The measure: there was a cap, and Sci removed it on 2026-09-22
  *
- * Spanning the column does not mean setting the type across it. At the 920px
- * content width an unconstrained line runs past 105 characters of dense,
- * often uppercase legal prose, which is where a long measure hurts most.
- * `max-w-[68ch]` — about 570px — keeps it inside the 45–75 character band
- * that reads comfortably while being half again the 444px left column it no
- * longer lives in, so the block still reads as the wide one. At 390px the
- * gutter is the constraint and this cap never applies.
+ * This block shipped with `max-w-[68ch]` — about 570px — and the argument for
+ * it was a real one: at the 920px content width an unconstrained line runs
+ * past 105 characters of dense, often uppercase legal prose, and 45–75
+ * characters is where a measure reads comfortably. That is a typographic
+ * argument and it is not wrong.
+ *
+ * It lost to an alignment argument. Sci: *"why does the Objeto text not take
+ * the entire width like the table above?"* Everything this block touches is
+ * full width — the deadline/value box above it, the items table below it —
+ * and the two columns under it are ~440px each. At 571px the Objeto lined up
+ * with **nothing on the screen**, so it read as a mistake rather than as a
+ * measure. He has heard the 105-character argument and chosen consistency
+ * with the block's neighbours, which is his call to make.
+ *
+ * So there is **no width cap here, deliberately**, and
+ * `OpportunityView · the whole Objeto` now fails if one comes back — the test
+ * was inverted rather than deleted, because the next person to notice the long
+ * line will be right about the typography and still wrong about the screen.
+ * The measure does need help, and it is bought with leading. Measured in
+ * Chrome on the worst object we hold — 1 928 characters, no line breaks of its
+ * own — the uncapped block renders at **140–145 characters per line** at
+ * 1280px, not the ~105 this comment used to estimate. Only **294 of 6 299**
+ * objects carry the agency's own newlines, so that unbroken flow is the normal
+ * case and not the exception. `leading-loose` (2.0 rather than 1.625) is what
+ * lets the eye find the start of the next line at that measure; it costs about
+ * 73px of height on that worst case and ~10px on a typical two-line object.
+ * At 390px the same text is 51–57 characters per line and the leading is
+ * simply comfortable. Width was not available as a lever and is not one here.
  *
  * It does not assume the `h1` above is a prefix of this text. When the `h1`
  * becomes a generated short title, this block is unchanged and becomes the
@@ -286,7 +307,7 @@ function FullObject({ object }: { object: string }) {
   return (
     <section className="flex flex-col gap-2">
       <SectionLabel tone="muted">{page.objectTitle}</SectionLabel>
-      <p className="m-0 max-w-[68ch] text-body leading-relaxed whitespace-pre-line">{object}</p>
+      <p className="m-0 text-body leading-loose whitespace-pre-line">{object}</p>
     </section>
   )
 }
@@ -394,7 +415,9 @@ function Record({
   ]
 
   return (
-    <section className="flex flex-col gap-3">
+    // `pt-7`: the third topic block, on the same 42px boundary as the pair
+    // above it. See the note on that block.
+    <section className="flex flex-col gap-3 pt-7">
       <Tabs items={tabs} active={tab} onSelect={onSelectTab} idPrefix={TAB_PREFIX} />
       {tab === 'items' ? (
         <TabPanel idPrefix={TAB_PREFIX} id="items">
@@ -641,7 +664,30 @@ export function OpportunityView({
             two-column block and never a cell inside it. See `FullObject`. */}
         <FullObject object={tender.object} />
 
-        <div className="flex flex-col gap-3.5 min-[900px]:grid min-[900px]:grid-cols-2 min-[900px]:items-start min-[900px]:gap-8">
+        {/* Sci: *"for the two sections below, we need a little separation,
+            increase the padding between each topic."* Two boundaries were
+            too tight, and the full-width Objeto above made the first of them
+            worse: a paragraph now running the whole column straight into a
+            section label, with only `main`'s 14px rhythm between them.
+
+            The numbers come from `app/(public)/sections.tsx`, which already
+            solves exactly this shape — a two-column block that stacks —
+            with the rhythm PR #55 settled at 40/48:
+
+              between topics   `pt-7` + main's `gap-3.5`  = **42px** (≈ #55's 40)
+              stacked, <900px  `gap-7`                    = **28px**
+              columns, ≥900px  `min-[900px]:gap-10`       = **40px** (was 32)
+
+            Borrowing them keeps one system rather than inventing a second
+            scale for the app screens.
+
+            `pt-7` here and on `<Record>`, not a bigger gap on `main`: what
+            needed air is a change of subject, not the header's tightly
+            coupled rows (title → badges → card), which are one topic and
+            want to stay at 14px. The two `pt-7`s together are also what keeps
+            this block from reading as floating — 42px above it and 42px
+            below, rather than 42 above and 14 below. */}
+        <div className="flex flex-col gap-7 pt-7 min-[900px]:grid min-[900px]:grid-cols-2 min-[900px]:items-start min-[900px]:gap-10">
           <section className="flex flex-col gap-2">
             <SectionLabel tone="muted">{page.whyTitle}</SectionLabel>
             {why.length === 0 ? (
