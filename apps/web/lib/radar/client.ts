@@ -54,23 +54,56 @@ export function tenderHref(id: string): string {
 }
 
 /**
- * `/radar?cnpj=…&uf=…&q=…&group=…`, with the empty parameters left out and the
- * default group left implicit.
+ * The same URL, carrying the search that found the tender.
+ *
+ * `opportunity-screen.tsx` builds its "Voltar" link out of `cnpj`, `uf`, `q`
+ * and `group` read from its own query string — and the Radar's cards linked to
+ * the bare `/radar/edital/…`, so those parameters were never there and the
+ * link went to a bare `/radar`: no CNPJ, no keyword, no tab. Sci's "I move
+ * back to the list of editais, I lost the search" is that link. The parameters
+ * are spelled the way the Radar itself reads them (`uf`, not `state`).
+ */
+export function tenderHrefFrom(
+  id: string,
+  query: { cnpj?: string | null; state?: string | null; q?: string | null; group?: TenderGroup },
+): string {
+  const params = new URLSearchParams()
+  if (query.cnpj) params.set('cnpj', query.cnpj)
+  if (query.state) params.set('uf', query.state)
+  if (query.q) params.set('q', query.q)
+  if (query.group) params.set('group', query.group)
+  const search = params.toString()
+  return search ? `${tenderHref(id)}?${search}` : tenderHref(id)
+}
+
+/**
+ * `/radar?cnpj=…&uf=…&q=…&group=…`, with the empty parameters left out.
  *
  * Here rather than in the Radar's own files because the Landing form builds it
  * too, and the Landing must not pull the whole Radar view into its bundle.
+ *
+ * ## Why `group=compatible` is now written out
+ *
+ * It used to be left implicit, which made a URL unable to say the one thing
+ * the Radar has to know: whether the user *chose* a tab. Absent and
+ * "compatible" were the same address, so a search whose hits are all in
+ * Palavras opened on an empty Compatíveis and could not be helped without also
+ * overriding someone who had pressed Compatíveis on purpose. A caller that
+ * passes a group now always gets it in the URL; a caller that passes none —
+ * the Landing's form — still gets a URL with no `group` at all, which is what
+ * "I have not chosen" looks like.
  */
 export function radarHref(query: {
   cnpj?: string | null
   state?: string | null
   q?: string | null
-  group?: TenderGroup
+  group?: TenderGroup | null
 }): string {
   const params = new URLSearchParams()
   if (query.cnpj) params.set('cnpj', query.cnpj)
   if (query.state) params.set('uf', query.state)
   if (query.q) params.set('q', query.q)
-  if (query.group && query.group !== 'compatible') params.set('group', query.group)
+  if (query.group) params.set('group', query.group)
   const search = params.toString()
   return search ? `/radar?${search}` : '/radar'
 }

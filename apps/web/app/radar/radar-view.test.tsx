@@ -83,6 +83,7 @@ const OTHER_TITLES = [
   copy.states.needCnpjTitle,
   copy.states.timeoutTitle,
   copy.states.errorTitle,
+  copy.list.allEmpty.title,
 ]
 
 function only(out: string, title: string) {
@@ -162,7 +163,20 @@ describe('a tender card', () => {
   })
 
   it('links to the tender with the slash intact, so no %2F reaches a proxy', () => {
-    expect(render()).toContain('href="/radar/edital/51885242000140-1-000744/2026"')
+    expect(render()).toContain('href="/radar/edital/51885242000140-1-000744/2026?')
+  })
+
+  it('carries the search into the tender’s URL, because the way back reads it', () => {
+    // `opportunity-screen.tsx` builds "Voltar" out of these four parameters.
+    // Linking to the bare `/radar/edital/…` is why the back link went to a
+    // bare `/radar`: no CNPJ, no keyword, no tab — the search, lost.
+    const out = render({
+      query: { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' },
+      tenders: [{ ...TENDER, group: 'check' }],
+    })
+    expect(out).toContain(
+      'href="/radar/edital/51885242000140-1-000744/2026?cnpj=51885242000140&amp;uf=SP&amp;q=papel&amp;group=check"',
+    )
   })
 
   it('does not print a value it was told is confidential', () => {
@@ -196,10 +210,11 @@ describe('the states', () => {
   })
 
   it('an empty group says the group is empty and offers a way out', () => {
-    const out = render({ tenders: [], counts: { compatible: 0, check: 0, keyword: 0 } })
+    // Empty here, results elsewhere: the board's own empty state, with the
+    // way out pointing at the tab that has them.
+    const out = render({ tenders: [], counts: { compatible: 0, check: 7, keyword: 3 } })
     only(out, copy.states.emptyTitle)
     expect(out).toContain(copy.states.emptyBody)
-    expect(out).toContain(copy.states.emptyAction)
     expect(out).not.toContain('role="status"')
   })
 
@@ -388,5 +403,64 @@ describe('the group hint, inside the Radar', () => {
     expect(out).toContain(copy.list.groupHint.check)
     expect(out).not.toContain(copy.list.groupHint.compatible)
     expect(out).not.toContain(copy.list.groupHint.keyword)
+  })
+})
+
+/**
+ * Item 3 of the three UX failures: a search whose hits are all in Verificar or
+ * Palavras opened on an empty Compatíveis and read as a bug. Choosing the tab
+ * is `lib/radar/group.ts`; what the screen *says* about the other tabs is here.
+ */
+describe('an empty tab, when the results are on another one', () => {
+  const found = { compatible: 0, check: 0, keyword: 36 } as const
+
+  it('names the tab that has them, and how many, and links to it', () => {
+    const out = render({
+      query: { ...BASE_QUERY, q: 'pavimentação asfáltica', group: 'compatible' },
+      tenders: [],
+      counts: found,
+    })
+    expect(out).toContain(
+      format(copy.list.seeOther, {
+        quantos: format(copy.tabs.count, { count: 36 }),
+        grupo: copy.list.groups.keyword,
+      }),
+    )
+    expect(out).toContain('group=keyword')
+  })
+
+  it('says something different when every tab is empty', () => {
+    const out = render({ tenders: [], counts: { compatible: 0, check: 0, keyword: 0 } })
+    only(out, copy.list.allEmpty.title)
+    expect(out).toContain(copy.list.allEmpty.body)
+    // There is no populated tab to offer, so it must not invent one.
+    expect(out).toContain(copy.states.emptyAction)
+    for (const group of ['compatible', 'check', 'keyword'] as const) {
+      expect(out).not.toContain(
+        format(copy.list.seeOther, {
+          quantos: format(copy.tabs.count, { count: 0 }),
+          grupo: copy.list.groups[group],
+        }),
+      )
+    }
+  })
+
+  it('counts are announced with their noun, not as a bare digit', () => {
+    const out = render({ counts: { compatible: 0, check: 7, keyword: 3 } })
+    expect(out).toContain(`<span class="sr-only">${format(copy.tabs.count, { count: 0 })}</span>`)
+    expect(out).toContain(`<span class="sr-only">${format(copy.tabs.count, { count: 7 })}</span>`)
+    // The digit itself is decoration once the words are there.
+    expect(out).toMatch(/aria-hidden="true"[^>]*tabular-nums">0</)
+  })
+
+  it('an elected tab is not written into the filter form as a chosen one', () => {
+    // A tab the user pressed travels with a filter change; one the screen
+    // picked for them must not, or the next search inherits a decision they
+    // never made.
+    const chosen = render({ query: { ...BASE_QUERY, group: 'keyword', groupChosen: true } })
+    expect(chosen).toContain('<input type="hidden" name="group" value="keyword"/>')
+
+    const elected = render({ query: { ...BASE_QUERY, group: 'keyword' } })
+    expect(elected).not.toContain('name="group"')
   })
 })

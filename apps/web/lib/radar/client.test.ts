@@ -4,6 +4,7 @@ import {
   radarHref,
   tenderApiPath,
   tenderHref,
+  tenderHrefFrom,
   tenderPath,
   tendersUrl,
 } from './client'
@@ -34,17 +35,45 @@ describe('tender addresses', () => {
 })
 
 describe('radarHref', () => {
-  it('leaves out what is empty and keeps the default group implicit', () => {
+  it('leaves out what is empty', () => {
     expect(radarHref({})).toBe('/radar')
-    expect(radarHref({ cnpj: '12345678000195', group: 'compatible' })).toBe(
-      '/radar?cnpj=12345678000195',
-    )
+    expect(radarHref({ cnpj: '12345678000195' })).toBe('/radar?cnpj=12345678000195')
   })
 
-  it('carries state, keyword and a non-default group', () => {
+  /**
+   * `group=compatible` used to be dropped as "the default", which made an
+   * address unable to say whether the user had chosen a tab: a search whose
+   * hits are all in Palavras opened on an empty Compatíveis, and the screen
+   * could not tell that apart from someone pressing Compatíveis on purpose.
+   */
+  it('names the group whenever it is given one, compatible included', () => {
+    expect(radarHref({ cnpj: '12345678000195', group: 'compatible' })).toBe(
+      '/radar?cnpj=12345678000195&group=compatible',
+    )
     expect(radarHref({ cnpj: '1', state: 'SP', q: 'material hospitalar', group: 'check' })).toBe(
       '/radar?cnpj=1&uf=SP&q=material+hospitalar&group=check',
     )
+  })
+
+  it('leaves the group out when there is none: that is "not chosen"', () => {
+    expect(radarHref({ cnpj: '1', group: null })).toBe('/radar?cnpj=1')
+  })
+})
+
+describe('tenderHrefFrom', () => {
+  it('carries the search, in the spelling the Radar itself reads', () => {
+    expect(
+      tenderHrefFrom('51885242000140-1-000744/2026', {
+        cnpj: '1',
+        state: 'SP',
+        q: 'papel',
+        group: 'check',
+      }),
+    ).toBe('/radar/edital/51885242000140-1-000744/2026?cnpj=1&uf=SP&q=papel&group=check')
+  })
+
+  it('is the plain tender URL when there is no search to carry', () => {
+    expect(tenderHrefFrom('a/b', {})).toBe('/radar/edital/a/b')
   })
 })
 

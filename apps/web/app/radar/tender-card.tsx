@@ -1,8 +1,10 @@
-import { Card, CardLink, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
+import { Card, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
 import { tenderHref } from '@/lib/radar/client'
 import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
-import { agencyLine, deadlineShort, meEppSummary, tenderTitle } from '@/lib/radar/format'
+import { agencyLine, deadlineShort, meEppSummary } from '@/lib/radar/format'
 import { cardHeadline, deadlineLabel } from '@/lib/radar/headline'
+import { tenderObject } from '@/lib/radar/object'
+import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
 
 export { deadlineLabel }
@@ -24,9 +26,16 @@ export { deadlineLabel }
  *  - the title is `tenderTitle()`, not the raw PNCP object, which arrives
  *    shouted and with the sourcing portal bolted on the front.
  *
- * The whole card is one `<a>` (`CardLink`), not a div with a click handler and
- * a nested link: one keyboard stop, one screen-reader target, and the middle
- * button opens it in a tab like any other link.
+ * The clickable part of the card is one `<a>`, not a div with a click handler
+ * and a nested link: one keyboard stop for the whole tender, one screen-reader
+ * target, and the middle button opens it in a tab like any other link.
+ *
+ * It used to be the *entire* card, and is not any more, because of "Objeto
+ * completo" (see `ObjectDisclosure` below): a `<details>` is interactive
+ * content and cannot live inside an `<a>`. So the card is now a surface
+ * holding a link and, when there is more object than the title shows, a
+ * disclosure under it — two keyboard stops on those cards instead of one,
+ * which is what an in-place expander costs and what it is worth.
  *
  * No hooks and no handlers, so it renders on the server and in a test with
  * `renderToStaticMarkup`. `now` is injected for the same reason: a card whose
@@ -75,6 +84,55 @@ export function TenderTags({ tender }: { tender: TenderCard }) {
   )
 }
 
+/**
+ * "Objeto completo" — the rest of the text, on the card, for nothing.
+ *
+ * Sci, comparing us with PNCP: *"Like we have in PNCP I just need one click to
+ * see the brief description in 'Objeto'. In our application we need at least 2
+ * or 3 clicks, or to request the AI — for something that is already there,
+ * free."* He is right twice over. The full string is in the list payload
+ * (`tenders.ts` selects `t.object`), so reading it costs no request; and it has
+ * nothing to do with the AI screening, so paying a triagem to be told what the
+ * object says is spending quota on text the browser already holds.
+ *
+ * ## Why `<details>` and not a `useState`
+ *
+ * Three reasons, in order of how much they matter:
+ *
+ *  1. it keeps this file free of hooks, which is what lets the whole card —
+ *     every card in the list — render on the server and be asserted with
+ *     `renderToStaticMarkup`;
+ *  2. `summary` is already a keyboard stop with Enter and Space bound, already
+ *     announced as a disclosure with its expanded state, and already
+ *     searchable by the browser's own find-in-page;
+ *  3. it works before React has hydrated, like the filter row above it.
+ *
+ * Collapsed is the default and stays it: the list is meant to be scanned, and
+ * twenty 200-character paragraphs is not a list. The panel opens *below* its
+ * own trigger inside its own card, so nothing above the reader's eye moves;
+ * what is below it moves down, which is what an accordion is.
+ */
+function ObjectDisclosure({ text }: { text: string }) {
+  return (
+    <details className="group border-t border-line">
+      <summary
+        className={cn(
+          'flex min-h-touch cursor-pointer list-none items-center gap-1.5 px-3.5',
+          'text-meta font-medium text-blue [&::-webkit-details-marker]:hidden',
+        )}
+      >
+        <Icon
+          name="chevronRight"
+          size={14}
+          className="transition-transform group-open:rotate-90"
+        />
+        {list.object.label}
+      </summary>
+      <p className="px-3.5 pb-3.5 text-meta leading-relaxed text-ink">{text}</p>
+    </details>
+  )
+}
+
 export function TenderCardView({
   tender,
   now = new Date(),
@@ -98,6 +156,7 @@ export function TenderCardView({
   const headline = cardHeadline(tender, now)
   const deadline = deadlineShort(tender.proposalsCloseAt)
   const target = href === undefined ? tenderHref(tender.id) : href
+  const object = tenderObject(tender.object)
 
   // When the deadline has been promoted into the anchor it is the same string
   // the top-right countdown prints, so the countdown steps aside rather than
@@ -114,7 +173,7 @@ export function TenderCardView({
         )}
       </div>
 
-      <div className="text-lead leading-[1.3] font-semibold">{tenderTitle(tender.object)}</div>
+      <div className="text-lead leading-[1.3] font-semibold">{object.title}</div>
 
       <div className="text-meta text-muted">{agencyLine(tender)}</div>
 
@@ -155,17 +214,35 @@ export function TenderCardView({
   // `w-full` matters: the list item is a flex container so the cards stretch
   // to equal height in the desktop grid, and a block child of a flex parent
   // is shrink-to-fit, not full width.
+  //
+  // `padding="none"` on the surface, and the padding on the link and the
+  // disclosure instead: the hairline between them has to reach both edges of
+  // the card, and the summary has to be a 44px touch target across its whole
+  // width rather than a label with a padded gap around it.
+  //
+  // `has-[a:hover]:` reproduces what `CardLink` did with `hover:` — the border
+  // lifts when the *link* is hovered, not when the pointer is anywhere on the
+  // card, so hovering "Objeto completo" does not promise a navigation.
+  const expander = object.expandable ? <ObjectDisclosure text={object.full} /> : null
+
   if (target === null) {
     return (
-      <Card padding="sm" className="flex w-full flex-col gap-2">
-        {body}
+      <Card padding="none" className="flex w-full flex-col">
+        <div className="flex grow flex-col gap-2 p-3.5">{body}</div>
+        {expander}
       </Card>
     )
   }
 
   return (
-    <CardLink href={target} className="flex w-full flex-col gap-2">
-      {body}
-    </CardLink>
+    <Card
+      padding="none"
+      className="flex w-full flex-col transition-colors has-[a:hover]:border-line-strong"
+    >
+      <a href={target} className="flex grow flex-col gap-2 p-3.5 text-ink no-underline">
+        {body}
+      </a>
+      {expander}
+    </Card>
   )
 }

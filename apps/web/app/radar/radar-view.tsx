@@ -12,7 +12,8 @@ import type {
 import { ageParts } from '@/lib/radar/format'
 import { errorText } from '@/lib/radar/error-text'
 import { format, messages } from '@/lib/messages'
-import { radarHref } from '@/lib/radar/client'
+import { radarHref, tenderHrefFrom } from '@/lib/radar/client'
+import { everyGroupEmpty, otherPopulatedGroup } from '@/lib/radar/group'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { TENDER_GROUPS } from '@/lib/radar/contract'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
@@ -65,7 +66,14 @@ export type RadarQuery = {
   cnpj: string | null
   state: string | null
   q: string | null
+  /** The tab on screen: chosen, or elected by `bestGroup()` from the counts. */
   group: TenderGroup
+  /**
+   * The user pressed this tab. An elected one must not be written into the
+   * filter form as though it had been, or changing the UF would carry a
+   * decision the user never made into a search where it may be wrong again.
+   */
+  groupChosen?: boolean
 }
 
 export type RadarViewProps = {
@@ -169,6 +177,23 @@ export function VisitorBanner({ visitor, now }: { visitor: VisitorView; now: Dat
  * URL: shareable, reloadable, and `Back` returns to the tab you were on.
  * `next/link` navigates on the client, which is why there is no click handler
  * here re-implementing what the browser and the router already do.
+ *
+ * ## The count is the whole point of the chip
+ *
+ * A user on an empty tab cannot see that the answer is one chip away unless
+ * the chips say how much is in them, so the number is not decoration: it is
+ * what stops an empty Compatíveis reading as a broken screen. Two things it
+ * needs in order to do that job.
+ *
+ * **It has to be said out loud.** A bare `0` next to "Verificar" is a digit
+ * with no noun: a screen reader announced "Verificar 0" and left the listener
+ * to guess. The visible number keeps its place and carries the words with it
+ * (`tabs.count`, "nenhum edital" / "36 editais") in text only assistive
+ * technology reads.
+ *
+ * **Zero has to look like zero.** On an unselected chip the count is quiet;
+ * an empty one is quieter still, so the eye separates "nothing here" from "36
+ * here" without reading either number.
  */
 function GroupTabs({
   active,
@@ -183,6 +208,7 @@ function GroupTabs({
     <nav aria-label={list.resultsLabel} className="flex gap-2 overflow-x-auto px-gutter pt-3 pb-2">
       {TENDER_GROUPS.map((group) => {
         const current = group === active
+        const count = counts ? counts[group] : null
         return (
           <Link
             key={group}
@@ -197,7 +223,24 @@ function GroupTabs({
             )}
           >
             {list.groups[group]}
-            {counts ? <span className="font-mono text-caption">{counts[group]}</span> : null}
+            {count === null ? null : (
+              <>
+                {/* No `opacity-*` on a count: a muted grey at 60% stops
+                    clearing AA, and `styles/contrast.test.ts` only measures
+                    the tokens themselves. The quiet version of zero is a
+                    different token, not a faded one. */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    'font-mono text-caption tabular-nums',
+                    current ? '' : count === 0 ? 'text-muted' : 'text-ink',
+                  )}
+                >
+                  {count}
+                </span>
+                <span className="sr-only">{format(copy.tabs.count, { count })}</span>
+              </>
+            )}
           </Link>
         )
       })}
@@ -276,9 +319,7 @@ function FilterRow({
           }
         >
           <input type="hidden" name="cnpj" value={query.cnpj ?? ''} />
-          {query.group === 'compatible' ? null : (
-            <input type="hidden" name="group" value={query.group} />
-          )}
+          {query.groupChosen ? <input type="hidden" name="group" value={query.group} /> : null}
           <Select
             id="radar-uf"
             name="uf"
@@ -400,15 +441,87 @@ function RetryAction({ label, onRetry }: { label: string; onRetry?: () => void }
   )
 }
 
+/**
+ * What an empty tab says — which depends on what the *other* tabs hold.
+ *
+ * Three different facts were all rendered as "Nenhum edital compatível agora":
+ * this group is empty and another one is not; this group is empty and so are
+ * the other two; and the search itself found nothing anywhere. The first is
+ * the one Sci hit, and the only honest thing to do with it is name the tab
+ * that has the results and link to it — the counts on the chips say the same
+ * thing, but the person reading an empty state is looking here.
+ *
+ * "Every group is empty" is a different sentence and not a louder version of
+ * the same one: there is no tab to send anyone to, so the way out is the
+ * filters, and the copy says what is true — the list is rebuilt every thirty
+ * minutes (§3.2) and nothing open matches right now.
+ */
+function EmptyGroup({
+  query,
+  counts,
+}: {
+  query: RadarQuery
+  counts: Record<TenderGroup, number> | null
+}) {
+  const group = query.group
+  const elsewhere = otherPopulatedGroup(counts, group)
+
+  if (everyGroupEmpty(counts)) {
+    return (
+      <StateCard
+        kind="empty"
+        title={list.allEmpty.title}
+        description={list.allEmpty.body}
+        action={
+          <Button variant="link" href="/" className="px-0" iconEnd="arrowRight">
+            {copy.states.emptyAction}
+          </Button>
+        }
+      />
+    )
+  }
+
+  return (
+    <StateCard
+      kind="empty"
+      title={EMPTY[group].title}
+      description={EMPTY[group].body}
+      action={
+        elsewhere ? (
+          <Button
+            variant="link"
+            href={radarHref({ ...query, group: elsewhere })}
+            className="px-0"
+            iconEnd="arrowRight"
+          >
+            {format(list.seeOther, {
+              quantos: format(copy.tabs.count, { count: counts ? counts[elsewhere] : 0 }),
+              grupo: list.groups[elsewhere],
+            })}
+          </Button>
+        ) : (
+          <Button variant="link" href="/" className="px-0" iconEnd="arrowRight">
+            {copy.states.emptyAction}
+          </Button>
+        )
+      }
+    />
+  )
+}
+
 function Body({
   status,
   group,
+  counts,
+  query,
   tenders,
   now,
   onRetry,
 }: {
   status: RadarStatus
   group: TenderGroup
+  counts: Record<TenderGroup, number> | null
+  query: RadarQuery
   tenders: TenderCard[]
   now: Date
   onRetry?: () => void
@@ -490,25 +603,20 @@ function Body({
   }
 
   if (tenders.length === 0) {
-    return (
-      <StateCard
-        kind="empty"
-        title={EMPTY[group].title}
-        description={EMPTY[group].body}
-        action={
-          <Button variant="link" href="/" className="px-0" iconEnd="arrowRight">
-            {copy.states.emptyAction}
-          </Button>
-        }
-      />
-    )
+    return <EmptyGroup query={query} counts={counts} />
   }
 
   return (
     <ul className="grid list-none grid-cols-1 gap-2.5 p-0 min-[900px]:grid-cols-2 min-[1280px]:grid-cols-3">
       {tenders.map((tender) => (
         <li key={tender.id} className="flex">
-          <TenderCardView tender={tender} now={now} />
+          {/* The card carries the search into the tender's URL, which is where
+              the Opportunity screen reads its "Voltar" link from. */}
+          <TenderCardView
+            tender={tender}
+            now={now}
+            href={tenderHrefFrom(tender.id, { ...query, group })}
+          />
         </li>
       ))}
     </ul>
@@ -576,6 +684,8 @@ export function RadarView({
           <Body
             status={status}
             group={query.group}
+            counts={counts}
+            query={query}
             tenders={showList ? tenders : []}
             now={now}
             onRetry={onRetry}
