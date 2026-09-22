@@ -560,6 +560,13 @@
     "errors": {
       "expired": "Este link de conexão expirou. Gere outro e use nos próximos minutos.",
       "generic": "Não conseguimos conectar o Telegram agora. Tente de novo em instantes."
+    },
+    "screen": {
+      "pause": "Pausar os avisos",
+      "resume": "Voltar a receber",
+      "paused": "Os avisos estão pausados. Sua conta continua funcionando normalmente.",
+      "needsCnpj": "Para mandar editais que combinam com você, primeiro precisamos do CNPJ da sua empresa. É só fazer uma busca no Radar.",
+      "filtersTitle": "O que você quer receber"
     }
   },
   "notifications": {
