@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type Ref } from 'react'
 import { Button, Field, Icon, SectionLabel, StateCard } from '@/components'
-import { FOUNDER_SEATS, seatGrid, seatsLeftLabel } from '@/lib/founders'
+import { FOUNDER_SEATS, seatGrid, seatsLeftLabel, showSeatGrid } from '@/lib/founders'
 import type { SeatsResponse, SignupOk, SignupResponse } from '@/lib/founders/contract'
 import { format, messages } from '@/lib/messages'
 
@@ -21,10 +21,10 @@ const errors = messages.founders.errors
  * Two things the page could not do before this task:
  *
  *  - the seat grid is live. The page is statically rendered (spec §3.3), so the
- *    48 cells render empty in the HTML and `GET /api/founders/seats` fills them
- *    in once the browser has the page. A failed or slow count changes nothing
- *    about the form: it still submits, and the transaction is the only thing
- *    that decides whether a seat is left.
+ *    HTML carries no cells at all and `GET /api/founders/seats` decides whether
+ *    there are any to draw — see `showSeatGrid()`. A failed or slow count
+ *    changes nothing about the form: it still submits, and the transaction is
+ *    the only thing that decides whether a seat is left.
  *  - consent is two checkboxes, not one, and neither is pre-ticked — the
  *    wording is Annex B of the terms of use (LGPD art. 8 §4, spec §12): one box
  *    for being contacted, one for accepting the terms and the privacy policy.
@@ -49,13 +49,11 @@ const ERROR_TEXT: Record<string, string> = {
 }
 
 /**
- * `founders.errors.generic` ends with "escreva para {email}". Until Sci fills
- * `support.email` (its value is still a TODO from task E0), pointing people at
- * a placeholder is worse than the shorter generic line, so we use that instead.
+ * `founders.errors.generic` ends with "escreva para {email}". That is support,
+ * not a data-subject request, so it names `contato@` (legal brief §1). The E0
+ * `TODO(Sci)` placeholder that used to force the shorter generic line is gone.
  */
-const GENERIC_ERROR = messages.support.email.startsWith('TODO')
-  ? messages.errors.generic
-  : format(errors.generic, { email: messages.support.email })
+const GENERIC_ERROR = format(errors.generic, { email: messages.support.email })
 
 function errorText(code: string | undefined): string | undefined {
   if (!code) return undefined
@@ -291,7 +289,14 @@ export function SignupForm() {
   )
 }
 
-/** The 48-cell grid plus the "Restam N vagas" line, once the count arrives. */
+/**
+ * The "Restam N vagas" line, and the 48-cell grid once there is a seat in it.
+ *
+ * The grid is conditional — see `showSeatGrid()` for why. The count and the
+ * sentence are not: they are true at 0 taken ("Restam 48 vagas") and at 48
+ * ("Vagas esgotadas"), and they are the part that does the work. The grid is
+ * the part that only helps once it has something to show.
+ */
 function SeatGauge({ taken }: { taken: number | null }) {
   return (
     <div role="group" aria-label={copy.seatsGroup} className="flex flex-col gap-2">
@@ -301,17 +306,19 @@ function SeatGauge({ taken }: { taken: number | null }) {
           {taken === null ? FOUNDER_SEATS : FOUNDER_SEATS - taken}
         </b>
       </div>
-      <div aria-hidden className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[3px]">
-        {seatGrid(taken ?? 0).map((cell) => (
-          <span
-            key={cell.seat}
-            className={
-              'aspect-square max-w-full rounded-[2px] border border-line-strong ' +
-              (cell.filled ? 'bg-blue' : 'bg-fill-muted')
-            }
-          />
-        ))}
-      </div>
+      {showSeatGrid(taken) ? (
+        <div aria-hidden className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[3px]">
+          {seatGrid(taken ?? 0).map((cell) => (
+            <span
+              key={cell.seat}
+              className={
+                'aspect-square max-w-full rounded-[2px] border border-line-strong ' +
+                (cell.filled ? 'bg-blue' : 'bg-fill-muted')
+              }
+            />
+          ))}
+        </div>
+      ) : null}
       <p aria-live="polite" className="text-meta leading-[1.45] text-muted">
         {taken === null ? copy.seatsNote : `${seatsLeftLabel(taken)} · ${copy.seatsNote}`}
       </p>

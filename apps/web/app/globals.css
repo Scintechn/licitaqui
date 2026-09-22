@@ -2,6 +2,58 @@
 @import '../styles/tokens.css';
 
 /*
+ * Text selection — the one piece of UI that was never styled.
+ *
+ * Chrome's default is a pale lavender-blue that belongs to no palette. On
+ * Ivory, under a Graphite headline, it reads as a foreign colour, so selection
+ * takes the brand Blue — the same blue as the "Qui" in the wordmark.
+ *
+ * ## Why the text on it is Ivory and not Graphite
+ *
+ * Measured, because a saturated blue fill is exactly the case where the
+ * intuitive choice is wrong:
+ *
+ *   --color-ink   #171717 on --color-blue #2457d6   2.91:1   fails AA
+ *   --color-ivory #fbf7f3 on --color-blue #2457d6   5.78:1   passes
+ *
+ * Ivory on Blue is also the brand's own sanctioned pairing (LEIAME.md: the
+ * `ivory` logo tone exists precisely for use ON blue).
+ *
+ * ## The graphite panel needs its own pair
+ *
+ * Selection styling is global, so it also lands on the dark panel of the offer
+ * page (`.bg-ink`). There the normal Blue fill is only 2.91:1 against the panel
+ * itself — the text stays readable but the selection stops looking selected.
+ * The lighter brand Blue, which the tokens already reserve for dark
+ * backgrounds, fixes both halves at once:
+ *
+ *   --color-ink #171717 on --color-blue-light #5c86ec   5.19:1   passes
+ *   fill #5c86ec against the panel #171717              5.19:1   clears 3:1
+ *
+ * `::-moz-selection` is a separate rule on purpose: a selector list holding a
+ * pseudo-element one engine does not know invalidates the whole rule.
+ */
+::selection {
+  background-color: var(--color-blue);
+  color: var(--color-ivory);
+}
+::-moz-selection {
+  background-color: var(--color-blue);
+  color: var(--color-ivory);
+}
+
+.bg-ink::selection,
+.bg-ink ::selection {
+  background-color: var(--color-blue-light);
+  color: var(--color-ink);
+}
+.bg-ink::-moz-selection,
+.bg-ink ::-moz-selection {
+  background-color: var(--color-blue-light);
+  color: var(--color-ink);
+}
+
+/*
  * `.legal-prose` — the terms and the privacy policy.
  *
  * Those two pages are generated from the Markdown in `docs/legal/` (see

@@ -6,7 +6,6 @@
     "scope": "Covers the flows E0 owns: founders offer and consent, plans and prices, billing and the promo price change, Telegram linking, notification preferences, and the AI disclaimer. Screen copy for Radar, Opportunity and Screening belongs to tasks D3/D4.",
     "todo": [
       "TODO(Sci): gap G3 — publish the privacy policy and terms of use, then fill legal.privacyUrl and legal.termsUrl.",
-      "TODO(Sci): define the support address used in support.email.",
       "TODO(Sci): review consent.* word by word — this is the LGPD consent record for WhatsApp and email contact (spec §12).",
       "TODO(Sci): review billing.priceChange.* — it must match the price-change clause in the terms and the email in worker/templates/email/price-change-30-days.md.",
       "TODO(Sci): gap G13 — nothing here mentions nota fiscal, on purpose. Decide with the accountant before adding anything.",
@@ -50,7 +49,8 @@
     }
   },
   "support": {
-    "email": "TODO(Sci): endereço de contato",
+    "email": "contato@licitaquiapp.com.br",
+    "privacyEmail": "privacidade@licitaquiapp.com.br",
     "label": "Falar com a gente",
     "help": "Dúvida, erro ou sugestão? Escreva para {email}. A gente responde."
   },

@@ -6,6 +6,7 @@ import {
   seatsLeft,
   seatsLeftLabel,
   seatsTaken,
+  showSeatGrid,
 } from './seats'
 
 describe('FOUNDER_SEATS', () => {
@@ -80,5 +81,34 @@ describe('seatGrid', () => {
 
   it('never fills more cells than there are seats', () => {
     expect(seatGrid(99).every((cell) => cell.filled)).toBe(true)
+  })
+})
+
+describe('showSeatGrid', () => {
+  it('draws nothing while no seat has been taken', () => {
+    // Forty-eight visibly empty boxes under "Restam 48 vagas" is a picture of
+    // an empty room. Scarcity framing only works above zero.
+    expect(showSeatGrid(0)).toBe(false)
+  })
+
+  it('draws nothing when the live count never arrived', () => {
+    // `/fundadores` is statically rendered, so this is the state of every
+    // first paint — the case that made the empty room ship to everyone.
+    expect(showSeatGrid(null)).toBe(false)
+  })
+
+  it('draws the grid from the first seat sold', () => {
+    expect(showSeatGrid(1)).toBe(true)
+    expect(showSeatGrid(24)).toBe(true)
+  })
+
+  it('still draws it when the offer is full', () => {
+    expect(showSeatGrid(FOUNDER_SEATS)).toBe(true)
+    expect(showSeatGrid(60)).toBe(true)
+  })
+
+  it('treats a nonsense count as nothing to show', () => {
+    expect(showSeatGrid(-3)).toBe(false)
+    expect(showSeatGrid(Number.NaN)).toBe(false)
   })
 })

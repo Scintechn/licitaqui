@@ -118,19 +118,36 @@ describe('Logo', () => {
   it('reads as "LicitaQui" once, with only Qui in blue', () => {
     const out = html(<Logo />)
     expect(out).toContain('aria-label="LicitaQui"')
-    expect(out).toContain('Licita<span class="text-blue">Qui</span>')
+    // The wordmark is outlines now, so "Qui" is a path and not a text node.
+    // Its tone is still the one thing that must never drift: two paths, one
+    // ink, one blue, and the accessible name carried by the wrapper alone.
+    expect(out.match(/<path /g)).toHaveLength(2)
+    expect(out).toContain('class="fill-ink"></path>')
+    expect(out).toContain('class="fill-blue"></path>')
   })
 
-  it('scales the wordmark with the symbol, at the brand width axis', () => {
-    expect(html(<Logo size={30} />)).toContain('font-size:22px')
-    expect(html(<Logo size={60} />)).toContain('font-size:44px')
-    expect(html(<Logo />)).toContain('font-stretch:85%')
+  it('scales the wordmark with the symbol, and never sets type to do it', () => {
+    // The old assertion was `font-size:22px` / `font-stretch:85%`. Both are
+    // gone with the live text: the wordmark is an SVG whose box is the box the
+    // text used to occupy — height = round(size * 0.733), width in the same
+    // ratio as the shaped advance (3731/1000 em).
+    expect(html(<Logo size={30} />)).toContain('height="22"')
+    expect(html(<Logo size={60} />)).toContain('height="44"')
+    expect(html(<Logo size={30} />)).toContain('width="82.082"')
+    expect(html(<Logo />)).toContain('viewBox="0 -834 3731 1000"')
+
+    // The width axis is what this change exists to stop loading (fonts.ts).
+    // If anything reintroduces `font-stretch` here, Archivo has to carry wdth
+    // again and the 90KB comes back.
+    expect(html(<Logo />)).not.toContain('font-stretch')
+    expect(html(<Logo />)).not.toContain('font-size')
   })
 
-  it('never puts blue on blue: the ivory tone paints every bar ivory', () => {
+  it('never puts blue on blue: the ivory tone paints bars and wordmark ivory', () => {
     const out = html(<Logo tone="ivory" />)
     expect(out).not.toContain('fill-blue')
-    expect(out.match(/fill-ivory/g)).toHaveLength(3)
+    // Three bars plus the two wordmark paths.
+    expect(out.match(/fill-ivory/g)).toHaveLength(5)
   })
 
   it('keeps the light-blue accent for dark backgrounds only', () => {

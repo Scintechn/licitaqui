@@ -28,8 +28,14 @@ describe('/fundadores', () => {
     expect(out).toContain('por mês nos 6 primeiros meses')
   })
 
-  it('draws all 48 founder seats', () => {
-    expect(out.match(/aspect-square/g)).toHaveLength(48)
+  it('draws no seat grid until a seat is actually taken', () => {
+    // The page is statically rendered, so the live count is never in this
+    // HTML — which is exactly why the grid used to be forty-eight visibly
+    // empty boxes under "Restam 48 vagas", for every visitor, on the page
+    // founders week points at. Scarcity framing only works above zero.
+    expect(out).not.toContain('aspect-square')
+    // The claim itself stays: it is true at 0 and at 48.
+    expect(out).toContain(messages.foundersPage.signup.seatsLabel)
   })
 
   it('labels every form control', () => {
