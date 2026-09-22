@@ -52,7 +52,7 @@ from typing import Any
 import httpx
 
 from . import config
-from .breaker import CircuitBreaker, get_breaker
+from .breaker import CircuitBreaker, CircuitOpen, get_breaker
 from .observability import get_logger
 
 _log = get_logger("pncp")
@@ -64,12 +64,22 @@ PUBLICACAO_PATH = "/api/consulta/v1/contratacoes/publicacao"
 ITEMS_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/itens"
 FILES_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/arquivos"
 RESULTS_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/itens/{item}/resultados"
+#: The Consulta detail endpoint. Read only to answer "is this contratação
+#: still published?" — §3.2 calls it unstable and nothing depends on its
+#: payload. Note the `/api/pncp/v1/...` spelling of the same resource now
+#: answers 301 and points here.
+CONTRATACAO_PATH = "/api/consulta/v1/orgaos/{cnpj}/compras/{year}/{sequence}"
 
 BREAKER_CONSULTA = "pncp-consulta"
 BREAKER_SEARCH = "pncp-search"
 BREAKER_ITEMS = "pncp-itens"
 BREAKER_FILES = "pncp-arquivos"
 BREAKER_RESULTS = "pncp-resultados"
+
+#: What :meth:`PncpClient.contratacao_state` can tell the caller.
+CONTRATACAO_GONE = "gone"
+CONTRATACAO_PRESENT = "present"
+CONTRATACAO_UNKNOWN = "unknown"
 
 #: The period endpoints accept this and nothing else. 100 and 500 are rejected
 #: with "Tamanho de página inválido"; it is not a tunable.
@@ -105,7 +115,48 @@ HEADERS = {
 
 
 class PncpError(RuntimeError):
-    """A PNCP call that did not return usable data."""
+    """A PNCP call that did not return usable data.
+
+    ``status_code`` is the HTTP status when there was one, and ``None`` when the
+    request never got an answer (a timeout, a reset connection) — which is
+    PNCP's characteristic failure, not an HTTP error.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class PncpNotFound(PncpError):
+    """HTTP 404 — PNCP has no record at this path.
+
+    Deliberately its own type, because on the item and file endpoints a 404 is
+    **ambiguous** and only the caller can resolve it: "this contratação has no
+    items/files" and "this contratação is gone" arrive as the same status. The
+    client will not guess; see :mod:`licitaqui.absence` for the rule and
+    :meth:`PncpClient.contratacao_state` for the signal that settles it.
+    """
+
+
+class PncpGone(PncpError):
+    """HTTP 410 — the contratação was **excluded** by the agency.
+
+    PNCP's Consulta detail endpoint answers a withdrawn contratação with
+    ``410 GONE`` and ``"A contratação informada foi excluída e não pode ser
+    consultada."`` — unlike the item and file endpoints, which 404. It is the
+    only unambiguous "this is never coming back" PNCP gives us.
+    """
+
+
+def _http_error(path: str, response: httpx.Response) -> PncpError:
+    """The right exception for a status the service *answered* with.
+
+    404 and 410 get their own types because they carry meaning a caller acts
+    on; every other 3xx/4xx is our bug and stays a plain :class:`PncpError`.
+    """
+    status = response.status_code
+    cls = {404: PncpNotFound, 410: PncpGone}.get(status, PncpError)
+    return cls(f"GET {path} -> HTTP {status}: {response.text[:200]}", status_code=status)
 
 
 def _timeout() -> httpx.Timeout:
@@ -198,9 +249,22 @@ class PncpClient:
 
         ``204`` is PNCP's "past the last page" and comes back as ``None``, which
         is a successful call: it closes a half-open circuit rather than tripping
-        it. A 4xx is the caller's fault and is *not* counted against the
-        breaker — a bad parameter must not open the circuit for a healthy
-        service — but it still raises, so the job fails and is retried.
+        it.
+
+        **The breaker measures whether the service is up, and nothing else.**
+        Only a transport failure or a 5xx counts against it — those are the two
+        shapes of "PNCP is down" that ADR-0001 measured, and the 3-hour outage
+        on 2026-09-18 was made of exactly them. Everything the service *answered*
+        leaves the guard normally, including a 4xx: the status is then raised
+        outside the breaker, so the job fails and is retried while the circuit
+        stays closed for every other tender.
+
+        That split is not cosmetic. It used to record a success and then raise
+        *inside* the guard, so the guard's own ``except`` counted the 4xx as a
+        failure anyway — leaving the endpoint one failure short of open. A single
+        404 on one withdrawn tender then turned the next genuine timeout into an
+        open circuit, and every other tender's items or files stopped for fifteen
+        minutes. That is what production showed on 2026-09-21 (jobs 2286/2287).
 
         Every transport failure is translated into :class:`PncpError`. That
         matters more than it looks: PNCP's characteristic failure is a *read
@@ -217,16 +281,20 @@ class PncpClient:
                 response = self._client.get(path, params=params)
             except httpx.HTTPError as exc:
                 raise PncpError(f"GET {path} -> {type(exc).__name__}: {exc}") from exc
-            if response.status_code == 204:
-                payload = None
-            elif response.status_code == 200:
-                payload = response.json() if response.content.strip() else None
-            elif 400 <= response.status_code < 500:
-                # Record a success first: the service answered, and quickly.
-                breaker.record_success()
-                raise PncpError(f"GET {path} -> HTTP {response.status_code}: {response.text[:200]}")
-            else:
-                raise PncpError(f"GET {path} -> HTTP {response.status_code}")
+            if response.status_code >= 500:
+                raise PncpError(
+                    f"GET {path} -> HTTP {response.status_code}",
+                    status_code=response.status_code,
+                )
+            # The service answered, and quickly. Whether the answer is *usable*
+            # is decided below, where it cannot reach the breaker.
+        status = response.status_code
+        if status == 204:
+            payload = None
+        elif status == 200:
+            payload = response.json() if response.content.strip() else None
+        else:
+            raise _http_error(path, response)
         _log.debug(
             "pncp call",
             extra={
@@ -236,6 +304,37 @@ class PncpClient:
             },
         )
         return payload
+
+    # -- is this contratação still on PNCP at all? ------------------------
+
+    def contratacao_state(self, cnpj: int | str, year: int, sequence: int) -> str:
+        """``gone`` | ``present`` | ``unknown`` for one contratação.
+
+        The item and file endpoints answer a withdrawn contratação and one with
+        nothing to list with the *same* 404, so neither can settle which it is.
+        The Consulta detail endpoint can: measured on 2026-09-22 against the
+        three tenders whose jobs were stuck in production, it answers
+
+            ``410 GONE — "A contratação informada foi excluída e não pode ser
+            consultada."``
+
+        for a withdrawn one, and ``200`` for a live one.
+
+        On the ``pncp-consulta`` breaker, as ADR-0001 §4 requires — the whole
+        Consulta service shares one circuit. That is affordable precisely
+        because of the rule above: neither the 410 nor a 404 counts against it,
+        so this diagnostic can never be what opens the circuit the sweep
+        depends on. When the circuit *is* open, or the service times out, the
+        answer is ``unknown`` and the caller must not pretend otherwise.
+        """
+        path = CONTRATACAO_PATH.format(cnpj=cnpj, year=year, sequence=sequence)
+        try:
+            self._get(path, {}, self.consulta_breaker)
+        except PncpGone:
+            return CONTRATACAO_GONE
+        except (PncpError, CircuitOpen):
+            return CONTRATACAO_UNKNOWN
+        return CONTRATACAO_PRESENT
 
     # -- the period endpoints (ADR-0001, the primary path) ----------------
 
@@ -303,9 +402,14 @@ class PncpClient:
         This endpoint answers with a bare JSON **array**, not the ``{data,
         paginasRestantes}`` envelope the period endpoints use, so the walk ends
         on a short page. A 204 (empty body) ends it too and means the tender
-        genuinely has no items; a 404 raises, because a tender that has items
-        today and 404s tomorrow is an outage, not an empty list, and must not
-        be allowed to delete rows (:func:`licitaqui.items.upsert_items`).
+        genuinely has no items.
+
+        A **404 still raises** — as :class:`PncpNotFound`, so the caller can
+        tell it from an outage. It is never quietly turned into an empty list
+        here, because doing so would let :func:`licitaqui.items.upsert_items`
+        prune rows we still hold. Resolving what the 404 means needs the
+        database and one more question to PNCP, so it belongs to
+        :mod:`licitaqui.absence` and :mod:`licitaqui.sync_items`, not here.
         """
         path = ITEMS_PATH.format(cnpj=cnpj, year=year, sequence=sequence)
         for page in range(1, MAX_PAGES + 1):
@@ -338,10 +442,12 @@ class PncpClient:
         §7.2 already calls unreliable, for a list that arrives whole.
 
         A ``204`` (empty body) means the tender genuinely has no documents and
-        comes back as ``[]``. Anything else raises, including a 404: a tender
-        that had an edital yesterday and 404s today is an outage, not a
-        withdrawal, and must never be allowed to prune
-        (:func:`licitaqui.files.upsert_files`).
+        comes back as ``[]``. Anything else raises, a 404 included — as
+        :class:`PncpNotFound`, so the caller can tell it from an outage. It is
+        never quietly turned into an empty list here: a tender that had an
+        edital yesterday and 404s today must never be allowed to prune
+        (:func:`licitaqui.files.upsert_files`). What the 404 *does* mean is
+        :mod:`licitaqui.absence`'s question, not this method's.
         """
         path = FILES_PATH.format(cnpj=cnpj, year=year, sequence=sequence)
         body = self._get(path, {}, self.files_breaker)

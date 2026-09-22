@@ -71,12 +71,15 @@ import hashlib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.types.json import Jsonb
 
 from .tenders import parse_timestamp
+
+if TYPE_CHECKING:  # only for the annotation: this module owns no policy
+    from .absence import Absence
 
 #: Bump when the recipe in :func:`manifest` changes — a different recipe must
 #: produce a different hash, or a stale `ai_analyses` row would be served under
@@ -466,8 +469,20 @@ DELETE_MARKER_SQL = "delete from events where name = %s"
 INSERT_MARKER_SQL = "insert into events (name, props) values (%s, %s)"
 
 
-def mark_synced(conn: psycopg.Connection, tender_id: str, result: FileSync) -> None:
+def mark_synced(
+    conn: psycopg.Connection,
+    tender_id: str,
+    result: FileSync,
+    *,
+    absent: Absence | None = None,
+) -> None:
     """Record that PNCP was read for this tender just now, and what changed.
+
+    ``absent`` is an :class:`licitaqui.absence.Absence` when PNCP answered 404
+    rather than a list. The marker then says *why* there is nothing, which is
+    the difference between a tender with no documents and one the agency
+    withdrew; both still count as "we looked", which is what stops the sweep
+    re-enqueuing the job forever.
 
     Rewritten rather than appended: it is a marker, not a metric, and one row
     per tender keeps `events` from growing by a row per tender per 12 hours.
@@ -478,6 +493,9 @@ def mark_synced(conn: psycopg.Connection, tender_id: str, result: FileSync) -> N
     reads as `never`, which costs one extra fetch. The reverse — a marker for a
     sync that did not happen — is not reachable.
     """
+    props: dict[str, Any] = {"tender_id": tender_id, **result.log_fields()}
+    if absent is not None:
+        props |= absent.log_fields()
     name = sync_event_name(tender_id)
     conn.execute(DELETE_MARKER_SQL, (name,))
-    conn.execute(INSERT_MARKER_SQL, (name, Jsonb({"tender_id": tender_id, **result.log_fields()})))
+    conn.execute(INSERT_MARKER_SQL, (name, Jsonb(props)))
