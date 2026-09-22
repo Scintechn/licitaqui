@@ -49,6 +49,16 @@ export const JOB_KINDS = {
   syncItems: 'sync_items',
   /** The lite AI screening of one tender. `licitaqui/ai_screening.py`. */
   aiScreening: 'ai_screening',
+  /**
+   * One outbound Telegram message. `licitaqui/telegram_alerts.py`.
+   *
+   * The only kind the web enqueues that is not a cache refresh: it is how
+   * `POST /api/telegram/webhook` answers a `/start` without calling the Bot
+   * API from a request (§3). The payload is `{template, user_id | chat_id}`
+   * and the key is `reply:<update_id>`, so Telegram redelivering an update
+   * dedupes instead of greeting somebody twice.
+   */
+  sendTelegram: 'send_telegram',
 } as const
 
 export type JobKind = (typeof JOB_KINDS)[keyof typeof JOB_KINDS]

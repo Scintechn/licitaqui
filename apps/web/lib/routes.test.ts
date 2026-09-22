@@ -40,16 +40,16 @@ const BUILT = ['/', '/radar', '/fundadores', '/termos', '/privacidade', '/admin'
  * Whether `href` is under a built prefix.
  *
  * A prefix match, not equality: `/conta` is one page *and* the root of
- * `/conta/criar`, while `/conta/alertas` — E1's, unbuilt — must still be
- * caught. So a prefix only covers itself and what is nested under it, and the
- * unbuilt children are listed by name below.
+ * `/conta/criar` and `/conta/alertas`, while `/conta/plano` — F2's, unbuilt —
+ * must still be caught. So a prefix only covers itself and what is nested
+ * under it, and the unbuilt children are listed by name below.
  */
 function isBuilt(href: string): boolean {
   return BUILT.some((prefix) => href === prefix || href.startsWith(`${prefix}/`))
 }
 
 /** Addresses that are named in `routes.ts` but have no page yet. */
-const UNBUILT = [ALERTS_PATH, '/conta/plano']
+const UNBUILT = ['/conta/plano']
 
 function sources(directory: string): string[] {
   const out: string[] = []

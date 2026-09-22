@@ -41,6 +41,7 @@ from . import sync_awards as _sync_awards  # noqa: F401 - registers the two awar
 from . import sync_files as _sync_files  # noqa: F401 - registers `sync_files`
 from . import sync_items as _sync_items  # noqa: F401 - registers `sync_items`
 from . import sync_tenders as _sync_tenders  # noqa: F401 - registers `sync_open_tenders`
+from . import telegram_alerts as _telegram_alerts  # noqa: F401 - `send_telegram`, `weekly_digest`
 from . import whatsapp as _whatsapp  # noqa: F401 - registers `send_whatsapp`, `whatsapp_inbound`
 
 
