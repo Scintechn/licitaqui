@@ -38,7 +38,7 @@ export async function LegalPage({ id }: { id: LegalDocumentId }) {
   const { title, html } = await loadLegalDocument(id)
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="min-h-dvh bg-ivory text-base leading-[1.55] text-ink">
       <AppBar
         leading={
           <Link href="/" aria-label={legal.backToHome}>
@@ -47,7 +47,7 @@ export async function LegalPage({ id }: { id: LegalDocumentId }) {
         }
       />
       <main className="mx-auto w-full max-w-[72ch] px-gutter pb-16">
-        <h1 className="text-title font-semibold leading-tight">{title}</h1>
+        <h1 className="text-section font-semibold leading-tight">{title}</h1>
         {/*
           No date line here: each document opens with its own
           "Última atualização: … · Vigência: …" paragraph, which carries the
