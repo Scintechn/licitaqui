@@ -1023,10 +1023,9 @@
       "pncpLinkNewTab": "(abre em uma nova aba)",
       "systemLink": "Abrir no portal de compras",
       "screeningCta": "Ver triagem por IA",
-      "screeningCtaNew": "Fazer triagem por IA",
+      "screeningCtaRequested": "Ver a triagem que você pediu",
       "screeningCost": "Usa 1 das suas triagens.",
       "screeningCostReady": "Este edital já foi lido pela IA. Abrir usa 1 das suas triagens.",
-      "screeningDone": "Você já usou uma triagem neste edital. Abrir de novo não custa nada.",
       "tabs": {
         "items": "Itens",
         "files": "Documentos"
