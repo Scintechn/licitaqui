@@ -523,6 +523,21 @@ Ready-made queries (simple protected `/admin` page):
 
 ---
 
+## 14.1 Storage budget — Neon (added 2026-09-22 after a production outage)
+
+Free is **0.5 GB per project** and, when it fills, **writes fail** — inserts, updates and deletes. That is an outage, not a warning. It happened on 2026-09-22 with 496.7 MB used, two days before founders week.
+
+Rules from that incident:
+
+- **CI and production never share a storage budget.** Test databases go in their own Neon project (Free allows 100 projects, each with its own 0.5 GB and 100 CU-hours). 16 `licitaqui_test_*` databases were holding 198 MB — 40% of the production project.
+- **Never create a database or run a backfill without checking the project's storage first.** `/admin` shows size and CU-hours; alarm at **80%** of the plan's storage, with a Telegram ping — the same channel as the billing alarms in §14.
+- **Upserts must not rewrite unchanged rows.** `ON CONFLICT DO UPDATE ... WHERE t IS DISTINCT FROM excluded`. On Neon's copy-on-write storage every rewritten row costs storage twice: the new version plus restore history. `tender_items` reached 1.8 KB per row for a 175-character description — bloat, not text.
+- **`tender_items` is a cache, so it has a retention policy:** keep items for open tenders and for 90 days after `dataEncerramentoProposta`; delete beyond that and refetch on demand. Without a cap the table grows ~35 MB/day (≈ 1 000 tenders/day × 22 items).
+- **Prefer lazy item fetching:** the Radar list needs header data only. Fetching items for every tender collected is what produces the daily growth; fetching them when a tender is opened, or when it is watched (B10), removes most of it.
+- A backfill must be **resumable**, must **never swallow a DiskFull as success**, and must **measure its own storage delta** before running at scale.
+
+---
+
 ## 15. Infrastructure cost
 
 | Item | Monthly |
