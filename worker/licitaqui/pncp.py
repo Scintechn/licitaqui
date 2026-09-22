@@ -64,11 +64,28 @@ PUBLICACAO_PATH = "/api/consulta/v1/contratacoes/publicacao"
 ITEMS_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/itens"
 FILES_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/arquivos"
 RESULTS_PATH = "/api/pncp/v1/orgaos/{cnpj}/compras/{year}/{sequence}/itens/{item}/resultados"
-#: The Consulta detail endpoint. Read only to answer "is this contratação
-#: still published?" — §3.2 calls it unstable and nothing depends on its
-#: payload. Note the `/api/pncp/v1/...` spelling of the same resource now
-#: answers 301 and points here.
+#: The Consulta detail endpoint: the **authoritative** header for one
+#: contratação, and the only place `valorTotalEstimado`, `srp` and
+#: `orcamentoSigilosoCodigo` can be read for a tender the search fallback
+#: ingested (:mod:`licitaqui.tender_value`). §3.2 still calls it unstable, so
+#: every caller must have somewhere to go when it is down.
+#:
+#: **Do not spell this `/api/pncp/v1/...`.** That spelling answers ``301`` with
+#: a JSON body naming this path — and, measured on 2026-09-22, **no `Location`
+#: header at all**, so `follow_redirects` cannot follow it and httpx hands the
+#: 301 straight back::
+#:
+#:     {"status":"301","error":"301 MOVED_PERMANENTLY",
+#:      "message":"Este endpoint foi movido para:
+#:                 https://pncp.gov.br/api/consulta/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}"}
+#:
+#: :func:`_http_error` turns that into a legible :class:`PncpError` rather than
+#: a mystifying "expected a dict", and `test_pncp_client.py` pins this constant
+#: to the `/api/consulta/` spelling so the old one cannot creep back.
 CONTRATACAO_PATH = "/api/consulta/v1/orgaos/{cnpj}/compras/{year}/{sequence}"
+
+#: The spelling that 301s, kept only so the error message can name it.
+MOVED_CONTRATACAO_PREFIX = "/api/pncp/v1/orgaos/"
 
 BREAKER_CONSULTA = "pncp-consulta"
 BREAKER_SEARCH = "pncp-search"
@@ -153,10 +170,24 @@ def _http_error(path: str, response: httpx.Response) -> PncpError:
 
     404 and 410 get their own types because they carry meaning a caller acts
     on; every other 3xx/4xx is our bug and stays a plain :class:`PncpError`.
+
+    A **301** is our bug in one specific, recurring way — the retired
+    `/api/pncp/v1/orgaos/...` spelling of the contratação detail — and it does
+    not look like one from the outside: PNCP sends no ``Location``, so
+    ``follow_redirects`` is silently powerless and the caller just sees a
+    non-200. The message says so outright rather than leaving the next person
+    to re-measure it (see :data:`CONTRATACAO_PATH`).
     """
     status = response.status_code
     cls = {404: PncpNotFound, 410: PncpGone}.get(status, PncpError)
-    return cls(f"GET {path} -> HTTP {status}: {response.text[:200]}", status_code=status)
+    hint = ""
+    if status == 301:
+        hint = (
+            " — PNCP sends no Location header on this 301, so it cannot be followed. "
+            f"Use {CONTRATACAO_PATH} rather than the retired "
+            f"{MOVED_CONTRATACAO_PREFIX}… spelling."
+        )
+    return cls(f"GET {path} -> HTTP {status}: {response.text[:200]}{hint}", status_code=status)
 
 
 def _timeout() -> httpx.Timeout:
@@ -305,6 +336,41 @@ class PncpClient:
         )
         return payload
 
+    # -- the contratação detail (the authoritative header) ----------------
+
+    def fetch_contratacao(
+        self, cnpj: int | str, year: int, sequence: int
+    ) -> dict[str, Any] | None:
+        """One contratação's Consulta detail record, or ``None`` on a 204.
+
+        This is the **same request** :meth:`contratacao_state` makes; the only
+        difference is that this one keeps the body. That body is the answer to
+        the question the search fallback cannot answer — it carries
+        ``valorTotalEstimado``, ``srp`` and ``orcamentoSigilosoCodigo``, none of
+        which the search index publishes (:mod:`licitaqui.tender_value`).
+
+        Raises rather than guessing, because each status means something
+        different to the caller:
+
+        ``410`` → :class:`PncpGone`
+            the agency excluded the contratação. It is never coming back, and a
+            backfill that keeps retrying it burns its budget on nothing — 206
+            rows in production carry a non-`Divulgada` status today.
+        ``404`` → :class:`PncpNotFound`
+            PNCP has no record at this path at all.
+        anything else, or a timeout → :class:`PncpError`
+            including the read timeouts that *are* this service's characteristic
+            failure. The caller falls back; it must not record a value it did
+            not receive.
+        """
+        path = CONTRATACAO_PATH.format(cnpj=cnpj, year=year, sequence=sequence)
+        body = self._get(path, {}, self.consulta_breaker)
+        if body is None:
+            return None
+        if not isinstance(body, dict):
+            raise PncpError(f"GET {path} -> expected an object, got {type(body).__name__}")
+        return body
+
     # -- is this contratação still on PNCP at all? ------------------------
 
     def contratacao_state(self, cnpj: int | str, year: int, sequence: int) -> str:
@@ -326,10 +392,14 @@ class PncpClient:
         so this diagnostic can never be what opens the circuit the sweep
         depends on. When the circuit *is* open, or the service times out, the
         answer is ``unknown`` and the caller must not pretend otherwise.
+
+        Implemented on :meth:`fetch_contratacao` so there is one request, one
+        path and one set of status rules to keep right. A caller that also
+        wants the header should call that instead and read the verdict off the
+        exception — asking both would be two requests for one answer.
         """
-        path = CONTRATACAO_PATH.format(cnpj=cnpj, year=year, sequence=sequence)
         try:
-            self._get(path, {}, self.consulta_breaker)
+            self.fetch_contratacao(cnpj, year, sequence)
         except PncpGone:
             return CONTRATACAO_GONE
         except (PncpError, CircuitOpen):

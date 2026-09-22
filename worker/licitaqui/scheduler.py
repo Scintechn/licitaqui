@@ -124,6 +124,20 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # backfill is the normal case.
     ScheduleEntry(kind="sweep_titles", every_seconds=60 * 60, priority=8),
     ScheduleEntry(kind="weekly_digest", daily_at="07:00", priority=9, weekday=0),
+    # The safety net under ADR-0001's fallback. Every tender the search sweep
+    # ingests arrives with no `estimated_value` — the index does not publish one
+    # — and the fallback's own follow-up is queued at the moment
+    # `/api/consulta` is known to be down, so it frequently fails. This comes
+    # back for whatever is still unvalued, capped per cycle
+    # (`tender_value.SWEEP_BATCH`) and backed off per tender via
+    # `tenders.next_refresh_at`, so it drains a backlog over consecutive cycles
+    # instead of queueing thousands of jobs in one tick.
+    #
+    # Half-hourly, matching `sync_open_tenders`: a tender is worth showing a
+    # value for in the same cycle it is worth showing at all. Priority 9 keeps
+    # it behind every collector — a missing value degrades a card, it does not
+    # lose a tender.
+    ScheduleEntry(kind="sweep_tender_values", every_seconds=30 * 60, priority=9),
 )
 
 

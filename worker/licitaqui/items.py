@@ -192,21 +192,48 @@ def me_epp_summary(items: Sequence[TenderItem]) -> str | None:
     return "mixed"
 
 
+def pick_total(
+    header: Decimal | float | None, item_total: Decimal | float | None
+) -> Decimal | None:
+    """Which of the two figures is the tender's value — the whole rule, once.
+
+    The header wins whenever it is positive, because it is PNCP's own
+    ``valorTotalEstimado`` and Sci's rule is that we show what the portal shows.
+    The item total is what a tender gets *instead of nothing*: measured across
+    production, it reproduces the header to the cent on 94.7 % of the tenders
+    where both are known, and where it differs it over-counts — never
+    under-counts — because grouped lots and ME/EPP cotas are listed beside the
+    items they are carved from. See :mod:`licitaqui.tender_value`.
+
+    A non-positive figure is **not** a value on either side. Every sigiloso item
+    reports 0, so a confidential budget sums to zero, and 108 production tenders
+    carry a header of exactly ``0.00``; returning None for both keeps
+    :func:`favored_treatment` from reading a tender nobody knows the size of as
+    cheap, and keeps the card off "R$ 0,00".
+
+    Split out of :func:`total_estimated_value` so the backfill can apply the
+    same precedence to a sum Postgres computed, without rebuilding the item
+    rows in Python to get a number it already has.
+    """
+    head = _decimal(header)
+    if head is not None and head > 0:
+        return head
+    total = _decimal(item_total)
+    return total if total is not None and total > 0 else None
+
+
 def total_estimated_value(
     estimated_value: Decimal | float | None, items: Sequence[TenderItem]
 ) -> Decimal | None:
     """The tender's value: the header's, or the sum of the items (POC 1).
 
     POC 1 falls back to summing the items whenever the detail endpoint did not
-    give it ``valorTotalEstimado``, and so do we. A sum of zero is *not* a
-    value: every sigiloso item reports 0, so that is a confidential budget, and
-    returning None keeps :func:`favored_treatment` from reading it as cheap.
+    give it ``valorTotalEstimado``, and so do we. The precedence itself lives in
+    :func:`pick_total`; this is the form that takes the item rows.
     """
-    header = _decimal(estimated_value)
-    if header is not None and header > 0:
-        return header
-    total = sum((item.total_value or Decimal(0) for item in items), Decimal(0))
-    return total if total > 0 else None
+    return pick_total(
+        estimated_value, sum((item.total_value or Decimal(0) for item in items), Decimal(0))
+    )
 
 
 def favored_treatment(
@@ -309,11 +336,25 @@ update tenders t set search = to_tsvector('pt_unaccent',
 where t.id = %s
 """
 
+#: The roll-up already computed the tender's value to decide
+#: `favored_treatment`; until now it threw the number away and left
+#: `estimated_value` null, which is the other half of why 5,080 tenders showed
+#: "Valor não informado" while we could answer perfectly well.
+#:
+#: It only ever **fills a gap**. `case` rather than `coalesce` because a stored
+#: `0.00` is as absent as a NULL (:func:`pick_total`), and the guard lives in
+#: the statement so no caller can get the precedence wrong: a header value from
+#: `/atualizacao` or from the detail re-read always survives an item sum.
 ROLLUP_SQL = """
 update tenders
    set me_epp_summary    = %(me_epp_summary)s,
        favored_treatment = %(favored_treatment)s,
        segments          = %(segments)s,
+       estimated_value   = case
+                             when estimated_value is null or estimated_value <= 0
+                               then %(estimated_value)s
+                             else estimated_value
+                           end,
        updated_at        = now()
  where id = %(tender_id)s
 """
@@ -372,12 +413,21 @@ def roll_up(
     estimated_value: Decimal | float | None,
     object_text: object = None,
 ) -> dict[str, Any]:
-    """Write the item-derived columns of `tenders` and rebuild `search`."""
+    """Write the item-derived columns of `tenders` and rebuild `search`.
+
+    ``estimated_value`` is the header we already hold. What goes back is
+    :func:`total_estimated_value` of it and the items — the same number
+    ``favored_treatment`` is derived from, so the value on the card and the
+    ME/EPP claim beside it cannot disagree — and it is written only where the
+    tender has none (see :data:`ROLLUP_SQL`).
+    """
+    total = total_estimated_value(estimated_value, items)
     values = {
         "tender_id": tender_id,
         "me_epp_summary": me_epp_summary(items),
         "favored_treatment": favored_treatment(estimated_value, items),
         "segments": tender_segments(items, object_text=object_text),
+        "estimated_value": total,
     }
     conn.execute(ROLLUP_SQL, values)
     refresh_search(conn, tender_id)

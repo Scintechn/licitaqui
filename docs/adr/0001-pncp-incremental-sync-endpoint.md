@@ -248,3 +248,78 @@ hourly probe run for a full day before M2 to get the daily failure rate this ADR
 If it confirms outages of this length are common, the thing to change is not the endpoint
 (the search index cannot do the job) but the *cadence*: a nightly `/atualizacao`
 reconciliation pass over a wide window, with the 30-minute cycle tolerating degradation.
+
+---
+
+## Consequence realised — 2026-09-22 (the "Valor não informado" bug)
+
+This ADR's "Bad: we now carry two code paths for the same job" came true in a way
+neither the decision nor B2's verification anticipated, and it cost the Radar its
+headline number on **85 % of the corpus**.
+
+### What the fallback silently costs
+
+The decision says the search sweep "keeps the product's data fresh". It does not,
+for three fields. The search index publishes no `valorTotalEstimado`, no `srp` and
+no `orcamentoSigilosoCodigo` — §1 lists the first two among the "fields that
+currently require the flaky detail endpoint" — so **every row the fallback writes
+is born with those three columns empty**, and B2 enqueues `sync_items` and
+`sync_files` for a changed tender but never a header re-read. Nothing ever went
+back for them.
+
+The correlation measured on 2026-09-22 is exact, with no exceptions:
+
+| stored payload | rows | with `estimated_value` |
+|---|---|---|
+| search index (snake_case) | 5,080 | **0** |
+| Consulta detail (camelCase) | 885 | 885 |
+
+885 of 5,965 — **14.8 %**. The consulta-sourced 885 are frozen (they date from
+the last healthy stretch) while the search-sourced set grows every cycle, so the
+ratio decays on its own. Sci measured 20 % on 4,430 rows a few days earlier; the
+decay is the bug's signature.
+
+This is not a mapping fault — `raw ? 'valorTotalEstimado'` is false on all 5,080
+— and not confidential budgets: `confidential_budget` was `false` on all 5,965
+*because the search payload has no code to read*, which made the flag meaningless
+rather than merely false. Worse, `tenders.UPSERT_SQL` did not COALESCE that one
+column, so a fallback sweep passing over a consulta-sourced tender **overwrote a
+real `true` with `false`**.
+
+### Why the asymmetry argument does not cover this
+
+§"Decision" justifies the fallback on the grounds that a period-endpoint outage
+only *delays* a cycle, because the window is re-swept once Consulta returns. That
+is true of **change detection** and false of **field coverage**. The re-sweep only
+rewrites a row whose `pncp_updated_at` has moved; a tender that entered via search
+and has not been touched since is never re-read, so its three empty columns are
+permanent. The window heals; the row does not.
+
+### What was changed
+
+`licitaqui.tender_value` re-fetches the Consulta detail per tender and writes
+those columns — the authoritative path, under Sci's rule that we show what the
+portal shows. It is reached three ways, because each has a hole the next covers:
+the fallback now enqueues it for every row it writes (the root cause); a
+scheduled sweep comes back for whatever is still unvalued (the fallback's own
+follow-up is queued precisely when Consulta is known to be down, so it often
+fails); and `tenders.next_refresh_at` — a column §6.1 already defines and nothing
+else read — backs a tender off so the sweep cannot spin on it.
+
+Where Consulta still yields nothing, the sum of `tender_items.total_value` is
+persisted instead. Measured across the 777 production tenders holding both, it
+reproduces PNCP's own figure **to the cent on 736 (94.7 %)**; where it differs it
+over-counts, never under-counts, because grouped lots and ME/EPP cotas are listed
+beside the items they are carved from. Consulta therefore always wins when it
+answers.
+
+### For the re-measurement this ADR asks for
+
+The hourly probe it requests has still not been run for a full day, and the
+evidence from this work says it should be. During roughly three hours on
+2026-09-22 the detail endpoint was **flapping, not down**: 5 × HTTP 200 (~0.8 s),
+1 × HTTP 502 and 5 × read timeout over 11 consecutive minute-spaced probes, while
+`/api/search/` and `/api/pncp/v1/.../itens` answered every request in under 2 s.
+A ~45 % success rate is a third failure mode this ADR has not characterised —
+neither the clean outage of §2 nor the healthy stretch of §1 — and it is the one
+that makes a per-tender backfill slow rather than impossible.

@@ -1069,3 +1069,123 @@ python -m scripts.backfill_titles --dry-run     # cost and split, writes nothing
 python -m scripts.backfill_titles               # the real thing
 python -m evaluation.titles --mode recorded     # the gate, offline and free
 ```
+
+## Tender values — `refresh_tender_value` (why "Valor não informado" was everywhere)
+
+On 2026-09-22 the Radar said **"Valor não informado"** on 5,080 of 5,965 tenders
+while `pncp.gov.br` showed the number for the same contratação. The cause is not
+a mapping bug and not confidential budgets. It is ADR-0001's search fallback:
+
+| stored payload | rows | with `estimated_value` |
+|---|---|---|
+| search index (snake_case) | 5,080 | **0** |
+| Consulta detail (camelCase) | 885 | 885 |
+
+The search index publishes no `valorTotalEstimado`, no `srp` and no
+`orcamentoSigilosoCodigo`, and **nothing ever went back for them**. B2 enqueues
+`sync_items` and `sync_files` for a changed tender; there was no header re-read,
+so a row that entered degraded stayed degraded for life. The 885 are frozen from
+the last healthy stretch while the search-sourced set grows every cycle, so
+coverage decays on its own — Sci measured 20 % of 4,430 a few days before this
+read 14.8 % of 5,965.
+
+### Two sources, in one order
+
+1. **`valorTotalEstimado` from the Consulta detail.** Authoritative, and the
+   field the portal renders as "VALOR TOTAL ESTIMADO DA COMPRA". Sci's rule is
+   that the number we show is PNCP's own, so this always wins when it answers.
+2. **the sum of `tender_items.total_value`.** POC 1's fallback, already computed
+   at ingest by `items.total_estimated_value` and already trusted to assert a
+   *legal* ME/EPP preference on the card — it was simply never persisted.
+
+**They agree 94.7 % of the time, not always.** Across the 777 production tenders
+holding both a positive header and items summing above zero, 736 match to the
+cent and 41 do not: 19 within 1 %, 17 between 1× and 2×, 5 at 2× or more (the
+largest 13.3×). The item sum is never *lower* — where it differs it over-counts,
+because grouped lots and ME/EPP cotas are listed beside the items they are carved
+from (one of the 41 has 283 item rows and 71 distinct descriptions). Hence the
+order above, expressed once in `items.pick_total` and shared with
+`favored_treatment` so the value on a card and the ME/EPP claim beside it can
+never come from different arithmetic.
+
+`VALUE_SOURCE_ITEMS` is recorded on every row that took the fallback, in an
+`events` marker (`tender_value:<id>`), so the minority stays findable and the
+agreement rate is queryable after a backfill rather than something to re-derive.
+
+### It writes columns, not `raw`
+
+The obvious implementation maps the detail with `tenders.from_consulta` and
+upserts it like anything else — which merges the whole payload into `tenders.raw`.
+Measured with `pg_column_size` against production, that adds **2,822 bytes to
+each of the 5,373 search-sourced rows: about 14 MB**, against **15.3 MB of
+headroom** on a Neon project already at 496.7 of 512 MB. It would fill the disk
+rather than fix the Radar. So `tender_value` writes the columns it came for and
+leaves `raw` alone; `raw` keeps saying which sweep ingested the row, which is
+true and is the diagnostic the whole investigation turned on.
+
+### Three ways in, because each has a hole the next covers
+
+- **the root cause** — the search fallback in `sync_tenders` now enqueues
+  `refresh_tender_value` for every row it writes. On its own this is not enough:
+  the fallback fires *because* `/api/consulta` is down, so the job it queues is
+  aimed at a service we already know is not answering.
+- **the sweep** — `sweep_tender_values` runs every 30 minutes at priority 9 and
+  enqueues whatever is still unvalued, capped at `SWEEP_BATCH` per cycle. This is
+  what actually drains the backlog once Consulta returns, and it is also the
+  backfill: the same job, run repeatedly.
+- **the backoff** — `tenders.next_refresh_at`, a column §6.1 already defines and
+  indexes and which nothing else read, holds when a tender may be looked at
+  again: §3.2's 6 h header TTL for one we could not reach, 30 days for one PNCP
+  answered `410 GONE` for. No migration; the column was already there.
+
+### 410 and 301
+
+`410 GONE` is PNCP's only unambiguous "never coming back" — the agency excluded
+the contratação. It **parks** the row for 30 days rather than retiring it, because
+what a withdrawn tender looks like on the Radar is a product decision `absence.py`
+already records as Sci's, not the collector's. Neither the 410 nor a 404 counts
+against the `pncp-consulta` breaker, so a backfill over withdrawn tenders can
+never be what opens the circuit the sweep depends on.
+
+The retired `/api/pncp/v1/orgaos/…` spelling of the detail endpoint answers
+**301 — and, measured 2026-09-22, with no `Location` header at all**, so
+`follow_redirects` is powerless and httpx hands the 301 straight back. The body is
+a JSON error naming the new path. `pncp.CONTRATACAO_PATH` has always used the
+`/api/consulta/v1/…` spelling; `_http_error` now says all of this in the message
+rather than leaving the next person a bare "HTTP 301" to re-measure, and
+`test_tender_value.py` pins the constant so the old spelling cannot creep back.
+
+### Backfilling
+
+```bash
+python -m scripts.backfill_tender_values --dry-run      # counts and headroom, writes nothing
+python -m scripts.backfill_tender_values --items-only   # no PNCP call at all
+python -m scripts.backfill_tender_values --limit 500
+```
+
+It is **resumable because of what it selects**, not because of a cursor: the work
+queue is a query for tenders with no positive value whose backoff has come round,
+so a run that dies at row 3,000 leaves the rest matching that query and the next
+run picks them up. Each row is written and marked in its own autocommit statement.
+
+A **failed write is never a success**: `DiskFull` and any other write error are
+caught per row, counted under `failed`, and not counted as upgraded — nothing is
+marked and `next_refresh_at` is left alone, so the row is still due next time.
+`--check-headroom` refuses to start within `MIN_HEADROOM_MB` of the project limit,
+and `--pause-every` gives autovacuum room during a long run.
+
+### Storage, and the thing that actually needs attention
+
+A column-only pass rewrites one heap tuple per row and adds no TOAST: `tenders`
+heap is 9.6 MB for 5,965 rows (~1.6 KB each), so a full 5,188-row pass churns
+roughly 8 MB of dead tuples that autovacuum reclaims. No implementation avoids
+that; an UPDATE is an UPDATE.
+
+Worth recording while the numbers are fresh, because it is the real constraint and
+not this job's to fix: **`tender_items` is 231 MB of the 293 MB database, and
+155 MB of that is the per-item `raw` jsonb** — 1,268 bytes per row against 175
+characters of actual description (21 MB of descriptions in total). Every field
+`items.from_pncp` extracts is stored twice, once in a column and once in the
+payload it came from. Trimming `raw` on items is the single largest lever on the
+512 MB limit, and it is a schema-and-backfill decision for Sci rather than
+something to slip into this lane.
