@@ -361,7 +361,12 @@ def test_only_this_tenders_items_are_pruned(b3_conn: psycopg.Connection, monkeyp
 def test_a_failing_endpoint_raises_and_deletes_nothing(
     b3_conn: psycopg.Connection, monkeypatch
 ) -> None:
-    """A 404 is an outage, not "this tender has no items any more"."""
+    """A 500 is an outage, not "this tender has no items any more".
+
+    (The docstring said 404 until 2026-09-22; the test always served a 500.
+    A 404 is a different question now — see `test_integration_pncp_404.py`,
+    where the same guarantee is asserted for it.)
+    """
     tid = given_tender(b3_conn, seq=14)
     run_job(
         monkeypatch,

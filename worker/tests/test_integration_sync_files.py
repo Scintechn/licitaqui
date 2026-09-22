@@ -29,6 +29,7 @@ import pytest
 from licitaqui import ai_screening, ai_tender
 from licitaqui import breaker as breaker_module
 from licitaqui import sync_files as sync_files_module
+from licitaqui.absence import DataVanished
 from licitaqui.breaker import CircuitOpen, get_breaker
 from licitaqui.files import (
     files_hash_for,
@@ -477,14 +478,29 @@ def test_a_failing_endpoint_raises_and_deletes_nothing(
 
 
 def test_a_404_does_not_prune_either(b4_conn: psycopg.Connection, monkeypatch) -> None:
-    """A tender that had an edital yesterday and 404s today is an outage."""
+    """A tender that had an edital yesterday and 404s today has not lost it.
+
+    The **type** of the failure changed on 2026-09-22 and the guarantee did
+    not. A 404 is no longer a bare `PncpError`: :mod:`licitaqui.absence` reads
+    it against what we already hold, and a 404 for a tender with stored
+    documents is a *regression* — `DataVanished`, with the counts, rather than
+    an outage indistinguishable from a timeout. What this test exists to
+    protect is unchanged and is the line below: the rows are still there, so
+    `files_hash` has not moved and no screening was retired on PNCP's say-so.
+
+    `licitaqui.absence` never asks Consulta on this path — the database has
+    already settled it — so `serving({})` 404ing every path is not consulted
+    about the verdict.
+    """
     tid = given_tender(b4_conn, seq=17)
     run_job(monkeypatch, b4_conn, serving({files_key(17): [EDITAL]}), {"tender_id": tid})
+    hash_before = files_hash_for(b4_conn, tid)
 
-    with pytest.raises(PncpError):
+    with pytest.raises(DataVanished):
         run_job(monkeypatch, b4_conn, serving({}), {"tender_id": tid, "force": True})
 
     assert len(rows(b4_conn, tid)) == 1
+    assert files_hash_for(b4_conn, tid) == hash_before
 
 
 def test_two_failures_open_the_circuit_and_the_third_call_is_not_made(
