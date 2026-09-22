@@ -388,8 +388,22 @@ BOILERPLATE_OPENING = re.compile(
     r"contrata[çc][ãa]o\s+de\s+(?:empresa|pessoa|profissional|firma|institui[çc][ãa]o)|"
     r"contrata[çc][ãa]o\s+de\s+servi[çc]os?\s+de\s+empresa|"
     r"registro\s+de\s+pre[çc]os?\b|"
+    r"formaliza[çc][ãa]o\s+d|"
     r"forma[çc][ãa]o\s+de\s+registro\s+de\s+pre[çc]os?\b|"
     r"sistema\s+de\s+registro\s+de\s+pre[çc]os?\b|"
+    # The *instrument*, not the purchase. "Pregão Eletrônico nº 90034/2026" is
+    # a process number shown as a title; 16 rows reached the free branch this
+    # way, and every one of them is better answered by the items.
+    r"preg[ãa]o\s+(?:eletr[ôo]nico|presencial)\b|"
+    r"dispensa\s+(?:de\s+licita[çc][ãa]o|eletr[ôo]nica)\b|"
+    r"inexigibilidade\b|"
+    r"chamamento\s+p[úu]blico\b|"
+    r"credenciamento\s+d|"
+    r"abertura\s+de\s+licita[çc][ãa]o\b|"
+    r"concorr[êe]ncia\s+(?:p[úu]blica|eletr[ôo]nica)\b|"
+    r"tomada\s+de\s+pre[çc]os\b|"
+    r"carta\s+convite\b|"
+    r"leil[ãa]o\b|"
     r"(?:o|a)\s+(?:presente|objeto)\b|"
     r"constitui\s+objeto\b|"
     r"o\s+objeto\s+d[ao]\b|"

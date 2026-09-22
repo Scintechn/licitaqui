@@ -431,3 +431,23 @@ def test_the_basis_covers_the_objeto_the_revision_and_the_items() -> None:
     # …and deliberately not the item row's own timestamp: re-writing an item
     # with identical content must not re-title the tender.
     assert "i.updated_at" not in titles.BASIS_SQL
+
+
+@pytest.mark.parametrize(
+    "objeto",
+    [
+        # The *instrument*, not the purchase. All of these reached the free
+        # branch in the first pass over the corpus, and "Pregão Eletrônico nº
+        # 90034/2026" shipped a process number as a tender's title.
+        "Pregão Eletrônico nº 90034/2026",
+        "Pregão Presencial para aquisição de medicamentos",
+        "Dispensa de licitação para aquisição de medicamentos",
+        "Dispensa Eletrônica para aquisição de medicamentos",
+        "Formalização de registro de preços para aquisição de cestas básicas",
+        "Chamamento público Nº 08/2026",
+        "Tomada de preços para reforma da escola",
+        "Concorrência pública para construção da ponte",
+    ],
+)
+def test_the_instrument_is_not_a_title(objeto: str) -> None:
+    assert titles.needs_model(titles.deterministic_title(objeto))
