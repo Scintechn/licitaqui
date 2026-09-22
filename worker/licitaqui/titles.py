@@ -978,6 +978,11 @@ class Title:
     input_tokens: int = 0
     output_tokens: int = 0
     cost_brl: float = 0.0
+    #: How many HTTP calls this title took. Anything above 1 is a 429 the
+    #: backoff absorbed — the only way to see the shared pool's real limit rate,
+    #: since a retry that succeeds is otherwise indistinguishable from a first
+    #: attempt that did, and "0 rate limits" would then mean "none we noticed".
+    attempts: int = 0
 
 
 def build(
@@ -1014,6 +1019,7 @@ def build(
                 SOURCE_AI_FALLBACK,
                 prompt_version=PROMPT_VERSION,
                 rejected=answer.error or "no_title",
+                attempts=answer.attempts,
                 input_tokens=answer.input_tokens,
                 output_tokens=answer.output_tokens,
                 cost_brl=answer.cost_brl,
@@ -1030,6 +1036,7 @@ def build(
                 SOURCE_AI_FALLBACK,
                 prompt_version=PROMPT_VERSION,
                 rejected=reason,
+                attempts=answer.attempts,
                 input_tokens=answer.input_tokens,
                 output_tokens=answer.output_tokens,
                 cost_brl=answer.cost_brl,
@@ -1042,6 +1049,7 @@ def build(
         answer.title,
         SOURCE_AI,
         prompt_version=PROMPT_VERSION,
+        attempts=answer.attempts,
         input_tokens=answer.input_tokens,
         output_tokens=answer.output_tokens,
         cost_brl=answer.cost_brl,

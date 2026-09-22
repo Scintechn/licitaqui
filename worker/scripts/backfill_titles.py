@@ -89,6 +89,7 @@ def main() -> int:
     rejects: Counter[str] = Counter()
     cost = 0.0
     tokens_in = tokens_out = 0
+    retried_calls = 0
     rows_out: list[dict[str, Any]] = []
     started = time.time()
 
@@ -120,6 +121,12 @@ def main() -> int:
             counts[result.source] += 1
             if result.rejected:
                 rejects[result.rejected] += 1
+            # Every attempt past the first is a 429 the backoff absorbed. Without
+            # this, a run reports "0 rate limits" when it means "none that
+            # survived four tries", which is a different and much weaker claim.
+            if result.attempts > 1:
+                counts["retried_429"] += 1
+                retried_calls += result.attempts - 1
             cost += result.cost_brl
             tokens_in += result.input_tokens
             tokens_out += result.output_tokens
@@ -155,7 +162,12 @@ def main() -> int:
         for reason, count in rejects.most_common():
             print(f"  {count:5d}  {reason}")
     print(
-        f"\nmodel calls {calls}   tokens avg "
+        f"\n429s: {counts['retried_429']} tender(s) needed a retry "
+        f"({retried_calls} extra call(s)); {counts['rate_limited']} still rate-limited "
+        f"after {titles.RATE_LIMIT_ATTEMPTS} attempts and left untitled"
+    )
+    print(
+        f"model calls {calls}   tokens avg "
         f"{tokens_in / max(calls, 1):.0f} in / {tokens_out / max(calls, 1):.0f} out"
     )
     print(
