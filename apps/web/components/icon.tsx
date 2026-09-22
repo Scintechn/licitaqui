@@ -21,6 +21,8 @@ const PATHS = {
   chevronRight: ['M9 6l6 6-6 6'],
   chevronLeft: ['M15 18l-6-6 6-6'],
   check: ['M5 12l5 5 9-10'],
+  /** "Copiar" — two sheets. Added for the PNCP id on canvas 03. */
+  copy: ['M10 8h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z', 'M5 16V6a1 1 0 0 1 1-1h9'],
   account: ['M16 8a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z', 'M4 21a8 8 0 0 1 16 0'],
   filters: ['M4 6h16M7 12h10M10 18h4'],
   /** The app bar's hamburger on canvas 01 (`Main.dc.html`). Added by task D3. */

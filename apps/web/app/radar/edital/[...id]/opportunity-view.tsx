@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import {
   AppBar,
   AppBarBack,
@@ -15,6 +16,7 @@ import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { tenderHref } from '@/lib/radar/client'
 import type { ErrorCode, Freshness, TenderDetail, TenderGroup } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
+import { pncpEditalUrl } from '@/lib/radar/pncp'
 import {
   agencyLine,
   ageParts,
@@ -26,6 +28,7 @@ import {
   tenderTitle,
 } from '@/lib/radar/format'
 import { TenderTags } from '../../tender-card'
+import { CopyId } from './copy-id'
 
 /**
  * The Opportunity screen — canvas 03, `Oportunidade.dc.html`.
@@ -95,42 +98,94 @@ export function reasons(tender: TenderDetail, now: Date): string[] {
   return out
 }
 
-function OperationRow({ icon, label, value }: { icon: 'deadline' | 'company' | 'tender' | 'search'; label: string; value: string }) {
+type OperationIcon = 'deadline' | 'company' | 'tender' | 'search'
+
+function OperationRow({
+  icon,
+  label,
+  children,
+}: {
+  icon: OperationIcon
+  label: string
+  children: ReactNode
+}) {
   return (
     <div className="flex items-start gap-2.5 text-body">
       <Icon name={icon} size={18} className="mt-0.5 text-muted" />
       <dt className="w-[84px] shrink-0 text-muted">{label}</dt>
-      <dd className="m-0 grow">{value}</dd>
+      <dd className="m-0 min-w-0 grow">{children}</dd>
     </div>
+  )
+}
+
+/**
+ * The Id contratação PNCP, verbatim, with a copy button beside it.
+ *
+ * It sits in this block and not under the title because this is where the
+ * verifiable facts are: the id belongs next to Modalidade and Situação, as
+ * another thing the reader can check against the source.
+ *
+ * `min-w-0` on the `dd` plus `break-all` here is what keeps 28 monospace
+ * characters inside a 390px frame: the row shrinks below its content's natural
+ * width and the id wraps mid-string rather than pushing the column out. The
+ * copy button is `shrink-0` and wraps onto its own line only if it has to.
+ */
+function PncpIdValue({ id }: { id: string }) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="font-mono text-meta break-all select-all">{id}</span>
+      <CopyId id={id} />
+    </span>
   )
 }
 
 function Operation({ tender }: { tender: TenderDetail }) {
   const place = [tender.city, tender.state].filter(Boolean).join('/')
-  const rows: Array<{ icon: 'deadline' | 'company' | 'tender' | 'search'; label: string; value: string }> = []
+  const rows: Array<{ key: string; icon: OperationIcon; label: string; value: ReactNode }> = []
 
   if (tender.modalityName) {
-    rows.push({ icon: 'tender', label: page.operation.modality, value: tender.modalityName })
+    rows.push({
+      key: 'modality',
+      icon: 'tender',
+      label: page.operation.modality,
+      value: tender.modalityName,
+    })
   }
   if (tender.unitName) {
-    rows.push({ icon: 'company', label: page.operation.unit, value: tender.unitName })
+    rows.push({ key: 'unit', icon: 'company', label: page.operation.unit, value: tender.unitName })
   }
-  if (place) rows.push({ icon: 'company', label: page.operation.place, value: place })
+  if (place) rows.push({ key: 'place', icon: 'company', label: page.operation.place, value: place })
 
   const opens = deadlineFull(tender.proposalsOpenAt)
-  if (opens) rows.push({ icon: 'deadline', label: page.operation.opensAt, value: opens })
+  if (opens) {
+    rows.push({ key: 'opens', icon: 'deadline', label: page.operation.opensAt, value: opens })
+  }
   const closes = deadlineFull(tender.proposalsCloseAt)
-  if (closes) rows.push({ icon: 'deadline', label: page.operation.closesAt, value: closes })
+  if (closes) {
+    rows.push({ key: 'closes', icon: 'deadline', label: page.operation.closesAt, value: closes })
+  }
 
   if (tender.itemCount !== null) {
     rows.push({
+      key: 'items',
       icon: 'search',
       label: page.operation.items,
       value: format(copy.card.items, { count: tender.itemCount }),
     })
   }
   if (tender.status) {
-    rows.push({ icon: 'search', label: page.operation.status, value: tender.status })
+    rows.push({ key: 'status', icon: 'search', label: page.operation.status, value: tender.status })
+  }
+
+  // Last, because it is the reference the rest of the block can be checked
+  // against rather than another fact about the procurement.
+  if (tender.id) {
+    rows.push({
+      key: 'pncpId',
+      icon: 'tender',
+      label: page.operation.pncpId,
+      value: <PncpIdValue id={tender.id} />,
+    })
   }
 
   if (rows.length === 0) return null
@@ -139,9 +194,54 @@ function Operation({ tender }: { tender: TenderDetail }) {
       <SectionLabel tone="muted">{page.operationTitle}</SectionLabel>
       <dl className="m-0 flex flex-col gap-2">
         {rows.map((row) => (
-          <OperationRow key={`${row.label}-${row.value}`} {...row} />
+          <OperationRow key={row.key} icon={row.icon} label={row.label}>
+            {row.value}
+          </OperationRow>
         ))}
       </dl>
+    </section>
+  )
+}
+
+/**
+ * The Objeto, whole, in the agency's own words — the last thing on the screen
+ * before the AI is offered.
+ *
+ * ## Why it is not collapsed
+ *
+ * Every other reading of this text on the screen is abbreviated: the `h1`
+ * trims it at 180 characters, the card trims it shorter still. This block is
+ * the one place the full text exists, and the complaint that produced it was
+ * that reading the source cost too many interactions. A "ler mais" here would
+ * answer that complaint with one more click, so there is no toggle: the object
+ * is expanded, always, however long it runs. The screen already scrolls, the
+ * call to action is `mt-auto` at the end of it, and nothing above moves.
+ *
+ * ## Why it sits before the screening call to action
+ *
+ * §2.2 rule 4 — a conclusion without its source is a defect. The AI screening
+ * is a reading *of this text*; a person should be able to read what the órgão
+ * wrote and form their own view before being offered ours. That ordering is
+ * the argument, so the block goes above the CTA rather than below it.
+ *
+ * ## Verbatim, with the agency's own line breaks
+ *
+ * No `trimObject`, no ellipsis. `whitespace-pre-line` keeps the newlines PNCP
+ * published — many órgãos paragraph these, and flattening them turns a list of
+ * lots into a wall — while still collapsing the runs of padding spaces that
+ * come out of their form fields. `max-w-[62ch]` holds the measure readable on
+ * a 1280px window; at 390px the gutter is already the constraint.
+ *
+ * It does not assume the `h1` above is a prefix of this text. When the `h1`
+ * becomes a generated short title, this block is unchanged and becomes the
+ * only place the real wording lives.
+ */
+function FullObject({ object }: { object: string }) {
+  if (!object.trim()) return null
+  return (
+    <section className="flex flex-col gap-2">
+      <SectionLabel tone="muted">{page.objectTitle}</SectionLabel>
+      <p className="m-0 max-w-[62ch] text-body leading-relaxed whitespace-pre-line">{object}</p>
     </section>
   )
 }
@@ -287,6 +387,9 @@ export function OpportunityView({
   // declared the budget confidential, or it published none at all.
   const value = tender.confidentialBudget ? null : money(tender.estimatedValue)
   const age = ageParts(freshness?.ageSeconds)
+  // `null` for an id this app cannot parse: no link at all beats a link to a
+  // page that does not exist, on the screen whose point is checking us.
+  const pncpUrl = pncpEditalUrl(tender.id)
   const aiNotice = `${messages.ai.disclaimer} ${messages.ai.notLegalAdvice}`
 
   return (
@@ -377,6 +480,8 @@ export function OpportunityView({
           <Operation tender={tender} />
         </div>
 
+        <FullObject object={tender.object} />
+
         <div className="mt-auto flex flex-col gap-2 pt-2">
           {/* Legal brief §2.2 rule 5: the AI notice appears on EVERY result
               screen, not only in the terms. This screen prints a compatibility
@@ -389,6 +494,26 @@ export function OpportunityView({
             {page.screeningCta}
           </Button>
           <Files tender={tender} />
+          {/* The source of every fact above. PNCP is the official record
+              (Lei 14.133 art. 174); the bidding system below it is where the
+              dispute happens, which is a different place and a different
+              claim — so both links exist and neither is called "o edital".
+
+              The accessible name is the visible label plus a hidden "(abre em
+              uma nova aba)": an aria-label saying something else would name
+              the control differently from its text (WCAG 2.5.3). */}
+          {pncpUrl ? (
+            <Button
+              variant="secondary"
+              href={pncpUrl}
+              rel="noopener noreferrer"
+              target="_blank"
+              fullWidth
+            >
+              {page.pncpLink}
+              <span className="sr-only"> {page.pncpLinkNewTab}</span>
+            </Button>
+          ) : null}
           {tender.biddingSystemUrl ? (
             <Button
               variant="secondary"
