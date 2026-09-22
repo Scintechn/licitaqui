@@ -1392,3 +1392,14 @@ def _delete_ev_rows(dsn: str) -> None:
             "delete from jobs where kind = any(%s) and starts_with(key, %s)",
             (list(EV_JOB_KINDS), EV_TENDER_PREFIX),
         )
+        # Debris from a crashed run of *this* suite. The sweep tests enqueue one
+        # job per fixture tender, so without this the rows accumulate a run at a
+        # time in a database §14.1 now counts against a 512 MB project budget —
+        # and a crashed run's `RUN_ID` is unknowable, so age is the only signal.
+        # Matched on the exact 14-digit shape this block generates rather than a
+        # bare `99%`, so it cannot reach another suite's rows or a real tender.
+        conn.execute(
+            "delete from jobs where kind = any(%s) and key ~ '^99[0-9]{12}-'"
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'",
+            (list(EV_JOB_KINDS),),
+        )
