@@ -904,7 +904,41 @@
       "session": "Sessão {quando}",
       "items": "{count, plural, one {1 item} other {# itens}}",
       "confidential": "Valor sigiloso",
-      "noValue": "Valor não informado"
+      "noValue": "Valor não informado",
+      "previousDeadline": "Data anterior {quando}"
+    },
+    "status": {
+      "chip": {
+        "suspensa": "Suspensa",
+        "revogada": "Revogada",
+        "anulada": "Anulada"
+      },
+      "banner": {
+        "suspensa": {
+          "title": "Edital SUSPENSO pelo órgão em {data}",
+          "body": "Os prazos abaixo podem mudar. Suspensão não é cancelamento: o órgão pode retomar este edital com novas datas."
+        },
+        "revogada": {
+          "title": "Edital REVOGADO pelo órgão em {data}",
+          "body": "O órgão encerrou este processo. Os prazos abaixo ficam apenas como registro do que foi publicado."
+        },
+        "anulada": {
+          "title": "Edital ANULADO pelo órgão em {data}",
+          "body": "O órgão encerrou este processo. Os prazos abaixo ficam apenas como registro do que foi publicado."
+        }
+      },
+      "bannerNoDate": {
+        "suspensa": "Edital SUSPENSO pelo órgão",
+        "revogada": "Edital REVOGADO pelo órgão",
+        "anulada": "Edital ANULADO pelo órgão"
+      },
+      "source": "Situação conforme o PNCP. Órgãos às vezes publicam a mudança primeiro no portal de origem.",
+      "deadlineHalted": {
+        "suspensa": "Prazo suspenso",
+        "revogada": "Processo encerrado",
+        "anulada": "Processo encerrado"
+      },
+      "previousDeadline": "data anterior"
     },
     "tags": {
       "exclusive": "Exclusivo ME/EPP",

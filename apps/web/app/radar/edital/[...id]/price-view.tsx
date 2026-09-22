@@ -16,6 +16,7 @@ import { priceHref } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { trimObject } from '@/lib/radar/format'
+import { TenderStatusBanner } from '../../tender-status-banner'
 
 /**
  * The locked price block — canvas 05, `Preco.dc.html`.
@@ -152,6 +153,10 @@ export function PriceView({ tenderId, tender, item, status, backHref, onRetry }:
 
       <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3.5 px-gutter pb-10">
         <h1 className="sr-only">{page.title}</h1>
+        {/* §3.5. A price band on a suspended tender is still a true reading of
+            the public results; what it must not do is imply there is a bid to
+            place today. */}
+        <TenderStatusBanner tender={tender} />
         <p className="m-0 text-body leading-relaxed text-muted">{page.intro}</p>
 
         {chosen === null ? (

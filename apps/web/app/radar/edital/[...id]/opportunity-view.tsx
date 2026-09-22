@@ -11,6 +11,7 @@ import {
   Status,
   type StatusKind,
 } from '@/components'
+import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { tenderHref } from '@/lib/radar/client'
@@ -27,7 +28,9 @@ import {
   money,
   tenderTitle,
 } from '@/lib/radar/format'
+import { mayShowUrgency, statusChipLabel, statusNotice } from '@/lib/radar/tender-status'
 import { TenderTags } from '../../tender-card'
+import { TenderStatusBanner } from '../../tender-status-banner'
 import { CopyId } from './copy-id'
 
 /**
@@ -54,6 +57,7 @@ import { CopyId } from './copy-id'
 
 const copy = messages.radar
 const page = copy.opportunity
+const statusCopy = copy.status
 
 /** The badge on the detail: how the *viewer's* CNAEs reached this tender. */
 export function matchKind(tender: TenderDetail): TenderGroup {
@@ -90,8 +94,13 @@ export function reasons(tender: TenderDetail, now: Date): string[] {
   }
   if (tender.priceRegistration) out.push(page.why.priceRegistration)
 
+  // Legal brief §2.2 rule 6, through the one gate: "Ainda dá tempo" is a claim
+  // about the world, and on a tender the agency has stopped it is false. So
+  // the item does not drop out *here* on a condition of its own — it asks
+  // `mayShowUrgency`, the same predicate the countdown and the deadline block
+  // ask, which is what stops the next reason anybody adds from forgetting.
   const days = daysUntil(tender.proposalsCloseAt, now)
-  if (days !== null && days >= 0) {
+  if (mayShowUrgency(tender) && days !== null && days >= 0) {
     out.push(format(page.why.open, { prazo: format(copy.card.daysLeft, { count: days }) }))
   }
 
@@ -381,6 +390,12 @@ export function OpportunityView({
   }
 
   const badge = BADGE[matchKind(tender)]
+  // The gate (§2.2 rule 6). `urgency === false` suppresses the countdown, the
+  // "restantes" caption and the closed notice below — not the dates, which
+  // stay on the screen, muted and labelled as the previous ones.
+  const urgency = mayShowUrgency(tender)
+  const notice = statusNotice(tender)
+  const statusChip = statusChipLabel(tender)
   const days = daysUntil(tender.proposalsCloseAt, now)
   const why = reasons(tender, now)
   // `null` means there is no figure to set in Archivo — either the agency
@@ -397,6 +412,9 @@ export function OpportunityView({
       {bar}
 
       <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3.5 px-gutter pb-10">
+        {/* Above the title, because it governs everything under it (§3.1). */}
+        <TenderStatusBanner tender={tender} />
+
         <div className="flex flex-col gap-1">
           <h1 className="font-display text-[24px] leading-tight font-semibold text-balance">
             {tenderTitle(tender.object, 180)}
@@ -406,24 +424,47 @@ export function OpportunityView({
 
         <div className="flex flex-wrap items-center gap-1.5">
           <Status kind={badge.kind}>{badge.label}</Status>
+          {/* Beside COMPATÍVEL, not ten rows down in the Operação block —
+              §3.3. It repeats the banner deliberately: the badge row is what
+              the eye reads with the title, and this is the state of it. */}
+          {statusChip === null ? null : <Status kind="check">{statusChip}</Status>}
           <TenderTags tender={tender} />
         </div>
 
-        {tender.closed ? (
+        {/* "As propostas já encerraram" is itself a claim about the clock, and
+            on a suspended tender it is false — the órgão may resume it with new
+            dates. So it passes through the same gate as the countdown rather
+            than standing beside the status banner contradicting it. */}
+        {tender.closed && urgency ? (
           <p className="rounded-[10px] bg-attention-soft px-3 py-2.5 text-meta text-ink">
             {page.closedNotice}
           </p>
         ) : null}
 
         <Card className="flex flex-col gap-3">
+          {/* The block the screenshot was taken of. Suspended, it keeps the
+              date — a user needs to know which date is the one that lapsed —
+              but the label becomes "Prazo suspenso", the figure goes muted and
+              is captioned "data anterior", and the whole right-hand column
+              ("último dia" over "restantes") does not render at all. §3.2. */}
           <div className="flex items-end justify-between gap-3 border-b border-line pb-3">
             <div>
-              <SectionLabel tone="muted">{page.proposalsUntil}</SectionLabel>
-              <div className="pt-1 font-display text-[22px] leading-none font-semibold">
+              <SectionLabel tone="muted">
+                {notice ? notice.deadlineLabel : page.proposalsUntil}
+              </SectionLabel>
+              <div
+                className={cn(
+                  'pt-1 font-display text-[22px] leading-none font-semibold',
+                  notice && 'text-muted',
+                )}
+              >
                 {deadlineTall(tender.proposalsCloseAt) ?? copy.card.noDeadline}
               </div>
+              {notice && tender.proposalsCloseAt ? (
+                <div className="pt-1 text-meta text-muted">{statusCopy.previousDeadline}</div>
+              ) : null}
             </div>
-            {days === null ? null : (
+            {!urgency || days === null ? null : (
               <div className="text-right">
                 <div className="font-display text-[22px] leading-none font-semibold">
                   {days < 0 ? copy.card.closed : format(copy.card.daysLeft, { count: days })}

@@ -7,6 +7,7 @@ import { resetRateLimits } from '@/lib/rate-limit'
 import type { TenderCard, TenderListResponse } from './contract'
 import { appendTenders } from './pagination'
 import { cleanupRun, RUN_AGENCY_CNPJ, RUN_COMPANY_CNPJ, RUN_ID } from './fixtures'
+import { DIVULGADA } from './tender-status'
 
 /**
  * The four-page walk, against the real database and the real route.
@@ -66,12 +67,17 @@ async function insertPage(): Promise<void> {
       ${`Pregão ${TOKEN} item ${index + 1}`}, 'SP',
       ${closeAt}::timestamptz,
       array[${SEGMENT}]::text[],
+      ${DIVULGADA},
       to_tsvector('pt_unaccent', ${`Pregão ${TOKEN} item ${index + 1}`})
     )`
   })
+  // `status` is set explicitly rather than left null: B9 made it a sort key,
+  // and a null would make all 79 rows *halted* — the page boundaries would
+  // still line up, so the suite would go on passing while quietly testing the
+  // wrong list.
   await db().execute(sql`
     insert into tenders (id, agency_cnpj, year, sequence, object, state,
-                         proposals_close_at, segments, search)
+                         proposals_close_at, segments, status, search)
     values ${sql.join(rows, sql`, `)}
     on conflict (id) do nothing
   `)
@@ -178,4 +184,57 @@ suite('the Radar list, page by page (database)', () => {
     expect(first.nextCursor).not.toBeNull()
     expect(first.tenders.every((tender) => tender.group === 'compatible')).toBe(true)
   }, 60_000)
+
+  /**
+   * §3.4: stopped tenders fall below Divulgada ones and are **never hidden** —
+   * a user may be tracking exactly the one that was suspended.
+   *
+   * It has to be asserted across the whole four-page walk rather than on page
+   * one, because the sort key and the keyset cursor are two separate pieces of
+   * SQL: order by `halted` while the cursor still compares only
+   * `(close_at, id)` and rows go missing at every page boundary — silently,
+   * which is the failure this test exists to catch.
+   */
+  it('sorts stopped tenders below the open ones without losing any', async () => {
+    // Three from the middle of the deadline order, so "they moved" cannot be
+    // confused with "they were already last".
+    const stopped = [ids[5], ids[25], ids[60]]
+    const stillOpen = ids.filter((id) => !stopped.includes(id))
+
+    await db().execute(sql`
+      update tenders set status = 'Suspensa'
+       where id in (${sql.join(stopped.map((id) => sql`${id}`), sql`, `)})
+    `)
+
+    try {
+      const seen: string[] = []
+      let cursor: string | null = null
+      for (let guard = 0; guard < 10; guard += 1) {
+        const answer: TenderListResponse = await page(cursor)
+        if (answer.state !== 'ready') throw new Error(`page answered ${answer.state}`)
+        seen.push(...answer.tenders.map((tender) => tender.id))
+        cursor = answer.nextCursor
+        if (!cursor) break
+      }
+
+      // Never hidden: all 79 still reachable, still exactly once.
+      expect(seen).toHaveLength(TOTAL)
+      expect(new Set(seen).size).toBe(TOTAL)
+
+      // The open ones first, in deadline order; the stopped ones after them,
+      // in deadline order among themselves.
+      expect(seen).toEqual([...stillOpen, ...stopped])
+
+      // And the card carries the status, so the list item can show the chip
+      // without a second request.
+      const last = await page(null)
+      if (last.state !== 'ready') throw new Error(last.state)
+      expect(last.tenders[0]?.status).toBe(DIVULGADA)
+    } finally {
+      await db().execute(sql`
+        update tenders set status = ${DIVULGADA}
+         where id in (${sql.join(stopped.map((id) => sql`${id}`), sql`, `)})
+      `)
+    }
+  }, 120_000)
 })

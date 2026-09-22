@@ -69,6 +69,11 @@ const BATTERIES: TenderCard = {
   segments: [],
   matchedSegments: [],
   group: 'compatible',
+  // The landing's frozen examples are deliberately Divulgada: they exist to
+  // show the product working normally, and the gate in `tender-status.ts` is
+  // what would otherwise strip their countdowns.
+  status: 'Divulgada no PNCP',
+  pncpUpdatedAt: null,
 }
 
 /**
@@ -94,6 +99,8 @@ const HOSPITAL: TenderCard = {
   segments: [],
   matchedSegments: [],
   group: 'check',
+  status: 'Divulgada no PNCP',
+  pncpUpdatedAt: null,
 }
 
 /**
@@ -118,6 +125,8 @@ const SAAS: TenderCard = {
   segments: [],
   matchedSegments: [],
   group: 'keyword',
+  status: 'Divulgada no PNCP',
+  pncpUpdatedAt: null,
 }
 
 /** In the board's order: compatible, then check, then keyword. */

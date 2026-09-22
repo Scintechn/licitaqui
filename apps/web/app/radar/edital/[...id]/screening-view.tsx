@@ -18,6 +18,7 @@ import { errorText } from '@/lib/radar/error-text'
 import { agencyLine, tenderTitle } from '@/lib/radar/format'
 import type { Blocker, Finding, ScreeningModel } from '@/lib/radar/screening-result'
 import { VisitorBanner } from '../../radar-view'
+import { TenderStatusBanner } from '../../tender-status-banner'
 
 /**
  * The screening screen — canvas 04, `Triagem.dc.html`.
@@ -427,6 +428,13 @@ export function ScreeningView({
       <AppBar leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>} title={page.title} />
 
       <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3 px-gutter pb-10">
+        {/* §3.5: the same banner on every AI result screen for the tender.
+            Screening a suspended edital is still worth doing — the findings
+            hold whatever the órgão does next — it is just not urgent, and a
+            reader who arrived straight here from a link would otherwise never
+            learn the tender had been stopped. */}
+        {tender ? <TenderStatusBanner tender={tender} /> : null}
+
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h1 className="font-display text-[22px] leading-tight font-semibold text-balance">

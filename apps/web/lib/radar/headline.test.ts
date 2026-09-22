@@ -22,6 +22,8 @@ const TENDER: TenderCard = {
   favoredTreatment: true,
   itemCount: 7,
   segments: ['Gráfico / Escritório'],
+  status: 'Divulgada no PNCP',
+  pncpUpdatedAt: '2026-09-16T10:00:00.000Z',
   matchedSegments: [],
   group: 'compatible',
 }

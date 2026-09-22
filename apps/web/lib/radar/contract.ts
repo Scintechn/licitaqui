@@ -144,6 +144,23 @@ export type TenderCard = {
   /** The segments of this tender the company matched, and how. */
   matchedSegments: SegmentFit[]
   group: TenderGroup
+  /**
+   * `situacaoCompraNome`, verbatim: `Divulgada no PNCP` | `Suspensa` |
+   * `Revogada` | `Anulada`.
+   *
+   * On the **card** and not only on the detail, because legal brief §2.2 rule
+   * 6 makes this a state of the screen rather than a fact about the tender:
+   * the Radar list counts down too, and a countdown on a suspended tender is
+   * the same false claim there as on the Opportunity screen. Read it through
+   * `lib/radar/tender-status.ts`, never by comparing strings at a call site.
+   */
+  status: string | null
+  /**
+   * `dataAtualizacaoGlobal` — when the **agency** last touched the record,
+   * which is the date the status banner cites. Not `updated_at`, which is when
+   * *our* sweep last read it and would date a suspension to our own cron.
+   */
+  pncpUpdatedAt: string | null
 }
 
 export type TenderListOk = {
@@ -194,7 +211,6 @@ export type TenderFileView = {
 export type TenderDetail = TenderCard & {
   agencyCnpj: string
   unitName: string | null
-  status: string | null
   proposalsOpenAt: string | null
   biddingSystemUrl: string | null
   items: TenderItemView[]

@@ -1,5 +1,6 @@
 import type { TenderCard } from './contract'
 import { daysUntil, meEppSummary, money } from './format'
+import { mayShowUrgency } from './tender-status'
 import { format, messages } from '../messages'
 
 /**
@@ -73,7 +74,11 @@ function regimeLabel(tender: TenderCard): string | null {
 
 /** The fallback chain, in the order argued above. */
 function promoted(tender: TenderCard, now: Date): CardHeadline['anchor'] {
-  if (daysUntil(tender.proposalsCloseAt, now) !== null) {
+  // The deadline is promoted into the 22px slot on roughly 19 of 20 cards, so
+  // on a stopped tender this — not the small print — is what shouts "último
+  // dia" at the reader. §2.2 rule 6 through the one gate: it steps out of the
+  // chain entirely and the item count takes the slot instead.
+  if (mayShowUrgency(tender) && daysUntil(tender.proposalsCloseAt, now) !== null) {
     return { fact: 'deadline', text: deadlineLabel(tender.proposalsCloseAt, now) }
   }
   if (tender.itemCount !== null) {

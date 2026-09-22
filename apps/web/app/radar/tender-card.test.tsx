@@ -30,6 +30,8 @@ const TENDER: TenderCard = {
   segments: ['Gráfico / Escritório'],
   matchedSegments: [],
   group: 'compatible',
+  status: 'Divulgada no PNCP',
+  pncpUpdatedAt: '2026-09-16T10:00:00.000Z',
 }
 
 function render(over: Partial<TenderCard> = {}): string {
