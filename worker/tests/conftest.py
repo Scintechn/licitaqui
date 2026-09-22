@@ -1292,3 +1292,114 @@ def _delete_title_rows(dsn: str) -> None:
             "delete from tenders where agency_cnpj ~ '^98[0-9]{12}$' "
             f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
+
+
+# -- EV: the estimated-value backfill's own rows ---------------------------
+#
+# Same shape and the same reasons as every block above: a `Dsn` wrapper so
+# pytest cannot render credentials into a traceback, and deletes scoped to rows
+# *this run* created — `EV_CNPJ` carries `RUN_ID`, never a task constant, so two
+# concurrent runs of this suite write under different fictitious agencies and
+# neither cleanup can touch the other's fixtures.
+#
+# This suite drives `refresh_tender_value`, `sweep_tender_values` and the
+# `sync_items` roll-up together, because the rule it tests — which of the two
+# value sources wins — is shared between them. It needs `tenders` and
+# `tender_items`, so it falls back to B3's database, whose schema it uses in
+# full. Sharing is safe here for the reason stated above and nowhere else:
+# every row is keyed by a CNPJ no other suite can generate, in this run or any
+# other.
+EV_TEST_DSN_VARS = ("TEST_DATABASE_URL_EV", "TEST_DATABASE_URL_B3")
+
+#: `99` + this run's id as digits + a trailing `6`, distinct from B3's
+#: (`99` + 12 digits), B4's (`4`), B8's (`8`), FH's and DL's (`5`), E1's (`1`)
+#: and PNCP-404's (`7`) inside the same run. Not a valid CNPJ.
+EV_CNPJ = f"99{int(RUN_ID, 16):011d}6"[:14]
+
+#: Tender ids must parse as a `numeroControlePNCP` (`split_control_number`), so
+#: the run id rides in the CNPJ and this prefix is what cleanup matches.
+EV_TENDER_PREFIX = f"{EV_CNPJ}-"
+
+#: The job kinds this suite can create, named here so cleanup cannot drift.
+EV_JOB_KINDS = ("refresh_tender_value", "sync_items")
+
+
+def ev_tender_id(sequence: int = 1, year: int = 2026) -> str:
+    """A run-scoped id shaped like `numeroControlePNCP`: `<cnpj>-1-<seq>/<year>`."""
+    return f"{EV_TENDER_PREFIX}1-{sequence:06d}/{year}"
+
+
+@pytest.fixture(scope="session")
+def ev_dsn() -> str:
+    for var in EV_TEST_DSN_VARS:
+        for root in _candidate_roots():
+            dsn = config.resolve_secret(var, root=root)
+            if dsn:
+                return Dsn(dsn)
+    pytest.skip(f"none of {', '.join(EV_TEST_DSN_VARS)} is configured; skipping tender-value tests")
+
+
+@pytest.fixture
+def ev_clean_dsn(ev_dsn: str) -> Iterator[str]:
+    """The suite's test DSN, with this run's rows deleted before and after."""
+    _delete_ev_rows(ev_dsn)
+    try:
+        yield ev_dsn
+    finally:
+        _delete_ev_rows(ev_dsn)
+
+
+@pytest.fixture
+def ev_connect(ev_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(ev_clean_dsn, application_name=f"licitaqui-ev-test-{os.getpid()}")
+
+
+@pytest.fixture
+def ev_conn(ev_connect) -> Iterator[psycopg.Connection]:
+    with ev_connect() as connection:
+        yield connection
+
+
+def _delete_ev_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates.
+
+    `tender_items` goes with the tender (`on delete cascade`). The value marker
+    in `events` and the `jobs` rows have no foreign key, so they are deleted by
+    the same run-scoped prefixes the code builds them from. The cross-run
+    statements are deliberately narrow: the fictitious `99…` agency family
+    belongs to these suites alone, and `CROSS_RUN_SWEEP_HOURS` is far longer
+    than the suite takes, so they can only ever catch a crashed run.
+    """
+    from licitaqui.tender_value import VALUE_EVENT_PREFIX
+
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where agency_cnpj = %s", (EV_CNPJ,))
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' "
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+        )
+        conn.execute(
+            "delete from events where starts_with(name, %s)",
+            (f"{VALUE_EVENT_PREFIX}{EV_TENDER_PREFIX}",),
+        )
+        conn.execute(
+            f"delete from events where starts_with(name, '{VALUE_EVENT_PREFIX}99') "
+            f"  and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+        )
+        conn.execute(
+            "delete from jobs where kind = any(%s) and starts_with(key, %s)",
+            (list(EV_JOB_KINDS), EV_TENDER_PREFIX),
+        )
+        # Debris from a crashed run of *this* suite. The sweep tests enqueue one
+        # job per fixture tender, so without this the rows accumulate a run at a
+        # time in a database §14.1 now counts against a 512 MB project budget —
+        # and a crashed run's `RUN_ID` is unknowable, so age is the only signal.
+        # Matched on the exact 14-digit shape this block generates rather than a
+        # bare `99%`, so it cannot reach another suite's rows or a real tender.
+        conn.execute(
+            "delete from jobs where kind = any(%s) and key ~ '^99[0-9]{12}-'"
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'",
+            (list(EV_JOB_KINDS),),
+        )

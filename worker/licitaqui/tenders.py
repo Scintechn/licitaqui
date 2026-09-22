@@ -90,7 +90,14 @@ class Tender:
     proposals_open_at: datetime | None = None
     proposals_close_at: datetime | None = None
     estimated_value: float | None = None
-    confidential_budget: bool = False
+    #: ``None`` means *we do not know*, and it is the only honest answer for a
+    #: search-sourced row: the index publishes no ``orcamentoSigilosoCodigo``,
+    #: so there is nothing to read. It used to default to ``False``, which said
+    #: "this budget is public" about 5,080 tenders nobody had checked — and,
+    #: worse, a fallback sweep passing over a consulta-sourced row wrote that
+    #: ``False`` straight over a real ``True`` (the upsert did not coalesce this
+    #: column). Unknown is a third state and the column is nullable for it.
+    confidential_budget: bool | None = None
     bidding_system_url: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -152,15 +159,21 @@ def _sphere(*values: Any) -> str | None:
     return None
 
 
-def _confidential(record: dict[str, Any]) -> bool:
-    """Whether the budget is sigiloso, from the code — never from its truthiness."""
+def _confidential(record: dict[str, Any]) -> bool | None:
+    """Whether the budget is sigiloso, from the code — never from its truthiness.
+
+    ``None`` when the record carries neither field, which is every search-index
+    item: absence of evidence is not "public". See
+    :attr:`Tender.confidential_budget`.
+    """
     code = record.get("orcamentoSigilosoCodigo")
     if code is not None:
         try:
             return int(code) in _CONFIDENTIAL_BUDGET_CODES
         except (TypeError, ValueError):
             pass
-    return bool(record.get("orcamentoSigiloso"))
+    flag = record.get("orcamentoSigiloso")
+    return None if flag is None else bool(flag)
 
 
 def split_control_number(numero: str) -> tuple[str, int, int]:
@@ -240,8 +253,11 @@ def from_search(item: dict[str, Any]) -> Tender:
         modality_name=item.get("modalidade_licitacao_nome")
         or _MODALITY_NAMES.get(modality_id or 0),
         status=item.get("situacao_nome"),
-        # The search index carries neither srp nor the estimated value; leaving
-        # them None here is what keeps COALESCE in the upsert from erasing them.
+        # The search index carries no `srp`, no `valorTotalEstimado` and no
+        # `orcamentoSigilosoCodigo`; leaving all three None here is what keeps
+        # COALESCE in the upsert from erasing them. Nothing else can fill them
+        # either, which is why a search-sourced row needs the detail fetch in
+        # :mod:`licitaqui.tender_value` before it can show a value at all.
         proposals_open_at=parse_timestamp(item.get("data_inicio_vigencia")),
         proposals_close_at=parse_timestamp(item.get("data_fim_vigencia")),
         raw=item,
@@ -296,7 +312,10 @@ on conflict (id) do update set
     proposals_open_at   = coalesce(excluded.proposals_open_at, tenders.proposals_open_at),
     proposals_close_at  = coalesce(excluded.proposals_close_at, tenders.proposals_close_at),
     estimated_value     = coalesce(excluded.estimated_value, tenders.estimated_value),
-    confidential_budget = excluded.confidential_budget,
+    -- Coalesced like every other column the fallback cannot fill. It was not,
+    -- and a search sweep passing over a consulta-sourced tender therefore
+    -- replaced a real `true` with the dataclass's old `False` default.
+    confidential_budget = coalesce(excluded.confidential_budget, tenders.confidential_budget),
     bidding_system_url  = coalesce(excluded.bidding_system_url, tenders.bidding_system_url),
     pncp_updated_at     = excluded.pncp_updated_at,
     -- Merge, do not replace. The two sources use disjoint key sets (the
