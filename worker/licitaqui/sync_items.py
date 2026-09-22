@@ -80,30 +80,68 @@ class TenderState:
         return self.reason != "fresh"
 
 
+#: Freshness asks **when did we last read PNCP**, and `looked_at` is the answer.
+#:
+#: It used to be two parallel ladders: a tender *with* items aged on
+#: ``min(tender_items.updated_at)``, one *without* on the sync marker. That only
+#: worked because every read rewrote every row — so a row timestamp happened to
+#: answer a question about reads. The upsert guard in :mod:`licitaqui.items`
+#: breaks that coincidence: an unchanged row keeps its old `updated_at`, so
+#: `min` freezes in the past and every unchanged tender would read `ttl` stale
+#: on every sweep, for ever. More PNCP calls, more breaker pressure, more
+#: `events` and `jobs` writes — strictly worse than the bloat the guard removes.
+#: Shipping the guard without this change is the regression, not the fix.
+#:
+#: **`coalesce(marker, min(updated_at))`, not the marker alone.** The marker is
+#: the right signal but it is new: measured on production 2026-09-22, **0 of the
+#: 6,473** tenders that hold items had one. Reading the marker alone would make
+#: every one of them `never` — a distinct branch with no age to it, so the 12 h
+#: TTL cannot stagger it and all 6,473 become eligible on the same sweep.
+#:
+#: The fallback preserves the old semantics exactly at the cutover: a tender
+#: fresh before the change is fresh after it, with the same age, and the
+#: staggering comes free because those timestamps are already spread across the
+#: corpus. Measured: **2,736** of the 6,473 are fresh today and would otherwise
+#: have been fetched immediately.
+#:
+#: **It is self-healing, per tender, on first contact.** `sync_items` writes the
+#: marker unconditionally after any sync (`mark_synced`, line ~218 —
+#: ``marker = {"items": len(items), …}`` is built for every outcome, not only
+#: the empty one). So a marker-less tender takes the fallback exactly once: it
+#: reads stale, fetches, writes a marker, and the marker governs thereafter. The
+#: fallback branch goes cold by itself and the backfill only makes it go cold
+#: sooner.
+#:
+#: Three paths return without marking, and none can strand a row, because a
+#: guard on *writes* cannot change a path that writes nothing: an unknown tender
+#: (``not state.exists`` — `read_state` never runs), a **fresh** tender (correct
+#: by design: fresh means no action, and it keeps its old `min` until the items
+#: genuinely age out — that is the 2,736), and a
+#: :class:`licitaqui.absence.DataVanished` regression, which deliberately writes
+#: and prunes nothing so it stays loud and recurring until someone looks.
 STATE_SQL = f"""
-select t.estimated_value,
-       t.object,
-       count(i.tender_id) as item_count,
+select estimated_value,
+       object,
+       item_count,
        case
-         when count(i.tender_id) > 0
-              and min(i.updated_at) < now() - interval '{ITEMS_TTL_HOURS} hours'
-                                                                  then 'ttl'
-         when count(i.tender_id) > 0
-              and t.pncp_updated_at is not null
-              and min(i.updated_at) < t.pncp_updated_at            then 'tender_changed'
-         when count(i.tender_id) > 0                               then 'fresh'
-         when m.synced_at is null                                  then 'never'
-         when m.synced_at < now() - interval '{ITEMS_TTL_HOURS} hours'
-                                                                   then 'ttl'
-         when t.pncp_updated_at is not null
-              and m.synced_at < t.pncp_updated_at                  then 'tender_changed'
+         when looked_at is null                                     then 'never'
+         when looked_at < now() - interval '{ITEMS_TTL_HOURS} hours' then 'ttl'
+         when pncp_updated_at is not null
+              and looked_at < pncp_updated_at                       then 'tender_changed'
          else 'fresh'
        end as reason
-  from tenders t
-  left join tender_items i on i.tender_id = t.id
- cross join (select max(created_at) as synced_at from events where name = %(event)s) m
- where t.id = %(tender_id)s
- group by t.id, m.synced_at
+  from (
+    select t.estimated_value,
+           t.object,
+           t.pncp_updated_at,
+           count(i.tender_id)                            as item_count,
+           coalesce(m.synced_at, min(i.updated_at))      as looked_at
+      from tenders t
+      left join tender_items i on i.tender_id = t.id
+     cross join (select max(created_at) as synced_at from events where name = %(event)s) m
+     where t.id = %(tender_id)s
+     group by t.id, m.synced_at
+  ) s
 """
 
 
@@ -202,7 +240,7 @@ def sync_items(ctx: JobContext) -> None:
         raise absence.DataVanished(absent.detail)
 
     items: list[TenderItem] = classify_all(tender_id, records)
-    upsert_items(ctx.conn, tender_id, items)
+    written = upsert_items(ctx.conn, tender_id, items)
     summary = roll_up(
         ctx.conn,
         tender_id,
@@ -211,8 +249,15 @@ def sync_items(ctx: JobContext) -> None:
         object_text=state.object_text,
     )
     # The marker is what stops the next sweep re-enqueuing a tender whose item
-    # list is legitimately empty — see :func:`read_state`.
-    marker = {"items": len(items), "removed": max(state.item_count - len(items), 0)}
+    # list is legitimately empty — and, since the upsert guard, it is also the
+    # *only* record that we looked at a tender whose rows were all unchanged.
+    # `min(tender_items.updated_at)` no longer moves in that case, so without
+    # this write the tender would read stale for ever (see `read_state`).
+    marker = {
+        "items": len(items),
+        "removed": max(state.item_count - len(items), 0),
+        **written.log_fields(),
+    }
     if absent is not None:
         marker |= absent.log_fields()
     mark_synced(ctx.conn, tender_id, marker)
@@ -223,6 +268,9 @@ def sync_items(ctx: JobContext) -> None:
         "fetched": len(records),
         "stored": len(items),
         "removed": max(state.item_count - len(items), 0),
+        # `items_written` vs `items_offered` is the upsert guard's whole effect,
+        # per tender, in the log line rather than only in a one-off measurement.
+        **written.log_fields(),
         **_summary_extra(summary),
         **(absent.log_fields() if absent is not None else {}),
     }
