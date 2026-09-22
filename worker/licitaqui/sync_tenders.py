@@ -77,6 +77,20 @@ BATCH_SIZE = 200
 FOLLOWUP_KINDS = ("sync_items", "sync_files")
 FOLLOWUP_PRIORITY = 5
 
+#: The extra follow-up a **search-sourced** tender needs, and a consulta-sourced
+#: one does not.
+#:
+#: The search index publishes no `valorTotalEstimado`, no `srp` and no
+#: `orcamentoSigilosoCodigo`, so every row this fallback writes arrives with
+#: three columns empty and B2 had nothing that ever went back for them. That is
+#: the whole of the "Valor não informado" bug: not a mapping fault, an ingest
+#: path with no follow-up. :mod:`licitaqui.tender_value` is the follow-up.
+#:
+#: It is queued from the fallback path alone. A consulta-sourced tender already
+#: carries all three, and queueing 5,000 no-op jobs per healthy cycle to
+#: discover that would cost more than the bug.
+UPGRADE_KIND = "refresh_tender_value"
+
 
 @dataclass
 class CycleStats:
@@ -92,6 +106,8 @@ class CycleStats:
     updated: int = 0
     unchanged: int = 0
     followups: int = 0
+    #: `refresh_tender_value` jobs queued for rows the fallback wrote.
+    upgrades: int = 0
     modalities_done: list[int] = field(default_factory=list)
     modalities_failed: list[int] = field(default_factory=list)
 
@@ -117,6 +133,7 @@ class CycleStats:
             "updated": self.updated,
             "unchanged": self.unchanged,
             "followups": self.followups,
+            "upgrades": self.upgrades,
             "modalities_done": sorted(self.modalities_done),
             "modalities_failed": sorted(self.modalities_failed),
         }
@@ -356,25 +373,34 @@ def _sweep_search_fallback(
                 ctx.log.warning("skipping unmappable search item", extra={"reason": str(exc)[:200]})
                 continue
             if len(batch) >= BATCH_SIZE:
-                _flush(ctx, stats, batch)
+                _flush(ctx, stats, batch, upgrade=True)
                 batch = []
-        _flush(ctx, stats, batch)
+        _flush(ctx, stats, batch, upgrade=True)
     except (CircuitOpen, PncpError, OSError, TimeoutError) as exc:
-        _flush(ctx, stats, batch)
+        _flush(ctx, stats, batch, upgrade=True)
         ctx.log.warning(
             "search fallback failed too",
             extra={"error": f"{type(exc).__name__}: {exc}"[:300]},
         )
 
 
-def _flush(ctx: JobContext, stats: CycleStats, batch: list[Tender]) -> None:
-    """Upsert one batch and enqueue follow-ups for whatever actually changed."""
+def _flush(
+    ctx: JobContext, stats: CycleStats, batch: list[Tender], *, upgrade: bool = False
+) -> None:
+    """Upsert one batch and enqueue follow-ups for whatever actually changed.
+
+    ``upgrade`` marks a batch that came from the search fallback, whose rows are
+    missing the three columns only the Consulta detail carries
+    (:data:`UPGRADE_KIND`).
+    """
     if not batch:
         return
     result = _upsert(ctx.conn, batch)
     stats.absorb(result)
     stats.batches += 1
     stats.followups += _enqueue_followups(ctx, result.changed)
+    if upgrade:
+        stats.upgrades += _enqueue_upgrades(ctx, result.changed)
 
 
 def _enqueue_followups(ctx: JobContext, tender_ids: tuple[str, ...]) -> int:
@@ -402,3 +428,21 @@ def _enqueue_followups(ctx: JobContext, tender_ids: tuple[str, ...]) -> int:
             ):
                 created += 1
     return created
+
+
+def _enqueue_upgrades(ctx: JobContext, tender_ids: tuple[str, ...]) -> int:
+    """Queue the Consulta detail re-read for tenders the fallback just wrote.
+
+    Registry-gated like :func:`_enqueue_followups`, for the same reason.
+
+    This will often fail on its first attempt, and that is expected rather than
+    broken: the fallback runs *because* `/api/consulta` is down, so the job it
+    queues is aimed at a service we already know is not answering. It matters
+    anyway — the queue's own backoff (2, 8, 30 min) covers a short outage, and
+    `sweep_tender_values` comes back for anything a long one swallowed.
+    """
+    if not tender_ids or UPGRADE_KIND not in set(REGISTRY.kinds()):
+        return 0
+    from .tender_value import enqueue_refreshes
+
+    return enqueue_refreshes(ctx.conn, tender_ids)
