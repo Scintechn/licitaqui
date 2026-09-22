@@ -33,11 +33,13 @@ from licitaqui.registry import JobContext
 from licitaqui.tender_value import (
     GONE_BACKOFF_HOURS,
     REFRESH_TTL_HOURS,
+    UPGRADE_TTL_HOURS,
     VALUE_SOURCE_CONSULTA,
     VALUE_SOURCE_GONE,
     VALUE_SOURCE_ITEMS,
     VALUE_SOURCE_NONE,
     due_tenders,
+    mark,
     read_state,
     refresh_one,
     refresh_tender_value,
@@ -277,22 +279,35 @@ class TestItemSumFallback:
         )
         ev_conn.execute(
             tender_value_module.APPLY_ITEM_SUM_SQL,
-            {
-                "tender_id": tid,
-                "estimated_value": Decimal("999999.99"),
-                "next_refresh_at": None,
-            },
+            {"tender_id": tid, "estimated_value": Decimal("999999.99")},
         )
         assert value_of(ev_conn, tid)[0] == Decimal("271350.31")
 
-    def test_a_stored_zero_is_treated_as_absent(self, ev_conn):
-        # 108 production rows hold 0.00 from PNCP's own header.
+    def test_a_published_zero_is_never_replaced_by_our_arithmetic(self, ev_conn):
+        # 108 production rows hold 0.00 because PNCP published that. It is a
+        # figure, not an empty cell, and the rule is that the number we show is
+        # PNCP's — so the item sum must not paper over it. These rows are
+        # resolved by the detail fetch instead (`confidential_budget`), because
+        # the /atualizacao record that wrote them carries no sigiloso code.
         tid = given_search_tender(ev_conn, 10)
         given_items(ev_conn, tid, ["42000.00"])
         ev_conn.execute("update tenders set estimated_value = 0 where id = %s", (tid,))
         outcome = refresh_one(ev_conn, None, tid, read_state(ev_conn, tid))
-        assert outcome.source == VALUE_SOURCE_ITEMS
-        assert value_of(ev_conn, tid)[0] == Decimal("42000.00")
+        assert outcome.source == VALUE_SOURCE_NONE
+        assert value_of(ev_conn, tid)[0] == Decimal("0")
+
+    def test_a_published_zero_still_gets_its_sigiloso_flag_from_the_detail(self, ev_conn):
+        # The /atualizacao period record has no `orcamentoSigilosoCodigo` at
+        # all; the detail endpoint does. That is how a "R$ 0,00" card becomes an
+        # honest "orçamento sigiloso" one.
+        tid = given_search_tender(ev_conn, 31)
+        ev_conn.execute("update tenders set estimated_value = 0 where id = %s", (tid,))
+        body = detail(tid, valorTotalEstimado=0, orcamentoSigilosoCodigo=3)
+        with consulta_client(tid, body=body)() as client:
+            refresh_one(ev_conn, client, tid, read_state(ev_conn, tid))
+        value, _, sigiloso, *_ = value_of(ev_conn, tid)
+        assert sigiloso is True
+        assert value == Decimal("0")
 
 
 class TestConsultaWithoutANumber:
@@ -358,12 +373,80 @@ class TestBackoff:
         )
         assert tid in due_tenders(ev_conn, limit=500)
 
-    def test_a_valued_tender_is_never_offered_again(self, ev_conn):
+    def test_a_consulta_valued_tender_is_never_offered_again(self, ev_conn):
         tid = given_search_tender(ev_conn, 16)
         given_items(ev_conn, tid, ["42000.00"])
-        refresh_one(ev_conn, None, tid, read_state(ev_conn, tid))
+        with consulta_client(tid)() as client:
+            outcome = refresh_one(ev_conn, client, tid, read_state(ev_conn, tid))
+        mark(ev_conn, outcome)
         ev_conn.execute("update tenders set next_refresh_at = null where id = %s", (tid,))
         assert tid not in due_tenders(ev_conn, limit=500)
+
+    def test_an_item_sum_valued_tender_comes_back_for_the_real_number(self, ev_conn):
+        # Sci's rule is that the number we show is PNCP's own. A row that took
+        # the fallback while consulta was down has a value, so the "no value"
+        # condition stops matching — without the marker check it would hold an
+        # over-counting item sum for ever.
+        tid = given_search_tender(ev_conn, 29)
+        given_items(ev_conn, tid, ["42000.00"])
+        with consulta_client(tid, status=500)() as client:
+            outcome = refresh_one(ev_conn, client, tid, read_state(ev_conn, tid))
+        mark(ev_conn, outcome)
+        assert outcome.source == VALUE_SOURCE_ITEMS
+
+        ev_conn.execute(
+            "update tenders set next_refresh_at = now() - interval '1 minute' where id = %s",
+            (tid,),
+        )
+        assert tid in due_tenders(ev_conn, limit=500)
+
+        # …and once consulta answers, it stops being offered.
+        with consulta_client(tid)() as client:
+            second = refresh_one(ev_conn, client, tid, read_state(ev_conn, tid))
+        mark(ev_conn, second)
+        assert second.source == VALUE_SOURCE_CONSULTA
+        assert value_of(ev_conn, tid)[0] == Decimal("271350.31")
+        ev_conn.execute(
+            "update tenders set next_refresh_at = now() - interval '1 minute' where id = %s",
+            (tid,),
+        )
+        assert tid not in due_tenders(ev_conn, limit=500)
+
+    def test_a_re_offered_row_always_advances_its_clock(self, ev_conn):
+        # The two value writes are conditional, so neither runs on a row that
+        # already has a value. If the clock lived in them, such a row would be
+        # re-offered on every cycle for ever.
+        tid = given_search_tender(ev_conn, 30)
+        given_items(ev_conn, tid, ["42000.00"])
+        with consulta_client(tid, status=500)() as client:
+            mark(ev_conn, refresh_one(ev_conn, client, tid, read_state(ev_conn, tid)))
+        ev_conn.execute(
+            "update tenders set next_refresh_at = now() - interval '1 minute' where id = %s",
+            (tid,),
+        )
+        with consulta_client(tid, status=500)() as client:
+            refresh_one(ev_conn, client, tid, read_state(ev_conn, tid))
+
+        assert value_of(ev_conn, tid)[5] > datetime.now(UTC) + timedelta(
+            hours=UPGRADE_TTL_HOURS - 1
+        )
+        assert tid not in due_tenders(ev_conn, limit=500)
+
+    def test_a_tender_showing_a_number_waits_far_longer_than_one_showing_none(self, ev_conn):
+        # §14.1: every rewritten row costs storage twice on Neon, and parking
+        # rewrites the row on every visit. A tender already showing a number is
+        # not urgent; one showing "Valor não informado" is.
+        unvalued = given_search_tender(ev_conn, 32)
+        valued = given_search_tender(ev_conn, 33)
+        given_items(ev_conn, valued, ["42000.00"])
+        refresh_one(ev_conn, None, unvalued, read_state(ev_conn, unvalued))
+        refresh_one(ev_conn, None, valued, read_state(ev_conn, valued))
+
+        soon = value_of(ev_conn, unvalued)[5]
+        later = value_of(ev_conn, valued)[5]
+        assert soon < later
+        assert soon < datetime.now(UTC) + timedelta(hours=REFRESH_TTL_HOURS + 1)
+        assert later > datetime.now(UTC) + timedelta(hours=UPGRADE_TTL_HOURS - 1)
 
 
 # -- the job and the sweep -------------------------------------------------

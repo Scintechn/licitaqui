@@ -162,10 +162,20 @@ def test_pncp_updated_at_falls_back_to_the_header_when_global_is_absent():
 
 @pytest.mark.parametrize(
     ("code", "confidential"),
-    [(1, False), (2, True), (3, True), ("1", False), ("3", True), (None, False)],
+    [(1, False), (2, True), (3, True), ("1", False), ("3", True), (None, None)],
 )
 def test_confidential_budget_reads_the_code_not_its_truthiness(code, confidential):
-    """1 is "Compra sem sigilo". Treating the code as a boolean inverts 83 of 95."""
+    """1 is "Compra sem sigilo". Treating the code as a boolean inverts 83 of 95.
+
+    An **absent** code is ``None``, not ``False``. This used to answer `False`,
+    which reads as "we checked and the budget is public" — and the record that
+    most often lacks the field is the `/atualizacao` period record, which simply
+    never carries it. Measured on 2026-09-22: `orcamentoSigilosoCodigo` is absent
+    from `raw` on all 108 production tenders whose period record published
+    `valorTotalEstimado: 0`, i.e. exactly the tenders most likely to *be*
+    sigiloso. Only the detail endpoint can answer, and
+    :mod:`licitaqui.tender_value` is what asks it.
+    """
     record = {**CONSULTA_RECORD, "orcamentoSigilosoCodigo": code}
     assert from_consulta(record).confidential_budget is confidential
 

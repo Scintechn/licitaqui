@@ -1100,13 +1100,58 @@ read 14.8 % of 5,965.
 
 **They agree 94.7 % of the time, not always.** Across the 777 production tenders
 holding both a positive header and items summing above zero, 736 match to the
-cent and 41 do not: 19 within 1 %, 17 between 1× and 2×, 5 at 2× or more (the
-largest 13.3×). The item sum is never *lower* — where it differs it over-counts,
-because grouped lots and ME/EPP cotas are listed beside the items they are carved
-from (one of the 41 has 283 item rows and 71 distinct descriptions). Hence the
-order above, expressed once in `items.pick_total` and shared with
-`favored_treatment` so the value on a card and the ME/EPP claim beside it can
-never come from different arithmetic.
+cent and **41 do not**. The item sum is never *lower* — where it differs it
+over-counts, because grouped lots and ME/EPP cotas are listed beside the items
+they are carved from (one of the 41 has 283 item rows and 71 distinct
+descriptions). Hence the order above, expressed once in `items.pick_total` and
+shared with `favored_treatment` so the value on a card and the ME/EPP claim
+beside it can never come from different arithmetic.
+
+**The 41 have no systematic cause.** All of them are `Pregão - Eletrônico`,
+which looks like a signal and is not: Pregão is the only modality with any
+consulta-sourced rows at all (`Dispensa` 0 of 1,133, `Concorrência - Eletrônica`
+0 of 340), so it is the only one where the two figures *can* be compared. The
+ratio is a smooth spread — 18 at 1.00, then 1.01, 1.02, 1.03, 1.06 … 1.17, with
+a short tail at 2.0, 2.6, 3.1 and 13.3 — the shape of many small over-counts,
+not of one repeated defect.
+
+### Is the item sum computed over a complete item set?
+
+A sum over a half-fetched list is plausible and wrong, and it would be shown
+under PNCP's own vocabulary. Two things answer it.
+
+**By construction:** `sync_items` materialises the whole list before it writes
+anything (`records = list(client.iter_items(...))`); a page walk that fails
+raises out of that `list()`, the job fails, and nothing is written. A partial
+set is not reachable — a failed fetch leaves *zero* items, and zero items sum to
+nothing and take no fallback.
+
+**Measured**, across all 6,123 production tenders holding items:
+`max(updated_at) - min(updated_at)` is under a minute on **6,123 of 6,123**.
+Every stored item set was written in a single pass; not one was assembled across
+two.
+
+Two checks that look like completeness tests and are **not**, recorded so nobody
+re-derives them:
+
+- the `sync_items:` marker the PNCP-404 lane added exists on **0** of the 4,625
+  value-less tenders — it is new and these rows predate it, so it cannot serve
+  as a floor today (it will, once the corpus has turned over);
+- item numbering is **not** dense: 679 of 6,123 tenders have non-contiguous
+  `numeroItem`, because agencies use catalogue numbers (one tender's single item
+  is numbered 66215, another's twenty run from 2272848) and because an amendment
+  legitimately withdraws a lot. A "numbers must be 1..N" guard would reject 11 %
+  of the corpus for being normal.
+
+### A published zero is a figure, not an empty cell
+
+108 production rows hold `estimated_value = 0.00` because that is what PNCP
+published. The item sum **never** overwrites them: `APPLY_ITEM_SUM_SQL` fills
+`is null` only, so our arithmetic cannot replace PNCP's answer. They are
+resolved by the detail fetch instead — the `/atualizacao` period record that
+wrote them carries no `orcamentoSigilosoCodigo` at all (measured: absent on all
+108) while the detail endpoint does, so the refresh sets `confidential_budget`
+and the card can say "orçamento sigiloso" rather than invent a total.
 
 `VALUE_SOURCE_ITEMS` is recorded on every row that took the fallback, in an
 `events` marker (`tender_value:<id>`), so the minority stays findable and the
@@ -1135,8 +1180,21 @@ true and is the diagnostic the whole investigation turned on.
   backfill: the same job, run repeatedly.
 - **the backoff** — `tenders.next_refresh_at`, a column §6.1 already defines and
   indexes and which nothing else read, holds when a tender may be looked at
-  again: §3.2's 6 h header TTL for one we could not reach, 30 days for one PNCP
-  answered `410 GONE` for. No migration; the column was already there.
+  again. No migration; the column was already there. **Three horizons**, and the
+  spread is a §14.1 storage decision as much as a freshness one, because parking
+  rewrites the row on every visit and on Neon every rewrite costs storage twice:
+
+  | state | wait | why |
+  |---|---|---|
+  | no value at all | **6 h** (§3.2 header TTL) | the bug's population; chase it |
+  | valued, but from the item sum | **7 days** | already showing a number that is right to the cent ~95 % of the time. At 6 h, 4,600 rows would churn ~30 MB/day |
+  | `410 GONE` | **30 days** | the contratação was excluded; there is nothing to fetch |
+
+  A tender is "done" when its marker says `consulta` or `gone` — **not** when it
+  merely has a value, because `items.roll_up` fills one from the item sum. A
+  "has a value" test would call an unchecked number finished, and on every new
+  tender, since the fallback enqueues `sync_items` and the refresh together and
+  does not order them.
 
 ### 410 and 301
 
@@ -1176,10 +1234,9 @@ and `--pause-every` gives autovacuum room during a long run.
 
 ### Storage, and the thing that actually needs attention
 
-A column-only pass rewrites one heap tuple per row and adds no TOAST: `tenders`
-heap is 9.6 MB for 5,965 rows (~1.6 KB each), so a full 5,188-row pass churns
-roughly 8 MB of dead tuples that autovacuum reclaims. No implementation avoids
-that; an UPDATE is an UPDATE.
+Required by §14.1 before any backfill runs at scale. A column-only pass rewrites
+one heap tuple per row and adds **no TOAST**, because `raw` — which holds most
+of the row's bytes — is not touched and keeps its existing TOAST pointer.
 
 Worth recording while the numbers are fresh, because it is the real constraint and
 not this job's to fix: **`tender_items` is 231 MB of the 293 MB database, and

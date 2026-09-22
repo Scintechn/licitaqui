@@ -65,6 +65,12 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
         "sync_awards",
         "sweep_titles",
         "weekly_digest",
+        # `sweep_tender_values` is on the clock for the same reason
+        # `sweep_titles` is, and a sharper one: the per-tender follow-up that
+        # would otherwise cover it is enqueued by the search fallback, which
+        # fires exactly when `/api/consulta` is down — so that follow-up
+        # usually fails, and only a sweep comes back for the row.
+        "sweep_tender_values",
     ]
     assert handlers.registered_kinds()  # importing handlers is what completes the registry
     assert {entry.kind for entry in DEFAULT_SCHEDULE} <= set(REGISTRY.kinds())

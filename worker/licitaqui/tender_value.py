@@ -47,6 +47,41 @@ wins whenever it answers**, and the item sum is what a tender gets instead of
 for a minority we can name and re-fetch later. :data:`VALUE_SOURCE_ITEMS` is
 recorded on every row that took the fallback so that minority stays findable.
 
+The 41 do **not** cluster in a way that points at a systematic cause. All of
+them are `Pregão - Eletrônico`, which looks like a signal and is not: Pregão is
+the only modality with any consulta-sourced rows at all (`Dispensa` 0 of 1,133,
+`Concorrência - Eletrônica` 0 of 340), so it is the only modality where the two
+figures *can* be compared. Within the 41 the ratio is a smooth spread — 18 at
+1.00, then 1.01, 1.02, 1.03, 1.06 … 1.17, with a short tail at 2.0, 2.6, 3.1 and
+13.3 — which is the shape of many small over-counts, not of one repeated defect.
+
+## Is the item sum computed over a *complete* set of items?
+
+The worry is real — a sum over a half-fetched item list is plausible and wrong,
+and it would be shown under PNCP's own vocabulary. Two things answer it, and the
+second is the one that settles it.
+
+**By construction**, `sync_items` materialises the whole list before it writes
+anything (``records = list(client.iter_items(...))``); a page walk that fails
+raises out of that `list()`, the job fails, and **nothing is written**. A
+partial set is therefore not reachable: a failed fetch leaves zero items, and
+zero items sum to nothing and take no fallback.
+
+**Measured**, on 2026-09-22 across all 6,123 production tenders that hold items:
+``max(updated_at) - min(updated_at)`` is under a minute on **6,123 of 6,123** —
+every stored item set was written in a single pass. Not one was assembled across
+two.
+
+Two checks that look like completeness tests and are **not**, recorded so nobody
+re-derives them: the `sync_items:` marker introduced by the PNCP-404 lane exists
+on **0** of the 4,625 value-less tenders (it is new, and these rows predate it),
+so it cannot be used as a floor today; and item numbering is **not** dense —
+679 of 6,123 tenders have non-contiguous `numeroItem`, because agencies use
+catalogue numbers (one tender's single item is numbered 66215, another's twenty
+run from 2272848) and because an amendment legitimately withdraws a lot. A
+"numbers must be 1..N" guard would have rejected 11 % of the corpus for being
+normal.
+
 ## Why this writes columns and not `raw`
 
 The obvious implementation — map the detail record with
@@ -112,8 +147,21 @@ VALUE_SOURCE_NONE = "none"
 #: PNCP answered `410`: the contratação was excluded. Nothing to re-read.
 VALUE_SOURCE_GONE = "gone"
 
-#: §3.2's header TTL. How long before a tender we could not reach is tried again.
+#: §3.2's header TTL. How long before a tender **with no value at all** is
+#: tried again. This is the bug's population and it is worth chasing hard.
 REFRESH_TTL_HOURS = 6
+
+#: How long before a tender that *has* a number, but not PNCP's own, is tried
+#: again. Deliberately a week rather than six hours, and the reason is §14.1:
+#: on Neon's copy-on-write storage **every rewritten row costs storage twice**
+#: (the new version plus restore history), and `PARK_SQL` rewrites the row on
+#: every visit whether or not anything was learned. At six hours, 4,600
+#: item-valued rows would churn ~18,400 row versions a day — about 30 MB/day at
+#: the ~1.6 KB `tenders` heap row — on a project that filled up two days before
+#: founders week. At a week it is ~660 a day, and the tender is already showing
+#: a number that is right to the cent about 95 % of the time. Urgency belongs to
+#: the rows showing nothing.
+UPGRADE_TTL_HOURS = 24 * 7
 
 #: A withdrawn contratação is never coming back, but `410` is also what a
 #: confused PNCP could answer, so this parks the row rather than retiring it.
@@ -148,6 +196,24 @@ class ValueState:
     estimated_value: Decimal | None = None
     item_sum: Decimal | None = None
     item_count: int = 0
+    #: What the marker says the stored value came from, or ``None`` when no
+    #: marker exists — which is not the same as "no value". See :attr:`settled`.
+    source: str | None = None
+
+    @property
+    def settled(self) -> bool:
+        """Whether this tender's value is PNCP's own and needs no further work.
+
+        **Only a consulta-sourced value settles anything.** A stored number with
+        no marker is not evidence that anyone checked: `items.roll_up` fills
+        `estimated_value` from the item sum whenever it is missing, so a tender
+        whose `sync_items` ran before its refresh job would hold an
+        over-counting sum *and* look finished. That is the hole the obvious
+        `has_value` check leaves open, and it is reachable on every new tender,
+        because the search fallback enqueues both jobs at once and does not
+        order them.
+        """
+        return self.has_value and self.source == VALUE_SOURCE_CONSULTA
 
     @property
     def has_value(self) -> bool:
@@ -165,23 +231,29 @@ class ValueState:
 STATE_SQL = """
 select t.estimated_value,
        (select sum(i.total_value) from tender_items i where i.tender_id = t.id),
-       (select count(*) from tender_items i where i.tender_id = t.id)
+       (select count(*) from tender_items i where i.tender_id = t.id),
+       (select e.props ->> 'value_source'
+          from events e where e.name = %(event)s
+         order by e.id desc limit 1)
   from tenders t
  where t.id = %(tender_id)s
 """
 
 
 def read_state(conn: psycopg.Connection, tender_id: str) -> ValueState:
-    """What we hold for this tender: the stored value and the item sum."""
-    row = conn.execute(STATE_SQL, {"tender_id": tender_id}).fetchone()
+    """What we hold for this tender: the stored value, the item sum, the source."""
+    row = conn.execute(
+        STATE_SQL, {"tender_id": tender_id, "event": value_event_name(tender_id)}
+    ).fetchone()
     if row is None:
         return ValueState(exists=False)
-    estimated_value, item_sum, item_count = row
+    estimated_value, item_sum, item_count, source = row
     return ValueState(
         exists=True,
         estimated_value=estimated_value,
         item_sum=item_sum,
         item_count=int(item_count or 0),
+        source=source,
     )
 
 
@@ -215,23 +287,39 @@ update tenders set
     proposals_close_at  = coalesce(%(proposals_close_at)s, proposals_close_at),
     bidding_system_url  = coalesce(%(bidding_system_url)s, bidding_system_url),
     pncp_updated_at     = greatest(pncp_updated_at, %(pncp_updated_at)s),
-    next_refresh_at     = %(next_refresh_at)s,
     updated_at          = now()
  where id = %(tender_id)s
 """
 
-#: The fallback write. Only ever fills a gap — the `where` makes that a property
-#: of the statement rather than of the caller, so no ordering mistake upstream
-#: can let an item sum overwrite a value Consulta gave us.
+#: The fallback write. Only ever fills a **NULL** — the `where` makes that a
+#: property of the statement rather than of the caller, so no ordering mistake
+#: upstream can let our arithmetic overwrite PNCP's published figure.
+#:
+#: `is null`, deliberately not `<= 0`. A stored `0.00` is not an empty cell: it
+#: is what PNCP published, on 108 production tenders, and the rule is that the
+#: number we show is PNCP's. Those rows are resolved by the **detail** fetch
+#: instead — the `/atualizacao` period record that wrote them carries no
+#: ``orcamentoSigilosoCodigo`` at all (measured: it is absent on all 108), while
+#: the detail endpoint does, so the refresh can mark them
+#: `confidential_budget` and let the card say "orçamento sigiloso" rather than
+#: invent a total. Writing an item sum over a published zero would replace a
+#: true statement with a plausible one.
 APPLY_ITEM_SUM_SQL = """
 update tenders
    set estimated_value = %(estimated_value)s,
-       next_refresh_at = %(next_refresh_at)s,
        updated_at      = now()
  where id = %(tender_id)s
-   and (estimated_value is null or estimated_value <= 0)
+   and estimated_value is null
 """
 
+#: **Every** path ends here, which is what keeps the sweep from spinning.
+#:
+#: `next_refresh_at` is deliberately not set by the two writes above. Both are
+#: conditional — `APPLY_ITEM_SUM_SQL` matches nothing once the tender already
+#: has a value — so a re-offered row would have updated zero rows, left the
+#: clock untouched, and been offered again on the very next cycle, forever. The
+#: clock is not part of "what we learned"; it is part of "we looked", and it
+#: moves whether or not anything was written.
 PARK_SQL = """
 update tenders set next_refresh_at = %(next_refresh_at)s, updated_at = now()
  where id = %(tender_id)s
@@ -300,7 +388,7 @@ def mark(conn: psycopg.Connection, outcome: Outcome) -> None:
     )
 
 
-def _detail_params(tender: Tender, *, ttl_hours: int) -> dict[str, Any]:
+def _detail_params(tender: Tender) -> dict[str, Any]:
     """The columns the Consulta detail can fill.
 
     Mapped by :func:`licitaqui.tenders.from_consulta` rather than by reading the
@@ -319,7 +407,6 @@ def _detail_params(tender: Tender, *, ttl_hours: int) -> dict[str, Any]:
         "proposals_close_at": tender.proposals_close_at,
         "bidding_system_url": tender.bidding_system_url,
         "pncp_updated_at": tender.pncp_updated_at,
-        "next_refresh_at": _in_hours(ttl_hours),
     }
 
 
@@ -340,9 +427,14 @@ def refresh_one(
     in while `/api/consulta` is down, and it is the only mode that can help at
     all when it is.
 
-    Writes nothing and reports :data:`VALUE_SOURCE_NONE` when neither source
-    has a positive number. A tender whose items are all sigiloso sums to zero,
-    and zero is not a value (:attr:`ValueState.has_value`).
+    Reports :data:`VALUE_SOURCE_NONE` and writes **no value** when neither
+    source has a positive number — a tender whose items are all sigiloso sums to
+    zero, and zero is not a value (:attr:`ValueState.has_value`). It still moves
+    `next_refresh_at`, because that records *we looked*, not *we learned*
+    (:data:`PARK_SQL`).
+
+    Marking is the caller's job, so the backfill and the job can count the same
+    outcome without this writing an `events` row per attempt.
     """
     item_sum = state.item_sum if state.item_sum and state.item_sum > 0 else None
     header: Decimal | None = None
@@ -373,7 +465,7 @@ def refresh_one(
             tender = from_consulta(record)
             raw_header = tender.estimated_value
             header = None if raw_header is None else Decimal(str(raw_header))
-            params = _detail_params(tender, ttl_hours=REFRESH_TTL_HOURS)
+            params = _detail_params(tender)
             if header is None or header <= 0:
                 # The detail answered but carries no usable number — a sigiloso
                 # or unfilled budget. Keep everything else it gave us (`srp`,
@@ -383,37 +475,36 @@ def refresh_one(
             conn.execute(APPLY_DETAIL_SQL, params)
 
     agrees = _agreement(header, item_sum)
-    # One expression decides which number wins, shared with the `favored_treatment`
-    # the card prints beside it, so the value and the ME/EPP claim can never come
-    # from different arithmetic.
-    value = pick_total(header, item_sum)
+
+    # The item sum may only fill an **empty** cell. A tender PNCP published a
+    # zero for already carries PNCP's answer, and replacing it with ours would
+    # be exactly the substitution Sci's rule forbids — see APPLY_ITEM_SUM_SQL.
+    # `state` is the value as it was *before* APPLY_DETAIL_SQL ran, which is
+    # what makes this readable: a detail fetch that supplied a number lands in
+    # `header` and wins through `pick_total` anyway.
+    fallback = item_sum if state.estimated_value is None else None
+
+    # One expression decides which number wins, shared with the
+    # `favored_treatment` the card prints beside it, so the value and the ME/EPP
+    # claim can never come from different arithmetic.
+    value = pick_total(header, fallback)
+
+    if value is not None and value != header:
+        conn.execute(APPLY_ITEM_SUM_SQL, {"tender_id": tender_id, "estimated_value": value})
 
     if value is None:
-        conn.execute(
-            PARK_SQL, {"tender_id": tender_id, "next_refresh_at": _in_hours(REFRESH_TTL_HOURS)}
-        )
-        return Outcome(
-            tender_id,
-            VALUE_SOURCE_NONE,
-            header_value=header,
-            item_sum=item_sum,
-            item_count=state.item_count,
-            agrees=agrees,
-        )
+        source = VALUE_SOURCE_NONE
+    elif value == header:
+        source = VALUE_SOURCE_CONSULTA
+    else:
+        source = VALUE_SOURCE_ITEMS
 
-    source = VALUE_SOURCE_CONSULTA if value == header else VALUE_SOURCE_ITEMS
-    if source == VALUE_SOURCE_ITEMS:
-        # `APPLY_DETAIL_SQL` has already run when Consulta answered without a
-        # number, so this only ever fills the gap it left — and its own `where`
-        # guarantees that independently of the order things happen here.
-        conn.execute(
-            APPLY_ITEM_SUM_SQL,
-            {
-                "tender_id": tender_id,
-                "estimated_value": value,
-                "next_refresh_at": _in_hours(REFRESH_TTL_HOURS),
-            },
-        )
+    # Always, on every path: see PARK_SQL. A tender that now shows a number is
+    # no longer urgent even when that number is ours rather than PNCP's, so it
+    # waits a week for its upgrade instead of six hours (§14.1, UPGRADE_TTL_HOURS).
+    horizon = REFRESH_TTL_HOURS if source == VALUE_SOURCE_NONE else UPGRADE_TTL_HOURS
+    conn.execute(PARK_SQL, {"tender_id": tender_id, "next_refresh_at": _in_hours(horizon)})
+
     return Outcome(
         tender_id,
         source,
@@ -462,9 +553,11 @@ def refresh_tender_value(ctx: JobContext) -> None:
             "refresh_tender_value: unknown tender", extra={"tender_id": tender_id}
         )
         return
-    if state.has_value and not force:
+    if state.settled and not force:
+        # `settled`, not `has_value`: a stored number with no consulta marker is
+        # a stopgap, not an answer (see :attr:`ValueState.settled`).
         ctx.log.info(
-            "refresh_tender_value: already valued",
+            "refresh_tender_value: already valued from PNCP's own header",
             extra={"tender_id": tender_id, "value": str(state.estimated_value)},
         )
         return
@@ -489,19 +582,64 @@ def refresh_tender_value(ctx: JobContext) -> None:
 #: Oldest first, so a backlog drains in a stable order rather than re-offering
 #: the same rows every cycle. `next_refresh_at is null` is every row that has
 #: never been looked at, which after this ships is the whole 5,080.
-DUE_SQL = """
+#:
+#: The tiebreak is **latest deadline first**, which is not the obvious choice and
+#: is deliberate: a tender open for another three months will be shown to far
+#: more people than one closing tomorrow, so fixing it first buys more. It
+#: matters less than it looks — at :data:`SWEEP_BATCH` per half-hourly cycle the
+#: whole backlog drains in well under a day — so this is a tie-break, not a
+#: priority scheme, and it is stable, which is the property the sweep needs.
+DUE_SQL = f"""
 select t.id
   from tenders t
- where (t.estimated_value is null or t.estimated_value <= 0)
-   and (t.next_refresh_at is null or t.next_refresh_at <= now())
+  left join lateral (
+      select e.props ->> 'value_source' as source
+        from events e
+       where e.name = %(prefix)s || t.id
+       order by e.id desc
+       limit 1
+  ) m on true
+ where (t.next_refresh_at is null or t.next_refresh_at <= now())
+   and (m.source is distinct from '{VALUE_SOURCE_CONSULTA}')
+   and (m.source is distinct from '{VALUE_SOURCE_GONE}')
  order by t.next_refresh_at nulls first, t.proposals_close_at desc nulls last
  limit %(limit)s
 """
 
 
 def due_tenders(conn: psycopg.Connection, limit: int = SWEEP_BATCH) -> list[str]:
-    """Tenders with no value that may be looked at again now."""
-    return [row[0] for row in conn.execute(DUE_SQL, {"limit": limit}).fetchall()]
+    """Tenders that should be looked at again now.
+
+    The condition is stated as **"not yet settled"** rather than "has no value",
+    and the difference is the whole point. A tender is done when its marker says
+    :data:`VALUE_SOURCE_CONSULTA` — we have PNCP's own number — or
+    :data:`VALUE_SOURCE_GONE` — there is no number to have. Everything else is
+    still owed a look:
+
+    * no value at all — the 5,080 the bug is about;
+    * valued from the item sum, which over-counts on about 5 % of tenders;
+    * **valued with no marker at all**, which is the case that is easy to miss:
+      `items.roll_up` fills `estimated_value` from the item sum whenever it is
+      missing, so a tender whose `sync_items` ran before its refresh job has a
+      number nobody checked. A "has no value" test would call that finished.
+
+    All three empty themselves — once Consulta answers, the marker says
+    ``consulta`` and the row stops being offered — and each cycle is bounded by
+    :data:`SWEEP_BATCH`. That matters at the ~53 % success rate measured on
+    2026-09-22: roughly half of each cycle's attempts land, so a backlog
+    converges over a day or so rather than in one pass.
+
+    `is distinct from` rather than `<>`, because the common case is a NULL
+    marker and `<>` would drop every one of those rows on the floor.
+
+    The marker is read through `events_name_created_idx (name, created_at)`; the
+    prefix is passed in rather than written in SQL so it has exactly one
+    definition (:func:`value_event_name`).
+    """
+    rows = conn.execute(
+        DUE_SQL, {"limit": limit, "prefix": VALUE_EVENT_PREFIX}
+    ).fetchall()
+    return [row[0] for row in rows]
 
 
 @REGISTRY.job("sweep_tender_values")

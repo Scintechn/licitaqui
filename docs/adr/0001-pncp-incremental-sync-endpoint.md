@@ -317,9 +317,22 @@ answers.
 
 The hourly probe it requests has still not been run for a full day, and the
 evidence from this work says it should be. During roughly three hours on
-2026-09-22 the detail endpoint was **flapping, not down**: 5 × HTTP 200 (~0.8 s),
-1 × HTTP 502 and 5 × read timeout over 11 consecutive minute-spaced probes, while
-`/api/search/` and `/api/pncp/v1/.../itens` answered every request in under 2 s.
-A ~45 % success rate is a third failure mode this ADR has not characterised —
-neither the clean outage of §2 nor the healthy stretch of §1 — and it is the one
-that makes a per-tender backfill slow rather than impossible.
+2026-09-22 the detail endpoint was **flapping, not down**: over 19 consecutive
+minute-spaced probes, **10 × HTTP 200 (~0.8 s), 2 × HTTP 502, 1 × HTTP 503 and
+6 × read timeout** — a **53 % success rate** — while `/api/search/` and
+`/api/pncp/v1/.../itens` answered every request in under 2 s throughout.
+
+That is a third failure mode this ADR has not characterised: neither the clean
+outage of §2 nor the healthy stretch of §1. It matters for two reasons.
+
+- **It makes a per-tender backfill slow rather than impossible.** Half the calls
+  land, and the ones that do not cost 30 s of timeout each. The design absorbs
+  it — the queue's backoff covers a miss and the sweep returns for the row — but
+  a full pass is paced by PNCP, not by us.
+- **It is invisible to a breaker tuned for outages.** Two consecutive failures
+  open the circuit for 15 minutes, and at a 53 % success rate two consecutive
+  failures arrive roughly every four requests. A job that needs many consulta
+  calls will spend most of its time circuit-broken even though half the service's
+  answers are fine. Nothing here changes the breaker — it is doing what §7.2
+  specifies — but whoever re-measures should decide whether a flapping service
+  wants a different rule from a dead one.

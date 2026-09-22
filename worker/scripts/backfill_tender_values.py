@@ -79,11 +79,21 @@ MIN_HEADROOM_MB = 20
 #: plan change should not need a code change.
 DEFAULT_LIMIT_MB = 512
 
-DUE_SQL = """
+#: Same population as `tender_value.due_tenders`, minus the backoff when asked:
+#: a tender is owed a look until its marker says we have PNCP's own number (or
+#: that there is none to have). "Has a value" is not the test — `items.roll_up`
+#: fills one from the item sum, so a row can hold an unchecked number.
+DUE_SQL = f"""
 select t.id
   from tenders t
- where (t.estimated_value is null or t.estimated_value <= 0)
-   and (%(ignore_backoff)s or t.next_refresh_at is null or t.next_refresh_at <= now())
+  left join lateral (
+      select e.props ->> 'value_source' as source
+        from events e where e.name = %(prefix)s || t.id
+       order by e.id desc limit 1
+  ) m on true
+ where (%(ignore_backoff)s or t.next_refresh_at is null or t.next_refresh_at <= now())
+   and m.source is distinct from '{tender_value.VALUE_SOURCE_CONSULTA}'
+   and m.source is distinct from '{tender_value.VALUE_SOURCE_GONE}'
  order by t.proposals_close_at desc nulls last, t.id
  limit %(limit)s
 """
@@ -210,7 +220,12 @@ def main(argv: list[str] | None = None) -> int:
         tender_ids = [
             row[0]
             for row in conn.execute(
-                DUE_SQL, {"limit": args.limit, "ignore_backoff": args.ignore_backoff}
+                DUE_SQL,
+                {
+                    "limit": args.limit,
+                    "ignore_backoff": args.ignore_backoff,
+                    "prefix": tender_value.VALUE_EVENT_PREFIX,
+                },
             ).fetchall()
         ]
         print(f"{len(tender_ids)} tenders to value" + (" (dry run)" if args.dry_run else ""))
@@ -226,8 +241,15 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 if args.dry_run:
                     # Decide without writing: the item sum is already known and
-                    # a PNCP call would be the only other input.
-                    counts["would_value_from_items" if state.item_sum else "no_source"] += 1
+                    # a PNCP call would be the only other input. The item sum
+                    # only ever fills a NULL, so a published zero counts as
+                    # needing Consulta, not as valuable from arithmetic.
+                    if state.estimated_value is None and state.item_sum:
+                        counts["would_value_from_items"] += 1
+                    elif state.has_value:
+                        counts["needs_consulta_to_confirm"] += 1
+                    else:
+                        counts["needs_consulta_only"] += 1
                     continue
                 try:
                     outcome = tender_value.refresh_one(conn, client, tender_id, state)
