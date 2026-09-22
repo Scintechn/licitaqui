@@ -19,6 +19,24 @@ It is a sibling of :mod:`licitaqui.sync_tenders`, not a second framework: same
 queue owns retries" contract (§7.2). Registering the kind is also what switches
 B2's follow-up enqueue on — that code already asks the registry which kinds have
 a handler.
+
+## When PNCP has no items at all
+
+Two things used to make that state unreachable, and between them they kept jobs
+going round forever against tenders that would never yield an item.
+
+**A 404 was a hard failure.** It is not: it is ambiguous, and
+:mod:`licitaqui.absence` resolves it — an empty list when the contratação is
+still published, a withdrawal when Consulta answers 410, and a *regression*
+(:class:`licitaqui.absence.DataVanished`, nothing written, nothing deleted) when
+we already hold items for the tender.
+
+**Zero items had no "we looked" state.** `tender_items` has a row-level
+`updated_at` and no rows to carry it, so a tender with no items read as stale on
+every sweep. :func:`licitaqui.items.mark_synced` writes the marker B4 already
+writes for the file list, and :func:`read_state` reads it — so "synced, empty"
+is a real 12 h state, distinct from "never synced", and the job stops being
+re-fetched on every cycle.
 """
 
 from __future__ import annotations
@@ -29,8 +47,16 @@ from typing import Any
 
 import psycopg
 
-from .items import TenderItem, classify_all, roll_up, upsert_items
-from .pncp import PncpClient
+from . import absence
+from .items import (
+    TenderItem,
+    classify_all,
+    mark_synced,
+    roll_up,
+    sync_event_name,
+    upsert_items,
+)
+from .pncp import PncpClient, PncpNotFound
 from .registry import REGISTRY, JobContext
 from .tenders import split_control_number
 
@@ -59,16 +85,25 @@ select t.estimated_value,
        t.object,
        count(i.tender_id) as item_count,
        case
-         when count(i.tender_id) = 0                              then 'no_items'
-         when min(i.updated_at) < now() - interval '{ITEMS_TTL_HOURS} hours' then 'ttl'
+         when count(i.tender_id) > 0
+              and min(i.updated_at) < now() - interval '{ITEMS_TTL_HOURS} hours'
+                                                                  then 'ttl'
+         when count(i.tender_id) > 0
+              and t.pncp_updated_at is not null
+              and min(i.updated_at) < t.pncp_updated_at            then 'tender_changed'
+         when count(i.tender_id) > 0                               then 'fresh'
+         when m.synced_at is null                                  then 'never'
+         when m.synced_at < now() - interval '{ITEMS_TTL_HOURS} hours'
+                                                                   then 'ttl'
          when t.pncp_updated_at is not null
-              and min(i.updated_at) < t.pncp_updated_at           then 'tender_changed'
+              and m.synced_at < t.pncp_updated_at                  then 'tender_changed'
          else 'fresh'
        end as reason
   from tenders t
   left join tender_items i on i.tender_id = t.id
- where t.id = %s
- group by t.id
+ cross join (select max(created_at) as synced_at from events where name = %(event)s) m
+ where t.id = %(tender_id)s
+ group by t.id, m.synced_at
 """
 
 
@@ -78,8 +113,18 @@ def read_state(conn: psycopg.Connection, tender_id: str) -> TenderState:
     ``min(updated_at)`` rather than ``max``: a fetch that died half way through
     leaves some rows fresh and some old, and the old ones are the truth about
     whether the set is complete.
+
+    **Zero rows is not the same question.** A tender with no `tender_items` has
+    no `updated_at` to age, so freshness there comes from the marker
+    :func:`licitaqui.items.mark_synced` writes — *when did we last read PNCP*,
+    not *when did a row change*. Without it a tender that genuinely has no items
+    (or whose items endpoint 404s) reads as stale forever and is re-fetched on
+    every sweep. `max()` over no rows still returns a row holding NULL, so the
+    cross join cannot hide the tender.
     """
-    row = conn.execute(STATE_SQL, (tender_id,)).fetchone()
+    row = conn.execute(
+        STATE_SQL, {"tender_id": tender_id, "event": sync_event_name(tender_id)}
+    ).fetchone()
     if row is None:
         return TenderState(exists=False)
     estimated_value, object_text, item_count, reason = row
@@ -129,8 +174,32 @@ def sync_items(ctx: JobContext) -> None:
         return
 
     cnpj, year, sequence = split_control_number(tender_id)
+    absent: absence.Absence | None = None
     with build_client() as client:
-        records = list(client.iter_items(cnpj, year, sequence))
+        try:
+            records = list(client.iter_items(cnpj, year, sequence))
+        except PncpNotFound as exc:
+            # Ambiguous by itself; :mod:`licitaqui.absence` has the rule and
+            # makes at most one more request to settle it.
+            absent = absence.classify(
+                client,
+                tender_id=tender_id,
+                cnpj=cnpj,
+                year=year,
+                sequence=sequence,
+                stored_rows=state.item_count,
+                error=exc,
+            )
+            records = []
+
+    if absent is not None and absent.is_regression:
+        # Nothing has been written. Fail loudly rather than pruning rows PNCP
+        # has merely stopped admitting to.
+        ctx.log.error(
+            "sync_items: stored items vanished from PNCP",
+            extra={"tender_id": tender_id, **absent.log_fields()},
+        )
+        raise absence.DataVanished(absent.detail)
 
     items: list[TenderItem] = classify_all(tender_id, records)
     upsert_items(ctx.conn, tender_id, items)
@@ -141,18 +210,28 @@ def sync_items(ctx: JobContext) -> None:
         estimated_value=state.estimated_value,
         object_text=state.object_text,
     )
+    # The marker is what stops the next sweep re-enqueuing a tender whose item
+    # list is legitimately empty — see :func:`read_state`.
+    marker = {"items": len(items), "removed": max(state.item_count - len(items), 0)}
+    if absent is not None:
+        marker |= absent.log_fields()
+    mark_synced(ctx.conn, tender_id, marker)
 
-    ctx.log.info(
-        "sync_items finished",
-        extra={
-            "tender_id": tender_id,
-            "reason": state.reason if not force else "forced",
-            "fetched": len(records),
-            "stored": len(items),
-            "removed": max(state.item_count - len(items), 0),
-            **_summary_extra(summary),
-        },
-    )
+    extra = {
+        "tender_id": tender_id,
+        "reason": state.reason if not force else "forced",
+        "fetched": len(records),
+        "stored": len(items),
+        "removed": max(state.item_count - len(items), 0),
+        **_summary_extra(summary),
+        **(absent.log_fields() if absent is not None else {}),
+    }
+    if absent is None:
+        ctx.log.info("sync_items finished", extra=extra)
+    else:
+        # Worth a warning: this tender is on the Radar with no items at all,
+        # and one of the reasons that can be is that it no longer exists.
+        ctx.log.warning("sync_items: PNCP has no items for this tender", extra=extra)
 
 
 def _summary_extra(summary: dict[str, Any]) -> dict[str, Any]:

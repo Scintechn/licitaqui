@@ -16,7 +16,7 @@ import pytest
 from licitaqui import breaker as breaker_module
 from licitaqui import pncp
 from licitaqui.breaker import CircuitOpen, get_breaker
-from licitaqui.pncp import PncpClient, PncpError, _Throttle
+from licitaqui.pncp import PncpClient, PncpError, PncpGone, PncpNotFound, _Throttle
 
 DAY = date(2026, 9, 17)
 
@@ -423,3 +423,156 @@ def test_the_items_breaker_is_not_the_consulta_one():
     assert get_breaker(pncp.BREAKER_CONSULTA).state == "closed"
     with pytest.raises(CircuitOpen):
         list(instance.iter_items("12345678000199", 2026, 7))
+
+
+# -- what a status the service *answered* with may do to the breaker -------
+#
+# The rule: the breaker measures whether PNCP is up. Only a transport failure
+# or a 5xx counts. Everything else — a 4xx, a 410, a 301 — is an answer, and an
+# answer means the service is up however unusable the answer is.
+#
+# It used to record a success and then raise *inside* the guard, so the guard's
+# own `except` counted the 4xx as a failure anyway. Among 4xx alone that was
+# invisible (the success reset the counter first, so it never reached two), and
+# `test_a_4xx_raises_but_leaves_the_circuit_closed` passed throughout. It was
+# not invisible in production: on 2026-09-21 jobs 2286 and 2287 ended
+# `CircuitOpen` on `pncp-itens` and `pncp-arquivos` after 404s on a withdrawn
+# tender, because a 404 left the endpoint one failure short of open and the
+# next genuine timeout finished the job — for every tender, not just that one.
+
+
+def test_a_404_is_its_own_exception_type():
+    """So `sync_items`/`sync_files` can tell it from an outage (see
+    :mod:`licitaqui.absence`), while `except PncpError` still catches it."""
+    with pytest.raises(PncpNotFound) as raised:
+        list(
+            client(lambda r: httpx.Response(404, text="Compra não encontrada.")).iter_items(
+                "12345678000199", 2026, 7
+            )
+        )
+
+    assert isinstance(raised.value, PncpError)
+    assert raised.value.status_code == 404
+
+
+def test_a_404_leaves_no_failure_behind_on_the_breaker():
+    """The regression test for the production bug: a single 404 followed by one
+    genuine failure must leave the circuit closed, because one genuine failure
+    is not two."""
+    answers = iter([404, 503])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(next(answers))
+
+    instance = client(handler)
+    for _ in range(2):
+        with pytest.raises(PncpError):
+            list(instance.iter_items("12345678000199", 2026, 7))
+
+    assert get_breaker(pncp.BREAKER_ITEMS).state == "closed"
+
+
+def test_a_404_does_not_stop_the_next_tender_from_being_read():
+    """The blast radius that made this worth fixing: one withdrawn tender must
+    not take the endpoint down for every other tender."""
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if "/compras/2026/7/" in request.url.path:
+            return httpx.Response(404)
+        return httpx.Response(200, json=items_page(2))
+
+    instance = client(handler)
+    for _ in range(3):
+        with pytest.raises(PncpNotFound):
+            list(instance.iter_items("12345678000199", 2026, 7))
+
+    assert len(list(instance.iter_items("12345678000199", 2026, 8))) == 2
+    assert get_breaker(pncp.BREAKER_ITEMS).state == "closed"
+
+
+def test_a_5xx_is_still_a_failure_for_the_breaker():
+    """The control: the fix must not disarm the breaker for a real outage."""
+    instance = client(lambda r: httpx.Response(500))
+    for _ in range(2):
+        with pytest.raises(PncpError):
+            list(instance.iter_items("12345678000199", 2026, 7))
+
+    assert get_breaker(pncp.BREAKER_ITEMS).state == "open"
+
+
+def test_a_timeout_is_still_a_failure_for_the_breaker():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    instance = client(handler)
+    for _ in range(2):
+        with pytest.raises(PncpError):
+            list(instance.iter_items("12345678000199", 2026, 7))
+
+    assert get_breaker(pncp.BREAKER_ITEMS).state == "open"
+
+
+# -- "is this contratação still on PNCP?" ---------------------------------
+
+
+def contratacao(status: int, **kwargs):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/consulta/v1/orgaos/12345678000199/compras/2026/7"
+        if status == 200:
+            return httpx.Response(200, json={"numeroControlePNCP": "…"})
+        return httpx.Response(status, text="…")
+
+    return client(handler, **kwargs)
+
+
+def test_consulta_answers_410_for_a_contratacao_the_agency_excluded():
+    """Measured 2026-09-22 against the three tenders whose jobs were stuck:
+    `410 GONE — "A contratação informada foi excluída e não pode ser consultada."`"""
+    assert contratacao(410).contratacao_state("12345678000199", 2026, 7) == pncp.CONTRATACAO_GONE
+
+
+def test_consulta_answers_200_for_a_contratacao_that_is_still_published():
+    assert contratacao(200).contratacao_state("12345678000199", 2026, 7) == pncp.CONTRATACAO_PRESENT
+
+
+def test_a_consulta_that_cannot_be_asked_says_unknown_rather_than_guessing():
+    assert contratacao(500).contratacao_state("12345678000199", 2026, 7) == pncp.CONTRATACAO_UNKNOWN
+
+
+def test_an_open_consulta_circuit_says_unknown_without_a_request():
+    """ADR-0001 §4 puts the whole Consulta service behind one breaker. When it
+    is open this question is simply unanswerable, and must not pretend."""
+    get_breaker(pncp.BREAKER_CONSULTA).record_failure()
+    get_breaker(pncp.BREAKER_CONSULTA).record_failure()
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, json={})
+
+    state = client(handler).contratacao_state("12345678000199", 2026, 7)
+
+    assert state == pncp.CONTRATACAO_UNKNOWN
+    assert calls == []
+
+
+def test_neither_a_410_nor_a_404_can_open_the_consulta_circuit():
+    """Which is what makes the diagnostic affordable: it can never be the thing
+    that opens the circuit ADR-0001's sweep depends on."""
+    for status in (410, 404):
+        breaker_module.reset_all()
+        instance = contratacao(status)
+        for _ in range(4):
+            instance.contratacao_state("12345678000199", 2026, 7)
+        assert get_breaker(pncp.BREAKER_CONSULTA).state == "closed"
+
+
+def test_a_410_is_its_own_exception_type():
+    with pytest.raises(PncpGone) as raised:
+        client(lambda r: httpx.Response(410, text="foi excluída")).fetch_files(
+            "12345678000199", 2026, 7
+        )
+
+    assert raised.value.status_code == 410

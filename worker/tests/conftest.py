@@ -1125,3 +1125,109 @@ def _delete_e1_rows(dsn: str) -> None:
             "delete from tenders where agency_cnpj like '99%%' "
             f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
         )
+
+
+# -- PNCP-404: the ambiguous-404 suite's own database -----------------------
+#
+# Same shape and the same reasons as every block above: a `Dsn` wrapper so
+# pytest cannot render the credentials into a traceback, and deletes scoped to
+# rows *this run* created — `PN_CNPJ` carries `RUN_ID`, never a task constant,
+# so two concurrent runs of this suite write under different fictitious
+# agencies and neither cleanup can touch the other's fixtures.
+#
+# This suite drives `sync_items` and `sync_files` together, because the rule it
+# tests is shared between them, so its cleanup covers the union of B3's and
+# B4's: `tender_items` and `tender_files` cascade from `tenders`, and both sync
+# markers in `events` are keyed by a name carrying the tender id, which carries
+# the run id.
+#
+# It has no database variable of its own yet and falls back to B3's, whose
+# schema it needs in full. Sharing a database with another suite is safe here
+# for the reason stated above and nowhere else: every row is keyed by a CNPJ
+# that no other suite can generate, in this run or any other.
+PN_TEST_DSN_VARS = ("TEST_DATABASE_URL_PNCP", "TEST_DATABASE_URL_B3")
+
+#: `99` + this run's id as digits + a trailing `7`, so it is distinct from
+#: B3's (`99` + 12 digits), and from FH's and DL's (trailing `5`) inside the
+#: same run. Not a valid CNPJ and matching nothing in PNCP.
+PN_CNPJ = f"99{int(RUN_ID, 16):011d}7"[:14]
+
+#: Tender ids have to look like a real `numeroControlePNCP` — `split_control_number`
+#: parses them — so the run id rides in the CNPJ and this prefix is what cleanup
+#: matches.
+PN_TENDER_PREFIX = f"{PN_CNPJ}-"
+
+#: The job kinds this suite can create, named here so cleanup cannot drift.
+PN_JOB_KINDS = ("sync_items", "sync_files")
+
+
+def pn_tender_id(sequence: int = 1, year: int = 2026) -> str:
+    """A run-scoped id shaped like `numeroControlePNCP`: `<cnpj>-1-<seq>/<year>`."""
+    return f"{PN_TENDER_PREFIX}1-{sequence:06d}/{year}"
+
+
+@pytest.fixture(scope="session")
+def pn_dsn() -> str:
+    for var in PN_TEST_DSN_VARS:
+        for root in _candidate_roots():
+            dsn = config.resolve_secret(var, root=root)
+            if dsn:
+                return Dsn(dsn)
+    pytest.skip(
+        f"none of {', '.join(PN_TEST_DSN_VARS)} is configured; skipping PNCP-404 database tests"
+    )
+
+
+@pytest.fixture
+def pn_clean_dsn(pn_dsn: str) -> Iterator[str]:
+    """The suite's test DSN, with this run's rows deleted before and after the test."""
+    _delete_pn_rows(pn_dsn)
+    try:
+        yield pn_dsn
+    finally:
+        _delete_pn_rows(pn_dsn)
+
+
+@pytest.fixture
+def pn_connect(pn_clean_dsn: str):
+    from licitaqui import db
+
+    return db.factory(pn_clean_dsn, application_name=f"licitaqui-pncp404-test-{os.getpid()}")
+
+
+@pytest.fixture
+def pn_conn(pn_connect) -> Iterator[psycopg.Connection]:
+    with pn_connect() as connection:
+        yield connection
+
+
+def _delete_pn_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates.
+
+    `tender_items` and `tender_files` go with the tender (`on delete cascade`).
+    The two sync markers in `events` and the `jobs` rows have no foreign key, so
+    they are deleted by the same run-scoped prefixes the code builds them from.
+    The cross-run statements are deliberately narrow: the fictitious `99…`
+    agency family belongs to these suites alone, and
+    `CROSS_RUN_SWEEP_HOURS` is far longer than the suite takes, so they can only
+    ever catch a crashed run.
+    """
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where agency_cnpj = %s", (PN_CNPJ,))
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' "
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+        )
+        for prefix in ("sync_items:", "sync_files:"):
+            conn.execute(
+                "delete from events where starts_with(name, %s)",
+                (f"{prefix}{PN_TENDER_PREFIX}",),
+            )
+            conn.execute(
+                f"delete from events where starts_with(name, '{prefix}99') "
+                f"  and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+            )
+        conn.execute(
+            "delete from jobs where kind = any(%s) and starts_with(key, %s)",
+            (list(PN_JOB_KINDS), PN_TENDER_PREFIX),
+        )
