@@ -1,0 +1,111 @@
+# Persona journeys (spec §13, `apps/web/e2e/`) — Playwright, browser, one job.
+#
+# ## Why this is a second workflow and not a step in ci-web.yml
+#
+# `ci-web.yml` is the fast gate: lint, typecheck, Vitest, build, no browser and
+# no secrets, green on a fork PR. Adding a browser to it would make every PR —
+# a docs typo included — wait for a Chromium download and a `next start`. So
+# the journeys get their own job, with their own trigger and their own
+# artifacts, and `pnpm test` stays what it was.
+#
+# ## Which project runs here, and why only that one
+#
+# `journeys` only. It is hermetic: every `/api/**` answer comes from
+# `apps/web/e2e/fixtures/radar-api.ts`, so the job needs no database, no
+# worker, no PNCP and no secrets. That matters more than usual right now —
+# PNCP opened five circuits on the morning of 2026-09-23, and a merge gate that
+# goes red because PNCP has weather is a gate everybody learns to ignore.
+#
+# The `accounts` project is deliberately **not** here. It needs a published
+# deployment, a session cookie for a test account and, for Seu Jorge, a real
+# inbox. Those are run by hand against a deployment — see the doc comments in
+# `apps/web/e2e/accounts/`.
+#
+# ## Advisory until it has a week of green
+#
+# This job is new on the eve of founders week. Leave it non-required in branch
+# protection until it has run green on a week of PRs; then make it required.
+# A retry here is instrumentation, not treatment: Playwright reports a test
+# that only passed on the second attempt as flaky, and one of those is a
+# root-cause ticket, not a pass.
+name: ci-e2e
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/ci-e2e.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/ci-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-e2e-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    name: journeys (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Chromium only: the journeys assert our own screens, not browser
+      # differences, and three engines would triple the job for no new signal.
+      - name: Install Chromium
+        run: pnpm test:e2e:install
+
+      # The server is started by `playwright.config.ts` (`next build` then
+      # `next start`), with no DATABASE_URL: no request in this project ever
+      # reaches a route handler.
+      # `pnpm --filter … exec` and not `pnpm test:e2e -- --project=journeys`:
+      # the `--` arguments are swallowed by pnpm's filter layer, so that
+      # spelling silently runs **both** projects. It happens to pass — the
+      # `accounts` tests skip themselves — which is exactly why it is worth
+      # spelling out: a command that does not do what it says is a gate that
+      # will one day run something nobody meant to run in CI.
+      - name: Run the journeys
+        run: pnpm --filter @licitaqui/web exec playwright test --project=journeys
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      # Trace, screenshot, video and the HTML report for every failure. The
+      # rule this enforces: a red run is debuggable from the artifact alone,
+      # with no "cannot reproduce" closures.
+      - name: Upload the failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-journeys
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7

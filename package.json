@@ -12,6 +12,8 @@
     "lint": "pnpm --filter @licitaqui/web lint",
     "typecheck": "pnpm --filter @licitaqui/web typecheck",
     "test": "pnpm --filter @licitaqui/web test",
+    "test:e2e": "pnpm --filter @licitaqui/web test:e2e",
+    "test:e2e:install": "pnpm --filter @licitaqui/web test:e2e:install",
     "db:migrate": "worker/.venv/bin/python db/migrate.py",
     "db:seed": "worker/.venv/bin/python db/seed.py"
   }
