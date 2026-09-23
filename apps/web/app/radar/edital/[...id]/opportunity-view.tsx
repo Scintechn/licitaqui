@@ -35,9 +35,9 @@ import {
   deadlineFull,
   deadlineTall,
   meEppSummary,
-  money,
   tenderTitle,
 } from '@/lib/radar/format'
+import { tenderBudget } from '@/lib/radar/headline'
 import { mayShowUrgency, statusChipLabel, statusNotice } from '@/lib/radar/tender-status'
 import { TenderTags } from '../../tender-card'
 import { TenderStatusBanner } from '../../tender-status-banner'
@@ -597,9 +597,12 @@ export function OpportunityView({
   const statusChip = statusChipLabel(tender)
   const days = daysUntil(tender.proposalsCloseAt, now)
   const why = reasons(tender, now)
-  // `null` means there is no figure to set in Archivo — either the agency
-  // declared the budget confidential, or it published none at all.
-  const value = tender.confidentialBudget ? null : money(tender.estimatedValue)
+  // The three states of a tender's budget, decided once in `headline.ts` so
+  // this screen and the Radar card cannot say different things about the same
+  // row. `budget.value === null` means there is no figure to set in Archivo —
+  // the agency declared the budget confidential, published none at all, or
+  // published a zero, which is the same absence wearing a number.
+  const budget = tenderBudget(tender)
   const age = ageParts(freshness?.ageSeconds)
   // `null` for an id this app cannot parse: no link at all beats a link to a
   // page that does not exist, on the screen whose point is checking us.
@@ -681,13 +684,11 @@ export function OpportunityView({
                   figure the slot collapses to a quiet line and the deadline
                   block directly above — already the card's other half — stays
                   the biggest thing on the screen. */}
-              {value === null ? (
-                <span className="text-meta text-muted">
-                  {tender.confidentialBudget ? copy.card.confidential : copy.card.noValue}
-                </span>
+              {budget.value === null ? (
+                <span className="text-meta text-muted">{budget.note}</span>
               ) : (
                 <span className="font-display text-[28px] leading-none font-semibold tabular-nums">
-                  {value}
+                  {budget.value}
                 </span>
               )}
               {tender.itemCount === null ? null : (

@@ -4,6 +4,7 @@ import { format, messages } from '@/lib/messages'
 import type { SegmentFit, TenderDetail } from '@/lib/radar/contract'
 import { ACCOUNT_HREF } from '@/lib/routes'
 import { TENDER_ITEMS_FIXTURE } from '@/lib/radar/items-fixture'
+import { tenderBudget } from '@/lib/radar/headline'
 import { OpportunityView, matchKind, reasons, type OpportunityViewProps } from './opportunity-view'
 
 const NOW = new Date('2026-09-17T15:00:00.000Z')
@@ -272,6 +273,31 @@ describe('OpportunityView · the value slot', () => {
     const out = render({ tender: { ...TENDER, confidentialBudget: true } })
     expect(out).toContain(copy.card.confidential)
     expect(out).not.toContain('R$ 48.196')
+  })
+
+  it('reads a published zero as "não informado", never as R$ 0,00', () => {
+    // What Sci found on production, at this screen's VALOR ESTIMADO box.
+    const out = render({ tender: { ...TENDER, estimatedValue: '0.00' } })
+    expect(out).toContain(copy.card.noValue)
+    expect(out).not.toContain(copy.card.confidential)
+    expect(out).not.toMatch(/R\$\s*0\b/)
+  })
+
+  it('says the same three things the Radar card says about the same row', () => {
+    // One decision, in `tenderBudget`. If the two screens ever disagree about
+    // a row, a reader who taps a card sees the list contradicted by the page
+    // it opened.
+    for (const over of [
+      { estimatedValue: '48196.00' },
+      { estimatedValue: null },
+      { estimatedValue: '0.00' },
+      { confidentialBudget: true },
+    ]) {
+      const tender = { ...TENDER, ...over }
+      const { value, note } = tenderBudget(tender)
+      const out = render({ tender })
+      expect(out).toContain(value ?? note ?? '')
+    }
   })
 })
 

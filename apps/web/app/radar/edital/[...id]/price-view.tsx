@@ -15,7 +15,7 @@ import { format, messages } from '@/lib/messages'
 import { priceHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
-import { trimObject } from '@/lib/radar/format'
+import { moneyExact, trimObject } from '@/lib/radar/format'
 import { TenderStatusBanner } from '../../tender-status-banner'
 
 /**
@@ -40,13 +40,19 @@ import { TenderStatusBanner } from '../../tender-status-banner'
 const copy = messages.radar
 const page = copy.price
 
-/** `R$ 3,74` — an item's unit price, centavos and all, unlike a tender total. */
-const MONEY = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
-
+/**
+ * `R$ 3,74` — an item's unit price, centavos and all, unlike a tender total.
+ *
+ * This is the **same figure** the Itens tab prints in its "Valor unitário
+ * estimado" column, off the same `tender_items.unit_estimated_value`, so it is
+ * now the same function. It used to be a second `Intl.NumberFormat` declared
+ * here, which is how this screen came to print `R$ 0,00` on the tenders Sci
+ * found while the fix for the items table would have sailed past it. One
+ * formatter, one rule: a zero is not a price (`notAPrice` in
+ * `lib/radar/format.ts`), so it falls through to `page.noEstimate` below.
+ */
 export function unitPrice(value: string | null | undefined): string | null {
-  if (value === null || value === undefined || value === '') return null
-  const amount = Number(value)
-  return Number.isFinite(amount) ? MONEY.format(amount) : null
+  return moneyExact(value)
 }
 
 /** The item the screen is about: `?item=N`, or the first one the tender has. */
