@@ -1272,7 +1272,12 @@ two diagnoses on 2026-09-22/23:
 
 - the `integration (Neon)` job **cancelled at 30m18s** against a 30-minute
   timeout — the same compute under the same pressure, read as a test failure
-  because `gh pr checks` prints a cancelled job as `fail`;
+  because `gh pr checks` prints a cancelled job as `fail`. Two days later the
+  same job produced a **real** `fail` at **25m35s** (one genuine assertion
+  error, 1,018 passed). The CLI renders both identically, and the shorter one
+  was the real failure — so duration tells you nothing either. Read the job's
+  `conclusion` instead: `gh api repos/:owner/:repo/actions/jobs/:id --jq
+  .conclusion` distinguishes `cancelled` from `failure`;
 - two `E`s in `sync_items`/`pncp_404`/`sync_awards` during the value backfill,
   which did **not** reproduce once it was paused.
 
