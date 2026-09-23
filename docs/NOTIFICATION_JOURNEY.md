@@ -1,10 +1,10 @@
 # The notification journey — how a person knows where they stand
 
-**v0.1 · 2026-09-23 · English.** Three journeys that end in a message — magic-link sign-in, Telegram linking, the weekly digest — mapped state by state, with what the user sees **in the app** and **in the channel** at each one. Written the afternoon before founders week, from four defects found in production on 2026-09-23.
+**v1.0 · 2026-09-23 · English.** Three journeys that end in a message — magic-link sign-in, Telegram linking, the weekly digest — mapped state by state, with what the user sees **in the app** and **in the channel** at each one. Written the afternoon before founders week, from four defects found in production on 2026-09-23.
 
 Read this before touching `/conta/criar`, `/conta/alertas`, `apps/web/lib/auth/`, `apps/web/app/api/telegram/webhook/`, `worker/licitaqui/telegram_alerts.py` or `worker/templates/`.
 
-Status: **draft**. Every Portuguese string in §7 needs Sci's approval before it ships (legal brief §5).
+Status: **reviewed by Sci on 2026-09-23**. Every decision he took is recorded in §10 and every string in §7 is marked approved — **do not re-open either**; if something here looks wrong, it changed after the review and the change is what needs the argument.
 
 ---
 
@@ -65,10 +65,21 @@ A blank `users.name` raises the reason named after the *company*. `users.name` i
 
 **This is not confined to the digest.** Every Telegram template that greets somebody needs `{{nome}}`: `start-linked`, `start-already-linked`, `weekly-digest`, `weekly-digest-empty`. `build_reply_context` raises the same `no_company` for the *linking confirmation* (`telegram_alerts.py:686-689`). Fixing the payload in defect 2 does not deliver a confirmation to a nameless account; it just moves the silence one step later.
 
-**Two more things this mapping turned up, neither of them reported:**
+**One more thing this mapping turned up, not reported:** the magic-link e-mail is **Auth.js's built-in English template**. No `sendVerificationRequest` is overridden (`apps/web/lib/auth/index.ts:68`), so `@auth/core` sends subject `Sign in to ${host}` — *"Sign in to www.licitaquiapp.com.br"* — with an English body and no reply-to. Brief §1 requires a reply-to of `contato@`. The product's very first message to a Brazilian user is in English, from a sender they do not recognise, and the link lives **24 hours** (`maxAge: 24 * 60 * 60`), which no screen tells anyone. Sci's verdict: *"phishing-shaped"* — §10.3.
 
-- **The magic-link e-mail is Auth.js's built-in English template.** No `sendVerificationRequest` is overridden (`apps/web/lib/auth/index.ts:68`), so `@auth/core` sends subject `Sign in to ${host}` — *"Sign in to www.licitaquiapp.com.br"* — with an English body and no reply-to. Brief §1 requires a reply-to of `contato@`. The product's very first message to a Brazilian user is in English and unbranded, and the link lives **24 hours** (`maxAge: 24 * 60 * 60`), which no screen tells anyone.
-- **Nothing sends a Telegram message unless `TELEGRAM_DELIVERY=send`.** Unset is `dry_run` (`worker/licitaqui/telegram.py:182-190`), and a dry run is deliberately counted as *completed*: it consumes the weekly quota and writes `alert_deliveries` rows, so the tenders it did not send are excluded from next week's digest. A dry-run founders week and a delivered founders week look identical in every number except `telegram.sent` vs `telegram.dry_run`. **Confirm the variable before Thursday.**
+### 1.1 `TELEGRAM_DELIVERY` — not an item, a go/no-go
+
+This one is separated from the defects above because it is not a defect and not a backlog entry. It is the switch that decides whether founders week happened.
+
+Nothing reaches Telegram unless `TELEGRAM_DELIVERY=send`. Unset is `dry_run` (`worker/licitaqui/telegram.py:182-190`), and a dry run is deliberately counted as *completed* (`Delivery.completed`, `telegram_alerts.py:479-501`). Sci, on what that costs:
+
+> *"If it is unset on Thursday, nobody receives anything, the system records success, it burns every user's weekly quota, and it writes `alert_deliveries` — so the tenders it did not send are excluded from the following week's digest. Week one is silent and week two is degraded, with nothing anywhere looking wrong."*
+
+The second half is the part worth naming, because it puts this in a different category from the rest of the document. **A silent failure that also poisons the next cycle is not the same animal as one that merely loses a message.** Everything else here costs one notification; this one costs the notification, the quota that would have allowed a retry, and the three tenders that will now never be offered again — `alert_deliveries` is the ledger that stops the digest repeating itself, and a dry run writes to it in good faith. There is no recovery path in the product for a week that was recorded as delivered.
+
+**Verified set on 2026-09-23** — `TELEGRAM_DELIVERY=send`, alongside `WHATSAPP_DELIVERY=send`. Founders week is go.
+
+**And the rule that follows, which is Sci's:** *"a variable that decides whether a launch happened belongs on a screen."* The delivery mode goes on `/admin` (§9). Checking it by hand once is not a control; it is a thing someone remembered to do.
 
 ## 2. The rule that follows
 
@@ -83,6 +94,28 @@ A corollary, from defects 3 and 4: **a notification nobody can audit is a notifi
 
 And one prohibition, from defect 3: **never invent a name for a nameless user.** Not "prezado cliente", not "olá!", not the local part of the e-mail address, not the company name standing in for a person. Either the greeting carries a real name or the greeting has no name in it. The mechanism that gets a name onto an account is the fix lane's decision; the copy rule is not negotiable.
 
+### 2.1 Which of these to fix first — time to discover, not severity
+
+Sci's ruling on the order, and it is a better organising idea than the one this document was first written with, so it is recorded here to outlive the week:
+
+> *"Severity is the wrong axis; time-to-discover is the right one. Magic link: the person retries in 30 seconds and recovers alone. Digest: the person believes it works for weeks and cannot find out. Same observability defect, costs three orders of magnitude apart."*
+
+Severity asks how bad one occurrence is. Time-to-discover asks how long the user goes on being wrong about the state of the world — and that is the quantity this document is actually about, because an unobservable state is precisely one the user cannot end. A loud failure is self-limiting: the person sees it, retries, and either succeeds or gives up knowing they gave up. A silent one accumulates.
+
+**The order, worst first:**
+
+| Rank | State | How long before the user can know | Why it ranks here |
+|---|---|---|---|
+| 1 | **C10** — digest skipped for a missing name | **Never.** No message, no screen, no difference from a quiet week | The user has no way to distinguish "nothing matched" from "you have been unreachable since you signed up". C4 exists to answer that question and never fires for them |
+| 2 | **C5** — the whole digest in dry run | **Never**, and it compounds (§1.1) | Same blindness, multiplied by every user at once, and it consumes the quota and the ledger on its way past |
+| 3 | **B5 / B6** — the linking confirmation never arrives | Weeks — until the first digest that also does not arrive | The app actively asserts the opposite (*"Telegram conectado"*), so the user's belief is not merely unconfirmed, it is wrong and was put there by us |
+| 4 | **A1** — no "Link enviado" card | **~30 seconds.** They submit again | Annoying, self-correcting, and the person stays in control the whole time |
+| 5 | **The English e-mail** | Immediate | Ugly and trust-damaging on sight, which is exactly why it is not the worst: nothing about it is hidden |
+
+Note what this reorders. The English e-mail and the broken confirmation card are the two a person would *notice first in a demo*, and they rank last. The digest skip is invisible in every demo that has ever been run and ranks first. **That inversion is the point:** a defect's visibility to us and its cost to the user run in opposite directions, and severity-ordering quietly optimises for the former.
+
+The document keeps its journey-by-journey shape below, because that is how someone implementing or testing one flow needs to read it. This is the order to fix in, not the order to read in.
+
 ## 3. How to read the tables
 
 Each journey below is a table of states. The four columns are:
@@ -94,7 +127,7 @@ Each journey below is a table of states. The four columns are:
 
 A cell that says **nothing** is a finding, not a description. Rows marked 🔴 are broken today, 🟡 are correct but unobservable, and unmarked rows work.
 
-Every string named in a table is a `messages/pt-BR.json` key or a `worker/templates/` id that exists today. Strings that do not exist yet are drafted in §7 under a code (`MJ-`, `TG-`, `DG-`) and **all of them wait on Sci**.
+Every string named in a table is a `messages/pt-BR.json` key or a `worker/templates/` id that exists today. Strings that do not exist yet are drafted in §7 under a code (`MJ-`, `TG-`, `DG-`) and are **approved by Sci as of 2026-09-23** — §7 marks each one.
 
 ## 4. Journey A — Sign in by magic link
 
@@ -138,13 +171,13 @@ E3 already shipped the app-side waiting states (`telegram.handoff.*`, merged in 
 | **B8 · Already linked** | `userForChat` finds the chat | *"Telegram conectado"* | `start-already-linked` | — |
 | **B9 · Chat belongs to another account** 🟡 | `telegram_links.chat_id` is **unique** (`0001_initial.sql:253`); the link cannot be written | the generic `telegram.errors.generic` | `start-token-invalid`, which is not the reason | Unlink on the other account — which they may not know they have |
 | **B10 · Paused by `/pausar`** 🔴 | `alerts.active = false` — **the pause works**; the `stop.md` reply dies in the same `ValueError` as B5 | `telegram.screen.paused`, if they go and look | **nothing** — the bot appears to ignore the command it obeyed | none; typing `/pausar` again changes nothing and says nothing |
-| **B11 · Unlinked from the app, or the bot blocked** | `unlinkChat()` deletes the row; a blocked send calls `pause()` | `telegram.screen.paused` / the connect card | nothing, in both cases | `telegram.screen.resume`, or reconnect |
+| **B11 · Unlinked from the app, or the bot blocked** | `unlinkChat()` deletes the row; a blocked send calls `pause()` | `telegram.screen.paused` / the connect card — **`TG-3` adds the reason for the blocked case (§10.7)** | nothing, in both cases | `telegram.screen.resume`, or reconnect |
 
 **The rule this journey breaks:** B5 and B6 are the app claiming success in one channel for something that only happened in the other. `"Telegram conectado"` is true about `telegram_links` and false about the thing the person cares about, which is whether the bot talks to them.
 
-**The smallest fix that closes both:** the app must not call it connected until the confirmation was actually delivered — and must say so plainly when it was not (§7, `TG-2`). The delivery is already recorded: `telegram.sent` with `template = start-linked`. The page has something to read; it just does not read it.
+**The smallest fix that closes both:** the app must not call it connected until the confirmation was actually delivered — and must say so plainly when it was not (§7, `TG-2`; **ruled and approved, §10.4**). The delivery is already recorded: `telegram.sent` with `template = start-linked`. The page has something to read; it just does not read it.
 
-**And B6 needs the greeting to stop requiring a name** (§7, `TG-1`). Which mechanism supplies the name is the fix lane's call; what the greeting must not do is invent one.
+**And B6 needs the greeting to stop requiring a name** (§7, `TG-1`; **decided, §10.1 — the placeholder comes out permanently**). What the greeting must never do is invent one.
 
 ## 6. Journey C — The weekly digest
 
@@ -157,15 +190,15 @@ E3 already shipped the app-side waiting states (`telegram.handoff.*`, merged in 
 | **C2 · Swept** | `jobs` row, key `digest:<user>:<ISO week>` | nothing | — | — |
 | **C3 · Sent** | `telegram.sent` + `alert_sent`; `alert_deliveries` rows | nothing | `weekly-digest` — up to 3 tenders | — |
 | **C4 · Sent, empty week** | same, template `weekly-digest-empty` | nothing | *"Esta semana não apareceu nenhum edital aberto…"* — **correct: the bot proves it is alive** | — |
-| **C5 · Dry run** 🔴 | `telegram.dry_run`; **quota consumed and `alert_deliveries` written** | nothing | **nothing** | none. Indistinguishable from C3 to everyone except an admin reading event names |
+| **C5 · Dry run** 🔴 | `telegram.dry_run`; **quota consumed and `alert_deliveries` written** | nothing | **nothing** | none. Indistinguishable from C3 to everyone except an admin reading event names. **Ranked 2nd in §2.1; go/no-go in §1.1** |
 | **C6 · `no_recipient`** 🟡 | `RECIPIENT_SQL` returns no row | nothing | nothing | none |
 | **C7 · `not_linked`** 🟡 | no `chat_id` at send time — unlinked between sweep and send | `telegram.connect.*` | nothing | Reconnect |
 | **C8 · `paused`** 🟡 | `alerts.active` false at send time | `telegram.screen.paused` — **this one the app does show** | nothing | `telegram.screen.resume` |
 | **C9 · `no_company`, real** 🟡 | no CNPJ on the account | `telegram.screen.needsCnpj` | nothing | Add the CNPJ |
-| **C10 · `no_company`, actually no name (defects 3 + 4)** 🔴 | `users.name` null → same reason string | **nothing — the app says everything is fine** | nothing, **every week, forever** | none |
+| **C10 · `no_company`, actually no name (defects 3 + 4)** 🔴 | `users.name` null → same reason string | **nothing — the app says everything is fine** | nothing, **every week, forever** | none. **The worst state in this document — §2.1 ranks it 1st, and §10.1 decides it** |
 | **C11 · `quota_reached`** 🟡 | Básico is 1/week from `plan_limits` | nothing | nothing | — (correct behaviour, invisible) |
 | **C12 · `not_in_plan`** 🟡 | an explicit `alert` row of 0 | nothing | nothing | Upgrade — if they knew |
-| **C13 · Failed send** 🟡 | `telegram.failed` with the API reason; retried if retryable; **blocked → `pause()`** | `telegram.screen.paused`, with no reason | nothing | Reconnect from the site |
+| **C13 · Failed send** 🟡 | `telegram.failed` with the API reason; retried if retryable; **blocked → `pause()`** | `telegram.screen.paused`, with no reason — **§10.7 rules it must say why (`TG-3`)** | nothing, correctly: the channel is what failed | Reconnect from the site |
 
 **What is right here and should be copied:** every one of C5–C13 writes an `events` row with a stable reason string (`telegram_alerts.py:903-919`). That is the only reason defect 3 was diagnosable. Journeys A and B have nothing like it.
 
@@ -175,20 +208,20 @@ E3 already shipped the app-side waiting states (`telegram.handoff.*`, merged in 
 
 **And `no_company` must stop naming the wrong field.** That is the fix lane's change, not this document's, but the registry note is: the reason string reaches `events.props` and a dashboard groups by it, so a new reason is additive — add it, leave the history alone.
 
-## 7. Strings — drafts for Sci
+## 7. Strings — **approved by Sci on 2026-09-23**
 
-**All of these need Sci's approval (legal brief §5).** They are product copy, not legal wording. The framing rules in brief §2.2 bind every one: no promise of delivery we cannot keep — agencies publish late, PNCP flaps, Telegram can block a bot. The precedent for the shape is `TENDER_STATUS_AND_WATCH.md` §2: *"quando o órgão publica no PNCP"*, never *"avisamos sempre que…"*.
+Every string below is approved as written and may ship. They are product copy, not legal wording (brief §5), and the framing rules in brief §2.2 bind every one: no promise of delivery we cannot keep — agencies publish late, PNCP flaps, Telegram can block a bot. The precedent for the shape is `TENDER_STATUS_AND_WATCH.md` §2: *"quando o órgão publica no PNCP"*, never *"avisamos sempre que…"*.
+
+Where a choice was offered, the approved option is marked **✅ approved** and the rejected one is kept so nobody re-proposes it. **Do not re-open these.**
 
 ### The magic-link e-mail (new — today it is Auth.js's English default)
 
-**`MJ-1` — subject.** Two options, because the choice is genuinely open:
+**`MJ-1` — subject.** Option **a** approved.
 
-| Option | String | Trade-off |
+| Option | String | Verdict |
 |---|---|---|
-| a | `Seu link de acesso à LicitaQui` | Says what is inside. Reads like every other transactional e-mail, which is good for trust and bad for the inbox list |
-| b | `Entrar na LicitaQui` | Shorter, matches the button they just pressed. Slightly more phishing-shaped out of context |
-
-Recommendation: **a**.
+| a | `Seu link de acesso à LicitaQui` | **✅ approved 2026-09-23** — says what is inside |
+| b | `Entrar na LicitaQui` | Not taken: more phishing-shaped out of context, which is the exact failure mode being fixed |
 
 **`MJ-2` — body.** Plain text, no images, and it must name the site that sent it:
 
@@ -204,29 +237,33 @@ Recommendation: **a**.
 >
 > Dúvida ou problema: contato@licitaquiapp.com.br
 
-Reply-to must be `contato@` (brief §1). It is not set today.
+**✅ approved 2026-09-23, as drafted.** Reply-to must be `contato@` (brief §1) — not set today, and part of the same change. **Ships before Thursday**: Sci's reason is that *"the first message the product ever sends is currently in English, from an unknown sender, phishing-shaped"* (§10.3).
 
 **`MJ-3` — `account.signIn.sentBody`, revised** so the card answers the three questions the current one leaves open (where, how long, which device):
 
 > Enviamos um link de acesso para {email}. Ele vale por 24 horas e entra na sua conta no aparelho em que você abrir. Se não chegar em alguns minutos, olhe o spam.
+
+**✅ approved 2026-09-23.**
 
 **`MJ-4` — expired or already used** (new keys; today both land on the generic error):
 
 > **`account.signIn.expiredTitle`** · Este link não vale mais
 > **`account.signIn.expiredBody`** · Links de acesso valem por 24 horas e funcionam uma vez só. Peça outro aqui embaixo — leva alguns segundos.
 
-**`MJ-5` — `account.signIn.resend`** · `Enviar outro link`
+**✅ approved 2026-09-23.**
+
+**`MJ-5` — `account.signIn.resend`** · `Enviar outro link` — **✅ approved 2026-09-23.**
 
 ### Telegram
 
 **`TG-1` — the greeting without a name.** The rule is §2's prohibition; the copy question is what replaces `{{nome}}`. Two options:
 
-| Option | Opening line of `start-linked` | Trade-off |
+| Option | Opening line of `start-linked` | Verdict |
 |---|---|---|
-| a | `Pronto! Sua conta da LicitaQui está ligada a esta conversa.` | Works for everybody, ships today, loses the personal touch E0 wrote for |
-| b | Keep `Pronto, {{nome}}.` and ask for the name once, on first sign-in | Keeps the warmth; adds a screen and a decision to founders week |
+| a | `Pronto! Sua conta da LicitaQui está ligada a esta conversa.` | **✅ approved 2026-09-23 — permanently, not just for this week** |
+| b | Keep `Pronto, {{nome}}.` and ask for the name once, on first sign-in | **Rejected.** A name field at sign-in is friction at the highest-drop-off moment in the product. See §10.1 — and note option b is *moot*, not merely declined: the name arrives by another route |
 
-Recommendation: **a for tomorrow, b later if Sci wants it.** The same applies to `weekly-digest`, `weekly-digest-empty` and `start-already-linked`, which carry the same `{{nome}}`. Note `{{nome_empresa}}` already has a fallback that cannot be blank — `company_label()` falls back to the formatted CNPJ (`telegram_alerts.py:245-263`). The name has no such fallback, and must not be given a fabricated one.
+**No `{{nome}}` in any template, and no name field at sign-in.** The same applies to `weekly-digest`, `weekly-digest-empty` and `start-already-linked`, which carry the same `{{nome}}`. Note `{{nome_empresa}}` already has a fallback that cannot be blank — `company_label()` falls back to the formatted CNPJ (`telegram_alerts.py:245-263`). The name has no such fallback, and must not be given a fabricated one.
 
 **`TG-2` — the app admitting the confirmation did not arrive.** New keys on `/conta/alertas`:
 
@@ -234,7 +271,13 @@ Recommendation: **a for tomorrow, b later if Sci wants it.** The same applies to
 > **`telegram.connected.confirmDone`** · Tudo certo: a confirmação chegou na sua conversa com o {bot}.
 > **`telegram.connected.confirmFailed`** · A conexão está feita, mas a mensagem de confirmação não chegou ao Telegram. Os avisos podem não chegar também. Toque em "{recheck}" ou fale com a gente em contato@licitaquiapp.com.br.
 
-`confirmFailed` is the rule of §2 in one string: Telegram is what is broken, so the web page is where it gets said.
+**✅ approved 2026-09-23, as drafted — and shipping even on launch eve.** Sci: *"Claiming success in the channel that is not the one being set up is the defect this whole document is about."* `confirmFailed` is the rule of §2 in one string: Telegram is what is broken, so the web page is where it gets said.
+
+**`TG-3` — the bot was blocked or the chat deleted.** Sci ruled (§10.7) that the auto-pause must say why, **on `/conta/alertas`, reusing `confirmFailed`'s shape, and with no e-mail about it**. The wording follows TG-2's approved pattern:
+
+> **`telegram.screen.pausedBlocked`** · Paramos os avisos porque o robô não consegue mais falar com você no Telegram — normalmente é porque a conversa foi apagada ou o robô foi bloqueado. Reabra a conversa e conecte de novo aqui.
+
+*The shape, the channel and the no-e-mail rule are Sci's ruling; this exact sentence is the one string in §7 he has not read. It follows an approved pattern, so it is not a re-open — but if one string here gets a second look, it is this one.*
 
 ### The digest
 
@@ -245,15 +288,21 @@ Recommendation: **a for tomorrow, b later if Sci wants it.** The same applies to
 > **`telegram.screen.lastQuota`** · Você já recebeu o aviso desta semana. No plano gratuito é 1 por semana.
 > **`telegram.screen.lastBlocked`** · Não conseguimos montar o seu aviso desta semana. Fale com a gente em contato@licitaquiapp.com.br e a gente resolve.
 
-`lastBlocked` is deliberately vague about the cause: the causes it covers (`no_recipient`, a missing name) are ours, not the user's, and telling them to fix something they cannot fix is worse than telling them to write to us. `needsCnpj` and `paused` already exist for the two causes they *can* fix.
+**✅ approved 2026-09-23, all four lines as drafted.** `lastBlocked` is deliberately vague about the cause: the causes it covers (`no_recipient`, a missing name) are ours, not the user's, and telling them to fix something they cannot fix is worse than telling them to write to us. `needsCnpj` and `paused` already exist for the two causes they *can* fix.
 
-### One existing string to review under §2.2
+### `telegram.connect.body` — changed, and the reasoning was overruled
 
-`telegram.connect.body` — *"Uma vez por semana, o robô da LicitaQui manda até 3 editais abertos que combinam com o que a sua empresa faz."* This is a schedule promise, and `weekly-digest-empty` does make it broadly true. It still reads as a guarantee of delivery through a channel a third party controls. A softer variant, if Sci wants one:
+**✅ approved 2026-09-23.** The new string:
 
 > Toda segunda de manhã o robô manda aqui até 3 editais abertos que combinam com o que a sua empresa faz.
 
-Naming the day is a fact about our schedule; "uma vez por semana" sounds like a commitment about their inbox. Sci's call — this is a flag, not a change.
+replacing *"Uma vez por semana, o robô da LicitaQui manda até 3 editais abertos…"*.
+
+This document originally offered the variant as the *more cautious* option under §2.2. **Sci overruled that reasoning, and his is better:**
+
+> Naming the day is better for the user, not less cautious, because **a concrete expectation is what lets someone notice that something broke.** "Uma vez por semana" is vague enough for silence to pass unnoticed for a month.
+
+That is the whole document's argument turned on its own copy, and it is right. An expectation a person can check — *Monday morning* — converts a silent failure into one they can report; a vague one is indistinguishable from an unlucky week, which is exactly the trap C10 sets. Where §2.2 bites is a promise about **the world** we do not control ("avisamos sempre que um edital é suspenso" — the agency decides when it publishes). Monday morning is a claim about **our own schedule**, which we do control, so the caution was misapplied. No remaining objection.
 
 ## 8. What we would not build before Thursday
 
@@ -262,7 +311,7 @@ A simple journey that ships tomorrow beats a complete one that does not. Everyth
 | Not building | Why, and when it comes back |
 |---|---|
 | Resend webhooks for bounces and complaints | A new endpoint, a new table and a new failure mode, the week of the launch. Until then a bounce is invisible — accepted. Revisit when e-mail carries billing (F4, M5), where silence is a contractual problem |
-| Open tracking on the magic-link e-mail | Pixel tracking is a privacy-policy change (privacy §9 processor list). Not worth it to learn something the sign-in event already tells us |
+| Open tracking on the magic-link e-mail | Pixel tracking is a privacy-policy change (privacy §9 processor list). Not worth it to learn something the sign-in event already tells us. Note the contrast with §10.6: a **URL parameter** on a digest link triggers none of that, which is why that one is being built and this one is not |
 | A notification preferences centre | `/conta/alertas` already pauses and resumes. A centre is a screen for settings that do not exist yet |
 | WhatsApp as a confirmation channel | E2 exists, but the Evolution API risks a number ban and needs opt-in consent (spec §9). A second unreliable channel does not make the first one observable |
 | An in-app notification inbox | Solves a problem nobody has: these journeys each end in exactly one message |
@@ -295,19 +344,39 @@ One caveat about that catalogue, worth knowing before anyone builds a card on it
 **The minimum, in the order it pays off:**
 
 1. **One card, "Avisos da semana"**, grouping `telegram.*` events by name and `telegram.skipped` by `reason`. Zero new writes — it is a `group by` over rows that already exist, and it would have shown defect 3 on the first Monday.
-2. **The delivery mode on screen.** `TELEGRAM_DELIVERY` is the difference between a launch and a silent launch.
+2. **The delivery mode on screen — Sci's rule, not a suggestion:** *"a variable that decides whether a launch happened belongs on a screen."* It is currently correct (§1.1, verified 2026-09-23), which is exactly when to put it on `/admin` — a value nobody can see is one nobody notices changing.
 3. **Two magic-link events** — `magic_link_requested` on submit, and a sign-in event that fires on every sign-in, not only the first — which is exactly the counter Sci asked for. Adding names to the catalogue is an edit to a file task O1 owns; coordinate rather than collide.
-4. **A tagged link in the digest** (`?de=digest`) that stamps `alert_deliveries.opened_at`, so the Gate 0 open rate stops being unmeasurable. Cheapest of the four, and the one a gate depends on.
+4. **A tagged link in the digest** (`?de=digest`) that stamps `alert_deliveries.opened_at`, so the Gate 0 open rate stops being unmeasurable. **Decided 2026-09-23 (§10.6):** a URL parameter is not a tracking pixel, so this needs no privacy-policy change — which is what had made the alternative (open tracking on e-mail, §8) not worth it.
 
-## 10. Open questions — Sci's, recorded rather than waited on
+## 10. Decisions — taken by Sci on 2026-09-23
 
-1. **Where does a name come from?** Google supplies one; the Resend provider does not; `/conta` has no field for it. Ask once at sign-in, or drop `{{nome}}` from the templates (§7 `TG-1`)? The fix lane owns the mechanism; this document only rules out inventing one.
-2. **Is `TELEGRAM_DELIVERY=send` set in the production worker?** If not, founders week sends nothing and burns every user's weekly quota doing it.
-3. **Magic-link e-mail:** approve `MJ-1`/`MJ-2`, and confirm reply-to `contato@` (brief §1) — neither exists today.
-4. **Should the app say "Telegram conectado" before the bot has answered?** §2 says no; changing it is a visible product change on launch eve, so it is Sci's call.
-5. **`telegram.connect.body`** under §2.2 — flag, with a variant offered in §7.
-6. **Open rate:** accept a tagged digest link to make Gate 0 measurable, or accept the gate is unmeasurable for now?
-7. **Does a blocked-bot auto-pause need to tell the user anything?** Today `pause()` is silent and the only surviving channel is e-mail, which we do not use for this. Probably fine; worth a decision rather than a default.
+These were open questions when this document was written. They are not open now. **Recorded so the next reader does not re-ask**, which is Sci's explicit instruction; the fix lane is building against the same rulings.
+
+**10.1 · Where a name comes from — option (a), permanently.**
+**No `{{nome}}` in any template, and no name field at sign-in.** A name field at account creation is friction at the highest-drop-off moment in the product, and the greeting is not worth it. The `{{nome}}` placeholder comes out of `start-linked`, `start-already-linked`, `weekly-digest` and `weekly-digest-empty`; `{{nome_empresa}}` stays, because it already has a fallback that cannot be blank (`company_label()` → formatted CNPJ).
+
+A correction to this document's own framing, from Sci and verified: **`founders_list` already carries names from the Offer form** — so the name need not be asked for at all. But **that table is empty today (0 rows)**, so a one-off backfill would do nothing. The right shape is **a link at account creation, matched on e-mail**: when an account is created, if the address is on the founders list, take the name from there. That makes option (b) — asking at sign-in — *moot rather than rejected on taste*, which is the stronger reason and the one to remember.
+
+Until that link exists, the templates must render without a name, and §2's prohibition stands regardless: **never invent one.**
+
+**10.2 · `TELEGRAM_DELIVERY` — go/no-go, and it is go.** Verified set to `send` on 2026-09-23 alongside `WHATSAPP_DELIVERY=send`. Promoted out of the findings list into §1.1, because a switch that decides whether a launch happened is not a backlog item. The compounding second-week cost is recorded there. The mode goes on `/admin` (§9).
+
+**10.3 · The magic-link e-mail — ship before Thursday.** `MJ-1` option (a), `MJ-2` as drafted, reply-to `contato@` per brief §1. Sci: *"the first message the product ever sends is currently in English, from an unknown sender, phishing-shaped."*
+
+**10.4 · "Telegram conectado" before the bot has answered — change it.** `TG-2` as drafted, on launch eve, accepting the risk of a visible change late. Sci: *"Claiming success in the channel that is not the one being set up is the defect this whole document is about."*
+
+**10.5 · `telegram.connect.body` — changed, and this document's reasoning overruled.** Naming the day is *better* for the user, not more cautious: a concrete expectation is what lets someone notice that something broke. Full argument and this document's concession in §7.
+
+**10.6 · Open rate — build the tagged digest link (`?de=digest`).** A URL parameter is not a tracking pixel, so no privacy-policy change is triggered. Gate 0's ≥ 50% becomes measurable instead of reading 0 forever.
+
+**10.7 · Blocked-bot auto-pause — the app says why.** On `/conta/alertas`, reusing `confirmFailed`'s shape (`TG-3` in §7). **No e-mail** — an e-mail about a Telegram problem is a third channel to keep honest (§8), and the person is already coming back to the site to reconnect.
+
+### Still genuinely open
+
+Nothing that blocks Thursday. Two things this document deliberately does not decide, both because they belong to code and not to copy:
+
+- **The new skip reason that replaces `no_company` for a missing name.** The fix lane owns the name; §6 records only that it must be additive — the string reaches `events.props` and a dashboard groups by it, so add the new reason and leave history alone.
+- **How the `founders_list` → account name link is implemented** (§10.1) — matched on e-mail at account creation, but when and where is the fix lane's.
 
 ## 11. Where this is written down
 
