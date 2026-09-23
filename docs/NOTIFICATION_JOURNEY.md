@@ -14,12 +14,22 @@ Four defects, all verified in production on 2026-09-23, all being fixed in a par
 
 | # | What the system did | What the person experienced |
 |---|---|---|
-| 1 | The magic-link e-mail was sent and the sign-in completed | A browser error page. **It looked broken and it had worked.** |
+| 1 | The magic-link e-mail was sent; the redirect back was malformed | A screen with no confirmation on it. **It looked broken and it had worked.** |
 | 2 | `telegram_links.chat_id` was written; the confirmation job died | The web page said *"Telegram conectado"*; the bot said nothing |
 | 3 | The weekly digest skipped every magic-link user | No message, no explanation, anywhere |
 | 4 | That skip was recorded as `no_company` | The company was fine — the field that was empty was `users.name` |
 
-Defect 2 has an exact cause, and it is worth quoting because it explains defect 4 as well. The web route enqueues the reply in camelCase:
+**Defect 1 is one `?` too many.** The sign-in page is also the verify-request page, and it is registered with a query string already on it (`apps/web/lib/auth/index.ts:86-89`):
+
+```ts
+verifyRequest: `${ACCOUNT_CREATE_PATH}?enviado=1`,   // '/conta/criar?enviado=1'
+```
+
+`@auth/core`'s `verifyRequest()` appends the incoming search string to that value without checking whether one is already there, so the browser is sent to `/conta/criar?enviado=1?provider=resend&type=email`. `enviado` then parses as `"1?provider=resend"`, `page.tsx:52` compares it to `'1'`, and `sent` is false: the person lands back on the bare sign-in form with **no "Link enviado" card at all** — identical to the request having silently failed. The e-mail was already on its way.
+
+This is the sharpest instance of §2's rule in the codebase. The confirmation exists, is written, is translated, and renders on a condition that a stray `?` makes permanently false.
+
+**Defect 2 is wider than linking.** It has an exact cause, and it explains defect 4 as well. The web route enqueues the reply in camelCase:
 
 ```ts
 // apps/web/app/api/telegram/webhook/route.ts:190
@@ -37,6 +47,10 @@ if user_id is None and chat_id is None:
 ```
 
 `template` matches on both sides, so the job passes the first check and dies on the second — four times, over forty minutes, then `failed`. And because it raises **before** `send()`, it writes no `telegram.skipped`, no `telegram.failed`, no event of any kind. The only trace of a person who linked and heard nothing is a row in `jobs`.
+
+Two things make this worse than it looks. **The contract was written down and then contradicted in the same repository** — `apps/web/lib/jobs/index.ts:57-58` documents the payload as `{template, user_id | chat_id}`, snake_case, while the `Reply` type twelve files away is camelCase. And **every reply the bot owes anybody goes through this path**: `/start`, `/ajuda` and `/pausar` alike (`route.ts:143-157`). A user who types `/pausar` gets silence, and has no way to know the pause took effect — it did; `alerts.active` is set before the reply is enqueued.
+
+The weekly digest is **not** affected: the worker enqueues its own jobs in snake_case (`telegram_alerts.py:842-846`). The break is only where the web hands work to the worker.
 
 Defect 3 and 4 are one line:
 
@@ -89,17 +103,19 @@ Every string named in a table is a `messages/pt-BR.json` key or a `worker/templa
 
 | State | In the system | In the app | In the channel | Recovery |
 |---|---|---|---|---|
-| **A1 · Link requested** | `verification_token` row written, valid 24 h; Resend accepts | `?enviado=1` → `account.signIn.sentTitle` / `sentBody`: *"Abra o seu e-mail e clique no link… Se não chegar em alguns minutos, olhe o spam."* | — | — |
+| **A1 · Link requested (defect 1)** 🔴 | `verification_token` row written, valid 24 h; Resend accepts | **Nothing.** The double `?` makes `enviado` parse as `"1?provider=resend"`, so `account.signIn.sentTitle` / `sentBody` — *"Link enviado / Abra o seu e-mail…"* — never renders. The bare form comes back | — | Submit again, and get a second link they also are not told about |
 | **A2 · E-mail delivered** 🔴 | Resend has it; nothing records delivery | unchanged | **English**: *"Sign in to www.licitaquiapp.com.br"*, Auth.js's default body, no reply-to | Read it anyway, or give up |
 | **A3 · Link clicked, same browser** | `verification_token` deleted, `sessions` row written | Lands signed in | — | — |
 | **A4 · Link clicked in the mail app's browser** 🟡 | Sign-in **succeeds** — in that webview | The desktop browser is still signed out and says nothing about it | — | Open the link again on the device they want; the token is gone, so: ask for a new one |
 | **A5 · Link expired (> 24 h)** 🔴 | Token past `expires`; Auth.js redirects to the error page | `?error=…` → `account.signIn.errorTitle` / `errorBody`: *"Não deu para entrar / Alguma coisa falhou no caminho de volta. Tente de novo."* | — | Ask for another link — but the screen never says that is what is wrong |
 | **A6 · Link already used** 🔴 | Row deleted on first use; indistinguishable from expired | same generic error | — | same |
-| **A7 · Malformed redirect (defect 1)** 🔴 | **Signed in.** The redirect built on the way back is not valid | the same generic error page | — | They have an account and believe they do not |
+| **A7 · Resend refuses the address** 🔴 | `sendVerificationRequest` throws; no token survives | `?error=EmailSignin` → the same generic *"Não deu para entrar"* | — | Try again, with no idea the address was the problem |
 
-**What this journey is missing, in one line:** one message for four different situations, none of which tells the person whether they are signed in.
+**What this journey is missing, in one line:** one message for four different situations (A5, A6, A7 and a genuine server fault), and — at A1 — no message at all for the one situation that worked.
 
-**The smallest thing that would have prevented defect 1:** the sign-in page distinguishing "your link is no longer valid" from "something failed on our side", and — for A7 — not showing an error to a browser that holds a valid session. A landing page that reads the session before rendering the error is a check, not a feature.
+**The smallest thing that would have prevented defect 1:** the confirmation not depending on a query parameter that something else is free to append to. Whether that is a fixed `verifyRequest` path, a distinct route, or reading the flag differently is the fix lane's call; the requirement is that asking for a link always produces a screen that says a link was sent.
+
+**Second smallest:** the sign-in page distinguishing *"your link is no longer valid"* (A5, A6 — ask for another) from *"something failed on our side"* (A7). Same screen, one more branch.
 
 **Simple, and worth doing before Thursday:** a Portuguese magic-link e-mail (§7, `MJ-1`/`MJ-2`), the address and the 24-hour lifetime on the "link enviado" card (`MJ-3`), and a distinct expired/used message (`MJ-4`). Nothing else.
 
@@ -114,14 +130,15 @@ E3 already shipped the app-side waiting states (`telegram.handoff.*`, merged in 
 |---|---|---|---|---|
 | **B1 · Invited** | nothing yet | `telegram.connect.*` — what it is and what it sends | — | — |
 | **B2 · Token minted, waiting for Iniciar** | `telegram_links.start_token` set, `chat_id` null, 15 min | `telegram.handoff.waitingTitle` / `waitingBody`, `validFor`, and **`telegram.handoff.recheck`** — *"Já toquei em Iniciar, verificar"* | The bot chat opens with an Iniciar button | Tap Iniciar; or re-check |
-| **B3 · Returning chat — Iniciar never appears** | token still unused | `telegram.handoff.manualTitle` / `manualBody`: the exact `/start <token>` message to paste | The chat opens on old history, nothing is sent | Paste the message the app gives them — **E3's original defect, covered** |
+| **B3 · Returning chat — Iniciar never appears** | token still unused | `telegram.handoff.manualTitle` / `manualBody`: the exact `/start <token>` message to paste | The chat opens on old history, nothing is sent | Paste the message the app gives them. **E3's symptom is covered; its cause is not proven** — `handoff.ts:21-28` records that nothing in the repo demonstrates the first-ever-conversation theory, so the hand-off screen is a recovery path, not a diagnosis |
 | **B4 · Linked** | `chat_id` written, `alerts` row ensured, `telegram_linked` event, reply job enqueued | `telegram.connected.title` — *"Telegram conectado"* | should be `start-linked` | — |
 | **B5 · Confirmation dies (defect 2)** 🔴 | job raises `ValueError` ×4 → `failed`; **no event of any kind** | still says *"Telegram conectado"* — it has no idea | **nothing** | none. This is the state Sci described |
 | **B6 · Confirmation skipped, no name** 🔴 | `build_reply_context` raises `DigestSkipped("no_company")`; `telegram.skipped` written | still says *"Telegram conectado"* | **nothing** | none — and it repeats every week in Journey C |
 | **B7 · Token expired or already used** | `verifyToken` fails | `telegram.handoff.failedTitle` / `failedBody` + `newLink` | `start-token-invalid` — *"Esse link de conexão não vale mais."* | Generate another; **this branch is correct today** |
 | **B8 · Already linked** | `userForChat` finds the chat | *"Telegram conectado"* | `start-already-linked` | — |
 | **B9 · Chat belongs to another account** 🟡 | `telegram_links.chat_id` is **unique** (`0001_initial.sql:253`); the link cannot be written | the generic `telegram.errors.generic` | `start-token-invalid`, which is not the reason | Unlink on the other account — which they may not know they have |
-| **B10 · Unlinked, or the bot blocked** | `/pausar` or a blocked send calls `pause()`; `alerts.active = false` | `telegram.screen.paused` | `stop.md` on `/pausar`; nothing when blocked | `telegram.screen.resume` |
+| **B10 · Paused by `/pausar`** 🔴 | `alerts.active = false` — **the pause works**; the `stop.md` reply dies in the same `ValueError` as B5 | `telegram.screen.paused`, if they go and look | **nothing** — the bot appears to ignore the command it obeyed | none; typing `/pausar` again changes nothing and says nothing |
+| **B11 · Unlinked from the app, or the bot blocked** | `unlinkChat()` deletes the row; a blocked send calls `pause()` | `telegram.screen.paused` / the connect card | nothing, in both cases | `telegram.screen.resume`, or reconnect |
 
 **The rule this journey breaks:** B5 and B6 are the app claiming success in one channel for something that only happened in the other. `"Telegram conectado"` is true about `telegram_links` and false about the thing the person cares about, which is whether the bot talks to them.
 
@@ -258,6 +275,8 @@ A simple journey that ships tomorrow beats a complete one that does not. Everyth
 Sci's test is: *"12 people asked for a link this week, 11 signed in"*, without opening a database client. Today that question **cannot be answered**, and it is worth being precise about why.
 
 **What already exists.** `events (user_id, visitor_id, name, props, created_at)` with an index on `(name, created_at)` (`0001_initial.sql:341-350`); a closed catalogue in `apps/web/lib/events/index.ts`; `/admin` with the six Gate 0 cards (`apps/web/lib/admin/gates.ts`). The digest already writes `telegram.sent`, `telegram.dry_run`, `telegram.skipped` (with `reason`), `telegram.failed` and `alert_sent`. The webhook writes `telegram_linked`.
+
+One caveat about that catalogue, worth knowing before anyone builds a card on it: **it binds only the web.** `lib/events/index.ts` exists because "one misspelled `name` and a gate reads zero forever", but the worker inserts into `events` with raw SQL (`telegram_alerts.py:892-900`) and is not checked against it. Hence two naming conventions in one table — `telegram_linked` from the web, `telegram.skipped` from the worker. Not worth fixing this week; worth knowing when writing the `group by`.
 
 **What is missing, by journey:**
 
