@@ -245,10 +245,34 @@ export type ListQuery = {
  * So a chosen group also looks at the unchosen key, and accepts what it finds
  * **only when that snapshot is of the same group**. Nothing is guessed: a
  * snapshot of Palavras is never handed to someone who asked for Compatíveis.
+ *
+ * ## The direct hit is checked too, and did not used to be
+ *
+ * The same sentence has to hold for a key that matched exactly, and for a
+ * while it did not: a direct hit was a key match, and a key match was trusted.
+ * On 2026-09-23 that turned a stale write in `radar-screen.tsx` — the
+ * Compatíveis list stamped under the Verificar key by a navigation that had
+ * not loaded yet — into a list served under another tab's name, with no
+ * request and no way for the screen to notice.
+ *
+ * That write is fixed where it was made; this is the second lock on the same
+ * door, and it is the cheaper of the two to be sure of. A snapshot whose
+ * `group` disagrees with the group asked for is not this list, whatever key it
+ * was filed under. Refusing it costs one request and heals the entry, because
+ * what the screen loads next is written back over it.
+ *
+ * It only guards the group. A snapshot filed under the wrong UF or the wrong
+ * keyword is indistinguishable from a right one here — `ListSnapshot` does not
+ * carry the filters it was read with — which is why the guard in the writing
+ * effect is the fix and this is the defence in depth, not the other way round.
  */
 export function restoreList(query: ListQuery, now: number = Date.now()): RestoredList | null {
   const direct = readList(listKey(query), now)
-  if (direct || query.group === null) return direct
+  if (direct) {
+    if (query.group === null || direct.snapshot.group === query.group) return direct
+    return null
+  }
+  if (query.group === null) return null
   const auto = readList(listKey({ ...query, group: null }), now)
   return auto && auto.snapshot.group === query.group ? auto : null
 }
