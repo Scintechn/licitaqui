@@ -86,8 +86,14 @@ jobs:
       # The server is started by `playwright.config.ts` (`next build` then
       # `next start`), with no DATABASE_URL: no request in this project ever
       # reaches a route handler.
+      # `pnpm --filter … exec` and not `pnpm test:e2e -- --project=journeys`:
+      # the `--` arguments are swallowed by pnpm's filter layer, so that
+      # spelling silently runs **both** projects. It happens to pass — the
+      # `accounts` tests skip themselves — which is exactly why it is worth
+      # spelling out: a command that does not do what it says is a gate that
+      # will one day run something nobody meant to run in CI.
       - name: Run the journeys
-        run: pnpm test:e2e -- --project=journeys
+        run: pnpm --filter @licitaqui/web exec playwright test --project=journeys
         env:
           NEXT_TELEMETRY_DISABLED: '1'
 

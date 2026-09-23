@@ -17,7 +17,7 @@ import { SESSION_COOKIE } from '@/lib/auth/config'
  * ```
  * E2E_BASE_URL=https://… \
  * E2E_SESSION_COOKIE=<the authjs.session-token value of a test account> \
- *   pnpm test:e2e --project=accounts
+ *   pnpm --filter @licitaqui/web exec playwright test --project=accounts
  * ```
  *
  * ## The defect it keeps

@@ -24,9 +24,9 @@ import { expect, test } from '@playwright/test'
  *
  * ```
  * E2E_BASE_URL=https://… E2E_MAGIC_LINK_EMAIL=jorge@… \
- *   pnpm test:e2e --project=accounts        # asks for the link
+ *   pnpm --filter @licitaqui/web exec playwright test --project=accounts  # asks for the link
  * E2E_BASE_URL=https://… E2E_MAGIC_LINK_URL='https://…/api/auth/callback/resend?token=…' \
- *   pnpm test:e2e --project=accounts        # signs in with it
+ *   pnpm --filter @licitaqui/web exec playwright test --project=accounts  # signs in with it
  * ```
  *
  * **State on 2026-09-23: the second half has never run.** Nobody has walked
