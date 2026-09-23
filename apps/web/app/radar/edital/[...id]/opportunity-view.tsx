@@ -523,6 +523,21 @@ export type OpportunityViewProps = {
    * then, because `tender` is null too.
    */
   screening?: ScreeningAvailability | null
+  /**
+   * Whether a first-time reader is told, under the button, that opening costs
+   * one of their triagens.
+   *
+   * Its own switch, deliberately: the **label** is settled (Sci's ruling
+   * above), the **cost line** is a separate question still with him, and the
+   * two must not be tangled — turning it on changes one boolean and nothing
+   * about which words the button uses. Off by default, because an unchanged
+   * label is what he approved and a caption he has not seen is not part of it.
+   *
+   * Never shown to someone who has already spent on this tender: re-opening
+   * their own triagem costs nothing (`quota.spend` de-duplicates on the
+   * tender id), so a cost line there would be false.
+   */
+  showScreeningCost?: boolean
   now?: Date
   onRetry?: () => void
   /** Which tab of the record is open. The screen owns it; this stays pure. */
@@ -540,6 +555,7 @@ export function OpportunityView({
   backHref,
   search,
   screening = null,
+  showScreeningCost = false,
   now = new Date(),
   onRetry,
   tab = 'items',
@@ -748,26 +764,26 @@ export function OpportunityView({
               the call to action, which is where the reading stops being read
               and starts being acted on. */}
           <p className="text-caption leading-relaxed text-muted">{aiNotice}</p>
-          {/* Two different actions, and until now one label. Sci: *"I already
-              have the AI Triage for this item … but the button remains like
-              the first time."* Opening a triagem the caller has already paid
-              for is free and instant; opening one they have not spends a
-              screening whether or not the shared reading already exists
-              (§3.2 shares the analysis, §10 allocates the reading). The
-              caption under the button is where that difference is said,
-              because it is a sentence and not a label. */}
+          {/* Sci: *"I already have the AI Triage for this item … but the
+              button remains like the first time, for my user."* — and his
+              ruling on the cure: *"If it is the first time of that user, the
+              CTA stays as-is. However, if the user already requested the
+              triage before, he only wants to see it again, so we could change
+              the text."*
+
+              So the switch is `spent`, and only `spent`. **Not `ready`**: a
+              tender whose analysis exists because somebody else opened it
+              (§3.2 shares the reading) is still a first-time request for this
+              user, and Sci wants that to read exactly as it always has. The
+              first-time label is therefore untouched. */}
           <Button href={screeningHref(tender.id, search)} fullWidth iconEnd="arrowRight">
-            {screening?.spent ? page.screeningCta : page.screeningCtaNew}
+            {screening?.spent ? page.screeningCtaRequested : page.screeningCta}
           </Button>
-          {screening === null ? null : (
+          {showScreeningCost && screening !== null && !screening.spent ? (
             <p className="text-caption leading-relaxed text-muted">
-              {screening.spent
-                ? page.screeningDone
-                : screening.ready
-                  ? page.screeningCostReady
-                  : page.screeningCost}
+              {screening.ready ? page.screeningCostReady : page.screeningCost}
             </p>
-          )}
+          ) : null}
           {/* The source of every fact above. PNCP is the official record
               (Lei 14.133 art. 174); the bidding system below it is where the
               dispute happens, which is a different place and a different

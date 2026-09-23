@@ -59,11 +59,11 @@ const TENDER: TenderDetail = {
 const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
 
 /**
- * The state Sci was actually in when he reported the button: a reading exists
- * and he had already paid for it. The default here so the rest of the file
- * renders a realistic screen rather than one with the state missing.
+ * The common case, and the one Sci ruled must not change: someone opening a
+ * tender they have never screened. The default here so the rest of the file
+ * renders the screen as it ships, rather than one with the state missing.
  */
-const SCREENED = { ready: true, spent: true } as const
+const FIRST_VISIT = { ready: false, spent: false } as const
 
 function render(overrides: Partial<OpportunityViewProps> = {}): string {
   const props: OpportunityViewProps = {
@@ -72,7 +72,7 @@ function render(overrides: Partial<OpportunityViewProps> = {}): string {
     status: { kind: 'ready' },
     backHref: '/radar?cnpj=51885242000140&group=check',
     search: SEARCH,
-    screening: SCREENED,
+    screening: FIRST_VISIT,
     now: NOW,
     ...overrides,
   }
@@ -643,52 +643,93 @@ describe('the link out of this screen carries the search', () => {
  * Sci, on production: *"I already have the AI Triage for this item … but the
  * button remains like the first time, for my user."* It did: the CTA was one
  * fixed string, because nothing in the tender payload knew a screening had
- * ever happened. Opening a reading you have paid for is free; opening one you
- * have not spends from §10's allowance **whether or not the shared analysis
- * already exists** (§3.2) — two actions that were sharing a label.
+ * ever happened.
+ *
+ * His ruling on the cure is narrower than the problem looks, and these tests
+ * are the statement of it: *"If it is the first time of that user, the CTA
+ * stays as-is. However, if the user already requested the triage before, he
+ * only wants to see it again, so we could change the text."*
+ *
+ * So the switch is `spent`, and the first-time label does not move.
  */
-describe('the call to action says which of the two actions it is', () => {
-  it('offers to open, and says it is free, once this caller has paid', () => {
+describe('the call to action recognises a triagem this user already asked for', () => {
+  it('changes the words once this user has requested it', () => {
     const out = render({ screening: { ready: true, spent: true } })
-    expect(out).toContain(page.screeningCta)
-    expect(out).toContain(page.screeningDone)
-    expect(out).not.toContain(page.screeningCtaNew)
+    expect(out).toContain(page.screeningCtaRequested)
+    expect(out).not.toContain(page.screeningCta)
   })
 
-  it('warns that it costs a triagem when this caller has not paid', () => {
+  it('leaves the first-time label exactly as it ships', () => {
     const out = render({ screening: { ready: false, spent: false } })
-    expect(out).toContain(page.screeningCtaNew)
-    expect(out).toContain(page.screeningCost)
-    expect(out).not.toContain(page.screeningDone)
-  })
-
-  /**
-   * The case §3.2 creates and §10 charges for: somebody else's screening of
-   * this edital is already in `ai_analyses`, and this user still spends one to
-   * read it. Saying "Ver" here would promise a free look at a paid door.
-   */
-  it('still warns when a reading exists that this caller has not paid for', () => {
-    const out = render({ screening: { ready: true, spent: false } })
-    expect(out).toContain(page.screeningCtaNew)
-    expect(out).toContain(page.screeningCostReady)
-    expect(out).not.toContain(page.screeningDone)
-  })
-
-  /**
-   * Paid, but nothing to show yet — the job is still running, or the agency
-   * republished the edital and `files_hash` moved, so `readScreening` no
-   * longer matches. Free to open either way, and the screen behind it is the
-   * one that says what it found.
-   */
-  it('is free to open when paid for even if the reading is not current', () => {
-    const out = render({ screening: { ready: false, spent: true } })
     expect(out).toContain(page.screeningCta)
-    expect(out).toContain(page.screeningDone)
+    expect(out).not.toContain(page.screeningCtaRequested)
   })
 
-  it('says nothing about cost before the route has answered', () => {
+  /**
+   * The case that must **not** flip the label. `ai_analyses` has no `user_id`
+   * — a reading exists because somebody else opened this edital (§3.2) — and
+   * for this user that is still a first request, which is what Sci wants it to
+   * read as. Switching on `ready` here would tell them a triagem they never
+   * asked for is theirs.
+   */
+  it('is still the first-time label when somebody else paid for the reading', () => {
+    const out = render({ screening: { ready: true, spent: false } })
+    expect(out).toContain(page.screeningCta)
+    expect(out).not.toContain(page.screeningCtaRequested)
+  })
+
+  /**
+   * Paid, but nothing current to show — the job is still running, or the
+   * agency republished the edital and `files_hash` moved. Still theirs, still
+   * free, so still the recognising label; the screen behind it says what it
+   * found.
+   */
+  it('recognises a request that has not produced a current reading yet', () => {
+    expect(render({ screening: { ready: false, spent: true } })).toContain(
+      page.screeningCtaRequested,
+    )
+  })
+
+  it('falls back to the shipping label before the route has answered', () => {
     const out = render({ screening: null })
-    expect(out).not.toContain(page.screeningDone)
+    expect(out).toContain(page.screeningCta)
+    expect(out).not.toContain(page.screeningCtaRequested)
+  })
+})
+
+/**
+ * The cost line is a **separate** decision from the label, still with Sci, so
+ * it is one flag and not a branch inside the label logic. These pin that the
+ * two are independent: turning the caption on does not change which words the
+ * button uses, and turning it off does not hide the recognition.
+ */
+describe('the cost line under the button, which is its own question', () => {
+  it('is off by default — an unchanged label is what was approved', () => {
+    const out = render({ screening: { ready: false, spent: false } })
     expect(out).not.toContain(page.screeningCost)
+    expect(out).not.toContain(page.screeningCostReady)
+  })
+
+  it('warns a first-time reader when it is switched on', () => {
+    const out = render({ screening: { ready: false, spent: false }, showScreeningCost: true })
+    expect(out).toContain(page.screeningCost)
+    // The label is untouched by the flag: that is the whole point of it.
+    expect(out).toContain(page.screeningCta)
+  })
+
+  /**
+   * §3.2 shares the analysis and §10 still charges this reader for it, so
+   * "already read" and "free" are different claims and only the first is true.
+   */
+  it('says a reading exists and still costs one, when it does', () => {
+    const out = render({ screening: { ready: true, spent: false }, showScreeningCost: true })
+    expect(out).toContain(page.screeningCostReady)
+  })
+
+  it('never puts a cost on a triagem this user has already paid for', () => {
+    const out = render({ screening: { ready: true, spent: true }, showScreeningCost: true })
+    expect(out).not.toContain(page.screeningCost)
+    expect(out).not.toContain(page.screeningCostReady)
+    expect(out).toContain(page.screeningCtaRequested)
   })
 })
