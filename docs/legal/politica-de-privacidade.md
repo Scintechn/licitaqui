@@ -119,7 +119,7 @@ Alguns operadores acima processam dados fora do Brasil, principalmente nos Estad
 
 ## 10. Cookies
 
-Usamos apenas cookies necessários para o funcionamento: sessão de login e identificador do visitante para aplicar os limites do plano gratuito. Não usamos cookies de publicidade nem de rastreamento de terceiros. As métricas de uso são agregadas e não identificam você individualmente.
+Usamos apenas cookies necessários para o funcionamento: sessão de login e identificador do visitante para aplicar os limites do plano gratuito. As métricas de uso são agregadas e não identificam você individualmente.
 
 ## 11. Por quanto tempo guardamos
 
