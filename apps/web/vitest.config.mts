@@ -10,6 +10,12 @@ export default defineConfig({
     // markup assertions below run in plain Node, so we keep jsdom out of the tree.
     environment: 'node',
     include: ['**/*.test.ts', '**/*.test.tsx'],
-    exclude: ['node_modules', '.next'],
+    // `e2e/` is Playwright's: it needs a browser and a running server, and
+    // `pnpm test` has to stay a fast, browserless run that CI's existing job
+    // can keep calling unchanged. The suffix there is `*.spec.ts`, so the
+    // `include` above already misses it — this is the second guard, because
+    // one helper named `*.test.ts` in that folder would silently drag a
+    // browser into the unit suite.
+    exclude: ['node_modules', '.next', 'e2e/**'],
   },
 })

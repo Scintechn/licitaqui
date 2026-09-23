@@ -31,6 +31,13 @@ Thumbs.db
 *.log
 coverage/
 
+# playwright (journey tests): traces, screenshots, videos and the HTML report.
+# Everything here is an artifact of one run — in CI it is uploaded, never committed.
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 # vercel
 .vercel
 .env*

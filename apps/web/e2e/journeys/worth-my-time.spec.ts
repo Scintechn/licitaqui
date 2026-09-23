@@ -1,0 +1,236 @@
+import { expect, test } from '@playwright/test'
+import { installRadarApi } from '../fixtures/radar-api'
+import { card, cards, groupTabs, noFabricatedZero, noUrgency } from '../fixtures/screen'
+import { daysAgo, item, MARTA, processo, tender, tenderRun } from '../fixtures/world'
+
+/**
+ * **Dona Marta again, with one question:** *is this edital worth my time?*
+ *
+ * These are not usability tests. They are the framing rules of legal brief
+ * §2.2 checked on the screen, which is the only place they are worth
+ * anything. Each one comes from a defect that reached production:
+ *
+ * | # | what was wrong |
+ * |---|---|
+ * | #72 | `R$ 0,00` on five screens. PNCP's zero is not a price: it is what it writes when the budget is withheld |
+ * | #72 | "sigiloso" and "não informado" are different facts and were saying the same thing |
+ * | #61 | a **suspended** edital printing "último dia", "restantes" and "✓ Ainda dá tempo" — §2.2 rule 6 |
+ * | #62 | the chosen tab empty with 36 editais one chip away, and the screen silent about it |
+ */
+
+test.describe('Dona Marta · is this worth my time?', () => {
+  test('an edital with no published value says "Valor não informado" — and no R$ 0,00', async ({
+    page,
+  }) => {
+    // What PNCP actually returns on these rows: zero on the total and zero on
+    // every item (#72: `94703980000132-1-000080/2026` is one of them).
+    const noValue = tender({
+      id: '51885242000140-1-000080/2026',
+      object: `AQUISIÇÃO DE MATERIAL DE LIMPEZA, PROCESSO ${processo(80)}, SEM ORÇAMENTO PUBLICADO PELO ÓRGÃO`,
+      estimatedValue: '0',
+      confidentialBudget: false,
+      items: [
+        item(1, { unitEstimatedValue: '0', totalValue: '0' }),
+        item(2, { unitEstimatedValue: null, totalValue: null }),
+      ],
+      itemCount: 2,
+    })
+
+    await installRadarApi(page, { companies: [{ company: MARTA.company, tenders: [noValue] }] })
+
+    await page.goto(`/radar?cnpj=${MARTA.cnpj}&group=compatible`)
+    await expect(card(page, processo(80))).toContainText('Valor não informado')
+    await noFabricatedZero(page)
+
+    await card(page, processo(80)).click()
+    await expect(page.getByText('Valor não informado')).toBeVisible()
+    await expect(page.getByText('Valor sigiloso')).toHaveCount(0)
+    await noFabricatedZero(page)
+
+    // …and in the items table, where twenty rows of `R$ 0,00` would be twenty
+    // fabricated prices.
+    await expect(page.getByRole('tab', { name: 'Itens' })).toHaveAttribute('aria-selected', 'true')
+    await noFabricatedZero(page)
+  })
+
+  test('an edital with a confidential budget says "Valor sigiloso", which is a different fact', async ({
+    page,
+  }) => {
+    const confidential = tender({
+      id: '51885242000140-1-000081/2026',
+      object: `CONTRATAÇÃO DE SERVIÇOS, PROCESSO ${processo(81)}, COM ORÇAMENTO SIGILOSO DECLARADO`,
+      // The zero on the row is still there; what changes is that the agency
+      // declared the budget secret.
+      estimatedValue: '0',
+      confidentialBudget: true,
+    })
+
+    await installRadarApi(page, { companies: [{ company: MARTA.company, tenders: [confidential] }] })
+
+    await page.goto(`/radar?cnpj=${MARTA.cnpj}&group=compatible`)
+    await expect(card(page, processo(81))).toContainText('Valor sigiloso')
+    await expect(card(page, processo(81))).not.toContainText('Valor não informado')
+    await noFabricatedZero(page)
+
+    await card(page, processo(81)).click()
+    await expect(page.getByText('Valor sigiloso')).toBeVisible()
+    await noFabricatedZero(page)
+  })
+
+  test('a suspended edital shows the banner and no hurry — not in the list, the edital or the triagem', async ({
+    page,
+  }) => {
+    const suspended = tender({
+      id: '13654405000195-1-000033/2026',
+      object: `AQUISIÇÃO DE INSUMOS, PROCESSO ${processo(33)}, SUSPENSA PELO ÓRGÃO`,
+      status: 'Suspensa',
+      pncpUpdatedAt: daysAgo(1),
+    })
+
+    const api = await installRadarApi(page, {
+      companies: [{ company: MARTA.company, tenders: [suspended, ...tenderRun(2)] }],
+    })
+    api.screening.state = 'ready'
+
+    await page.goto(`/radar?cnpj=${MARTA.cnpj}&group=compatible`)
+
+    // In the list: the status is visible **before** she opens it — §3.3,
+    // because otherwise she spends the click to find out.
+    const suspendedCard = card(page, processo(33))
+    await expect(suspendedCard).toContainText('Suspensa')
+    await expect(suspendedCard).not.toContainText('Proposta até')
+    await expect(suspendedCard).toContainText('Data anterior')
+    // The others stay normal: the rule suppresses urgency about this edital,
+    // not urgency on the whole screen.
+    await expect(card(page, processo(1))).toContainText('Proposta até')
+
+    await suspendedCard.click()
+    await expect(page.getByRole('status').first()).toContainText('Edital SUSPENSO pelo órgão em')
+    await expect(page.getByText('Suspensão não é cancelamento', { exact: false })).toBeVisible()
+    await expect(page.getByText('Prazo suspenso')).toBeVisible()
+    await expect(page.getByText('data anterior')).toBeVisible()
+    await noUrgency(page)
+
+    // §3.5: the same banner on every AI result screen for this edital. Someone
+    // who arrived straight at the triagem from a link would have no other way
+    // of learning the tender had been stopped.
+    await page.getByRole('link', { name: 'Ver triagem por IA' }).click()
+    await expect(page.getByRole('status').first()).toContainText('Edital SUSPENSO pelo órgão em')
+    await noUrgency(page)
+  })
+
+  test('when the chosen tab is empty she lands on the one that has editais', async ({ page }) => {
+    await installRadarApi(page, { companies: [{ company: MARTA.company, tenders: toCheck() }] })
+
+    // No `?group=` — she chose no tab, she came from the Landing's search.
+    await page.goto(`/radar?cnpj=${MARTA.cnpj}`)
+
+    // The count on the chip is said out loud, not only drawn: "Verificar 12
+    // editais" is the chip's accessible name, and a bare `0` next to
+    // "Verificar" was a digit with no noun.
+    await expect(groupTabs(page).getByRole('link', { name: 'Verificar 12 editais' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    await expect(cards(page)).toHaveCount(12)
+    await expect(page.getByText('pode haver exigências')).toBeVisible()
+  })
+
+  test('an empty tab says how many editais are in the other one and leads there', async ({
+    page,
+  }) => {
+    await installRadarApi(page, { companies: [{ company: MARTA.company, tenders: toCheck() }] })
+
+    // Compatíveis on purpose — the address a shared link carries.
+    await page.goto(`/radar?cnpj=${MARTA.cnpj}&group=compatible`)
+
+    await expect(page.getByText('Nenhum edital compatível agora')).toBeVisible()
+    const shortcut = page.getByRole('link', { name: 'Ver 12 editais em Verificar' })
+    await expect(shortcut).toBeVisible()
+    await shortcut.click()
+    await expect(cards(page)).toHaveCount(12)
+  })
+
+  /**
+   * **LIVE DEFECT, found by this journey on 2026-09-23.** Marked
+   * `test.fail()`: it runs, it fails on purpose today, and it goes red the day
+   * somebody fixes it — which is when this annotation has to come off.
+   *
+   * With a list on screen, **switching tabs does nothing**: the address
+   * changes to `?group=check`, the list stays the Compatíveis one and **no
+   * request leaves**. The same is true of "Aplicar filtros": the address
+   * becomes `uf=RJ` and the list does not move. It only works again after a
+   * full document load, or once the snapshot expires (30 min).
+   *
+   * Cause, in `app/radar/radar-screen.tsx`: the effect that writes the
+   * snapshot depends on `[key, data]` and is declared **before** the effect
+   * that loads. On a client-side navigation it fires with the **new** key and
+   * the **old** data, stamping the previous list under the new search's key;
+   * the loader then finds a direct hit in `restoreList` and returns without
+   * asking for anything — and because `shown.current ===
+   * restored.snapshot.tenders`, it does not even re-render.
+   *
+   * Minimal fix (not applied here — outside this card): carry in `Data` the
+   * key the list was read with, and `if (data.key !== key) return` in the
+   * writing effect. Data may only be stored under the key it belongs to.
+   * Cheap defence in depth: make `restoreList` refuse a direct hit whose
+   * `snapshot.group` disagrees with the group asked for — the check the `auto`
+   * path already makes.
+   */
+  test.fail('switching tabs with a list on screen switches the list — today it does not', async ({
+    page,
+  }) => {
+    const api = await installRadarApi(page, {
+      companies: [{ company: MARTA.company, tenders: [...tenderRun(3), ...toCheck()] }],
+    })
+
+    await page.goto(`/radar?cnpj=${MARTA.cnpj}&group=compatible`)
+    await expect(cards(page)).toHaveCount(3)
+    const asked = api.calls.tenders.length
+
+    await groupTabs(page).getByRole('link', { name: 'Verificar 12 editais' }).click()
+    await expect(page).toHaveURL(/group=check/)
+
+    await expect(cards(page)).toHaveCount(12)
+    expect(api.calls.tenders.length, 'the new tab was never even requested').toBeGreaterThan(asked)
+  })
+
+  /** The same defect, on the other control of the screen. See the note above. */
+  test.fail('changing the UF and applying re-runs the search — today it does not', async ({
+    page,
+  }) => {
+    const api = await installRadarApi(page, {
+      companies: [{ company: MARTA.company, tenders: tenderRun(3) }],
+    })
+
+    await page.goto(`/radar?cnpj=${MARTA.cnpj}&group=compatible`)
+    await expect(cards(page)).toHaveCount(3)
+    const asked = api.calls.tenders.length
+
+    await page.getByText('Filtros', { exact: true }).click()
+    await page.getByLabel('UF onde você entrega').selectOption('RJ')
+    await page.getByRole('button', { name: 'Aplicar filtros' }).click()
+
+    await expect(page).toHaveURL(/uf=RJ/)
+    await expect
+      .poll(() => api.calls.tenders.length, 'the search with the new UF never left')
+      .toBeGreaterThan(asked)
+    expect(api.calls.tenders.at(-1)).toContain('state=RJ')
+  })
+})
+
+/** Twelve editais a secondary CNAE reaches — the Verificar tab, populated. */
+function toCheck() {
+  return tenderRun(12, (index) => ({
+    id: `51885242000140-2-${String(index + 1).padStart(6, '0')}/2026`,
+    group: 'check' as const,
+    matchedSegments: [
+      {
+        segment: 'Material de escritório e papelaria',
+        fit: 'check' as const,
+        fromMainCnae: false,
+        fromSecondaryCnae: true,
+      },
+    ],
+  }))
+}
