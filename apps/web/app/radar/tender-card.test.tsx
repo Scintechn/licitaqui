@@ -71,6 +71,19 @@ describe('the headline slot', () => {
     expect(out).toContain(copy.card.confidential)
   })
 
+  it('treats a published zero as an absence, and never as "sigiloso"', () => {
+    // `estimated_value = 0` on 108 tenders: PNCP's published figure for a
+    // withheld budget. The card must not print "R$ 0" (legal brief §2.2
+    // rule 3) and must not upgrade the guess to "Valor sigiloso" either —
+    // only `orcamentoSigilosoCodigo` says that.
+    const out = render({ estimatedValue: '0.00' })
+
+    expect(anchor(out)).toBe('13 dias')
+    expect(out).toContain(copy.card.noValue)
+    expect(out).not.toContain(copy.card.confidential)
+    expect(out).not.toMatch(/R\$\s*0\b/)
+  })
+
   it('never prints the countdown twice when the deadline was promoted', () => {
     const out = render({ estimatedValue: null })
     expect(out.match(/13 dias/g)).toHaveLength(1)

@@ -55,6 +55,59 @@ describe('sumItems', () => {
   it('has nothing to add for a tender with no items', () => {
     expect(sumItems([])).toBeNull()
   })
+
+  it('counts a zero total as a hole, not as nothing', () => {
+    // A zero is PNCP publishing *no price*, and the column prints "—" for it.
+    // A sum that added it as 0 would be adding up rows the table itself says
+    // it does not know, under a caption promising "a soma dos valores totais
+    // das linhas acima".
+    expect(sumItems([item(), item({ number: 2, totalValue: '0.00' })])).toBeNull()
+  })
+
+  it('refuses the all-zero tender that put R$ 0,00 on production', () => {
+    // The shape of `94703980000132-1-000080/2026` and
+    // `13112669000117-1-000010/2026`: estimated value NULL, every item row
+    // zero. This used to sum to "0.00" and print in a 20px Archivo slot.
+    const priceless = [1, 2, 3].map((number) =>
+      item({ number, unitEstimatedValue: '0.0000', totalValue: '0.00' }),
+    )
+    expect(sumItems(priceless)).toBeNull()
+  })
+})
+
+describe('the Itens tab · a tender with no published prices', () => {
+  const priceless = [1, 2, 3].map((number) =>
+    item({ number, unitEstimatedValue: '0.0000', totalValue: '0.00' }),
+  )
+
+  it('prints no R$ 0,00 anywhere — not a cell, not a sum', () => {
+    const out = render({ items: priceless })
+    expect(out).not.toMatch(/R\$\s*0[,.]?0*\b/)
+  })
+
+  it('names the absence in every price cell instead of leaving it blank', () => {
+    const out = render({ items: priceless })
+    // Three rows × (unit + total), in each of the two layouts.
+    expect(out.split('—').length - 1).toBeGreaterThanOrEqual(12)
+  })
+
+  it('says why there is no sum rather than dropping the block silently', () => {
+    const out = render({ items: priceless })
+    expect(out).toContain(copy.noSum)
+    expect(out).not.toContain(copy.sumNote)
+  })
+
+  it('does not call it "sigiloso" — that is the value card\'s claim, not ours', () => {
+    const out = render({ items: priceless })
+    expect(out).not.toContain(messages.radar.card.confidential)
+    expect(out.toLowerCase()).not.toContain('sigilos')
+  })
+
+  it('still shows the rows, the quantities and the descriptions', () => {
+    const out = render({ items: priceless })
+    expect(out).toContain('Caneta esferográfica azul')
+    expect(out).toContain('Unidade')
+  })
 })
 
 describe('the Itens tab · the figures', () => {

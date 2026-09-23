@@ -88,15 +88,57 @@ function promoted(tender: TenderCard, now: Date): CardHeadline['anchor'] {
   return regime ? { fact: 'regime', text: regime } : null
 }
 
-export function cardHeadline(tender: TenderCard, now: Date = new Date()): CardHeadline {
+/** What a screen may say about a tender's budget: a figure, or a named absence. */
+export type TenderBudget = {
+  /** The figure, when there is one we are entitled to print. */
+  value: string | null
+  /** The absence, named. `null` exactly when `value` is a figure. */
+  note: string | null
+}
+
+/**
+ * The budget has **three** states, and telling them apart is the whole point.
+ *
+ * | state | what we know | what we say |
+ * |---|---|---|
+ * | `confidentialBudget` | PNCP declared the budget secret | "Valor sigiloso" |
+ * | a figure, non-zero | the órgão published it | the figure |
+ * | anything else | we do not know | "Valor não informado" |
+ *
+ * The third row swallows two very different rows of the database — a `NULL`
+ * estimate and a zero one — and that is correct: both mean *no price we can
+ * show*, and neither is evidence of anything else.
+ *
+ * **A zero is never promoted to "sigiloso".** It is tempting, because on the
+ * two tenders Sci found the zero really is a withheld budget. But the reader
+ * would be reading a claim about the edital — *the órgão declared this secret*
+ * — that we would be guessing at, and PNCP publishes zero for tenders that are
+ * merely incomplete as readily as for secret ones. Only
+ * `orcamentoSigilosoCodigo` ∈ {2, 3} means secret, and it arrives on the row
+ * as `confidential_budget`. Keeping the two apart is what makes "Valor
+ * sigiloso" safe to print the moment the worker's consulta upgrade starts
+ * setting the flag.
+ *
+ * Shared by the Radar card and the Opportunity screen so the two cannot drift:
+ * before this, each decided the same three states in its own `if`.
+ */
+export function tenderBudget(
+  tender: Pick<TenderCard, 'confidentialBudget' | 'estimatedValue'>,
+): TenderBudget {
   // `confidential_budget` wins over any figure on the row: the agency declared
   // the budget secret, so whatever `estimated_value` holds is not ours to show.
-  if (tender.confidentialBudget) {
-    return { anchor: promoted(tender, now), note: copy.card.confidential }
-  }
+  if (tender.confidentialBudget) return { value: null, note: copy.card.confidential }
 
   const value = money(tender.estimatedValue)
-  if (value !== null) return { anchor: { fact: 'value', text: value }, note: null }
+  if (value !== null) return { value, note: null }
 
-  return { anchor: promoted(tender, now), note: copy.card.noValue }
+  return { value: null, note: copy.card.noValue }
+}
+
+export function cardHeadline(tender: TenderCard, now: Date = new Date()): CardHeadline {
+  const budget = tenderBudget(tender)
+  if (budget.value !== null) {
+    return { anchor: { fact: 'value', text: budget.value }, note: null }
+  }
+  return { anchor: promoted(tender, now), note: budget.note }
 }

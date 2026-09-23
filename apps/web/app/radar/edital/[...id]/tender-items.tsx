@@ -87,6 +87,16 @@ const DESCRIPTION_MAX = 160
 /**
  * The sum of every item's total, or `null` when even one row cannot be added.
  *
+ * "Cannot be added" now includes **a row whose total is zero**. That is not a
+ * arithmetic nicety; it is what keeps the caption above honest. A zero total
+ * is PNCP's way of publishing *no price* (see `notAPrice` in
+ * `lib/radar/format.ts`), so the column prints "—" for it — and a sum that
+ * quietly counted that row as nothing would be adding up rows the table itself
+ * says it does not know, then labelling the result "a soma dos valores totais
+ * das linhas acima". On Sci's two tenders every row is zero and the old rule
+ * produced `R$ 0,00` in a 20px Archivo slot: the single loudest fabricated
+ * price on the product.
+ *
  * Exported because it is the one piece of arithmetic on this screen and it
  * needs its own test against the production figures above.
  */
@@ -96,7 +106,7 @@ export function sumItems(items: TenderItemView[]): string | null {
   for (const item of items) {
     if (item.totalValue === null || item.totalValue === '') return null
     const value = Number(item.totalValue)
-    if (!Number.isFinite(value)) return null
+    if (!Number.isFinite(value) || value === 0) return null
     total += value
   }
   // Back to a decimal string, so it re-enters `moneyExact` the way a wire
@@ -299,7 +309,17 @@ export function TenderItems({ items, visible = ITEMS_PAGE, onShowMore }: TenderI
         </div>
       ) : null}
 
-      {total === null ? null : (
+      {/* An absent sum used to render as nothing at all, which on a tender
+          whose every row is priceless left the tab ending on twenty dashes and
+          no account of why. The line says which of the two things happened —
+          the rows have no published price — and deliberately does **not** say
+          "sigiloso": that is a claim about the órgão's decision, it lives on
+          the value card above, and it is true only when PNCP's own
+          `orcamentoSigilosoCodigo` says so. Priceless rows are evidence of
+          neither. */}
+      {total === null ? (
+        <p className="m-0 text-caption leading-relaxed text-muted">{copy.noSum}</p>
+      ) : (
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-card bg-fill-muted px-3.5 py-3">
             <SectionLabel tone="muted">

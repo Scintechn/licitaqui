@@ -9,6 +9,7 @@ import {
   deadlineTall,
   meEppSummary,
   money,
+  moneyExact,
   cleanTitle,
   shortDate,
   tenderTitle,
@@ -34,15 +35,56 @@ describe('money', () => {
     expect(money('2726000000')).toBe('R$ 2,73 bi')
   })
 
-  it('rounds centavos away on a card, and keeps zero as a number', () => {
+  it('rounds the centavos away on a card', () => {
     expect(money('101597.40')).toBe('R$ 101.597')
-    expect(money('0')).toBe('R$ 0')
   })
 
   it('has nothing to say about a missing or unparseable value', () => {
     expect(money(null)).toBeNull()
     expect(money('')).toBeNull()
     expect(money('sigiloso')).toBeNull()
+  })
+
+  /**
+   * The production bug, at its root. This suite used to assert
+   * `money('0') === 'R$ 0'` under the heading "keeps zero as a number", and
+   * that assertion is what shipped `R$ 0,00` to Sci's screen: 108 tenders hold
+   * `estimated_value = 0`, which is what PNCP publishes in the value field when
+   * the budget is withheld, not what the órgão intends to pay. Legal brief
+   * §2.2 rule 3 — a price is an estimate with its arithmetic visible — makes
+   * printing it a defect, so the formatter refuses it.
+   */
+  it('refuses a zero, which is an absence and not a price', () => {
+    expect(money('0')).toBeNull()
+    expect(money('0.00')).toBeNull()
+    expect(money('0.0000')).toBeNull()
+    expect(money('-0')).toBeNull()
+  })
+
+  it('still prints the smallest figure that is genuinely a price', () => {
+    expect(money('1')).toBe('R$ 1')
+    expect(moneyExact('0.01')).toBe('R$ 0,01')
+  })
+})
+
+describe('moneyExact', () => {
+  it('prints the Itens tab to the centavo, against PNCP’s own table', () => {
+    expect(moneyExact('816.6700')).toBe('R$ 816,67')
+    expect(moneyExact('326668.00')).toBe('R$ 326.668,00')
+    expect(moneyExact('2988571.02')).toBe('R$ 2.988.571,02')
+  })
+
+  it('refuses a zero too — twenty item rows is twenty invented prices', () => {
+    expect(moneyExact('0')).toBeNull()
+    expect(moneyExact('0.00')).toBeNull()
+    expect(moneyExact('0.0000')).toBeNull()
+  })
+
+  it('has nothing to say about a missing or unparseable value', () => {
+    expect(moneyExact(null)).toBeNull()
+    expect(moneyExact(undefined)).toBeNull()
+    expect(moneyExact('')).toBeNull()
+    expect(moneyExact('sigiloso')).toBeNull()
   })
 })
 

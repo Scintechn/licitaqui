@@ -141,7 +141,50 @@ export function daysUntil(iso: string | null | undefined, now: Date = new Date()
 }
 
 /**
- * `R$ 48.196`, `R$ 1,25 mi`, `R$ 272,6 bi`.
+ * Zero is not a price, and PNCP publishes a great deal of it.
+ *
+ * 108 tenders in our table carry `estimated_value = 0`, and the two Sci found
+ * on production — `94703980000132-1-000080/2026` and
+ * `13112669000117-1-000010/2026` — carry item rows whose unit and total values
+ * are all zero. That zero is not what the órgão will pay. It is what PNCP puts
+ * in the value field when the budget is withheld: asked directly, the second
+ * of those returns `valorTotalEstimado: 0.0` and `orcamentoSigilosoCodigo: 3`
+ * ("Compra totalmente sigilosa") in the same payload. No edital buys anything
+ * for nothing.
+ *
+ * So `R$ 0,00` on our screen is a figure the edital does not support, which
+ * legal brief §2.2 rule 3 forbids: a price is an estimate with its arithmetic
+ * visible, and a fabricated price is worse than no price at all.
+ *
+ * ## Why the guard is here and not at the call sites
+ *
+ * Because the two failure modes are not symmetric. A call site that forgets
+ * the guard prints a false price **silently** — that is the production bug
+ * being fixed here, and it recurs the day someone adds a fifth slot that shows
+ * a value. A formatter that refuses a zero some future caller meant fails
+ * **loudly and at once**: the number is simply missing from the screen in
+ * front of the developer who put it there.
+ *
+ * That trade has a price, and it is worth naming. Somewhere there is a caller
+ * for whom zero is a fact — "você pagou R$ 0,00 este mês" on a billing screen
+ * is true and must print. That caller must not reach for these two functions.
+ * They are the Radar's, over figures PNCP declares about an edital, and the
+ * domain rule "a purchase has no price of zero" is part of what they mean.
+ * A billing screen gets a billing formatter, with its own tests. This is not a
+ * general-purpose currency library and should not become one.
+ *
+ * Deliberately **not** guarded: a value under R$ 1 that `money()` rounds to
+ * "R$ 0". It is the same untruth in principle, but no such row exists in the
+ * corpus, and the honest repair there is a different format — not a `null`
+ * that would hide a figure we really do hold.
+ */
+function notAPrice(amount: number): boolean {
+  return !Number.isFinite(amount) || amount === 0
+}
+
+/**
+ * `R$ 48.196`, `R$ 1,25 mi`, `R$ 272,6 bi` — and `null` for a zero, which is
+ * an absence dressed as a figure rather than a figure (see `notAPrice`).
  *
  * The board never shows centavos on a card: a tender's estimated value is an
  * order of magnitude, and `R$ 4.330.000,00` in Archivo at 22px does not fit a
@@ -152,7 +195,7 @@ export function daysUntil(iso: string | null | undefined, now: Date = new Date()
 export function money(value: string | null | undefined): string | null {
   if (value === null || value === undefined || value === '') return null
   const amount = Number(value)
-  if (!Number.isFinite(amount)) return null
+  if (notAPrice(amount)) return null
   if (Math.abs(amount) >= 1e9) return `R$ ${SCALED.format(amount / 1e9)} bi`
   if (Math.abs(amount) >= 1e6) return `R$ ${SCALED.format(amount / 1e6)} mi`
   return `R$ ${INTEGER.format(amount)}`
@@ -170,6 +213,10 @@ export function money(value: string | null | undefined): string | null {
  * Unit values carry four decimals in the database (`816.6700`); the currency
  * format rounds them to two the way PNCP's own table does, which is also what
  * makes `quantidade × unitário` come out to the total the agency published.
+ *
+ * A zero returns `null` here for the same reason it does in `money()`: on the
+ * tenders Sci found, every unit value and every total on the Itens tab is
+ * zero, and `R$ 0,00` printed twenty rows deep is twenty fabricated prices.
  */
 const CURRENCY = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -181,7 +228,7 @@ const CURRENCY = new Intl.NumberFormat('pt-BR', {
 export function moneyExact(value: string | null | undefined): string | null {
   if (value === null || value === undefined || value === '') return null
   const amount = Number(value)
-  if (!Number.isFinite(amount)) return null
+  if (notAPrice(amount)) return null
   // Intl uses a non-breaking space after "R$"; the tests and the DOM both read
   // better with an ordinary one, and the figure is `tabular-nums` either way.
   return CURRENCY.format(amount).replace(/ /g, ' ')

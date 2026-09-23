@@ -72,14 +72,40 @@ function render(overrides: Partial<PriceViewProps> = {}): string {
 }
 
 describe('unitPrice', () => {
+  // An ordinary space, not the non-breaking one `Intl` emits: this is now the
+  // Itens tab's `moneyExact`, which normalises it, and the two screens print
+  // the same `unit_estimated_value` the same way on purpose.
   it('keeps the centavos a tender total drops', () => {
-    expect(unitPrice('3.74')).toBe('R$ 3,74')
+    expect(unitPrice('3.74')).toBe('R$ 3,74')
   })
 
   it('answers nothing for a value the agency did not publish', () => {
     expect(unitPrice(null)).toBeNull()
     expect(unitPrice('')).toBeNull()
     expect(unitPrice('sigiloso')).toBeNull()
+  })
+
+  // The fifth place a zero reached the screen, and the one not in the brief:
+  // this screen had its own `Intl.NumberFormat` and would have kept printing
+  // "Edital paga (estimado) R$ 0,00" after the items table was fixed.
+  it('refuses a zero, so the row falls back to "não informado"', () => {
+    expect(unitPrice('0')).toBeNull()
+    expect(unitPrice('0.0000')).toBeNull()
+  })
+})
+
+describe('a secret budget on the price screen', () => {
+  it('prints "não informado", never R$ 0,00, for a priceless item', () => {
+    const priceless = ITEMS.map((item) => ({
+      ...item,
+      unitEstimatedValue: '0.0000',
+      totalValue: '0.00',
+    }))
+    const out = render({
+      tender: { ...TENDER, items: priceless } as unknown as TenderDetail,
+    })
+    expect(out).toContain(page.noEstimate)
+    expect(out).not.toMatch(/R\$\s*0[,.]?0*\b/)
   })
 })
 

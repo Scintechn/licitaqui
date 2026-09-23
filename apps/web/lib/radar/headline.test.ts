@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TenderCard } from './contract'
-import { cardHeadline, deadlineLabel } from './headline'
+import { cardHeadline, deadlineLabel, tenderBudget } from './headline'
 import { messages } from '../messages'
 
 const copy = messages.radar
@@ -106,6 +106,16 @@ describe('cardHeadline', () => {
     expect(out.anchor).toEqual({ fact: 'deadline', text: copy.card.closed })
   })
 
+  it('treats a zero exactly as it treats a missing value', () => {
+    // PNCP's *published* figure for a withheld budget is 0, on 108 tenders.
+    // It is an absence, so it takes the absence's path: the deadline is
+    // promoted and the quiet line says we were not told the value.
+    const out = cardHeadline(card({ estimatedValue: '0.00' }), NOW)
+
+    expect(out.anchor).toEqual({ fact: 'deadline', text: '13 dias' })
+    expect(out.note).toBe(copy.card.noValue)
+  })
+
   it('the anchor is never the absence itself', () => {
     // The whole point: "Valor não informado" and "Valor sigiloso" may appear
     // in `note`, never in `anchor`, whatever the shape of the row.
@@ -119,6 +129,73 @@ describe('cardHeadline', () => {
       const { anchor } = cardHeadline(card(over), NOW)
       expect(anchor?.text).not.toBe(copy.card.noValue)
       expect(anchor?.text).not.toBe(copy.card.confidential)
+    }
+  })
+})
+
+/**
+ * The three states, and the line between two of them.
+ *
+ * The worker's consulta upgrade (PR #65) is what will start setting
+ * `confidential_budget`, and PNCP's 503s mean no row on production carries it
+ * today. So the `true` branch cannot be exercised against live data: these
+ * tests are what hold it correct until it can be.
+ */
+describe('tenderBudget', () => {
+  const budget = (over: Partial<TenderCard>) => tenderBudget({ ...TENDER, ...over })
+
+  it('says "sigiloso" when, and only when, PNCP declared it', () => {
+    expect(budget({ confidentialBudget: true })).toEqual({
+      value: null,
+      note: copy.card.confidential,
+    })
+  })
+
+  it('lets the flag beat any figure sitting on the row', () => {
+    // `orcamentoSigilosoCodigo` 2 or 3 and a `valorTotalEstimado` in the same
+    // payload: the declaration wins, whatever the number says.
+    expect(budget({ confidentialBudget: true, estimatedValue: '48196.00' })).toEqual({
+      value: null,
+      note: copy.card.confidential,
+    })
+  })
+
+  it('prints a figure the órgão actually published', () => {
+    expect(budget({ estimatedValue: '48196.00' })).toEqual({
+      value: 'R$ 48.196',
+      note: null,
+    })
+  })
+
+  it('never infers "sigiloso" from a zero — that would be guessing', () => {
+    // The heart of it. On Sci's two tenders the zero *is* a withheld budget,
+    // and we still may not say so: "o órgão declarou o orçamento sigiloso" is
+    // a claim about the edital, and PNCP publishes zero for merely incomplete
+    // tenders as readily as for secret ones. Zero means "no price we can
+    // show". Only the code means "secret".
+    for (const zero of ['0', '0.00', '0.0000', '-0']) {
+      const out = budget({ estimatedValue: zero, confidentialBudget: false })
+      expect(out.value).toBeNull()
+      expect(out.note).toBe(copy.card.noValue)
+      expect(out.note).not.toBe(copy.card.confidential)
+    }
+  })
+
+  it('says the same thing for a NULL estimate', () => {
+    expect(budget({ estimatedValue: null })).toEqual({ value: null, note: copy.card.noValue })
+  })
+
+  it('always names exactly one of the two: a figure or an absence', () => {
+    for (const over of [
+      {},
+      { estimatedValue: null },
+      { estimatedValue: '0.00' },
+      { estimatedValue: '' },
+      { confidentialBudget: true },
+      { confidentialBudget: true, estimatedValue: '0.00' },
+    ] as Partial<TenderCard>[]) {
+      const out = budget(over)
+      expect(out.value === null).toBe(out.note !== null)
     }
   })
 })
