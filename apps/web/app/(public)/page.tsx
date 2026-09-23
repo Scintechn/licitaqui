@@ -217,12 +217,23 @@ export default async function LandingPage() {
               {stats ? (
                 <section className="flex flex-col gap-2 border-t border-line pt-3.5">
                   <SectionLabel tone="muted">{copy.todayLabel}</SectionLabel>
-                  <div className="grid grid-cols-2 gap-3">
+                  {/*
+                    Two columns at phone width and three from 560px up: the
+                    third label is the longest of the three, and forcing it
+                    into a third of a 400px screen breaks it over four lines.
+                    Below that breakpoint it takes the full width of row two,
+                    where it reads as the emphasis it is.
+                  */}
+                  <div className="grid grid-cols-2 gap-3 min-[560px]:grid-cols-3">
                     <Stat value={stats.open} label={copy.todayOpen} />
                     <div className="border-l border-line pl-3">
                       <Stat value={stats.meEpp} label={copy.todayMeEpp} />
                     </div>
+                    <div className="col-span-2 border-t border-line pt-3 min-[560px]:col-span-1 min-[560px]:border-t-0 min-[560px]:border-l min-[560px]:pt-0 min-[560px]:pl-3">
+                      <Stat value={stats.halted} label={copy.todayHalted} />
+                    </div>
                   </div>
+                  <p className="text-meta text-muted">{copy.todayHaltedNote}</p>
                 </section>
               ) : null}
             </div>

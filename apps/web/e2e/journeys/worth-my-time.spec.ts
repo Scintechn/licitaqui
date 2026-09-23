@@ -228,7 +228,7 @@ test.describe('Dona Marta · is this worth my time?', () => {
     // Both fields of the row, because both are the same submit: the UF is the
     // one the defect was reproduced on, and the keyword is what makes the
     // answer visibly a different list rather than the same rows re-drawn.
-    await page.getByText('Filtros', { exact: true }).click()
+    await page.getByText('Trocar empresa ou filtros', { exact: true }).click()
     await page.getByLabel('UF onde você entrega').selectOption('RJ')
     await page.getByLabel('Ou procure por palavra-chave (opcional)').fill('limpeza')
     await page.getByRole('button', { name: 'Aplicar filtros' }).click()

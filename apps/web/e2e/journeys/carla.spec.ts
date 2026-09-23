@@ -99,4 +99,50 @@ test.describe('Carla · bookkeeper, two clients', () => {
     await expect(page.getByText('Vida Hospitalar', { exact: false })).toBeVisible()
     await expect(cards(page)).toHaveCount(3)
   })
+
+  /**
+   * Carla's actual afternoon: one client, then the next, without going home.
+   *
+   * Until 2026-09-23 the CNPJ was `<input type="hidden">` inside the filter
+   * row — carried through every search and editable nowhere — so the only way
+   * to look at the second client was to navigate back to the landing and start
+   * again. For a bookkeeper with several clients that is the whole job.
+   *
+   * This also covers the ground the #75 snapshot guard has to hold: the CNPJ
+   * is part of `listKey`, so changing it must produce a new key *and* a real
+   * request. A snapshot restored across companies is the defect Carla exists
+   * to catch, and it would show here as the wrong count under the wrong name.
+   */
+  test('she moves from one client to the next without leaving the Radar', async ({ page }) => {
+    const api = await installRadarApi(page, { companies: clients(3) })
+
+    await page.goto(`/radar?cnpj=${limpeza.cnpj}&group=compatible`)
+    await expect(page.getByText('Brilho Limpeza', { exact: false })).toBeVisible()
+    await expect(cards(page)).toHaveCount(4)
+    const asked = api.calls.tenders.length
+
+    await page.getByText('Trocar empresa ou filtros', { exact: true }).click()
+    await page.getByLabel('CNPJ da empresa').fill(hospitalar.cnpj)
+    await page.getByRole('button', { name: 'Aplicar filtros' }).click()
+
+    await expect(page).toHaveURL(new RegExp(`cnpj=${hospitalar.cnpj}`))
+    await expect(page.getByText('Vida Hospitalar', { exact: false })).toBeVisible()
+    await expect(cards(page)).toHaveCount(3)
+    await expect(page.getByText('Brilho Limpeza')).toHaveCount(0)
+
+    await expect
+      .poll(() => api.calls.tenders.length, { message: 'the second client was never asked for' })
+      .toBeGreaterThan(asked)
+    expect(api.calls.tenders.at(-1)).toContain(hospitalar.cnpj)
+  })
+
+  test('the filter row arrives holding the search that is on screen', async ({ page }) => {
+    // Opening the row and pressing Aplicar without touching anything must
+    // repeat the same search, not clear it — the CNPJ is prefilled.
+    await installRadarApi(page, { companies: clients() })
+
+    await page.goto(`/radar?cnpj=${limpeza.cnpj}&group=compatible`)
+    await page.getByText('Trocar empresa ou filtros', { exact: true }).click()
+    await expect(page.getByLabel('CNPJ da empresa')).toHaveValue(limpeza.cnpj)
+  })
 })

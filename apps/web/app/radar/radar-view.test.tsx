@@ -455,6 +455,34 @@ describe('an empty tab, when the results are on another one', () => {
     expect(out).toMatch(/aria-hidden="true"[^>]*tabular-nums">0</)
   })
 
+  it('the company can be changed without leaving the Radar', () => {
+    // The CNPJ used to be `<input type="hidden">`: carried through every
+    // search, editable nowhere, so the one thing you could not change here was
+    // the company — and people went back to the landing to do it.
+    const out = render()
+    expect(out).not.toContain('<input type="hidden" name="cnpj"')
+    expect(out).toContain('name="cnpj"')
+    expect(out).toContain(copy.landing.cnpjLabel)
+    // Still prefilled with the search on screen, so opening the row and
+    // pressing Aplicar without touching anything repeats the same search.
+    expect(out).toContain(`value="${BASE_QUERY.cnpj}"`)
+  })
+
+  it('the filter row says the search is inside it', () => {
+    // "Filtros" does not tell anybody the whole search lives in there.
+    // `changeCompany` was written for this and rendered nowhere.
+    const out = render()
+    expect(out).toContain(copy.list.changeCompany)
+  })
+
+  it('the company line draws no affordance it cannot honour', () => {
+    // It used to render a chevronRight inside a plain <p> — no link, no
+    // button, no handler. An affordance that does nothing is worse than none.
+    const out = render()
+    const header = out.slice(0, out.indexOf(copy.list.groups.compatible))
+    expect(header).not.toContain('chevron')
+  })
+
   it('an elected tab is not written into the filter form as a chosen one', () => {
     // A tab the user pressed travels with a filter change; one the screen
     // picked for them must not, or the next search inherits a decision they

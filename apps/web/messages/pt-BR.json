@@ -638,6 +638,8 @@
       "todayLabel": "Hoje no Brasil",
       "todayOpen": "editais abertos",
       "todayMeEpp": "exclusivos ME/EPP",
+      "todayHalted": "suspensos, revogados ou anulados",
+      "todayHaltedNote": "No PNCP você só descobre abrindo cada edital. Aqui aparece na lista.",
       "founders": "Quer entrar antes? São 48 vagas de fundador.",
       "founderStrip": {
         "label": "Fundadores:",
