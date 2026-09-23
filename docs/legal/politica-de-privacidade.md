@@ -1,8 +1,8 @@
 # Política de Privacidade — LicitaQui
 
-**Minuta v1.2 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Publicado em 21/09/2026; este aviso é metadado de trabalho e é removido na renderização das páginas públicas.
+**Minuta v1.3 · 23/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Publicado em 21/09/2026; este aviso é metadado de trabalho e é removido na renderização das páginas públicas.
 
-**Última atualização:** 21/09/2026 · **Vigência:** 21/09/2026
+**Última atualização:** 23/09/2026 · **Vigência:** 23/09/2026
 
 ---
 
@@ -23,6 +23,7 @@ Somos um **agente de tratamento de pequeno porte** (Resolução CD/ANPD nº 2/20
 | Vendemos seus dados? | Não. Nunca |
 | Usamos IA com seus dados? | A IA lê **o edital público**, não os seus dados pessoais (seção 7) |
 | Onde os dados ficam | Banco e aplicação em nuvem, com servidores que podem estar fora do Brasil (seção 9) |
+| Usamos cookies de medição? | Sim, do Google Analytics, e você pode recusá-los (seção 10) |
 | Como excluir | Escreva para privacidade@licitaquiapp.com.br: apagamos ou anonimizamos no prazo da seção 11 |
 
 ## 3. Palavras que usamos aqui
@@ -52,6 +53,7 @@ Somos um **agente de tratamento de pequeno porte** (Resolução CD/ANPD nº 2/20
 
 **e) Registros de uso**
 - Páginas e ações no app (buscas, triagens pedidas, alertas abertos), data, hora e tipo de dispositivo.
+- Medição de audiência com o Google Analytics: páginas visitadas, origem da visita e dados aproximados de dispositivo e de localização, ligados a um identificador gravado no seu navegador (seção 10). **Não enviamos ao Google o seu nome, o seu e-mail nem o CNPJ pesquisado.**
 - Registros de acesso da aplicação, guardados por 6 meses, conforme o Marco Civil da Internet (Lei nº 12.965/2014).
 
 **f) Dados públicos de terceiros**
@@ -70,7 +72,7 @@ Não coletamos dados sensíveis (art. 5º, II da LGPD) e o serviço não é dest
 | Cobrar a assinatura, emitir documentos fiscais e cumprir obrigações contábeis | Obrigação legal e execução de contrato (art. 7º, II e V) |
 | Enviar alertas de editais no Telegram ou no WhatsApp | Execução de contrato (quando faz parte do plano) e consentimento (art. 7º, I) para mensagens promocionais |
 | Enviar novidades, convites e a abertura para fundadores | Consentimento (art. 7º, I), revogável a qualquer momento |
-| Medir uso e melhorar o produto, com dados agregados | Legítimo interesse (art. 7º, IX) |
+| Medir audiência, entender como o site é usado e melhorar o produto | Legítimo interesse (art. 7º, IX) |
 | Segurança, registros de acesso e defesa em processos | Obrigação legal e exercício regular de direitos (art. 7º, II e VI) |
 
 Quando usamos **legítimo interesse**, limitamos o tratamento ao necessário, avaliamos o impacto sobre você e mantemos o canal da seção 1 para você se opor.
@@ -103,7 +105,7 @@ Compartilhamos apenas o necessário, com operadores que tratam dados em nosso no
 | Asaas | Cobrança da assinatura |
 | Resend (ou Amazon SES) | Envio de e-mails |
 | Sentry | Registro de erros da aplicação |
-| Google | Login com conta Google, se você escolher |
+| Google | Login com conta Google, se você escolher, e medição de audiência do site (Google Analytics) |
 | BrasilAPI | Consulta pública de CNPJ |
 | Cloudflare | DNS e recebimento dos e-mails de contato |
 
@@ -119,7 +121,14 @@ Alguns operadores acima processam dados fora do Brasil, principalmente nos Estad
 
 ## 10. Cookies
 
-Usamos apenas cookies necessários para o funcionamento: sessão de login e identificador do visitante para aplicar os limites do plano gratuito. As métricas de uso são agregadas e não identificam você individualmente.
+Usamos duas categorias de cookies:
+
+- **Necessários ao funcionamento:** sessão de login e um identificador aleatório do visitante, usado para aplicar os limites de 3 dias e 2 triagens do acesso sem conta.
+- **Medição de audiência (Google Analytics 4):** cookies gravados pelo Google (`_ga`), que registram as páginas visitadas, a origem da visita e dados aproximados de dispositivo e de localização.
+
+O identificador do Google Analytics fica no seu navegador por até **2 anos** e distingue um visitante do outro. Por isso essas métricas **não são anônimas**, ainda que não contenham o seu nome, o seu e-mail nem o CNPJ que você pesquisou. Não usamos esses dados para publicidade, não montamos perfil seu e não ativamos os recursos de publicidade do Google Analytics.
+
+Você pode recusar ou apagar esses cookies nas configurações do seu navegador, ou instalar o complemento de desativação do Google Analytics em https://tools.google.com/dlpage/gaoptout. O restante do site continua funcionando normalmente.
 
 ## 11. Por quanto tempo guardamos
 
@@ -130,6 +139,7 @@ Usamos apenas cookies necessários para o funcionamento: sessão de login e iden
 | Após a exclusão da conta | Até 30 dias para apagar ou anonimizar, salvo o que a lei obriga a manter |
 | Dados de cobrança e fiscais | 5 anos, por obrigação legal |
 | Registros de acesso | 6 meses (Marco Civil) |
+| Métricas do Google Analytics | 14 meses, prazo configurado na ferramenta |
 | Lista de fundadores | Até 24 meses após a inscrição, ou até você pedir a exclusão |
 | Editais, itens e resultados públicos | Por tempo indeterminado, por serem dados públicos |
 
@@ -171,3 +181,4 @@ Esta política é regida pela lei brasileira, e as questões dela decorrentes se
 | Versão | Data | O que mudou |
 |---|---|---|
 | 1.0 | 21/09/2026 | Primeira versão publicada |
+| 1.1 | 23/09/2026 | Medição de audiência com o Google Analytics 4: seções 4, 5, 8, 10 e 11 |
