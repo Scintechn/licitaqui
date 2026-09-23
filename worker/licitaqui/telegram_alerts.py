@@ -97,6 +97,29 @@ BRT = ZoneInfo("America/Sao_Paulo")
 #: is not an alert and must not consume someone's one message of the week.
 DIGEST_TEMPLATES = frozenset({"weekly-digest", "weekly-digest-empty"})
 
+#: **Every** telegram body this module can reach for: the two digests above,
+#: the four `/start` replies and `/ajuda` and `/pausar` that
+#: :func:`build_reply_context` branches on, and `partial-digest-item`, which
+#: :func:`render_item` renders inside `weekly-digest`.
+#:
+#: It is the list :mod:`licitaqui.selfcheck` walks to decide whether an image
+#: can send anything at all, so it has to be the whole set and not a sample —
+#: until 2026-09-23 the image carried no `templates/` directory and *none* of
+#: these could render. `tests/test_selfcheck.py` pins it against the files on
+#: disk in both directions, so a new template or a renamed one fails there
+#: rather than in production on a Monday morning.
+TEMPLATE_IDS = DIGEST_TEMPLATES | frozenset(
+    {
+        "start-linked",
+        "start-already-linked",
+        "start-no-token",
+        "start-token-invalid",
+        "help",
+        "stop",
+        "partial-digest-item",
+    }
+)
+
 #: Up to 3 tenders (task card, and `telegram/weekly-digest.md`).
 MAX_TENDERS = 3
 

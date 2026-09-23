@@ -164,6 +164,21 @@ jobs:
       - name: Build worker image
         run: docker build -t licitaqui-worker:${{ github.sha }} worker/
 
+      # …and this proves the image can do its job, which the build does not.
+      #
+      # Every image published before 2026-09-23 built cleanly here and could
+      # not render one message: the Dockerfile never copied `worker/templates`,
+      # which `licitaqui.templates` resolves relative to the package, so every
+      # send raised TemplateNotFound. `events` held zero `telegram.sent` and
+      # zero `telegram.dry_run` for the life of the product while this workflow
+      # was green — `pytest` above cannot see the fault, because it runs
+      # against the checkout, where the directory is right there.
+      #
+      # So the check runs *inside the artefact*, and before the push steps
+      # below, so an image that cannot send is never published.
+      - name: The image can render a message
+        run: docker run --rm licitaqui-worker:${{ github.sha }} python -m licitaqui.selfcheck
+
       # Publishing (spec §13, task B1). Only from `main`, so a pull request
       # still just proves the Dockerfile builds.
       #
