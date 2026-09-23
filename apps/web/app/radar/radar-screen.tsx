@@ -104,8 +104,25 @@ type Data = {
    * fetched instead of renewing its own lease every time it is shown.
    */
   readAt: number
+  /**
+   * The `listKey` these rows were read **for**, carried in the state rather
+   * than derived from the URL at the point of use.
+   *
+   * The two disagree for exactly one render, and that render is the whole of
+   * the 2026-09-23 defect: a client-side navigation re-renders with the new
+   * `key` while `data` is still the list read for the previous one. Anything
+   * that writes to the cache has to be able to tell that render apart from a
+   * settled one, and the URL alone cannot — by then it is already the new
+   * search.
+   */
+  key: string
 }
 
+/**
+ * Nothing read yet. The key is `''`, which `listKey` can never produce — it
+ * always joins four fields with a NUL separator — so this state matches no
+ * search and is never written to the cache.
+ */
 const INITIAL: Data = {
   company: null,
   visitor: null,
@@ -117,6 +134,7 @@ const INITIAL: Data = {
   freshness: null,
   status: { kind: 'analyzing', what: 'company' },
   readAt: 0,
+  key: '',
 }
 
 function aborted(error: unknown): boolean {
@@ -145,7 +163,13 @@ function snapshotStatus(status: RadarStatus): SnapshotStatus | null {
   return null
 }
 
-function fromSnapshot(snapshot: ListSnapshot): Data {
+/**
+ * `key` is the key the snapshot was **read for**, which is not always the one
+ * it was saved under: `restoreList` matches an `auto` snapshot sideways when
+ * the way back spells the group out. Stamping the state with the key now on
+ * screen is what lets the next save put it where this URL will look for it.
+ */
+function fromSnapshot(snapshot: ListSnapshot, key: string): Data {
   return {
     company: snapshot.company,
     visitor: snapshot.visitor,
@@ -157,6 +181,7 @@ function fromSnapshot(snapshot: ListSnapshot): Data {
     freshness: snapshot.freshness,
     status: STATUS_FROM_SNAPSHOT[snapshot.status],
     readAt: snapshot.savedAt,
+    key,
   }
 }
 
@@ -180,18 +205,31 @@ export function RadarScreen() {
    */
   const [data, setData] = useState<Data>(() => {
     const restored = restoreList({ cnpj, state, q, group: chosenGroup })
-    return restored ? fromSnapshot(restored.snapshot) : INITIAL
+    return restored ? fromSnapshot(restored.snapshot, key) : INITIAL
   })
 
   /**
-   * The rows on screen, for the effect below to recognise. Identity is the
-   * whole test: `fromSnapshot` hands the state the snapshot's own `tenders`
-   * array, so "this list is already the snapshot" is one `===` and needs no
-   * flag written during render.
+   * What is on screen, for the effect below to recognise: the rows, and the
+   * key they are being shown under.
+   *
+   * Identity is the whole test on the rows — `fromSnapshot` hands the state
+   * the snapshot's own `tenders` array, so "this list is already the snapshot"
+   * is one `===` and needs no flag written during render.
+   *
+   * The key rides along because the same rows under a different key are not
+   * the same state. A sideways match (`auto` → an explicit group, which is the
+   * address the way back is built from) restores rows that are already on
+   * screen under a key nothing was ever saved under; if that is mistaken for
+   * "nothing to do", the snapshot is never re-saved where this URL looks for
+   * it and `rememberScroll` writes to a key that does not exist — the list
+   * comes back on the way back, at the top of the page.
    */
-  const shown = useRef<TenderCard[]>(data.tenders)
+  const shown = useRef<{ key: string; tenders: TenderCard[] }>({
+    key: data.key,
+    tenders: data.tenders,
+  })
   useEffect(() => {
-    shown.current = data.tenders
+    shown.current = { key: data.key, tenders: data.tenders }
   })
 
   /**
@@ -232,6 +270,24 @@ export function RadarScreen() {
    * about to find something.
    */
   useEffect(() => {
+    /**
+     * A snapshot is only ever written under the key it was read for.
+     *
+     * Without this line the Radar's whole navigation silently did nothing
+     * (2026-09-23). A client-side navigation — every chip, every "Aplicar
+     * filtros" — re-renders with the new `key` while `data` is still the list
+     * read for the old one, and this effect is declared **before** the one
+     * that loads, so it ran first and stamped the previous list under the new
+     * search's key. `restoreList` then found a direct hit for a search nobody
+     * had ever run, returned it, and the loader never asked the route for
+     * anything: the address changed, the list did not, and no request left.
+     *
+     * Ordering the two effects the other way round would also have worked
+     * today and would have gone on being a trap, because it would make the
+     * correctness of the cache depend on the order two `useEffect` calls
+     * happen to be written in. This states the rule instead.
+     */
+    if (data.key !== key) return
     const status = snapshotStatus(data.status)
     if (!status || data.tenders.length === 0 || data.readAt === 0) return
     saveList(key, {
@@ -340,8 +396,12 @@ export function RadarScreen() {
       if (restored) {
         // The mount initializer may already have rendered this exact snapshot;
         // setting it again would replace an identical view model and re-render
-        // for nothing.
-        if (shown.current !== restored.snapshot.tenders) setData(fromSnapshot(restored.snapshot))
+        // for nothing. "Exact" is the rows **and** the key: a sideways match
+        // arrives here with the rows already on screen under the key they were
+        // saved under rather than the one this URL will look for.
+        if (shown.current.tenders !== restored.snapshot.tenders || shown.current.key !== key) {
+          setData(fromSnapshot(restored.snapshot, key))
+        }
         if (restored.use === 'revalidate') {
           // Its own `catch`: a refresh that fails behind a list which is on
           // screen and working must not turn that screen into an error card.
@@ -352,6 +412,7 @@ export function RadarScreen() {
 
       setData((previous) => ({
         ...previous,
+        key,
         tenders: [],
         nextCursor: null,
         loadingMore: false,
@@ -456,6 +517,7 @@ export function RadarScreen() {
         freshness: answer.freshness,
         status,
         readAt: Date.now(),
+        key,
       })
     }
 

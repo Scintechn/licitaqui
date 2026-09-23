@@ -370,6 +370,26 @@ describe('restoreList, and the key the way back actually uses', () => {
     expect(restoreList({ ...unchosen, group: 'keyword' }, NOW)?.snapshot.group).toBe('keyword')
   })
 
+  it('refuses a direct hit whose snapshot is of another group', () => {
+    // What a stale write produced on 2026-09-23: the Compatíveis list filed
+    // under the Verificar key by a navigation that had not loaded yet. The key
+    // matches exactly, which is precisely why this was served — and a key
+    // match is not a list match.
+    const chosen = { ...unchosen, group: 'check' } as const
+    saveList(listKey(chosen), snapshot({ group: 'compatible' }))
+
+    // The entry is there and readable; it is `restoreList` that refuses it.
+    expect(readList(listKey(chosen), NOW)?.snapshot.group).toBe('compatible')
+    expect(restoreList(chosen, NOW)).toBeNull()
+  })
+
+  it('still hands over a direct hit that agrees with itself', () => {
+    // The guard above must not cost the ordinary case anything.
+    const chosen = { ...unchosen, group: 'check' } as const
+    saveList(listKey(chosen), snapshot({ group: 'check', nextCursor: 'from-check' }))
+    expect(restoreList(chosen, NOW)?.snapshot.nextCursor).toBe('from-check')
+  })
+
   it('does not look sideways when the URL chose nothing', () => {
     saveList(listKey({ ...unchosen, group: 'check' }), snapshot({ group: 'check' }))
     expect(restoreList(unchosen, NOW)).toBeNull()
