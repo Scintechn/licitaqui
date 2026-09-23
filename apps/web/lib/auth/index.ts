@@ -13,6 +13,7 @@ import {
   SESSION_COOKIE_SECURE,
 } from './config'
 import { linkFounderSeat } from './founder-seat'
+import { sendVerificationRequest } from './magic-link-email'
 import { AUTH_PAGES } from './pages'
 
 /**
@@ -65,7 +66,17 @@ function providers(): Provider[] {
   }
 
   if (available.magicLink) {
-    list.push(Resend({ apiKey: resendKey(), from: magicLinkFrom() }))
+    list.push(
+      Resend({
+        apiKey: resendKey(),
+        from: magicLinkFrom(),
+        // Without this, `@auth/core` sends its own built-in template: English,
+        // "Sign in to www.licitaquiapp.com.br", no reply-to. See
+        // `magic-link-email.ts` — and note it throws on a Resend failure, so a
+        // message we could not send never renders "Link enviado".
+        sendVerificationRequest,
+      }),
+    )
   }
 
   return list

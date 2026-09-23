@@ -1213,6 +1213,16 @@
       "emailHelp": "A gente manda um link para o seu e-mail. Clique nele e pronto, sem senha.",
       "sentTitle": "Link enviado",
       "sentBody": "Abra o seu e-mail e clique no link para entrar. Se não chegar em alguns minutos, olhe o spam.",
+      "email": {
+        "subject": "Seu link de acesso à LicitaQui",
+        "heading": "Entrar na LicitaQui",
+        "intro": "Você pediu um link de acesso em licitaquiapp.com.br. É só clicar no botão abaixo — não precisa de senha.",
+        "button": "Entrar na LicitaQui",
+        "validity": "O link vale por 24 horas e funciona uma vez só. Ele entra na sua conta no aparelho em que você abrir.",
+        "ignore": "Se não foi você que pediu, pode ignorar este e-mail: nada acontece.",
+        "help": "Dúvida ou problema: {email}",
+        "fallback": "Se o botão não funcionar, copie e cole este endereço no navegador:"
+      },
       "keepBrowsing": "Continuar sem conta",
       "errorTitle": "Não deu para entrar",
       "errorBody": "Alguma coisa falhou no caminho de volta. Tente de novo.",
