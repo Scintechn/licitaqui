@@ -67,7 +67,22 @@ test.describe('Dona Marta · the AI triagem', () => {
     await page.goto(`/radar/edital/${EDITAL}/triagem?cnpj=${MARTA.cnpj}&group=compatible`)
 
     await expect(page.getByText('Lendo o edital…')).toBeVisible()
-    expect(api.calls.screeningPost.length, 'one ask, not one per tick').toBe(1)
+
+    // Polled, not read at an instant. "Lendo o edital…" is also the screen's
+    // **initial** state — `screening-screen.tsx`'s `INITIAL`, and the route's
+    // Suspense fallback — so it is on screen before the `POST` has left. Read
+    // straight after the visibility check, this counter measures how fast the
+    // machine is, which is how it passed on a laptop and failed on a CI box.
+    await expect
+      .poll(() => api.calls.screeningPost.length, { message: 'one ask, not one per tick' })
+      .toBe(1)
+
+    // The poll loop has to have made its first read before the clock moves, or
+    // `advance()` fires timers that do not exist yet and the whole wait starts
+    // one tick out of step.
+    await expect
+      .poll(() => api.calls.screeningGet.length, { message: 'the poll loop never started' })
+      .toBeGreaterThan(0)
 
     // §3.1's sixty seconds pass with the job still running.
     await advance(page, 70_000)
