@@ -124,4 +124,54 @@ suite('openTenderStats', () => {
       ),
     ).rejects.toBe(ROLLBACK)
   })
+
+  /**
+   * The 2026-09-23 correction. Before it, `open` counted every row whose
+   * deadline was ahead, whatever the órgão had done to it — 204 of production's
+   * 8 028 "editais abertos" were suspended, revoked or annulled.
+   *
+   * This fails against that version: the old query would have counted the
+   * suspended tender in `open`, and had no `halted` to put it in.
+   */
+  it('a suspended tender with a future deadline is halted, not open', async () => {
+    const [tender] = STATS_FIXTURES
+
+    await expect(
+      db().transaction(
+        async (tx) => {
+          await insertFixture(tx, tender, { segments: [SEGMENT] })
+          await tx.execute(sql`
+            update tenders
+               set proposals_close_at = now() + interval '30 days',
+                   me_epp_summary = 'exclusive',
+                   status = 'Divulgada no PNCP'
+             where id = ${tender.id}
+          `)
+          const open = await openTenderStats(tx)
+
+          // The only change is the órgão's status. The date stays in the future.
+          await tx.execute(sql`
+            update tenders set status = 'Suspensa' where id = ${tender.id}
+          `)
+          const halted = await openTenderStats(tx)
+
+          expect(halted!.open).toBe(open!.open - 1)
+          expect(halted!.meEpp).toBe(open!.meEpp - 1)
+          expect(halted!.halted).toBe(open!.halted + 1)
+
+          // Revogada and Anulada land in the same figure; an unrecognised
+          // value must never be counted as open (the `mayShowUrgency` rule).
+          for (const status of ['Revogada', 'Anulada', 'Vai Saber']) {
+            await tx.execute(sql`update tenders set status = ${status} where id = ${tender.id}`)
+            const other = await openTenderStats(tx)
+            expect(other!.open).toBe(open!.open - 1)
+            expect(other!.halted).toBe(open!.halted + 1)
+          }
+
+          throw ROLLBACK
+        },
+        { isolationLevel: 'repeatable read' },
+      ),
+    ).rejects.toBe(ROLLBACK)
+  })
 })

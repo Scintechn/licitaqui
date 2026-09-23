@@ -1,5 +1,14 @@
 import Link from 'next/link'
-import { AppBar, AppBarActionLink, Button, Icon, Logo, Select, StateCard } from '@/components'
+import {
+  AppBar,
+  AppBarActionLink,
+  Button,
+  Field,
+  Icon,
+  Logo,
+  Select,
+  StateCard,
+} from '@/components'
 import { cn } from '@/lib/cn'
 import type {
   CompanyView,
@@ -110,12 +119,14 @@ function CompanyLine({ company, query }: { company: CompanyView | null; query: R
   const name = company?.tradeName || company?.legalName || list.companyFallback
   const cnaes = company ? company.segments.length : 0
   const where = query.state ?? copy.ufAll
+  // No chevron. It used to draw one here, inside a `<p>` with no link, no
+  // button and no handler — the universal "tap me" affordance on something
+  // that could not be tapped, which is worse than no affordance at all: it
+  // teaches people the header is dead. The way to change the search is the
+  // filter row below, which now says so in as many words.
   return (
-    <p className="flex items-center gap-1.5 text-meta text-muted">
-      <span>
-        {name} · {format(list.cnaeCount, { count: cnaes })} · {where}
-      </span>
-      <Icon name="chevronRight" size={14} />
+    <p className="text-meta text-muted">
+      {name} · {format(list.cnaeCount, { count: cnaes })} · {where}
     </p>
   )
 }
@@ -290,9 +301,16 @@ function FilterRow({
             '[&::-webkit-details-marker]:hidden',
           )}
         >
+          {/*
+            `changeCompany` — "Trocar empresa ou filtros" — not `filters`.
+            The string was written for exactly this and was rendered nowhere;
+            "Filtros" does not tell anybody that the whole search lives in
+            here, which is why people went back to the home page to look for
+            another company.
+          */}
           <span className="inline-flex min-h-touch items-center gap-1.5">
             <Icon name="filters" size={16} />
-            {list.filters}
+            {list.changeCompany}
           </span>
           <span className="text-muted">{list.sort}</span>
         </summary>
@@ -318,7 +336,27 @@ function FilterRow({
               : undefined
           }
         >
-          <input type="hidden" name="cnpj" value={query.cnpj ?? ''} />
+          {/*
+            The CNPJ was a hidden input: carried through every search and
+            editable nowhere, so the one thing you could not change from the
+            Radar was the company — the whole reason people bounced back to
+            the landing. It is the same `name="cnpj"` posting to the same
+            `/radar`, which already treats `?cnpj=` as a real, shareable
+            address; making it visible is the entire change.
+          */}
+          <Field
+            id="radar-cnpj"
+            name="cnpj"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={18}
+            mono
+            label={copy.landing.cnpjLabel}
+            placeholder={copy.landing.cnpjPlaceholder}
+            defaultValue={query.cnpj ?? ''}
+            className="min-[560px]:w-60"
+          />
           {query.groupChosen ? <input type="hidden" name="group" value={query.group} /> : null}
           <Select
             id="radar-uf"
