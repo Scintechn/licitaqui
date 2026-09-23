@@ -1258,3 +1258,52 @@ characters of actual description (21 MB of descriptions in total). Every field
 payload it came from. Trimming `raw` on items is the single largest lever on the
 512 MB limit, and it is a schema-and-backfill decision for Sci rather than
 something to slip into this lane.
+
+## Integration tests are unreliable while a backfill is running
+
+The integration suites run against the **shared production Neon compute** —
+separate databases, one compute. A backfill writing continuously to `tenders`
+(or a heavy collector sweep) saturates it, and the tests do not fail cleanly
+when that happens: they fail as `E`, a **fixture error**, because what breaks is
+a fixture opening one of its three connections, not an assertion.
+
+That matters because an `E` looks like a code defect and is not one. It cost us
+two diagnoses on 2026-09-22/23:
+
+- the `integration (Neon)` job **cancelled at 30m18s** against a 30-minute
+  timeout — the same compute under the same pressure, read as a test failure
+  because `gh pr checks` prints a cancelled job as `fail`. Two days later the
+  same job produced a **real** `fail` at **25m35s** (one genuine assertion
+  error, 1,018 passed). The CLI renders both identically, and the shorter one
+  was the real failure — so duration tells you nothing either. Read the job's
+  `conclusion` instead: `gh api repos/:owner/:repo/actions/jobs/:id --jq
+  .conclusion` distinguishes `cancelled` from `failure`;
+- two `E`s in `sync_items`/`pncp_404`/`sync_awards` during the value backfill,
+  which did **not** reproduce once it was paused.
+
+### Telling load from a defect
+
+**A code defect is deterministic in *what* it breaks; contention is
+deterministic only in roughly *how often*.** So compare **test identities**
+across runs, never positions:
+
+- same test names fail again → it is the code;
+- different names, or the same positions with different names → it is load.
+
+Capture the names before killing a run. Positions alone cost a round trip on
+2026-09-23.
+
+Both happened at once that night, which is the trap: one `F`
+(`test_expired_items_are_fetched_again`, a real contract change from the upsert
+guard, reproducing every time) sat beside two `E`s that never reproduced.
+Assuming a single cause for both symptoms is what sent the diagnosis sideways.
+
+### Before blaming the code
+
+1. Check whether a backfill is running — `scripts/backfill_*.py`, or ask.
+2. Pause it. They are resumable by construction (their work queue is a query,
+   not a cursor), so stopping costs wall clock and nothing else.
+3. Re-run and compare **names**.
+
+The collector cannot be paused without Sci — it is what keeps the Radar
+current — so the floor is never completely quiet.

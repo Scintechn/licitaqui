@@ -20,6 +20,7 @@ import pytest
 
 from licitaqui import breaker as breaker_module
 from licitaqui import sync_items as sync_items_module
+from licitaqui.items import sync_event_name as items_sync_event_name
 from licitaqui.pncp import ITEMS_PATH, PncpClient, PncpError
 from licitaqui.queue import Job
 from licitaqui.registry import REGISTRY, JobContext
@@ -289,20 +290,70 @@ def test_fresh_items_are_not_fetched_again(b3_conn: psycopg.Connection, monkeypa
     assert read_state(b3_conn, tid).reason == "fresh"
 
 
+def _age_this_tender(conn: psycopg.Connection, tid: str, *, hours: int) -> None:
+    """Make a tender look like it was last read ``hours`` ago.
+
+    Both signals, and the *marker* is the one that now decides. Ageing only
+    `tender_items.updated_at` used to be enough, because that column was the
+    freshness signal for a tender with items — but only by coincidence: it
+    answered "when did we last read PNCP" because every read rewrote every row.
+
+    Since the upsert guard stopped rewriting unchanged rows that coincidence is
+    gone, and `read_state` reads `coalesce(marker, min(updated_at))`. Old item
+    rows beside a fresh marker is therefore no longer "expired": it is the
+    *normal* state of a tender we re-read and found unchanged, and reporting it
+    as stale is exactly the every-sweep re-fetch the guard would otherwise cause.
+    """
+    conn.execute(
+        "update tender_items set updated_at = now() - make_interval(hours => %s)"
+        " where tender_id = %s",
+        (hours, tid),
+    )
+    conn.execute(
+        "update events set created_at = now() - make_interval(hours => %s) where name = %s",
+        (hours, items_sync_event_name(tid)),
+    )
+
+
 def test_expired_items_are_fetched_again(b3_conn: psycopg.Connection, monkeypatch) -> None:
     tid = given_tender(b3_conn, seq=9)
     factory = serving({items_key(9): TENDERS["quota"]["itens"]})
     run_job(monkeypatch, b3_conn, factory, {"tender_id": tid})
 
+    _age_this_tender(b3_conn, tid, hours=ITEMS_TTL_HOURS + 1)
+
+    assert read_state(b3_conn, tid).reason == "ttl"
+    run_job(monkeypatch, b3_conn, factory, {"tender_id": tid})
+    assert len(factory.calls) == 2
+
+
+def test_unchanged_items_beside_a_fresh_marker_are_not_re_fetched(
+    b3_conn: psycopg.Connection, monkeypatch
+) -> None:
+    """The regression the upsert guard would cause without the freshness move.
+
+    Re-syncing a tender whose items PNCP re-sent identically writes no row, so
+    `min(tender_items.updated_at)` stays where it was and ages past the TTL on
+    its own. If that still drove freshness, every unchanged tender in the corpus
+    would read stale on every sweep, for ever. The marker is what records that
+    we looked, and it must hold the tender fresh.
+    """
+    tid = given_tender(b3_conn, seq=19)
+    factory = serving({items_key(19): TENDERS["quota"]["itens"]})
+    run_job(monkeypatch, b3_conn, factory, {"tender_id": tid})
+
+    # Only the rows age — the marker stays fresh, which is what a re-read that
+    # found nothing changed leaves behind.
     b3_conn.execute(
         "update tender_items set updated_at = now() - make_interval(hours => %s)"
         " where tender_id = %s",
         (ITEMS_TTL_HOURS + 1, tid),
     )
 
-    assert read_state(b3_conn, tid).reason == "ttl"
+    assert read_state(b3_conn, tid).reason == "fresh"
+    calls_before = len(factory.calls)
     run_job(monkeypatch, b3_conn, factory, {"tender_id": tid})
-    assert len(factory.calls) == 2
+    assert len(factory.calls) == calls_before, "an unchanged tender was re-fetched"
 
 
 def test_a_tender_that_changed_is_fetched_again_inside_the_ttl(

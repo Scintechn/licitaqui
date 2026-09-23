@@ -1415,3 +1415,80 @@ def _delete_ev_rows(dsn: str) -> None:
             f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'",
             (list(EV_JOB_KINDS),),
         )
+
+
+# -- IG: the item upsert guard's own rows ----------------------------------
+#
+# Same shape and reasons as every block above: a `Dsn` wrapper so pytest cannot
+# render credentials into a traceback, and deletes scoped to rows *this run*
+# created — `IG_CNPJ` carries `RUN_ID`, never a task constant.
+#
+# This suite proves the upsert guard skips unchanged rows and that freshness
+# survives it in both directions, so it needs `tenders`, `tender_items` and the
+# `sync_items:` marker in `events`. It falls back to B3's database, whose schema
+# it uses in full; sharing is safe for the reason above and nowhere else.
+IG_TEST_DSN_VARS = ("TEST_DATABASE_URL_IG", "TEST_DATABASE_URL_B3")
+
+#: `99` + this run's id as digits + a trailing `2`, distinct from B3's
+#: (`99` + 12 digits), B4's (`4`), B8's (`8`), FH's and DL's (`5`), E1's (`1`),
+#: PNCP-404's (`7`) and EV's (`6`) inside the same run.
+IG_CNPJ = f"99{int(RUN_ID, 16):011d}2"[:14]
+IG_TENDER_PREFIX = f"{IG_CNPJ}-"
+
+
+def ig_tender_id(sequence: int = 1, year: int = 2026) -> str:
+    """A run-scoped id shaped like `numeroControlePNCP`."""
+    return f"{IG_TENDER_PREFIX}1-{sequence:06d}/{year}"
+
+
+@pytest.fixture(scope="session")
+def ig_dsn() -> str:
+    for var in IG_TEST_DSN_VARS:
+        for root in _candidate_roots():
+            dsn = config.resolve_secret(var, root=root)
+            if dsn:
+                return Dsn(dsn)
+    pytest.skip(f"none of {', '.join(IG_TEST_DSN_VARS)} is not configured; skipping guard tests")
+
+
+@pytest.fixture
+def ig_clean_dsn(ig_dsn: str) -> Iterator[str]:
+    _delete_ig_rows(ig_dsn)
+    try:
+        yield ig_dsn
+    finally:
+        _delete_ig_rows(ig_dsn)
+
+
+@pytest.fixture
+def ig_conn(ig_clean_dsn: str) -> Iterator[psycopg.Connection]:
+    from licitaqui import db
+
+    factory = db.factory(ig_clean_dsn, application_name=f"licitaqui-ig-test-{os.getpid()}")
+    with factory() as connection:
+        yield connection
+
+
+def _delete_ig_rows(dsn: str) -> None:
+    """Remove this run's rows, and any a killed run left behind. Never truncates.
+
+    `tender_items` goes with the tender (`on delete cascade`). The sync marker
+    in `events` has no foreign key, so it goes by the run-scoped prefix the code
+    builds it from.
+    """
+    from licitaqui.items import SYNC_EVENT_PREFIX
+
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("delete from tenders where agency_cnpj = %s", (IG_CNPJ,))
+        conn.execute(
+            "delete from tenders where agency_cnpj like '99%%' "
+            f"  and updated_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+        )
+        conn.execute(
+            "delete from events where starts_with(name, %s)",
+            (f"{SYNC_EVENT_PREFIX}{IG_TENDER_PREFIX}",),
+        )
+        conn.execute(
+            f"delete from events where starts_with(name, '{SYNC_EVENT_PREFIX}99') "
+            f"  and created_at < now() - interval '{CROSS_RUN_SWEEP_HOURS} hours'"
+        )
