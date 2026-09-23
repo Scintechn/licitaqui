@@ -11,6 +11,16 @@ COPY pyproject.toml ./
 COPY licitaqui/ ./licitaqui/
 COPY evaluation/ ./evaluation/
 
+# The outbound message bodies (templates README). NOT optional and NOT package
+# data: `licitaqui.templates` resolves them at run time as `<package>/../
+# templates`, so without this line the directory is simply absent from /app and
+# every render raises TemplateNotFound — an image that builds, starts, answers
+# its health check and cannot send a single Telegram message. That was true of
+# every image published before 2026-09-23. `python -m licitaqui.selfcheck`,
+# which ci-worker.yml runs inside this image before pushing it, is what now
+# makes that state impossible to publish again.
+COPY templates/ ./templates/
+
 RUN pip install --no-cache-dir .
 
 # The worker needs no write access to the image and no root.
