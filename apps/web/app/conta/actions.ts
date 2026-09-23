@@ -7,6 +7,7 @@ import { normaliseCnpj } from '@/lib/cnpj'
 import { db } from '@/lib/db'
 import { companyOrLookup } from '@/lib/radar/company'
 import { ACCOUNT_CREATE_PATH, ACCOUNT_PATH } from '@/lib/routes'
+import { withQuery } from '@/lib/url'
 
 /**
  * The three things the account screens actually *do*, as Server Functions.
@@ -88,7 +89,12 @@ export async function saveCompany(formData: FormData): Promise<void> {
   if (!id) redirect(ACCOUNT_CREATE_PATH)
 
   const cnpj = normaliseCnpj(String(formData.get('cnpj') ?? ''))
-  if (!cnpj) redirect(`${next}?estado=cnpj-invalido`)
+  // `withQuery`, not `${next}?…`: `safeNext` guarantees a local path and
+  // nothing more, so `next` may already carry a query string — and a second
+  // `?` makes `estado` unreadable, which is exactly how the magic-link
+  // confirmation was lost on 2026-09-23. Both call sites pass a bare constant
+  // today; neither is required to.
+  if (!cnpj) redirect(withQuery(next, 'estado=cnpj-invalido'))
 
   try {
     await companyOrLookup(cnpj)
@@ -98,7 +104,7 @@ export async function saveCompany(formData: FormData): Promise<void> {
     console.error(`company_lookup could not be enqueued (${code})`)
   }
   await db().transaction(async (tx) => setUserCnpj(Number(id), cnpj, tx))
-  redirect(`${next}?estado=empresa`)
+  redirect(withQuery(next, 'estado=empresa'))
 }
 
 export async function signOutEverywhere(): Promise<void> {

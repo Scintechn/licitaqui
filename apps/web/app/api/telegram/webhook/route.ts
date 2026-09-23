@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { recordEventSafely } from '@/lib/events'
-import { enqueueJob, JOB_KINDS, PRIORITY_USER_WAITING } from '@/lib/jobs'
+import {
+  enqueueJob,
+  JOB_KINDS,
+  PRIORITY_USER_WAITING,
+  sendTelegramPayload,
+  type TelegramReply,
+} from '@/lib/jobs'
 import { wakeWorker } from '@/lib/jobs/wake'
 import { rateLimitRequest } from '@/lib/rate-limit'
 import { ensureAlert, linkChat, setAlertActive, userForChat } from '@/lib/telegram/link'
@@ -75,7 +81,13 @@ const HEADERS: Record<string, string> = {
   'x-robots-tag': 'noindex, nofollow',
 }
 
-type Reply = { template: string; userId?: number; chatId?: number }
+/**
+ * What this route decided to say. `lib/jobs` owns the type and, importantly,
+ * owns turning it into the payload the worker reads: this object's `userId`
+ * was being written to the queue verbatim, and the worker reads `user_id`, so
+ * no reply enqueued here was ever deliverable. See `sendTelegramPayload`.
+ */
+type Reply = TelegramReply
 
 export async function POST(request: Request): Promise<Response> {
   const decision = rateLimitRequest('telegram-webhook', request.headers, RATE_LIMIT)
@@ -116,7 +128,7 @@ export async function POST(request: Request): Promise<Response> {
       kind: JOB_KINDS.sendTelegram,
       key: replyJobKey(update.updateId),
       priority: PRIORITY_USER_WAITING,
-      payload: reply,
+      payload: sendTelegramPayload(reply),
     })
     // Only when the row is actually new: a deduped job is already queued, and
     // the insert that created it already woke the worker.

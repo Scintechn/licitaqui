@@ -171,3 +171,34 @@ Propostas até {{prazo_proposta}}
 
 The flag guards the row; it is not a licence to pass an empty string. With the flag on,
 a blank value still raises.
+
+## 9. Optional greetings — a name we may not have
+
+`users.name` is populated by Google sign-in and **is not collected by the e-mail
+magic link**. So a real and growing share of accounts have no name at all, and
+on 2026-09-23 every one of them was silently dropped from the weekly digest
+*and* from the `/start` confirmation, because the worker required `{{nome}}`
+before it would render either.
+
+A name is therefore an **optional row** in the sense of §8, and takes the same
+shape — with one difference worth stating, because it is easy to get wrong: the
+guard wraps only the vocative, not the whole greeting.
+
+```
+Bom dia[[se: tem_nome]], {{nome}}[[/se]]. Estes são os editais…
+```
+
+renders `Bom dia, Sci.` or `Bom dia.` — both correct Portuguese, and the
+sentence is unchanged in either case. Wrapping the whole line instead would
+mean writing a second greeting for the nameless case, which is new copy, which
+is Sci's.
+
+**Never fill the gap with a derived name.** Not from the e-mail local part, not
+from the company. Legal brief §2.2 is that the product describes itself
+accurately; greeting somebody by a string we invented is the smallest version
+of the thing that rule exists to stop, and the address route additionally puts
+an e-mail address inside a message body, which §12 forbids.
+
+Templates carrying this today: `telegram/weekly-digest`,
+`telegram/weekly-digest-empty`, `telegram/start-linked`,
+`telegram/start-already-linked`.

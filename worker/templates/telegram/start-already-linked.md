@@ -3,9 +3,10 @@ id: start-already-linked
 channel: telegram
 status: draft
 placeholders: [nome, nome_empresa]
+flags: [tem_nome]
 ---
 
-Tudo certo, {{nome}} — esta conversa já está ligada à sua conta da LicitaQui e aos avisos da *{{nome_empresa}}*.
+Tudo certo[[se: tem_nome]], {{nome}}[[/se]] — esta conversa já está ligada à sua conta da LicitaQui e aos avisos da *{{nome_empresa}}*.
 
 Não precisa conectar de novo.
 

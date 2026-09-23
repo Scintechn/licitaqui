@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { providerAvailability } from '@/lib/auth/config'
+import { magicLinkWasSent, one } from '@/lib/auth/verify-request'
 import { messages } from '@/lib/messages'
 import { ACCOUNT_PATH } from '@/lib/routes'
 import { safeNext, signInWithEmail, signInWithGoogle } from '../actions'
@@ -32,10 +33,6 @@ export const metadata: Metadata = {
 
 type Search = Promise<{ [key: string]: string | string[] | undefined }>
 
-function one(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value
-}
-
 export default async function CreateAccountPage({ searchParams }: { searchParams: Search }) {
   const params = await searchParams
   const next = await safeNext(one(params.next))
@@ -49,7 +46,7 @@ export default async function CreateAccountPage({ searchParams }: { searchParams
     <SignInView
       availability={providerAvailability()}
       next={next}
-      sent={one(params.enviado) === '1'}
+      sent={magicLinkWasSent(params)}
       error={erro === 'email' ? 'email' : erro ? 'provider' : null}
       googleAction={signInWithGoogle}
       emailAction={signInWithEmail}

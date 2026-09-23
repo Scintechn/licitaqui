@@ -54,9 +54,10 @@ export const JOB_KINDS = {
    *
    * The only kind the web enqueues that is not a cache refresh: it is how
    * `POST /api/telegram/webhook` answers a `/start` without calling the Bot
-   * API from a request (§3). The payload is `{template, user_id | chat_id}`
-   * and the key is `reply:<update_id>`, so Telegram redelivering an update
-   * dedupes instead of greeting somebody twice.
+   * API from a request (§3). The payload is `{template, user_id | chat_id}` —
+   * build it with `sendTelegramPayload`, never by hand — and the key is
+   * `reply:<update_id>`, so Telegram redelivering an update dedupes instead of
+   * greeting somebody twice.
    */
   sendTelegram: 'send_telegram',
 } as const
@@ -73,6 +74,58 @@ export const PRIORITY_USER_WAITING = 1
  * queue ahead of another user's blank screen, so it sits with the syncs at 5.
  */
 export const PRIORITY_REFRESH = 5
+
+/**
+ * One outbound Telegram message, as the web's own code speaks about it.
+ *
+ * camelCase, because that is this codebase's dialect. It is **not** the wire
+ * format — `sendTelegramPayload` below is the only thing allowed to know that.
+ */
+export type TelegramReply = {
+  /** A template id under `worker/templates/telegram/`. */
+  template: string
+  /** The account the reply is for, when there is one. */
+  userId?: number
+  /** The chat, when there is no account to hang the reply on. */
+  chatId?: number
+}
+
+/**
+ * A `TelegramReply` in the spelling the worker actually reads.
+ *
+ * ## Why this function exists at all
+ *
+ * The queue is a **cross-language boundary with no shared types**: this file
+ * writes the row, `licitaqui/telegram_alerts.py` reads it, and nothing checks
+ * that they agree. Until 2026-09-23 they did not. The webhook route passed its
+ * internal `{template, userId, chatId}` object straight into `payload`, the
+ * worker read `user_id` / `chat_id`, and every single Telegram confirmation
+ * died on `ValueError: send_telegram payload needs a 'user_id' or a 'chat_id'`
+ * and retried until its attempts ran out. Two live production jobs (19267,
+ * 19268) had been failing that way, and the only visible symptom was a bot
+ * that never answered `/start`.
+ *
+ * So the translation happens **once, here**, next to `companyJobKey` and the
+ * other things that already mirror a Python function — rather than at the call
+ * site, where the next route to enqueue one would get it wrong again.
+ *
+ * ## snake_case is the wire format, and the worker stays strict
+ *
+ * The alternative was to teach the worker to accept both spellings. That is one
+ * line and it would have fixed tonight's symptom, but it would also have made
+ * this class of drift *silent*: the `ValueError` is the only reason anyone
+ * found this at all. A lenient consumer would have delivered the replies and
+ * left the two halves of the boundary disagreeing, until the next field.
+ *
+ * `contracts/jobs/send_telegram.json` pins the spelling from outside both
+ * languages, and a test on each side reads it.
+ */
+export function sendTelegramPayload(reply: TelegramReply): Record<string, unknown> {
+  const payload: Record<string, unknown> = { template: reply.template }
+  if (reply.userId !== undefined) payload.user_id = reply.userId
+  if (reply.chatId !== undefined) payload.chat_id = reply.chatId
+  return payload
+}
 
 /** Mirrors `licitaqui.company.job_key`: `company:` + `sha256(cnpj)[:16]`. */
 export function companyJobKey(cnpj: string): string {
