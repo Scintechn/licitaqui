@@ -54,7 +54,23 @@ const CHAT = (n: number) => -(900_000_000_000 + (RUN_NUMBER % 10_000_000) * 100 
 const WEBHOOK_SECRET = `e1-test-webhook-secret-${RUN_ID}`
 const LINK_SECRET = `e1-test-link-secret-${RUN_ID}`
 
-let updateId = 1
+/**
+ * Telegram update ids, **run-scoped like everything else here**.
+ *
+ * This was a bare `let updateId = 1`, and it was the one thing in this file
+ * that ignored the rule the docstring above states. The reply job's key is
+ * `reply:<update_id>` and `jobs_dedupe` is a *shared* partial unique index, so
+ * two runs of this suite both asking about update 2 do not collide on a row —
+ * far worse, the second one **deduplicates against the first**, `queuedReply`
+ * hands back the other run's payload, and the assertion fails against a chat
+ * id it has never heard of. Exactly the failure CLAUDE.md describes: "a
+ * task-scoped prefix looks isolated and is not".
+ *
+ * Each run gets its own thousand-wide band, and `cleanup()` deletes the band.
+ * E3's suite takes the upper half of the same band so the two cannot meet.
+ */
+const UPDATE_ID_BASE = (RUN_NUMBER % 10_000_000) * 1_000
+let updateId = UPDATE_ID_BASE
 
 function post(body: unknown, secret: string = WEBHOOK_SECRET): Promise<Response> {
   return telegramWebhook(
@@ -99,12 +115,12 @@ async function makeUser(what: string): Promise<number> {
 
 async function queuedReply(updateOfInterest: number): Promise<{
   kind: string
-  payload: { template: string; userId?: number; chatId?: number }
+  payload: { template: string; user_id?: number; chat_id?: number }
   priority: number
 } | null> {
   const { rows } = await pool().query<{
     kind: string
-    payload: { template: string; userId?: number; chatId?: number }
+    payload: { template: string; user_id?: number; chat_id?: number }
     priority: number
   }>(`select kind, payload, priority from jobs where key = $1`, [`reply:${updateOfInterest}`])
   return rows[0] ?? null
@@ -121,14 +137,22 @@ async function cleanup() {
     await pool().query(`delete from events where user_id = any($1::bigint[])`, [ids])
     await pool().query(
       `delete from jobs where kind = 'send_telegram'
-         and (payload ->> 'userId') = any($1::text[])`,
+         and (payload ->> 'user_id') = any($1::text[])`,
       [ids],
     )
   }
   await pool().query(
-    `delete from jobs where kind = 'send_telegram' and (payload ->> 'chatId')::bigint in
+    `delete from jobs where kind = 'send_telegram' and (payload ->> 'chat_id')::bigint in
        (select generate_series($1::bigint, $2::bigint))`,
     [CHAT(40), CHAT(0)],
+  )
+  // By key as well as by payload. A reply enqueued for a template this suite
+  // did not expect still holds `reply:<id>` in the shared dedupe index, and a
+  // row left there poisons the *next* run rather than this one.
+  await pool().query(
+    `delete from jobs where kind = 'send_telegram'
+       and key in (select 'reply:' || generate_series($1::bigint, $2::bigint))`,
+    [UPDATE_ID_BASE, UPDATE_ID_BASE + 999],
   )
   // `telegram_links` and `alerts` cascade from `users`.
   await pool().query(`delete from users where email like $1`, [`e1-${RUN_ID}-%`])
@@ -212,11 +236,11 @@ suite('E1 · Telegram linking (database)', () => {
     expect(job).toMatchObject({
       kind: 'send_telegram',
       priority: 1,
-      payload: { template: 'start-linked', userId },
+      payload: { template: 'start-linked', user_id: userId },
     })
     // §12: the payload for a *linked* account carries no chat id — the worker
     // reads it from `telegram_links`.
-    expect(job?.payload.chatId).toBeUndefined()
+    expect(job?.payload.chat_id).toBeUndefined()
 
     const events = await db().execute<{ name: string }>(sql`
       select name from events where user_id = ${userId}::bigint
@@ -238,7 +262,7 @@ suite('E1 · Telegram linking (database)', () => {
     expect(await userForChat(CHAT(5))).toBeNull()
     expect((await queuedReply(replay.update_id))?.payload).toMatchObject({
       template: 'start-token-invalid',
-      chatId: CHAT(5),
+      chat_id: CHAT(5),
     })
   }, 60_000)
 
@@ -256,7 +280,7 @@ suite('E1 · Telegram linking (database)', () => {
     expect(await userForChat(CHAT(6))).toBe(userId)
     expect((await queuedReply(again.update_id))?.payload).toMatchObject({
       template: 'start-already-linked',
-      userId,
+      user_id: userId,
     })
   }, 60_000)
 
@@ -311,7 +335,7 @@ suite('E1 · Telegram linking (database)', () => {
     await post(update)
     expect((await queuedReply(update.update_id))?.payload).toMatchObject({
       template: 'start-no-token',
-      chatId: CHAT(10),
+      chat_id: CHAT(10),
     })
   }, 60_000)
 
@@ -329,7 +353,7 @@ suite('E1 · Telegram linking (database)', () => {
     expect(status.linked).toBe(true)
     expect((await queuedReply(stop.update_id))?.payload).toMatchObject({
       template: 'stop',
-      userId,
+      user_id: userId,
     })
   }, 60_000)
 
@@ -338,7 +362,7 @@ suite('E1 · Telegram linking (database)', () => {
     await post(help)
     expect((await queuedReply(help.update_id))?.payload).toMatchObject({
       template: 'help',
-      chatId: CHAT(12),
+      chat_id: CHAT(12),
     })
   }, 60_000)
 

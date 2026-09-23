@@ -432,10 +432,10 @@ def test_three_tenders_render_into_the_weekly_digest() -> None:
     tenders = [
         tender(id=f"5188524200014{n}-1-00074{n}/2026", object=f"Objeto {n}") for n in range(3)
     ]
-    name, context = telegram_alerts.build_digest_context(
+    name, context, flags = telegram_alerts.build_digest_context(
         name="Sci Lima", company_name="Scint Tecnologia", tenders=tenders
     )
-    text = templates.render("telegram", name, context)
+    text = templates.render("telegram", name, context, **flags)
 
     assert name == "weekly-digest"
     assert text.startswith("Bom dia, Sci.")
@@ -444,10 +444,10 @@ def test_three_tenders_render_into_the_weekly_digest() -> None:
 
 
 def test_an_empty_week_uses_the_other_template_rather_than_sending_nothing() -> None:
-    name, context = telegram_alerts.build_digest_context(
+    name, context, flags = telegram_alerts.build_digest_context(
         name="Sci Lima", company_name="Scint Tecnologia", tenders=[]
     )
-    text = templates.render("telegram", name, context)
+    text = templates.render("telegram", name, context, **flags)
 
     assert name == "weekly-digest-empty"
     assert "não apareceu nenhum edital" in text
@@ -464,11 +464,10 @@ def test_a_cnpj_stands_in_for_a_company_name_that_has_not_arrived_yet() -> None:
     assert telegram_alerts.company_label(recipient()) == "Scint Tecnologia"
     assert telegram_alerts.company_label(recipient(company_name=None, cnpj=None)) is None
 
-    text = templates.render(
-        "telegram",
-        "start-linked",
-        telegram_alerts.build_reply_context("start-linked", recipient(company_name=None)),
+    context, flags = telegram_alerts.build_reply_context(
+        "start-linked", recipient(company_name=None)
     )
+    text = templates.render("telegram", "start-linked", context, **flags)
     assert "36.955.612/0001-85" in text
     assert "{{" not in text
 
@@ -478,15 +477,117 @@ def test_a_profile_with_no_company_is_skipped_rather_than_half_rendered() -> Non
         telegram_alerts.build_digest_context(name="Sci", company_name=None, tenders=[])
     assert raised.value.reason == telegram_alerts.SKIP_NO_COMPANY
 
-    with pytest.raises(DigestSkipped):
-        telegram_alerts.build_digest_context(name="   ", company_name="Scint", tenders=[])
+
+# -- a magic-link account has no name (2026-09-23) --------------------------
+
+
+NAMELESS_TEMPLATES = (
+    "weekly-digest",
+    "weekly-digest-empty",
+    "start-linked",
+    "start-already-linked",
+)
+
+
+@pytest.mark.parametrize("template", NAMELESS_TEMPLATES)
+def test_a_user_with_no_name_is_greeted_without_one_rather_than_skipped(template: str) -> None:
+    """Google supplies `users.name`; the magic link does not collect it.
+
+    Every e-mail account therefore had `name = NULL`, and the gate that used to
+    require a name skipped all of them — permanently and silently, from both
+    the weekly digest and the `/start` confirmation. That is exactly the
+    population U2 exists to serve, so the greeting is a `[[se: tem_nome]]`
+    block now and a nameless profile is sendable.
+    """
+    if template in telegram_alerts.DIGEST_TEMPLATES:
+        tenders = [tender()] if template == "weekly-digest" else []
+        chosen, context, flags = telegram_alerts.build_digest_context(
+            name=None, company_name="JKL EVENTOS", tenders=tenders
+        )
+        assert chosen == template
+    else:
+        context, flags = telegram_alerts.build_reply_context(
+            template, recipient(name=None, company_name="JKL EVENTOS")
+        )
+
+    text = templates.render("telegram", template, context, **flags)
+
+    assert flags == {"tem_nome": False}
+    # Nothing was invented to fill the gap: no name, and no leftover comma.
+    assert "nome" not in context
+    assert "JKL EVENTOS" in text
+    assert "{{" not in text and "[[" not in text
+    assert ", ." not in text and "Bom dia, ." not in text
+    assert "Tudo certo, —" not in text
+
+
+@pytest.mark.parametrize("template", NAMELESS_TEMPLATES)
+def test_a_user_with_a_name_still_gets_it(template: str) -> None:
+    """The conditional must not have quietly dropped the greeting for everyone."""
+    if template in telegram_alerts.DIGEST_TEMPLATES:
+        tenders = [tender()] if template == "weekly-digest" else []
+        _chosen, context, flags = telegram_alerts.build_digest_context(
+            name="Sci Lima", company_name="JKL EVENTOS", tenders=tenders
+        )
+    else:
+        context, flags = telegram_alerts.build_reply_context(template, recipient(name="Sci Lima"))
+
+    text = templates.render("telegram", template, context, **flags)
+
+    assert flags == {"tem_nome": True}
+    assert "Sci" in text
+
+
+def test_a_blank_name_is_treated_as_no_name_and_never_rendered_blank() -> None:
+    """A whitespace-only `users.name` used to raise `MissingPlaceholder`."""
+    _chosen, context, flags = telegram_alerts.build_digest_context(
+        name="   ", company_name="Scint", tenders=[]
+    )
+    assert flags == {"tem_nome": False}
+    assert "nome" not in context
+    assert templates.render("telegram", "weekly-digest-empty", context, **flags).startswith(
+        "Bom dia."
+    )
+
+
+def test_no_name_is_never_reported_as_a_missing_company() -> None:
+    """The skip reasons are split: `no_company` means the company, and only it.
+
+    Sci's account had company *JKL EVENTOS* and the log said `no_company`,
+    which is why the cause took an hour to find. A missing name no longer
+    skips at all, so the reason cannot be raised about one.
+    """
+    # A name is never a reason to skip.
+    telegram_alerts.build_digest_context(name=None, company_name="JKL EVENTOS", tenders=[])
+    telegram_alerts.build_reply_context("start-linked", recipient(name=None))
+
+    # The company still is, and it is the only thing that says `no_company`.
+    with pytest.raises(DigestSkipped) as raised:
+        telegram_alerts.build_reply_context(
+            "start-linked", recipient(name="Sci", company_name=None, cnpj=None)
+        )
+    assert raised.value.reason == telegram_alerts.SKIP_NO_COMPANY
+
+
+def test_a_digest_job_with_no_account_says_so_instead_of_blaming_the_company() -> None:
+    """`user_id is None` and `cnpj is None` were one `or` reporting `no_company`."""
+    assert telegram_alerts.SKIP_NO_RECIPIENT != telegram_alerts.SKIP_NO_COMPANY
+    reasons = {
+        telegram_alerts.SKIP_NO_RECIPIENT,
+        telegram_alerts.SKIP_NOT_LINKED,
+        telegram_alerts.SKIP_PAUSED,
+        telegram_alerts.SKIP_NO_COMPANY,
+        telegram_alerts.SKIP_QUOTA_REACHED,
+        telegram_alerts.SKIP_NOT_IN_PLAN,
+    }
+    assert len(reasons) == 6, "every skip reason must be a distinct string"
 
 
 def test_a_company_name_with_an_underscore_does_not_break_the_bold_run() -> None:
-    _name, context = telegram_alerts.build_digest_context(
+    _name, context, flags = telegram_alerts.build_digest_context(
         name="Sci", company_name="Scint_Tecnologia", tenders=[]
     )
-    text = templates.render("telegram", "weekly-digest-empty", context)
+    text = templates.render("telegram", "weekly-digest-empty", context, **flags)
     assert r"*Scint\_Tecnologia*" in text
 
 
@@ -510,8 +611,8 @@ def test_every_telegram_reply_renders_from_its_context_builder(template: str) ->
     A placeholder E0 adds and this does not supply raises at render time, and
     the failure would otherwise be a job failing four times in production.
     """
-    context = telegram_alerts.build_reply_context(template, recipient())
-    text = templates.render("telegram", template, context)
+    context, flags = telegram_alerts.build_reply_context(template, recipient())
+    text = templates.render("telegram", template, context, **flags)
 
     assert text.strip()
     assert "{{" not in text and "[[" not in text
@@ -519,9 +620,8 @@ def test_every_telegram_reply_renders_from_its_context_builder(template: str) ->
 
 def test_the_linked_reply_promises_the_day_the_scheduler_actually_runs() -> None:
     """`start-linked.md` says "toda {{dia_semana}}". It must not be a guess."""
-    text = templates.render(
-        "telegram", "start-linked", telegram_alerts.build_reply_context("start-linked", recipient())
-    )
+    context, flags = telegram_alerts.build_reply_context("start-linked", recipient())
+    text = templates.render("telegram", "start-linked", context, **flags)
     assert f"toda {telegram_alerts.DIGEST_WEEKDAY_PT} de manhã" in text
 
     entry = next(e for e in DEFAULT_SCHEDULE if e.kind == telegram_alerts.DIGEST_JOB_KIND)
@@ -532,8 +632,8 @@ def test_the_linked_reply_promises_the_day_the_scheduler_actually_runs() -> None
 def test_the_replies_that_have_no_account_need_no_recipient() -> None:
     """`/start` with a stale token comes from a chat we cannot name."""
     for template in ("start-no-token", "start-token-invalid", "help", "stop"):
-        context = telegram_alerts.build_reply_context(template, None)
-        assert templates.render("telegram", template, context).strip()
+        context, flags = telegram_alerts.build_reply_context(template, None)
+        assert templates.render("telegram", template, context, **flags).strip()
 
 
 # -- time -------------------------------------------------------------------

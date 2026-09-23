@@ -1,0 +1,14 @@
+{
+  "kind": "send_telegram",
+  "producer": "apps/web/lib/jobs/index.ts sendTelegramPayload()",
+  "consumer": "worker/licitaqui/telegram_alerts.py send_telegram()",
+  "note": "snake_case on the wire, like every other column and payload in this database. The web's own types stay camelCase; sendTelegramPayload() is the single place that translates.",
+  "required": ["template"],
+  "one_of": ["user_id", "chat_id"],
+  "optional": [],
+  "fields": {
+    "template": "Template id under worker/templates/telegram/, e.g. 'start-linked'.",
+    "user_id": "users.id. Present for every reply that has an account behind it, and for every digest.",
+    "chat_id": "Telegram chat id. Present only when there is no account to hang the reply on (a bare /start, or a spent token). Personal data (spec 12): it reaches jobs.payload and nothing else."
+  }
+}

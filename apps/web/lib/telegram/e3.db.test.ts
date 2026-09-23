@@ -60,7 +60,14 @@ const UNKNOWN = CNPJ(3)
 /** Never inserted at all: what `rememberUserCnpj` must refuse to write. */
 const NEVER_CACHED = CNPJ(4)
 
-let updateId = 5_000_000
+/**
+ * Run-scoped, for the reason spelled out in `e1.db.test.ts`: the reply job's
+ * key is `reply:<update_id>` and `jobs_dedupe` is shared, so a fixed starting
+ * number means two runs silently deduplicate against each other's rows. The
+ * upper half of this run's thousand-wide band; E1 takes the lower half.
+ */
+const UPDATE_ID_BASE = (RUN_NUMBER % 10_000_000) * 1_000 + 500
+let updateId = UPDATE_ID_BASE
 
 function post(body: unknown): Promise<Response> {
   return telegramWebhook(
@@ -136,14 +143,19 @@ async function cleanup() {
     await pool().query(`delete from events where user_id = any($1::bigint[])`, [ids])
     await pool().query(
       `delete from jobs where kind = 'send_telegram'
-         and (payload ->> 'userId') = any($1::text[])`,
+         and (payload ->> 'user_id') = any($1::text[])`,
       [ids],
     )
   }
   await pool().query(
-    `delete from jobs where kind = 'send_telegram' and (payload ->> 'chatId')::bigint in
+    `delete from jobs where kind = 'send_telegram' and (payload ->> 'chat_id')::bigint in
        (select generate_series($1::bigint, $2::bigint))`,
     [CHAT(40), CHAT(0)],
+  )
+  await pool().query(
+    `delete from jobs where kind = 'send_telegram'
+       and key in (select 'reply:' || generate_series($1::bigint, $2::bigint))`,
+    [UPDATE_ID_BASE, UPDATE_ID_BASE + 499],
   )
   // `telegram_links` and `alerts` cascade from `users`.
   await pool().query(`delete from users where email like $1`, [`e3-${RUN_ID}-%`])

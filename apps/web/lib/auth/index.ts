@@ -3,7 +3,6 @@ import Google from 'next-auth/providers/google'
 import Resend from 'next-auth/providers/resend'
 import type { Provider } from 'next-auth/providers'
 import { recordEventSafely } from '@/lib/events'
-import { ACCOUNT_CREATE_PATH } from '@/lib/routes'
 import { licitaquiAdapter } from './adapter'
 import {
   magicLinkFrom,
@@ -14,6 +13,7 @@ import {
   SESSION_COOKIE_SECURE,
 } from './config'
 import { linkFounderSeat } from './founder-seat'
+import { AUTH_PAGES } from './pages'
 
 /**
  * The Auth.js (NextAuth v5) instance — spec §5 and §164.
@@ -83,11 +83,9 @@ export const authConfig: NextAuthConfig = {
   // build a callback URL from the forwarded host.
   trustHost: true,
   redirectProxyUrl: redirectProxyUrl(),
-  pages: {
-    signIn: ACCOUNT_CREATE_PATH,
-    error: ACCOUNT_CREATE_PATH,
-    verifyRequest: `${ACCOUNT_CREATE_PATH}?enviado=1`,
-  },
+  // Bare paths, every one of them, and `lib/auth/pages.ts` explains what
+  // happened on 2026-09-23 when one of them was not.
+  pages: { ...AUTH_PAGES },
   cookies: {
     // Pinned so `lib/auth/session.ts` can read it out of the request header.
     // See the note in that file: the API routes must be callable with a plain

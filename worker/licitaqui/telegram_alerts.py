@@ -134,9 +134,26 @@ EVENT_ALERT_SENT = "alert_sent"
 
 #: Why a send did not happen. Stable strings: they reach the log and
 #: `events.props`, and a dashboard will group by them.
+#:
+#: **Each one names exactly one cause.** That is not a style note. Until
+#: 2026-09-23 `no_company` was raised when *either* the recipient's name or
+#: their company was missing, and the account that tripped it had a perfectly
+#: good company — so the log said `no_company` about a profile whose company was
+#: `JKL EVENTOS`, and finding the real cause took an hour instead of a minute.
+#: A reason that can mean two things is a reason that will mislead again, and a
+#: dashboard grouping by it would have aggregated the two causes into one
+#: meaningless bar.
+#:
+#: The name half of that gate is gone entirely: a missing name no longer skips
+#: anybody, because the greeting is now a `[[se: tem_nome]]` block (see
+#: :func:`name_context`). So there is no `no_name` here — not because the cause
+#: was renamed, but because it stopped being a cause. If a future template
+#: genuinely cannot render without a personal name, it gets its own string then.
 SKIP_NO_RECIPIENT = "no_recipient"
 SKIP_NOT_LINKED = "not_linked"
 SKIP_PAUSED = "paused"
+#: There is nothing to call the company: no CNPJ on the account, and so nothing
+#: for :func:`company_label` to fall back to. Never raised about a name.
 SKIP_NO_COMPANY = "no_company"
 SKIP_QUOTA_REACHED = "quota_reached"
 #: An explicit `alert` row of 0 — the plan includes no weekly digest at all.
@@ -653,44 +670,103 @@ def render_item(tender: Tender) -> str:
     return templates.render(CHANNEL, "partial-digest-item", escaped, **flags)
 
 
+def name_context(name: str | None) -> tuple[dict[str, Any], dict[str, bool]]:
+    """``{{nome}}`` and the ``tem_nome`` flag that guards it.
+
+    ## The bug this replaces
+
+    Google supplies a name; **the e-mail magic link does not collect one**. So
+    every account created the way U2 exists to serve had `users.name = NULL`,
+    and the gate here used to be ``if not given or not company_name: raise``.
+    Every such person was skipped from the weekly digest permanently and
+    silently, and — worse, because it is the message the whole linking flow
+    exists to deliver — never got their `/start` confirmation either. Sci's own
+    test account (user 5, company *JKL EVENTOS*, correctly linked) was skipped
+    for exactly this on 2026-09-23.
+
+    ## Why a conditional block, and not any of the alternatives
+
+    A blank value is not an option: `templates.render` raises
+    `MissingPlaceholder` on one by design (templates README §3 — "a
+    half-rendered price notice is a legal problem", and "Bom dia, ." is the
+    same thing wearing a different hat). So the mechanism has to be the one
+    `partial-digest-item` already uses for `marcador_meepp`: a ``[[se: …]]``
+    block, flag off, placeholder not passed at all (README §8).
+
+    The two ways of *inventing* a name were both rejected, and not on taste.
+    Deriving one from the e-mail address (`scintilla.lima@` → "Scintilla") and
+    deriving one from the company are the same act: putting a name on a person
+    who never gave us one. Legal brief §2.2 is that the product describes
+    itself accurately, and greeting someone by a string we made up is the
+    smallest possible version of the thing that rule exists to stop. The
+    address route is worse still — §12 keeps e-mail addresses out of message
+    bodies, and that is where this one would land.
+
+    Asking for a name at signup is a reasonable *product* answer and is not
+    this fix: it adds a field to the sign-in form on the eve of founders week,
+    and it does nothing at all for the accounts that already exist — including
+    the one that found the bug. Worth its own card; see the report.
+
+    ## What a nameless person is greeted with
+
+    The greeting keeps its fixed half and drops the vocative:
+    "Bom dia, Scintilla." becomes "Bom dia." — natural Portuguese, no invented
+    name, no blank, and no new sentence for Sci to approve. The copy is E0's
+    and the words are unchanged; only the comma and the placeholder are inside
+    the block.
+    """
+    given = first_name(name)
+    if not given:
+        return {}, {"tem_nome": False}
+    return {"nome": given}, {"tem_nome": True}
+
+
 def build_digest_context(
     *, name: str | None, company_name: str | None, tenders: list[Tender]
-) -> tuple[str, dict[str, Any]]:
-    """The template id and its context. Raises :class:`DigestSkipped` if unsendable."""
-    given = first_name(name)
-    if not given or not company_name:
-        # Both are placeholders in both digest templates, and a blank one is a
-        # `MissingPlaceholder`. Better to skip with a reason than to fail four
-        # times over forty minutes against a profile that is simply incomplete.
+) -> tuple[str, dict[str, Any], dict[str, bool]]:
+    """The template id, its context and its flags.
+
+    Raises :class:`DigestSkipped` only for the company — the one placeholder
+    that is genuinely required and that :func:`company_label` has already tried
+    three ways to fill. The name is optional; see :func:`name_context`.
+    """
+    if not company_name:
         raise DigestSkipped(SKIP_NO_COMPANY)
 
-    base = telegram.escape_context({"nome": given, "nome_empresa": company_name})
+    named, flags = name_context(name)
+    base = telegram.escape_context({**named, "nome_empresa": company_name})
     if not tenders:
-        return "weekly-digest-empty", {**base, "link_radar": radar_url()}
-    return "weekly-digest", {
-        **base,
-        "lista_editais": "\n\n".join(render_item(tender) for tender in tenders),
-        "link_radar": radar_url(),
-    }
+        return "weekly-digest-empty", {**base, "link_radar": radar_url()}, flags
+    return (
+        "weekly-digest",
+        {
+            **base,
+            "lista_editais": "\n\n".join(render_item(tender) for tender in tenders),
+            "link_radar": radar_url(),
+        },
+        flags,
+    )
 
 
-def build_reply_context(template: str, who: Recipient | None) -> dict[str, Any]:
-    """The context for one of E0's `/start`, `/ajuda` and `/pausar` replies."""
+def build_reply_context(
+    template: str, who: Recipient | None
+) -> tuple[dict[str, Any], dict[str, bool]]:
+    """The context and flags for one of E0's `/start`, `/ajuda` and `/pausar` replies."""
     if template in ("start-no-token", "start-token-invalid"):
-        return {"link_conexao": alerts_url()}
+        return {"link_conexao": alerts_url()}, {}
     if template == "stop":
-        return {"link_preferencias": alerts_url()}
+        return {"link_preferencias": alerts_url()}, {}
     if template == "help":
-        return {"link_app": app_base_url(), "email_contato": CONTACT_EMAIL}
+        return {"link_app": app_base_url(), "email_contato": CONTACT_EMAIL}, {}
 
-    given = first_name(who.name if who else None)
     company = company_label(who) if who else None
-    if not given or not company:
+    if not company:
         raise DigestSkipped(SKIP_NO_COMPANY)
-    context = telegram.escape_context({"nome": given, "nome_empresa": company})
+    named, flags = name_context(who.name if who else None)
+    context = telegram.escape_context({**named, "nome_empresa": company})
     if template == "start-linked":
         context["dia_semana"] = DIGEST_WEEKDAY_PT
-    return context
+    return context, flags
 
 
 # -- sending ----------------------------------------------------------------
@@ -723,13 +799,14 @@ def send(
         return _skip(conn, log, common, SKIP_NOT_LINKED, job_id, attempt)
 
     tenders: list[Tender] = []
+    flags: dict[str, bool] = {}
     try:
         if template in DIGEST_TEMPLATES:
             if who is None:
                 return _skip(conn, log, common, SKIP_NO_RECIPIENT, job_id, attempt)
-            tenders, context, template = _digest(conn, who, moment)
+            tenders, context, template, flags = _digest(conn, who, moment)
         else:
-            context = build_reply_context(template, who)
+            context, flags = build_reply_context(template, who)
     except DigestSkipped as exc:
         return _skip(conn, log, common, exc.reason, job_id, attempt)
 
@@ -737,7 +814,7 @@ def send(
     # A template fault (a missing placeholder, an unresolved TODO(Sci)) raises
     # out of here on purpose: it is our bug, not the recipient's, and it should
     # be a visible failed job rather than a silently skipped person.
-    text = templates.render(CHANNEL, template, context)
+    text = templates.render(CHANNEL, template, context, **flags)
 
     try:
         result = client.send_message(target, text)
@@ -779,11 +856,17 @@ def send(
 
 def _digest(
     conn: psycopg.Connection, who: Recipient, moment: datetime
-) -> tuple[list[Tender], dict[str, Any], str]:
+) -> tuple[list[Tender], dict[str, Any], str, dict[str, bool]]:
     """Quota, then selection, then context. Raises :class:`DigestSkipped`."""
     if not who.alert_active:
         raise DigestSkipped(SKIP_PAUSED)
-    if not who.cnpj or who.user_id is None:
+    # Two causes, two reasons. These were one `or` and both reported
+    # `no_company`, which is false about a digest job that simply has no
+    # account behind it — `no_recipient` is what that is, and the string
+    # already exists for it.
+    if who.user_id is None:
+        raise DigestSkipped(SKIP_NO_RECIPIENT)
+    if not who.cnpj:
         raise DigestSkipped(SKIP_NO_COMPANY)
 
     cap = alert_limit(conn, who.plan)
@@ -809,10 +892,10 @@ def _digest(
         states=states,
         alert_id=who.alert_id,
     )
-    template, context = build_digest_context(
+    template, context, flags = build_digest_context(
         name=who.name, company_name=company_label(who), tenders=tenders
     )
-    return tenders, context, template
+    return tenders, context, template, flags
 
 
 def record_deliveries(conn: psycopg.Connection, alert_id: int, tender_ids: list[str]) -> None:

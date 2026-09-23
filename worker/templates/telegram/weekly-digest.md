@@ -3,11 +3,12 @@ id: weekly-digest
 channel: telegram
 status: draft
 placeholders: [nome, nome_empresa, lista_editais, link_radar]
+flags: [tem_nome]
 partials: [partial-digest-item]
 notes: Up to 3 tenders (task E1). {{lista_editais}} is the joined render of partial-digest-item, separated by a blank line.
 ---
 
-Bom dia, {{nome}}. Estes são os editais abertos desta semana para a *{{nome_empresa}}*:
+Bom dia[[se: tem_nome]], {{nome}}[[/se]]. Estes são os editais abertos desta semana para a *{{nome_empresa}}*:
 
 {{lista_editais}}
 
