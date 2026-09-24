@@ -8,7 +8,7 @@ notes: First message a founder ever receives. Opt-in only (consent checkbox on /
 
 Oi, {{nome}}! Aqui é a LicitaQui.
 
-Sua vaga de fundador está garantida: número {{numero_vaga}} de 48.
+Sua vaga de fundador está garantida: número {{numero_vaga}}.
 
 O que você tem por ser fundador:
 • entra no dia {{data_abertura}}, antes da abertura ao público
