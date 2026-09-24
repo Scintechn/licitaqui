@@ -95,12 +95,27 @@ export const signupInput = z.object({
 
   sells: optionalText(200),
 
+  /**
+   * Optional since 2026-09-24 — but **still validated when given**.
+   *
+   * Blank is a signup without a CNPJ, which is now allowed. Fourteen digits
+   * that are not a CNPJ are still a mistake, and telling somebody at the form
+   * costs them a correction while storing it costs a lead on opening day.
+   * `normaliseCnpj` returning null on a non-empty value is therefore an error,
+   * not an absence — those two cases are the whole of this field.
+   */
   cnpj: z
-    .string({ error: ERROR_CODES.cnpj })
-    .transform((value) => normaliseCnpj(value))
-    .refine((value): value is string => value !== null, {
-      message: ERROR_CODES.cnpj,
-    }),
+    .string()
+    .transform((value) => value.trim())
+    // Blank becomes `undefined` before the refine, so an absent CNPJ passes
+    // it; anything non-blank goes through `normaliseCnpj`, whose `null` is
+    // the only thing the refine rejects. Those two cases are the whole field:
+    // **not given** is allowed, **given and wrong** is still a mistake worth
+    // telling somebody about at the form rather than storing.
+    .transform((value) => (value.length === 0 ? undefined : normaliseCnpj(value)))
+    .refine((value) => value !== null, { message: ERROR_CODES.cnpj })
+    .transform((value) => value ?? undefined)
+    .optional(),
 
   /** utm_source / influencer / coupon (§6.3). Never anything that identifies a person. */
   source: z
