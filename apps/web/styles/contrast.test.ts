@@ -47,6 +47,12 @@ export function contrast(foreground: string, background: string): number {
 
 const AA_NORMAL = 4.5
 
+/**
+ * WCAG 1.4.11 non-text contrast: a boundary that is the only thing identifying
+ * a control needs 3:1 against its adjacent ground.
+ */
+const AA_NON_TEXT = 3
+
 /** ink token, fill token, and where the pairing is rendered. */
 const PAIRS: [string, string, string][] = [
   // The one this file was written for: Status kind="check", Tag tone="attention".
@@ -83,6 +89,27 @@ const PAIRS: [string, string, string][] = [
   ['on-ink-muted', 'ink', 'secondary copy on the graphite panel'],
 ]
 
+/**
+ * The same idea one rung down, for borders rather than ink.
+ *
+ * `PAIRS` above covers only text, and that gap is exactly how a 1.55:1 field
+ * border shipped: `--color-line-strong` (#d6cfc5) drew every input, select and
+ * secondary button, and nothing in CI looked at it because no rule here knew
+ * borders existed. 1.4.11 asks 3:1 of a boundary that is the only thing
+ * identifying a control — and on a form field the boundary is all there is.
+ *
+ * So: border token, the ground it is drawn on, and where. Only boundaries that
+ * *carry meaning* belong here. A chip or card edge drawn in `line-strong` is
+ * decoration beside a label that is already legible, and 1.4.11 does not ask
+ * 3:1 of decoration — which is why `line-strong` stayed where it was instead
+ * of being darkened under every chip in the product.
+ */
+const BORDER_PAIRS: [string, string, string][] = [
+  ['field-line', 'surface', 'Field, Select and the secondary Button on a card'],
+  ['field-line', 'ivory', 'the same controls on the page background'],
+  ['field-line', 'fill-muted', "LockedBlock's dashed border on the muted fill"],
+]
+
 describe('WCAG AA · every ink/fill pair the product paints text in', () => {
   it.each(PAIRS)('%s on %s clears 4.5:1 (%s)', (ink, fill) => {
     const ratio = contrast(token(ink), token(fill))
@@ -101,5 +128,32 @@ describe('WCAG AA · every ink/fill pair the product paints text in', () => {
   it('checks the ratio maths against a pair with a known answer', () => {
     expect(contrast('#000000', '#ffffff')).toBeCloseTo(21, 5)
     expect(contrast('#ffffff', '#ffffff')).toBeCloseTo(1, 5)
+  })
+})
+
+describe('WCAG 1.4.11 · every border that is the only marker of a control', () => {
+  it.each(BORDER_PAIRS)('%s on %s clears 3:1 (%s)', (line, fill) => {
+    const ratio = contrast(token(line), token(fill))
+    expect(
+      ratio,
+      `--color-${line} (${token(line)}) on --color-${fill} (${token(fill)}) is ${ratio.toFixed(2)}:1`,
+    ).toBeGreaterThanOrEqual(AA_NON_TEXT)
+  })
+
+  it('records what the old field border measured, so this cannot come back', () => {
+    // These three are the audit's numbers for `--color-line-strong`, the token
+    // that drew every form field until it was measured. Nothing should paint a
+    // control boundary in it again; if something does, these are what it is
+    // worth.
+    expect(contrast(token('line-strong'), token('surface'))).toBeCloseTo(1.55, 2)
+    expect(contrast(token('line-strong'), token('ivory'))).toBeCloseTo(1.45, 2)
+    expect(contrast(token('line-strong'), token('fill-muted'))).toBeCloseTo(1.34, 2)
+  })
+
+  it('leaves the field border headroom over the 3:1 floor', () => {
+    // 3.41:1 on the muted fill is the tightest of the three. It passes, and it
+    // passes by little: lightening `field-line` breaks 1.4.11 on LockedBlock
+    // first.
+    expect(contrast(token('field-line'), token('fill-muted'))).toBeCloseTo(3.41, 2)
   })
 })

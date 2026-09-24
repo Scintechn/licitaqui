@@ -57,7 +57,7 @@ export function Field({
             'placeholder:text-muted',
             icon ? 'pr-10' : 'pr-3',
             mono ? 'font-mono' : 'font-sans',
-            error ? 'border-error' : 'border-line-strong',
+            error ? 'border-error' : 'border-field-line',
           )}
         />
         {icon ? (

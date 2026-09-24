@@ -24,7 +24,34 @@
 
   /* Lines */
   --color-line: #e7e1d9; /* card and section borders */
-  --color-line-strong: #d6cfc5; /* field borders, dashed locked borders */
+  --color-line-strong: #d6cfc5; /* chip, tab and card edges — decoration, never the only marker */
+
+  /*
+   * Field borders · WCAG 1.4.11 (non-text contrast, 3:1).
+   *
+   * `--color-line-strong` used to draw the form controls too, and a border is
+   * the *only* thing that says "this is an input". Measured against the three
+   * grounds a control actually sits on it was nowhere near the 3:1 that 1.4.11
+   * asks of a control boundary:
+   *
+   *   #d6cfc5 on #ffffff (surface)     1.55:1
+   *   #d6cfc5 on #fbf7f3 (ivory)       1.45:1
+   *   #d6cfc5 on #f3eee8 (fill-muted)  1.34:1
+   *
+   * Darkening `line-strong` itself would have dragged every chip, tab and card
+   * edge along with it — decoration that is *not* the only marker of anything,
+   * and would have read visibly heavier. So the control boundary got its own
+   * token, dark enough to clear 3:1 on all three:
+   *
+   *   #8a7f6d on #ffffff (surface)     3.93:1
+   *   #8a7f6d on #fbf7f3 (ivory)       3.69:1
+   *   #8a7f6d on #f3eee8 (fill-muted)  3.41:1
+   *
+   * Use it on anything whose border is the affordance: Field, Select, the
+   * secondary Button, the dashed LockedBlock. `styles/contrast.test.ts` pins
+   * all three pairings at 3.0.
+   */
+  --color-field-line: #8a7f6d;
 
   /* Blue · primary action and "Compatível" */
   --color-blue: #2457d6; /* 5.8:1 on ivory */

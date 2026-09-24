@@ -29,7 +29,7 @@ export function LockedBlock({
     <a
       {...anchor}
       className={cn(
-        'flex items-center gap-3 rounded-card border border-dashed border-line-strong',
+        'flex items-center gap-3 rounded-card border border-dashed border-field-line',
         'bg-fill-muted p-3.5 text-ink no-underline transition-colors hover:bg-surface',
         className,
       )}

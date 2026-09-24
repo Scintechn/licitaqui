@@ -90,6 +90,7 @@ const SUPPORT: { name: string; hex: string; swatch: string }[] = [
   { name: 'error-soft', hex: '#F8E4E1', swatch: 'bg-error-soft' },
   { name: 'line', hex: '#E7E1D9', swatch: 'bg-line' },
   { name: 'line-strong', hex: '#D6CFC5', swatch: 'bg-line-strong' },
+  { name: 'field-line', hex: '#8A7F6D', swatch: 'bg-field-line' },
   { name: 'fill-muted', hex: '#F3EEE8', swatch: 'bg-fill-muted' },
 ]
 

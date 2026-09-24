@@ -92,6 +92,46 @@ export function SignInView({
             <form className="flex flex-col gap-4">
               <input type="hidden" name="next" value={next} />
 
+              {/*
+                The consent record (§12). Required, never pre-ticked (LGPD art.
+                8 §4), and worded only with the approved fragments — the same
+                ones the founders form uses.
+
+                It sits **above** both buttons, and that position is the fix,
+                not a preference. `required` on this box is what gates the two
+                submits, so the browser's own validation bubble points at it —
+                and when it was last in the form, on a 390px phone that meant a
+                bubble opening below the fold, under the button the user had
+                just pressed. What they saw was a primary CTA that did nothing,
+                on the last screen before conversion. The mechanics are
+                unchanged: one box, one record, still `required`, still not
+                pre-ticked. Only the order moved.
+              */}
+              <label className="flex items-start gap-2.5 text-meta leading-relaxed text-muted">
+                <input
+                  type="checkbox"
+                  name="consent"
+                  required
+                  /*
+                    20px, not 16. The wrapping <label> already makes the
+                    effective target pass, so this is comfort rather than
+                    compliance — and a good deal of this audience is over 60.
+                  */
+                  className="mt-0.5 size-5 shrink-0 accent-blue"
+                />
+                <span>
+                  {consent.termsBefore}
+                  <a href={messages.legal.termsUrl} className="text-blue">
+                    {messages.legal.termsLabel}
+                  </a>
+                  {consent.termsBetween}
+                  <a href={messages.legal.privacyUrl} className="text-blue">
+                    {messages.legal.privacyLabel}
+                  </a>
+                  {consent.termsAfter}
+                </span>
+              </label>
+
               {availability.google ? (
                 <Button type="submit" formAction={googleAction} fullWidth iconEnd="arrowRight">
                   {copy.google}
@@ -117,37 +157,25 @@ export function SignInView({
                     inputMode="email"
                     placeholder={copy.emailPlaceholder}
                     hint={copy.emailHelp}
+                    /*
+                      The round trip comes back with `?error=email` when no
+                      address was typed, and the StateCard above says so — but
+                      a StateCard is a standalone block, so the field itself
+                      carried no `aria-invalid` and no `aria-describedby`, and
+                      somebody tabbing straight into it was told nothing was
+                      wrong (3.3.1, 1.3.1). Passing the error here is what
+                      attaches the message to the input; `company-form.tsx`
+                      does the same with `invalid`. The StateCard stays: the
+                      two are not redundant, they serve different ways of
+                      arriving at the screen.
+                    */
+                    error={error === 'email' ? copy.emailMissing : undefined}
                   />
                   <Button type="submit" formAction={emailAction} variant="secondary" fullWidth>
                     {copy.emailSubmit}
                   </Button>
                 </>
               ) : null}
-
-              {/*
-                The consent record (§12). Required, never pre-ticked (LGPD art.
-                8 §4), and worded only with the approved fragments — the same
-                ones the founders form uses.
-              */}
-              <label className="flex items-start gap-2.5 text-meta leading-relaxed text-muted">
-                <input
-                  type="checkbox"
-                  name="consent"
-                  required
-                  className="mt-0.5 size-4 shrink-0 accent-blue"
-                />
-                <span>
-                  {consent.termsBefore}
-                  <a href={messages.legal.termsUrl} className="text-blue">
-                    {messages.legal.termsLabel}
-                  </a>
-                  {consent.termsBetween}
-                  <a href={messages.legal.privacyUrl} className="text-blue">
-                    {messages.legal.privacyLabel}
-                  </a>
-                  {consent.termsAfter}
-                </span>
-              </label>
             </form>
           </Card>
         )}

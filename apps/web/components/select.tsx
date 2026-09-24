@@ -67,7 +67,7 @@ export function Select({
             'min-h-control w-full appearance-none rounded-control border bg-surface',
             // 16px for the same reason `Field` is 16px. Do not "correct" it.
             'pr-10 pl-3 text-base text-ink',
-            error ? 'border-error' : 'border-line-strong',
+            error ? 'border-error' : 'border-field-line',
           )}
         >
           {options.map((option) => (

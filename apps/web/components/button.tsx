@@ -23,7 +23,7 @@ const VARIANT: Record<ButtonVariant, string> = {
   primary:
     'min-h-control border border-blue bg-blue text-surface hover:border-blue-hover hover:bg-blue-hover',
   secondary:
-    'min-h-control border border-line-strong bg-surface text-ink hover:bg-fill-muted',
+    'min-h-control border border-field-line bg-surface text-ink hover:bg-fill-muted',
   locked:
     'min-h-control border border-dashed border-line-strong bg-fill-muted text-muted hover:text-ink',
   link: 'min-h-touch border border-transparent bg-transparent text-blue hover:text-blue-hover',
