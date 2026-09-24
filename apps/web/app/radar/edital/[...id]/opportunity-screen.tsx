@@ -137,6 +137,17 @@ export function OpportunityScreen({ id }: { id: string }) {
       onSelectTab={setTab}
       itemsVisible={itemsVisible}
       onShowMoreItems={onShowMoreItems}
+      /* The cost of the button directly above it. `screeningCost` and
+         `screeningCostReady` were written, approved and tested, and then never
+         passed: the prop defaults to `false` and this was its only call site,
+         so a visitor spent one of her two triagens by tapping a button that
+         said nothing about spending anything — and learnt the rule only when
+         the second one went the same way and the wall appeared.
+
+         `screeningCostReady` is the half that matters most: a tender somebody
+         else already had read still costs her one, and nothing else on the
+         screen says so. */
+      showScreeningCost
     />
   )
 }

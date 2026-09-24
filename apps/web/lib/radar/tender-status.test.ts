@@ -12,10 +12,16 @@ import {
 
 const copy = messages.radar.status
 
-/** Only `status` and `pncpUpdatedAt` matter here; the rest is scaffolding. */
-function tender(status: string | null, pncpUpdatedAt: string | null = null) {
-  return { status, pncpUpdatedAt }
+/** Only `status`, `proposalsCloseAt` and `pncpUpdatedAt` matter here. */
+function tender(
+  status: string | null,
+  pncpUpdatedAt: string | null = null,
+  proposalsCloseAt: string | null = null,
+) {
+  return { status, pncpUpdatedAt, proposalsCloseAt }
 }
+
+const NOW = new Date('2026-09-24T12:00:00.000Z')
 
 describe('tenderStatusKind', () => {
   it('reads PNCP’s four values', () => {
@@ -61,8 +67,48 @@ describe('mayShowUrgency — the gate', () => {
   })
 
   it('is false on the real HUPE-RJ tender and true on its control', () => {
-    expect(mayShowUrgency(HUPE_SUSPENDED)).toBe(false)
-    expect(mayShowUrgency(HUPE_DIVULGADA)).toBe(true)
+    // A clock, because these are real captured tenders and their deadline
+    // (22/09/2026 12:59) is now in the past — without one the control would go
+    // false for the right reason and stop testing the wrong one.
+    const whileOpen = new Date('2026-09-22T10:00:00.000Z')
+    expect(mayShowUrgency(HUPE_SUSPENDED, whileOpen)).toBe(false)
+    expect(mayShowUrgency(HUPE_DIVULGADA, whileOpen)).toBe(true)
+
+    // And the fixture proves the new half too: the same tender, same status,
+    // an hour after it closed.
+    expect(mayShowUrgency(HUPE_DIVULGADA, new Date('2026-09-22T13:59:00.000Z'))).toBe(false)
+  })
+
+  it('forbids urgency once the hour has passed, whatever the status says', () => {
+    // The second way the clock stops, and the one this gate missed. A tender
+    // closing at 08:00 kept rendering "último dia" and "✓ Ainda dá tempo" all
+    // day — above the notice, printed from the same field, saying proposals
+    // had ended.
+    const closedAt8 = tender(DIVULGADA, null, '2026-09-24T08:00:00.000Z')
+    expect(mayShowUrgency(closedAt8, NOW)).toBe(false)
+
+    // Still the same calendar day, which is precisely why `daysUntil` reads 0
+    // and says "último dia" for another twelve hours.
+    expect(mayShowUrgency(closedAt8, new Date('2026-09-24T07:59:00.000Z'))).toBe(true)
+  })
+
+  it('is to the second, not to the day', () => {
+    const at = '2026-09-24T12:00:00.000Z'
+    expect(mayShowUrgency(tender(DIVULGADA, null, at), new Date('2026-09-24T11:59:59Z'))).toBe(true)
+    // The instant it closes, not the midnight after it.
+    expect(mayShowUrgency(tender(DIVULGADA, null, at), new Date(at))).toBe(false)
+  })
+
+  it('stays false when both reasons apply at once', () => {
+    // Neither half may quietly re-enable the other.
+    expect(mayShowUrgency(tender('Suspensa', null, '2026-09-24T08:00:00.000Z'), NOW)).toBe(false)
+  })
+
+  it('a tender with no deadline is gated on status alone', () => {
+    // Nothing can claim its clock is running: every urgency element is
+    // downstream of a countdown that needs a date.
+    expect(mayShowUrgency(tender(DIVULGADA, null, null), NOW)).toBe(true)
+    expect(mayShowUrgency(tender('Suspensa', null, null), NOW)).toBe(false)
   })
 })
 

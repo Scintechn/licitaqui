@@ -11,9 +11,13 @@ import type { VisitorView } from './contract'
  * > search of that CNPJ (decided: per device and per CNPJ), so resetting via
  * > incognito does not reset the CNPJ.
  *
- * Both halves are here. The device is the cookie; the CNPJ is the earliest
- * `visitors.created_at` among every visitor row that has searched it. Clearing
- * cookies gets a new device window and the old CNPJ window, which is the point.
+ * Both halves are here, and the emphasis on **and** is the whole rule: the
+ * window is keyed on the pair, not on either alone. The device is the
+ * (`ip_hash`, `user_agent_hash`) fingerprint; the CNPJ window is the earliest
+ * `visitors.created_at` among rows that share *both* that fingerprint and that
+ * CNPJ. Clearing cookies keeps the old window, which is the point; being a
+ * different person who happens to search the same public number does not,
+ * which until 2026-09-24 it did — see `windowStartedAt`.
  *
  * ## The cookie
  *
@@ -165,7 +169,43 @@ export async function attachCnpj(
 
 /**
  * When this visitor's free window started: the earlier of their own
- * `created_at` and the first time *any* device searched this CNPJ (§8).
+ * `created_at` and the first time **this same device** searched this CNPJ.
+ *
+ * ## Why it is not "any device that ever searched this CNPJ"
+ *
+ * It was, until 2026-09-24, and the rule read `where cnpj = $1` with nothing
+ * else. §8's purpose is sound — clearing cookies must not mint a fresh
+ * trial — but keying it on the CNPJ alone charges the wrong person. A CNPJ is
+ * not a secret and it is not owned by whoever typed it first: an accountant
+ * checks a client's number, a WhatsApp group passes one around, a founder
+ * demos on a call. Each of those **permanently burned that CNPJ** for its real
+ * owner, who then arrived to `Seus 3 dias de visitante acabaram` on their very
+ * first request, having used nothing.
+ *
+ * That was live, not hypothetical. Measured against production on the morning
+ * founders week opened, the CNPJ used in every demo and every screenshot that
+ * week — `36955612000185` — had been first searched three days earlier and was
+ * **already expired for every new visitor**, with two more CNPJs a day behind
+ * it. The highest-intent act in the whole product is typing your own CNPJ, and
+ * the product answered it with an expiry notice.
+ *
+ * ## What the fingerprint buys, and what it does not
+ *
+ * `ip_hash` and `user_agent_hash` are SHA-256 with a deployment salt, already
+ * written at insert. Requiring **both** to match keeps the rule aimed at what
+ * §8 was actually defending against — the same person, same machine, same
+ * connection, clearing cookies — while a different person on a different
+ * network starts their own window.
+ *
+ * It is a weaker guard than the old rule, deliberately. Someone who clears
+ * cookies *and* changes network gets a fresh three days. That is the right
+ * trade: the old rule stopped that person at the cost of everyone who shares a
+ * CNPJ with them, and there are far more of the second kind. The paid tiers,
+ * not this window, are what make the economics work.
+ *
+ * Both hashes must be non-null for the CNPJ rule to apply at all — otherwise
+ * every visitor with no fingerprint would match every other one, which is the
+ * old bug wearing a different shape.
  */
 export async function windowStartedAt(
   visitor: Visitor,
@@ -174,12 +214,19 @@ export async function windowStartedAt(
 ): Promise<Date> {
   if (!cnpj) return visitor.createdAt
   const found = await database.execute<{ started_at: Date | string | null }>(sql`
-    select min(created_at) as started_at from visitors where cnpj = ${cnpj}
+    select min(other.created_at) as started_at
+      from visitors other
+      join visitors me on me.id = ${visitor.id}::uuid
+     where other.cnpj = ${cnpj}
+       and me.ip_hash is not null
+       and me.user_agent_hash is not null
+       and other.ip_hash = me.ip_hash
+       and other.user_agent_hash = me.user_agent_hash
   `)
   const started = found.rows[0]?.started_at
   if (!started) return visitor.createdAt
-  const byCnpj = new Date(started)
-  return byCnpj < visitor.createdAt ? byCnpj : visitor.createdAt
+  const bySameDevice = new Date(started)
+  return bySameDevice < visitor.createdAt ? bySameDevice : visitor.createdAt
 }
 
 export function visitorView(

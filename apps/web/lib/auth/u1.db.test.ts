@@ -32,13 +32,13 @@ import { VISITOR_COOKIE } from '@/lib/radar/visitor'
  * > search of that CNPJ (decided: per device and per CNPJ), so resetting via
  * > incognito does not reset the CNPJ.
  *
- * It is the **window** that the CNPJ carries, not the two screenings — the
- * terms say the same thing ("Uso por até 3 dias, contado por aparelho e por
- * CNPJ; …; 2 triagens por IA"). So the demonstration below is: one device
- * searches a CNPJ and its window ages past three days; a second device with
- * **no cookie at all** — a brand-new `visitors` row, zero `usage` rows, the
- * literal incognito case — searches the same CNPJ and is refused before it can
- * spend anything. The clock came with the company, not with the browser.
+ * It is the **window** that is carried, not the two screenings — the terms say
+ * the same thing ("Uso por até 3 dias, contado por aparelho **e** por CNPJ; …;
+ * 2 triagens por IA"). Both halves of that "e" matter, and until 2026-09-24
+ * only one was implemented: `windowStartedAt` keyed on the CNPJ alone, so the
+ * clock came with the company no matter whose browser asked. The pair of tests
+ * below pins the rule §17 actually wrote — same device, new cookie jar: still
+ * refused; different device, same company: its own three days.
  *
  * ## The routes, not the libraries
  *
@@ -159,8 +159,34 @@ async function cleanup() {
 
 // ───────────────────────────── request helpers ─────────────────────────────
 
-/** A request with whatever cookies this caller is carrying — or none at all. */
-function request(cookies: Record<string, string> = {}, body?: unknown): Request {
+/**
+ * A device: the pair `visitors` fingerprints with (`ip_hash`,
+ * `user_agent_hash`).
+ *
+ * It has to be nameable since 2026-09-24, because the free window is inherited
+ * per **device** rather than per CNPJ — so a test about cookie-clearing has to
+ * be able to say "same machine, new cookie jar" and "someone else entirely",
+ * and the two must behave differently.
+ */
+type Device = { ip: string; userAgent: string }
+
+/** The same machine across every call, for the incognito half of the test. */
+function device(label: string): Device {
+  return { ip: `198.51.100.${label.length + 7}`, userAgent: `LicitaQuiTest/${label}` }
+}
+
+/**
+ * A request with whatever cookies this caller is carrying — or none at all.
+ *
+ * Without an explicit `as`, every call gets a **random** address, which is what
+ * keeps the per-IP rate limiter from confusing two callers for one script. Pass
+ * `as` when the test is about the device rather than about the caller.
+ */
+function request(
+  cookies: Record<string, string> = {},
+  body?: unknown,
+  as?: Device,
+): Request {
   const cookie = Object.entries(cookies)
     .map(([name, value]) => `${name}=${value}`)
     .join('; ')
@@ -168,9 +194,8 @@ function request(cookies: Record<string, string> = {}, body?: unknown): Request 
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      // Each caller gets its own address so the per-IP rate limiter never
-      // confuses two of them for one script.
-      'x-forwarded-for': `203.0.113.${Math.floor(Math.random() * 250) + 1}`,
+      'x-forwarded-for': as?.ip ?? `203.0.113.${Math.floor(Math.random() * 250) + 1}`,
+      ...(as ? { 'user-agent': as.userAgent } : {}),
       ...(cookie ? { cookie } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -190,8 +215,8 @@ function visitorCookieFrom(response: Response): string {
 }
 
 /** A visitor who has searched `cnpj`, as `POST /api/radar/cnpj` makes one. */
-async function searchAs(cookies: Record<string, string>, cnpj: string) {
-  const response = await postCnpj(request(cookies, { cnpj }))
+async function searchAs(cookies: Record<string, string>, cnpj: string, as?: Device) {
+  const response = await postCnpj(request(cookies, { cnpj }, as))
   const body = (await response.json()) as CnpjResponse
   return { response, body }
 }
@@ -243,19 +268,31 @@ suite('U1 — accounts and quota enforcement (database)', () => {
   // ─────────────────── the exit criterion, in one test ───────────────────
 
   describe('incognito + the same CNPJ is still limited', () => {
-    it('inherits the three-day clock from the company, not from the browser', async () => {
+    it('inherits the three-day clock from the same device, not from the browser', async () => {
+      // One machine throughout: same address, same user agent, new cookie jar.
+      // Since 2026-09-24 the window is inherited per **device**, so a test
+      // about clearing cookies has to hold the device still — with the random
+      // address `request()` hands out by default, "incognito" and "a stranger
+      // in another city" were indistinguishable, and the rule cannot tell them
+      // apart either. The stranger is the test below.
+      const machine = device('incognito')
+
       // 1. A device searches the CNPJ and uses both of its screenings.
-      const first = await searchAs({}, SHARED_CNPJ)
+      const first = await searchAs({}, SHARED_CNPJ, machine)
       const deviceA = visitorCookieFrom(first.response)
       expect(first.body.state).toBe('ready')
       if (first.body.state !== 'ready') throw new Error('expected ready')
       expect(first.body.visitor).toMatchObject({ expired: false, screeningsUsed: 0 })
 
       const cookiesA = { [VISITOR_COOKIE]: deviceA }
-      expect((await postScreening(request(cookiesA), params(TENDERS[1]))).status).toBe(202)
-      expect((await postScreening(request(cookiesA), params(TENDERS[2]))).status).toBe(202)
+      expect(
+        (await postScreening(request(cookiesA, undefined, machine), params(TENDERS[1]))).status,
+      ).toBe(202)
+      expect(
+        (await postScreening(request(cookiesA, undefined, machine), params(TENDERS[2]))).status,
+      ).toBe(202)
       // Two spent: the third is refused on the quota, the ordinary §10 path.
-      const spent = await postScreening(request(cookiesA), params(TENDERS[3]))
+      const spent = await postScreening(request(cookiesA, undefined, machine), params(TENDERS[3]))
       expect(spent.status).toBe(402)
 
       // 2. Three days pass. (The row is aged rather than the clock advanced —
@@ -268,7 +305,7 @@ suite('U1 — accounts and quota enforcement (database)', () => {
       // 3. **Incognito.** No cookie whatsoever: a different browser profile, a
       //    cleared jar, a new device. It gets a brand-new `visitors` row with
       //    its own `created_at` of *now* and not one `usage` row to its name.
-      const second = await searchAs({}, SHARED_CNPJ)
+      const second = await searchAs({}, SHARED_CNPJ, machine)
       const deviceB = visitorCookieFrom(second.response)
       expect(deviceB).not.toBe(deviceA)
 
@@ -278,14 +315,15 @@ suite('U1 — accounts and quota enforcement (database)', () => {
       )
       expect(Number(fresh.rows[0]?.n)).toBe(0)
 
-      // …and it is still refused, because the window it inherited is the
-      // CNPJ's. Note *which* refusal: `visitor_expired`, not `quota_exceeded`.
+      // …and it is still refused, because the window it inherited is this
+      // machine's. Note *which* refusal: `visitor_expired`, not
+      // `quota_exceeded`.
       // Nothing was spent — the clock alone closed the door.
       if (second.body.state !== 'ready') throw new Error('expected ready')
       expect(second.body.visitor).toMatchObject({ expired: true })
 
       const refused = await postScreening(
-        request({ [VISITOR_COOKIE]: deviceB }),
+        request({ [VISITOR_COOKIE]: deviceB }, undefined, machine),
         params(TENDERS[4]),
       )
       const body = (await refused.json()) as ScreeningResponse
@@ -298,6 +336,54 @@ suite('U1 — accounts and quota enforcement (database)', () => {
         [deviceB],
       )
       expect(Number(after.rows[0]?.n)).toBe(0)
+    }, 120_000)
+
+    /**
+     * The other half of decision 5, which the implementation did not have.
+     *
+     * §17 says the window is counted **"per device and per CNPJ"**. Until
+     * 2026-09-24 `windowStartedAt` keyed on the CNPJ alone — `where cnpj = $1`,
+     * no device term — so the oldest search of a number by *anybody* became
+     * every later visitor's start date. A CNPJ is public and is not owned by
+     * whoever typed it first, so that charged the wrong person: an accountant
+     * checking a client, a number passed around a WhatsApp group, a founder
+     * demoing. Each burned that CNPJ permanently for its real owner.
+     *
+     * Measured on production the morning founders week opened, the CNPJ used in
+     * every demo that week had been first searched three days earlier and was
+     * already expired for every new visitor, with two more a day behind it.
+     *
+     * The test above keeps the abuse case honest — same machine, new cookie
+     * jar, still refused. This one is the person the old rule was charging by
+     * mistake.
+     */
+    it('does not expire a different device that happens to search the same CNPJ', async () => {
+      const mine = device('owner')
+      const stranger = device('somebody-else-entirely')
+      expect(stranger.ip).not.toBe(mine.ip)
+
+      // Somebody searched this company and their window aged out.
+      const theirs = await searchAs({}, SHARED_CNPJ, mine)
+      expect(theirs.body.state).toBe('ready')
+      await pool().query(
+        "update visitors set created_at = now() - interval '4 days' where cnpj = $1",
+        [SHARED_CNPJ],
+      )
+
+      // A different machine, on a different connection, searches the same
+      // number for the first time. It is not their clock.
+      const fresh = await searchAs({}, SHARED_CNPJ, stranger)
+      const cookie = visitorCookieFrom(fresh.response)
+      if (fresh.body.state !== 'ready') throw new Error('expected ready')
+      expect(fresh.body.visitor).toMatchObject({ expired: false })
+
+      // And they can actually use it — an unexpired window that still refuses
+      // would be the same defect wearing a different status code.
+      const allowed = await postScreening(
+        request({ [VISITOR_COOKIE]: cookie }, undefined, stranger),
+        params(TENDERS[5]),
+      )
+      expect(allowed.status).toBe(202)
     }, 120_000)
 
     it('does not expire a device that searched a different company', async () => {
