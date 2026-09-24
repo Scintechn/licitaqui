@@ -324,10 +324,41 @@ off via an autouse fixture. `tests/test_integration_whatsapp.py` asserts the
 guarantee at the socket layer: with the switch off, the job runs end to end
 while `socket.connect` raises, and nothing attempts a connection.
 
-**As of 2026-09-18 the switch must stay off.** The only Evolution instance on
-the server is `flowdeski-scn-real-estate` — a different product. Sending from it
-would deliver LicitaQui's founders welcome from another product's WhatsApp
-number. Turn the switch on only once a dedicated LicitaQui instance exists.
+**Superseded on 2026-09-24.** The paragraph that stood here said the only
+Evolution instance on the server was `flowdeski-scn-real-estate`, a different
+product, so the switch had to stay off. Sci provisioned a LicitaQui instance
+that day. **The blocker is gone; the switch is simply not yet set.**
+
+That distinction cost something. An agent read this file, repeated "the only
+instance is the real-estate one" as a present-tense fact, and it reached Sci as
+a reason not to enable delivery — a day after he had removed the reason. A
+README that states the state of a server goes stale silently. Date every such
+claim, and check the environment before repeating one.
+
+### Turning delivery on — the four variables and the two traps
+
+The variables are read by **`licitaqui/evolution.py`, which runs in the worker
+container** (Easypanel). They are not Next.js configuration: the web app only
+writes a `jobs` row, and setting them on Vercel changes nothing about whether a
+founder is messaged.
+
+```
+EVOLUTION_API_URL     EVOLUTION_API_KEY
+EVOLUTION_INSTANCE    WHATSAPP_DELIVERY=send
+```
+
+**Trap 1 — it is not retroactive.** Every job enqueued while the switch was off
+ran all four consent gates, rendered its message, logged `whatsapp.dry_run` and
+finished **`done`**. The queue never retries a `done` job, so the founders who
+signed up during that window are messaged by nothing unless they are enqueued
+again. `jobs_dedupe` is partial (`where status in ('queued','running')`), so
+re-inserting the same `(kind, key)` is permitted.
+
+**Trap 2 — `jobs.status` is not evidence of delivery.** A dry run and a real
+send differ only by the event name: both leave `status = 'done'`, both write a
+delivery row, neither records an error. Verify against `whatsapp.sent` in
+`events`, never against the job row. This is the same trap
+`NOTIFICATION_JOURNEY.md` recorded for Telegram the day before.
 
 | Variable | Required | Default | What it is |
 |---|---|---|---|

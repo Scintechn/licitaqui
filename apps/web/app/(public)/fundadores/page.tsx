@@ -387,7 +387,24 @@ function Source({ children, className }: { children: ReactNode; className?: stri
  * The aspect ratio is set in CSS at the same breakpoint, not left to the
  * `width`/`height` attributes: those come from the mobile source (the `<img>`
  * fallback), so on a desktop viewport the reserved box would be 780/1688 until
- * the bytes land and 1800/1125 after — a hero-sized layout shift.
+ * the bytes land and 1180/1120 after — a hero-sized layout shift.
+ *
+ * ## Why the desktop shot is a crop and not the whole screen
+ *
+ * It was the full 2880×1800 Radar, and Sci said three times that it looked
+ * blurred and small. It was neither compressed nor low-resolution — `q=90` and
+ * a 2880px master were both already in place. It was **scale**: 2880px at 2×
+ * is a 1440 logical-pixel application, and the hero shows it at 593px. That is
+ * 0.41×, so the app's 13px text rendered at about 5px. No source resolution
+ * fixes a UI shrunk to a third of the size it was drawn at.
+ *
+ * So the shot is now a 1180×1120 crop of that master — 590 logical pixels wide,
+ * displayed at 593, which is **1.01×**. The app's text renders at its own size
+ * and is genuinely readable. What the crop keeps is the argument: the
+ * compatibility read-out with its page references, and `PREÇO-ALVO DE COMPRA ·
+ * R$ 14,60` with the sentence that defines it (brief §2.2 rule 3). What it
+ * loses is the sidebar and the left half of the list, which were decoration at
+ * this size and illegible anyway.
  */
 function Hero() {
   const { hero } = page
@@ -435,7 +452,7 @@ function Hero() {
           <img
             {...shot.img}
             alt=""
-            className="aspect-[780/1688] w-full rounded-feature border border-line object-cover shadow-[0_24px_50px_-36px_rgba(23,23,23,0.45)] min-[540px]:aspect-[2880/1800]"
+            className="aspect-[780/1688] w-full rounded-feature border border-line object-cover shadow-[0_24px_50px_-36px_rgba(23,23,23,0.45)] min-[540px]:aspect-[1180/1120]"
           />
         </picture>
       </Wrap>
