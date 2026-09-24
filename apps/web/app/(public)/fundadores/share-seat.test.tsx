@@ -47,9 +47,15 @@ describe('what the confirmation lists under "o que acontece agora"', () => {
     ])
   })
 
-  it('defaults to the suppressed list, so the live page cannot claim it', () => {
+  it('defaults to the delivered list, now that a send has been proven', () => {
     // No argument — this is what `/fundadores` actually renders today.
-    expect(nextSteps()).not.toContain(confirmation.nextWhatsapp)
+    //
+    // It asserted the **suppressed** list until 2026-09-24, when the Evolution
+    // variables reached the worker and job `84044` wrote `whatsapp.sent` with
+    // `status: 201` and a real `message_id`. This is the assertion that makes
+    // the default a decision rather than a leftover: whichever way the flag
+    // points, one of these three tests is pinning it deliberately.
+    expect(nextSteps()).toContain(confirmation.nextWhatsapp)
   })
 })
 

@@ -838,22 +838,30 @@ test.describe('Dona Marta reads her confirmation', () => {
     return panel
   }
 
-  test('does not tell her we sent a WhatsApp message, because we did not', async ({ page }) => {
+  test('tells her we sent a WhatsApp message, because now we do', async ({ page }) => {
     const panel = await confirmed(page)
 
     /*
-     * The claim itself, in full. `nextWhatsapp` is past tense — it asserts a
-     * thing that happened — and nothing sends it while the kill switch is off.
+     * **Inverted on 2026-09-24, once the send was proven rather than assumed.**
      *
-     * Deliberately the whole sentence and **not** a bare `not.toContainText(
-     * 'WhatsApp')`, which was tried. That version is over-broad as a
-     * requirement — it forbids the word rather than the claim, so any
-     * future-tense sentence Sci may approve ("no dia 08/10 avisamos no seu
-     * WhatsApp") would turn it red while the requirement was perfectly met —
-     * and under-broad as a guard, since it only ever looks at this one branch.
-     * The requirement is "no statement that a message was already sent".
+     * `nextWhatsapp` is past tense — it asserts a thing that happened — so
+     * while nothing sent it, this asserted its **absence**. Sci then set the
+     * Evolution variables on the worker, job `84044` wrote `whatsapp.sent`
+     * with `status: 201` and a `message_id`, and the message reached his
+     * handset. The sentence became true, so the assertion inverts rather than
+     * being deleted: E4's acceptance criteria say so, and a deleted guard is
+     * how the claim would drift back to false unnoticed.
+     *
+     * Still the whole sentence and **not** a bare `toContainText('WhatsApp')`.
+     * That version is over-broad as a requirement — it would be satisfied by
+     * any sentence mentioning the word — and under-broad as a guard, since it
+     * only ever looks at this one branch. The requirement is the specific
+     * claim, and the specific claim is what is asserted.
+     *
+     * If delivery ever stops, flip `WHATSAPP_WELCOME_IS_DELIVERED` and flip
+     * this back. The page must never claim a message it did not send.
      */
-    await expect(panel).not.toContainText(confirmation.nextWhatsapp)
+    await expect(panel).toContainText(confirmation.nextWhatsapp)
 
     // And what remains is still a real answer to "o que acontece agora",
     // rather than an empty heading over nothing.
