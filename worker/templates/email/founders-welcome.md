@@ -1,9 +1,9 @@
 ---
 id: founders-welcome
 channel: email
-subject: "Sua vaga de fundador na LicitaQui é a número {{numero_vaga}} de 48"
+subject: "Sua vaga de fundador na LicitaQui é a número {{numero_vaga}}"
 preheader: "Guardamos seu lugar. No dia {{data_abertura}} você recebe o link de acesso."
-status: draft
+status: approved
 placeholders: [nome, numero_vaga, data_abertura, email_contato]
 partials: [partial-footer]
 notes: Sent by POST /api/founders together with (or instead of) the WhatsApp welcome, depending on what the person consented to.
@@ -11,13 +11,13 @@ notes: Sent by POST /api/founders together with (or instead of) the WhatsApp wel
 
 Oi, {{nome}}.
 
-Sua vaga de fundador da LicitaQui está garantida. Você é o número {{numero_vaga}} de 48.
+Sua vaga de fundador da LicitaQui está garantida. Você é o número {{numero_vaga}}.
 
 O QUE A LICITAQUI FAZ
 
 Todo dia entram editais novos no PNCP, e quase nenhum deles é para a sua empresa. A LicitaQui olha o CNPJ da sua empresa, separa os editais abertos que combinam com o que você já faz e lê cada um para você em português claro: o que estão comprando, até quando dá para enviar a proposta, se há item exclusivo para MEI ou ME/EPP e o que pode te desclassificar.
 
-A leitura é feita por inteligência artificial e serve para você decidir rápido se vale a pena. A palavra final é sempre a do edital — confira antes de enviar qualquer proposta.
+A triagem é feita por inteligência artificial e serve para você decidir rápido se vale a pena. A palavra final é sempre a do edital — confira antes de enviar qualquer proposta.
 
 O QUE VOCÊ TEM POR SER FUNDADOR
 
