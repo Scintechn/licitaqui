@@ -337,7 +337,9 @@ def test_the_message_that_would_be_sent_is_the_approved_copy(
     assert delivery.message_id == "3EB0F3C9A1B2C3D4E5F6"
     body = json.loads(seen[0].content)
     assert body["text"].startswith("Oi, Maria! Aqui é a LicitaQui.")
-    assert "número 12 de 48" in body["text"]
+    # See test_templates: the denominator was dropped on 2026-09-24.
+    assert "número 12" in body["text"]
+    assert "de 48" not in body["text"]
     assert body["text"].endswith("Para não receber mais mensagens, responda SAIR.")
     assert seen[0].headers["user-agent"] == evolution.USER_AGENT
 

@@ -109,7 +109,7 @@
     },
     "confirmation": {
       "title": "Vaga garantida, {nome}!",
-      "seat": "Você é o fundador número {numero} de 48.",
+      "seat": "Você é o fundador número {numero}.",
       "nextTitle": "O que acontece agora",
       "nextWhatsapp": "Mandamos uma mensagem no seu WhatsApp confirmando a vaga.",
       "nextOpening": "No dia da abertura você recebe o link de acesso, antes da abertura ao público.",
