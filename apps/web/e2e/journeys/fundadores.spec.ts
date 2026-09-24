@@ -1461,6 +1461,57 @@ test.describe('Dona Marta mistypes her e-mail', () => {
     expect(await isOnScreen(signupForm(page).locator('#email-error'))).toBe(true)
   })
 
+  test('shows a rejected "o que você vende" at all, which it did not', async ({ page }) => {
+    /*
+     * `signupInput` declares `sells: optionalText(200)` and its `.refine()`
+     * emits `tooLong`, which `POST /api/founders` returns in `fields` like any
+     * other rejection. The control had no `error` prop and the field was in no
+     * list, so a paste over the limit produced the idle button back and
+     * **nothing else** — this PR's own headline defect, in the one field an
+     * earlier version of its comment called immune.
+     *
+     * The message is `founders.errors.generic`: `errorText` falls back to it
+     * for a code the catalogue has no sentence for, and a specific one would
+     * be new copy, which is Sci's.
+     */
+    await page.setViewportSize({ width: 390, height: PHONE_VISIBLE })
+    await stubRejection(page, { sells: 'tooLong' })
+    await page.goto('/fundadores')
+    await openSignup(page)
+    await fillRequired(page)
+    await signupForm(page).locator('#vende').fill('papel '.repeat(60))
+    await signupForm(page).getByRole('button', { name: messages.founders.offer.cta }).click()
+
+    const message = signupForm(page).locator('#vende-error')
+    await expect(message).toBeVisible()
+    expect(await isOnScreen(message), 'the error is inside the viewport').toBe(true)
+    await expect(signupForm(page).locator('#vende')).toBeFocused()
+  })
+
+  test('says which consent was refused, where a screen reader will hear it', async ({ page }) => {
+    /*
+     * The consent boxes are rendered by this file's own `Consent`, not by
+     * `Field`, and its message was a bare `<p>` with no `id` — so focusing the
+     * control (which is what this change does to announce an error) announced
+     * the consent sentence and nothing about the rejection. Two of the seven
+     * fields the effect can land on got a third of the promised behaviour.
+     */
+    await page.setViewportSize({ width: 390, height: PHONE_VISIBLE })
+    await stubRejection(page, { contactConsent: 'foundersRequired' })
+    await page.goto('/fundadores')
+    await openSignup(page)
+    await fillRequired(page)
+    await signupForm(page).getByRole('button', { name: messages.founders.offer.cta }).click()
+
+    const box = signupForm(page).locator('#aceite-contato')
+    await expect(box).toBeFocused()
+    await expect(box).toHaveAttribute('aria-invalid', 'true')
+    await expect(box).toHaveAttribute('aria-describedby', 'aceite-contato-error')
+    const message = signupForm(page).locator('#aceite-contato-error')
+    await expect(message).toHaveText(messages.consent.foundersRequired)
+    expect(await isOnScreen(message)).toBe(true)
+  })
+
   test('leaves a form-level failure where it already is, beside the submit', async ({ page }) => {
     // `state.message` carries `role="alert"` and renders immediately above the
     // button she has just pressed. Moving focus for that would take her away
@@ -1625,6 +1676,79 @@ test.describe('Dona Marta presses Back', () => {
     await openSignup(page)
     await expect(page.getByRole('status')).toContainText(seat)
     await expect(signupForm(page).locator('#nome')).toHaveCount(0)
+  })
+})
+
+test.describe('the ways out of a sheet that is showing a confirmation', () => {
+  test('gives focus back to the trigger, not to the page body', async ({ page }) => {
+    /*
+     * The join between two changes, which each half's own test missed.
+     *
+     * `SignupForm` focuses the confirmation when it appears, and React runs a
+     * child's effects **before** its parent's — so on a re-open with a seat
+     * already in hand, `Sheet` recorded a node *inside its own panel* as
+     * "whatever opened this". Closing then detached that node and focused it,
+     * which is a silent no-op: focus fell to `<body>`, on a 9 000px page,
+     * against the third of the four behaviours `Sheet` promises.
+     *
+     * The existing "every way out" test never signs up first, and the "does
+     * not destroy a seat" test never closes a second time. Neither could see
+     * it; this walks the whole path.
+     */
+    await page.setViewportSize({ width: 390, height: 844 })
+    await stubSignup(page)
+    await page.goto('/fundadores')
+
+    const trigger = page.getByRole('button', { name: messages.foundersPage.nav.cta })
+    await trigger.click()
+    await fillRequired(page)
+    await signupForm(page).getByRole('button', { name: messages.founders.offer.cta }).click()
+    await expect(page.getByRole('status')).toBeVisible()
+
+    // Out once — the confirmation is still on screen when this happens.
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(trigger, 'the first way out').toBeFocused()
+
+    // Back in on the confirmation, and out again. This is the pass that broke.
+    await trigger.click()
+    await expect(page.getByRole('status')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(trigger, 'and the way out of a re-opened confirmation').toBeFocused()
+  })
+
+  test('two taps on close do not walk off the page', async ({ page }) => {
+    /*
+     * `history.back()` queues a traversal rather than performing one, so the
+     * first version left the panel on screen — close button live, entry still
+     * owned — until the `popstate` landed. Two taps in that window popped two
+     * entries and **left `/fundadores`** with the form. Dispatched from inside
+     * the page so that both land in the same frame, which is what a thumb on a
+     * busy page does and what `page.click()` cannot reproduce.
+     */
+    await page.setViewportSize({ width: 390, height: 844 })
+    await stubSignup(page)
+    await page.goto('/')
+    await page.goto('/fundadores')
+    const address = page.url()
+    await openSignup(page)
+    await signupForm(page).locator('#nome').fill('Dona Marta')
+
+    await page.evaluate((label) => {
+      const close = [...document.querySelectorAll('[role="dialog"] button')].find(
+        (node) => node.getAttribute('aria-label') === label,
+      ) as HTMLButtonElement
+      close.click()
+      close.click()
+    }, messages.common.close)
+
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(page.url(), 'still on the page taking sign-ups').toBe(address)
+    // And the stack is where it should be: one Back leaves, it does not first
+    // have to undo a second pop that never should have happened.
+    await page.goBack()
+    await expect(page).toHaveURL(/\/$/)
   })
 })
 
@@ -1854,6 +1978,38 @@ test.describe('the full-screen dialog says what it is', () => {
     await expect(
       page.getByRole('dialog').getByRole('heading', { name: messages.founders.offer.cta }),
     ).toBeVisible()
+  })
+
+  /**
+   * **559px, which matched neither query.** Tailwind v4 emits `max-[N]` as a
+   * strict `width < N` — the built stylesheet reads `@media not all and
+   * (min-width: 559px)` — so `max-[559px]` against `min-[560px]` left a 1px
+   * band matching neither, where the header fell back to `justify-content:
+   * normal` and put the close control against the title. A desktop resize, an
+   * iPad split view or 125% zoom on a 699px window all land in it. The pair is
+   * `width < 560` against `width >= 560` now, and this is the width that
+   * proves it.
+   */
+  test('is laid out at 559px, the width that used to match neither query', async ({ page }) => {
+    await page.setViewportSize({ width: 559, height: 844 })
+    await stubSignup(page)
+    await page.goto('/fundadores')
+    await page.getByRole('button', { name: messages.foundersPage.nav.cta }).click()
+
+    const dialog = page.getByRole('dialog')
+    const heading = dialog.getByRole('heading', { name: messages.foundersPage.nav.cta })
+    const drawn = (await heading.boundingBox())!
+    const close = (await dialog.getByRole('button', { name: messages.common.close }).boundingBox())!
+
+    expect(drawn.width, 'the title is visible below 560px').toBeGreaterThan(60)
+    expect(Math.round(drawn.x), 'and starts at the gutter').toBe(16)
+    // The close control is at the far edge, not tucked against the title.
+    expect(close.x + close.width).toBeGreaterThan(559 - 24)
+    // And the form is still full-bleed here, not a card.
+    const radius = await dialog
+      .locator('form')
+      .evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius))
+    expect(radius).toBe(0)
   })
 
   test('and takes no space on the wide screen, where it is the name only', async ({ page }) => {

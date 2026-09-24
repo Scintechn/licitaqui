@@ -139,6 +139,13 @@ const PLACEMENT: Record<SheetPlacement, { outer: string; panel: string }> = {
    * to the content (`signup-sheet.tsx` renders one). So below 560px a `centre`
    * caller that omits a close control has **no pointer dismissal at all**, and
    * Escape is the only way out. Give `centre` content a close button.
+   *
+   * And the panel carries a `translate` at every width (the keyboard offset
+   * below 560px, `0px` above it), which makes it a containing block and a
+   * stacking context for everything inside. Nothing in the founders form is
+   * `position: fixed`, so this costs nothing today — but a future `centre`
+   * caller with a fixed child will find it positions against the panel, not
+   * the viewport, and that is not obvious from the child's own code.
    */
   centre: {
     outer: 'flex items-start justify-center min-[560px]:items-center min-[560px]:p-4',
@@ -255,7 +262,29 @@ export function Sheet({
   useEffect(() => {
     if (!open) return
 
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    /**
+     * Whatever had focus **outside this panel**, which is the thing to give
+     * focus back to on the way out.
+     *
+     * The guard is not defensive programming; it is an ordering fact. React
+     * flushes a child's effects before its parent's, so any content that
+     * focuses something of its own on mount — `signup-form.tsx` does, when the
+     * sheet re-opens on a confirmation — has already moved focus *into* the
+     * panel by the time this line runs. Recorded without the guard, the
+     * "opener" was a node inside the panel; `open` then went false, React
+     * detached it, and `.focus()` on a detached node is a silent no-op. Focus
+     * landed on `<body>` — on a 9 000px page, and against behaviour 3 above,
+     * which promises the opener back on *every* exit.
+     *
+     * Keeping the previous value rather than clearing it is deliberate: the
+     * triggers are part of the page, not of the sheet, so the last one
+     * recorded is still in the document and still a sane place to land.
+     * React's dev-only double-invocation of this effect hits the same guard.
+     */
+    const active = document.activeElement
+    if (active instanceof HTMLElement && !panel.current?.contains(active)) {
+      opener.current = active
+    }
 
     // Focus the heading, not the close button: the first thing a screen
     // reader says should be what just opened.

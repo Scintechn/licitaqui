@@ -84,6 +84,11 @@ export function SignupSheet({ children }: { children: ReactNode }) {
    * It stays the accessible name at every width — the same element, the same
    * string, `sr-only` from 560px where the card is visibly a dialog over the
    * page it belongs to.
+   *
+   * The initial value is never rendered — `Sheet` draws nothing until `show`
+   * has set a real one — but it is the header's call to action rather than an
+   * empty string, so that a future way in that forgets to pass a label still
+   * names the dialog something true instead of nothing.
    */
   const [title, setTitle] = useState(messages.foundersPage.nav.cta)
   /**
@@ -138,16 +143,25 @@ export function SignupSheet({ children }: { children: ReactNode }) {
 
   /**
    * Escape, the close button and the scrim all go through the same door as
-   * Back: if the entry is ours, pop it and let `popstate` do the closing.
-   * Closing here as well would leave the entry on the stack, and the *next*
-   * Back — the one meant to leave the page — would be swallowed by it.
+   * Back: the sheet closes **now**, and the entry it owns is popped so that
+   * the next Back is the one that leaves the page rather than one that finds
+   * a sheet already gone.
+   *
+   * Both halves of that happen before `back()` is called, and that ordering
+   * is the fix for a real race. The first version left the closing to the
+   * `popstate` handler — `back()` only *queues* a traversal, so between the
+   * tap and the pop the panel was still on screen with its close button live
+   * and `ownsHistoryEntry` still true. A second tap in that window called
+   * `back()` again: one traversal popped the sheet's entry and the other
+   * popped the one underneath it, **leaving the page taking sign-ups**, with
+   * the half-filled form. A phone, a 9 000px page still decoding images and a
+   * control that gives no feedback is exactly where somebody taps twice.
    */
   const dismiss = useCallback(() => {
-    if (ownsHistoryEntry.current) {
-      window.history.back()
-      return
-    }
     setOpen(false)
+    if (!ownsHistoryEntry.current) return
+    ownsHistoryEntry.current = false
+    window.history.back()
   }, [])
 
   /**
@@ -156,6 +170,18 @@ export function SignupSheet({ children }: { children: ReactNode }) {
    * `ownsHistoryEntry` would never be cleared — so the entry would still be on
    * the stack, the next open would not push another, and Back would eventually
    * close a sheet that was already closed instead of leaving the page.
+   *
+   * **What this deliberately does not do is re-open on Forward.** Pressing
+   * Forward after a Back lands back on the entry the sheet pushed, and this
+   * closes rather than re-opens: the sheet stays shut and that entry is left
+   * on the stack unowned, so one later Back press does nothing the reader can
+   * see. A reload with the sheet open leaves the same orphan. The alternative
+   * — marking the entry in its state and re-opening when that marker comes
+   * back — reads the marker wrongly after exactly that reload (the entry
+   * still says "open", the fresh React state says "closed"), which turns the
+   * *next* Back into a surprise re-open. One invisible Back press after an
+   * unusual gesture is the cheaper of the two, and it is written down here
+   * rather than discovered.
    */
   useEffect(() => {
     function onPopState() {
@@ -189,31 +215,43 @@ export function SignupSheet({ children }: { children: ReactNode }) {
             with `justify-between` and one in-flow child the button would jump
             to the *left* edge of the card.
 
-            Complementary queries rather than a base plus an override, and not
-            `mr-auto` on the heading: `not-sr-only` resets `margin: 0`, so an
-            auto margin on that element is silently dropped. It was, and the
-            title sat against the close button until a screenshot showed it.
+            Not `mr-auto` on the heading: `not-sr-only` resets `margin: 0`, so
+            an auto margin on that element is silently dropped. It was, and
+            the title sat against the close button until a screenshot showed
+            it.
+
+            **`max-[560px]`, not `max-[559px]`.** Tailwind v4 emits `max-*` as
+            a strict `width < N` — the built stylesheet says `@media not all
+            and (min-width: 559px)` — so `max-[559px]` paired with
+            `min-[560px]` leaves **[559, 560) matching neither**, and in that
+            band this row fell back to `justify-content: normal` and put the
+            close control against the title. Reachable by a desktop resize, an
+            iPad split and browser zoom. `width < 560` against `width >= 560`
+            is the partition with no hole in it; 559px is in the suite now.
+            (There are ~12 `max-[559px]` in `page.tsx` with the same 1px hole.
+            Cosmetic there, and not this PR's to sweep.)
           */}
-          <div className="flex items-center gap-3 px-4 pt-4 max-[559px]:justify-between min-[560px]:justify-end min-[560px]:px-3 min-[560px]:pt-3">
+          <div className="flex items-center gap-3 px-4 pt-4 max-[560px]:justify-between min-[560px]:justify-end min-[560px]:px-3 min-[560px]:pt-3">
             {/*
               The dialog's accessible name at every width, and its visible
               title below 560px where the sheet is the whole screen. The two
               are the same element and the same string on purpose: a visible
               heading and a separate `sr-only` name is how they drift.
 
-              `max-[559px]:not-sr-only` / `min-[560px]:sr-only` are
+              `max-[560px]:not-sr-only` / `min-[560px]:sr-only` are
               complementary queries rather than a base utility and one
               override. Both would be in the stylesheet at the same
               specificity below 560px and which one won would be Tailwind's
               generation order — the trap that lost the rule between the
-              pillars on 2026-09-24. Where the close control sits in each
-              case is the row's business, above.
+              pillars on 2026-09-24. See the row above for why the breakpoint
+              is 560 on both sides. Where the close control sits in each case
+              is the row's business, also above.
             */}
             <h2
               id={TITLE_ID}
               className={
                 'font-display text-subsection font-bold text-ink ' +
-                'max-[559px]:not-sr-only min-[560px]:sr-only'
+                'max-[560px]:not-sr-only min-[560px]:sr-only'
               }
             >
               {title}
