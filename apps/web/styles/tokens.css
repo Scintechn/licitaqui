@@ -156,7 +156,21 @@
    * needs larger, fluid headings; these are the `clamp()`s and sizes of
    * `paginas/oferta_fundadores.html`. Body copy there is Tailwind's `text-base`.
    */
-  --text-hero: clamp(2.125rem, 5.4vw, 3.75rem); /* 34 → 60px · the page's one h1 */
+  /*
+   * The page's one h1. Was `clamp(2.125rem, 5.4vw, 3.75rem)` (34 → 60px),
+   * transcribed from `oferta_fundadores.html` where the headline had the wider
+   * half of the hero row. `/fundadores` gave that half to the product shot, and
+   * at 60px the same sentence wrapped to five lines in a 464px column: Sci,
+   * 2026-09-24, *"the proporcional is not right"*.
+   *
+   * Measured on that headline in Archivo 800 at `-0.01em`, `text-wrap: balance`
+   * needs about **11.4em of measure** to hold four lines. 464px is 11.6em at
+   * 40px and 9.7em at 48px — so the cap is 40px, and the coefficient is set so
+   * it is reached where `Wrap` stops growing (1112px × 3.6% = 40px) rather than
+   * some way past it. The 34px floor is unchanged: it is the 390px size, and it
+   * was never the complaint.
+   */
+  --text-hero: clamp(2.125rem, 3.6vw, 2.5rem); /* 34 → 40px · the page's one h1 */
   --text-hero--line-height: 1.02;
   --text-section: clamp(1.625rem, 3.4vw, 2.375rem); /* 26 → 38px · h2 */
   --text-section--line-height: 1.1;

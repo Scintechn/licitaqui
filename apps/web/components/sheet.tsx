@@ -91,10 +91,26 @@ const PLACEMENT: Record<SheetPlacement, { outer: string; panel: string }> = {
     outer: 'flex',
     panel: 'relative flex h-dvh w-full max-w-[360px] flex-col overflow-y-auto border-r border-line',
   },
+  /**
+   * Centred card from 560px; **full-bleed below it**.
+   *
+   * The founders form is long — name, e-mail, WhatsApp, CNPJ, what you sell,
+   * two consent checkboxes, submit. At 390px the centred version was a 358px
+   * card with `max-h-full`, and that height is the problem: `position: fixed`
+   * measures the *layout* viewport, which does not shrink when an iOS keyboard
+   * opens. So the bottom of the panel — the submit — sat behind the keyboard,
+   * reachable only by scrolling inside a box that was itself partly hidden.
+   *
+   * `h-dvh` tracks the dynamic viewport instead, which is exactly the case it
+   * exists for, and it is what `drawer` above already uses. With the padding,
+   * the radius and the border dropped below 560px the panel is the screen, so
+   * there is no "outside" left to tap — dismissal is Escape and the close
+   * control, both of which `Sheet` owns and neither of which is the scrim.
+   */
   centre: {
-    outer: 'flex items-center justify-center p-4',
+    outer: 'flex items-center justify-center min-[560px]:p-4',
     panel:
-      'relative flex max-h-full w-full max-w-[420px] flex-col overflow-y-auto rounded-panel border border-line',
+      'relative flex h-dvh w-full flex-col overflow-y-auto min-[560px]:h-auto min-[560px]:max-h-full min-[560px]:max-w-[420px] min-[560px]:rounded-panel min-[560px]:border min-[560px]:border-line',
   },
 }
 

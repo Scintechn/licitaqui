@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
 import { EXAMPLE_AS_OF } from '@/lib/radar/landing-example'
 import FoundersOfferPage, { revalidate } from './page'
+import radarPreviewMobile from './radar-preview-mobile.png'
 import radarPreview from './radar-preview.png'
 
 const out = renderToStaticMarkup(<FoundersOfferPage />)
@@ -20,6 +21,26 @@ function heroImage() {
   const at = main.indexOf('<img')
   expect(at, 'the hero renders an <img>').toBeGreaterThan(-1)
   return main.slice(at, main.indexOf('>', at) + 1)
+}
+
+/**
+ * The whole `<picture>` the hero shot is now drawn in — the `<source>` that
+ * carries the desktop master and the `<img>` that is both the phone shot and
+ * the fallback.
+ */
+function heroPicture() {
+  const main = out.slice(out.indexOf('<main'))
+  const at = main.indexOf('<picture')
+  expect(at, 'the hero renders a <picture>').toBeGreaterThan(-1)
+  return main.slice(at, main.indexOf('</picture>', at) + '</picture>'.length)
+}
+
+/** Just the `<source>`: the desktop master and the media query that picks it. */
+function heroSource() {
+  const picture = heroPicture()
+  const at = picture.indexOf('<source')
+  expect(at, 'the <picture> carries a <source>').toBeGreaterThan(-1)
+  return picture.slice(at, picture.indexOf('>', at) + 1)
 }
 
 describe('/fundadores', () => {
@@ -142,18 +163,51 @@ describe('brief §2.2 framing rules', () => {
     }
   })
 
-  it('gives the refund guarantees a section heading, not fine print', () => {
-    // It was `text-lead font-semibold` — 15px IBM Plex Sans — while the other
-    // eight h2s are 26px Archivo 700, so the 7-day CDC right of withdrawal and
-    // the 30-day guarantee rendered *smaller than the body copy around them*,
-    // directly above a FAQ with full display treatment.
-    const heading = out.indexOf(messages.foundersPage.refunds.title)
-    expect(heading).toBeGreaterThan(-1)
-    // The display face and size the other sections get.
-    const around = out.slice(Math.max(0, heading - 300), heading)
-    expect(around).toContain('font-display')
-    expect(around).not.toContain('text-lead font-semibold')
+  it('keeps both refunds on the page, word for word, now that they are a FAQ row', () => {
+    // Sci moved this out of its own section and into the FAQ on 2026-09-24,
+    // against the placement table in `docs/legal/faq-cobranca.md:70` ("Página
+    // da Oferta, abaixo do preço") and knowing that. What is *not* negotiable
+    // is the wording: line 75 of that file asks for the same sentences in all
+    // three places, because a customer who reads one rule here and another in
+    // the contract files a chargeback.
+    //
+    // So this asserts the four clauses that distinguish the two guarantees —
+    // the CDC art. 49 withdrawal right, the once-per-CNPJ limit, which plans
+    // it covers, and the absence of a pro-rata refund — rather than the
+    // heading treatment the copy used to get. Each is the part a paraphrase
+    // would lose first.
+    const { refunds } = messages.foundersPage
+    const body = refunds.items.join(' ')
+    expect(body).toContain('direito de arrependimento do Código de Defesa do Consumidor')
+    expect(body).toContain('uma vez por CNPJ')
+    expect(body).toContain('Promocional e Essencial')
+    expect(refunds.outro).toContain('não há devolução proporcional')
+    // `**bold**` is resolved into a <strong> when rendered, so a sentence with
+    // a lead-in is not contiguous in the HTML. Each run between the markers is
+    // asserted instead — still verbatim, and still fails on a paraphrase.
+    for (const sentence of [...refunds.items, refunds.intro, refunds.outro]) {
+      for (const run of sentence.split('**').filter(Boolean)) {
+        expect(out, run).toContain(run)
+      }
+    }
   })
+
+  it('opens the refunds as the FAQ’s first question, under its own title', () => {
+    // `refunds.title` is already a question — "Vocês devolvem o dinheiro?" —
+    // so it is the row's summary unchanged. First, which is the position the
+    // section held before the move: the same reading order, one level quieter.
+    const { refunds, faq } = messages.foundersPage
+    const summary = out.indexOf(`<span>${refunds.title}</span>`)
+    expect(summary, 'the refunds are a <details> summary').toBeGreaterThan(-1)
+    // Inside the FAQ section, and ahead of every question the catalogue holds.
+    expect(summary).toBeGreaterThan(out.indexOf('id="faq"'))
+    for (const item of faq.columns.flat()) {
+      expect(summary, item.q).toBeLessThan(out.indexOf(`<span>${item.q}</span>`))
+    }
+    // And the section it used to be is gone: no <h2> carries this title.
+    expect(out).not.toMatch(new RegExp(`<h2[^>]*>${refunds.title}`))
+  })
+
 
   it('never lets a child force the brand panel past the viewport', () => {
     // The first fix for the compressed comparison table gave it
@@ -428,41 +482,79 @@ describe('the hero, and the form that is now a dialog', () => {
     }
   })
 
-  it('serves the hero shot through the image pipeline, not as 1.6MB of PNG', () => {
-    // The source is 1600×1066 and 1.6MB. `next/image` with a static import
-    // gives the optimised variants and the reserved box; a bare <img src=
-    // "/radar-preview.png"> in a hero gives neither.
-    const img = heroImage()
-    // `srcSet` as React spells it on the server; the browser sees `srcset`.
-    expect(img.toLowerCase()).toContain('srcset=')
-    // Through the optimiser, and pointed at the hashed build asset — not at a
-    // raw file in `public/`, which would ship the 1.6MB original as well.
-    expect(img).toContain('/_next/image')
-    expect(img).toContain(encodeURIComponent(radarPreview.src))
+  it('serves both hero shots through the image pipeline, not as raw PNG', () => {
+    // The desktop master is 2880×1800 and 760KB; a bare <img src=
+    // "/radar-preview.png"> in a hero would ship all of it to a phone.
+    //
+    // Asserted on the **stem**, never on the build hash. This test used to
+    // pin `radar-preview.662d8b10.png`, which changes whenever the artwork is
+    // re-exported — so on 2026-09-24 it went red for a re-export and said
+    // nothing whatever about the requirement in its own name. The requirement
+    // is "through the optimiser", and that is what is checked.
+    for (const el of [heroPicture(), heroImage()]) {
+      // `srcSet` as React spells it on the server; the browser sees `srcset`.
+      expect(el.toLowerCase()).toContain('srcset=')
+      expect(el).toContain('/_next/image?url=')
+      expect(el).toContain('radar-preview')
+    }
+    // Both stems, one each side of the breakpoint.
+    expect(heroPicture()).toContain('radar-preview-mobile')
+    expect(heroSource()).toContain(encodeURIComponent('/static/media/radar-preview.'))
+    // And nothing bypasses the optimiser: no direct src at a raw PNG.
+    expect(out).not.toMatch(/src="[^"]*\.png"/)
     expect(out).not.toContain('src="/radar-preview.png"')
   })
 
-  it('reserves the shot’s box before it loads', () => {
-    // Intrinsic width and height from the static import: no layout shift when
-    // the bytes arrive, which is the whole reason for the static import.
-    //
-    // Read out of the imported module rather than typed in. `vitest.config.mts`
-    // argues that hand-typing 1600×1066 into the component would copy a fact
-    // the file already states and leave it wrong the day the shot is
-    // regenerated — which is just as true one directory over, in the test.
+  it('reserves both shots’ boxes before they load, at the same breakpoint they switch on', () => {
+    // The `<img>` carries `width`/`height` from the **mobile** source, because
+    // it is the `<picture>`'s fallback. Left at that, a desktop viewport would
+    // reserve a 780/1688 box, paint a 2880/1800 image into it when the bytes
+    // land, and shift the whole hero — so the ratio is set in CSS instead, and
+    // the two must switch on the same number as the `<source media>` or the
+    // hero draws one image inside the other's box.
     const img = heroImage()
-    expect(radarPreview.width).toBeGreaterThan(0)
-    expect(img).toContain(`width="${radarPreview.width}"`)
-    expect(img).toContain(`height="${radarPreview.height}"`)
+    expect(img).toContain(`width="${radarPreviewMobile.width}"`)
+    expect(img).toContain(`height="${radarPreviewMobile.height}"`)
+    // The ratio each box is reserved at, read out of the imported modules
+    // rather than typed in: a re-export that changes the shape of either file
+    // must fail here rather than ship a layout shift.
+    expect(img).toContain(`aspect-[${radarPreviewMobile.width}/${radarPreviewMobile.height}]`)
+    expect(img).toContain(`aspect-[${radarPreview.width}/${radarPreview.height}]`)
+    // Same breakpoint on the CSS ratio and on the source selection.
+    const breakpoint = heroSource().match(/min-width:\s*(\d+)px/)?.[1]
+    expect(breakpoint, 'the <source> carries a media query').toBeTruthy()
+    expect(img).toContain(
+      `min-[${breakpoint}px]:aspect-[${radarPreview.width}/${radarPreview.height}]`,
+    )
   })
 
-  it('loads the shot eagerly, because it is the largest thing above the fold', () => {
-    // `priority`. Next 16 expresses it as the absence of `loading="lazy"` plus
-    // a preload; a lazily-loaded LCP element is a Core Web Vitals regression
-    // that no string assertion about `<Image>`'s props would catch.
+  it('downloads one of the two shots, never both', () => {
+    // Two `next/image` elements toggled with `hidden` would fetch both: Chrome
+    // fetches a `display:none` <img>, measured rather than assumed (see the
+    // journey that counts the requests). `<picture>` selects exactly one.
+    //
+    // What that buys is only real if nothing else on the page renders the
+    // other file, so: exactly one `<picture>`, exactly one `<img>` in it, and
+    // exactly one `<source>`.
+    const picture = heroPicture()
+    expect(out.match(/<picture/g)).toHaveLength(1)
+    expect(picture.match(/<source/g)).toHaveLength(1)
+    expect(picture.match(/<img/g)).toHaveLength(1)
+  })
+
+  it('loads the shot eagerly and at high priority, as the LCP element', () => {
+    // Asserted as **both attributes present**, not as the absence of
+    // `loading="lazy"`. The absence form passed while the markup carried no
+    // `loading` and no `fetchpriority` at all: `priority` is deprecated in
+    // Next 16 and, through `getImageProps`, emitted neither. "Not lazy by
+    // default" is not the same claim as "eager and high priority", and only
+    // the second is what an LCP element needs.
     const img = heroImage()
+    expect(img).toContain('loading="eager"')
+    expect(img.toLowerCase()).toContain('fetchpriority="high"')
     expect(img).not.toContain('loading="lazy"')
   })
+
 
   it('leaves the shot out of the accessibility tree instead of narrating it', () => {
     // `alt=""` on purpose. The headline and the subtitle beside it already say
@@ -535,11 +627,28 @@ describe('the D7 layout pass', () => {
       }
     })
 
-    it('leaves every other section on the single column it already had', () => {
-      // The two-column head is opt-in. `Refunds` passes no `aside` and must
-      // keep the 720px measure the rest of the page is set on.
-      const refunds = out.indexOf(messages.foundersPage.refunds.title)
-      expect(out.slice(Math.max(0, refunds - 300), refunds)).toContain('max-w-[720px]')
+    it('keeps the two-column head opt-in, not the default every section gets', () => {
+      // `SectionHead` renders the 720px single-column measure unless a section
+      // passes an `aside`. `Refunds` used to be the section proving that and
+      // is now a FAQ row, so the proof moves to the rule itself: every head
+      // that passes no aside still gets `max-w-[720px]`, and the count of
+      // two-column heads matches the sections that actually opt in.
+      //
+      // Asserted on the rendered page rather than on the component, because
+      // the defect this replaces would have been a section silently switching
+      // column count — which only the page shows.
+      const twoColumn = out.match(/grid-cols-\[minmax\(0,0\.(38|45)fr\)/g) ?? []
+      // Pain, the price chain, the FAQ and the closing offer — the four heads
+      // that pass an `aside`, counted so that a fifth section quietly opting
+      // in, or one of these quietly opting out, is a failure here.
+      expect(twoColumn).toHaveLength(4)
+      // One of them is the price chain's wider 0.38/0.62 split, which exists
+      // because the four price boxes need 600px of row; the rest are 0.45.
+      expect(twoColumn.filter((c) => c.includes('0.38'))).toHaveLength(1)
+      // And the idiom for a single-column head is still on the page: the
+      // brand panel's `<h2>` is not a `SectionHead` at all, so if this ever
+      // reaches zero the opt-in has become the default.
+      expect(out).toContain('max-w-[720px]')
     })
 
     it('does not change the heading scale to get the heading bigger', () => {
@@ -608,17 +717,45 @@ describe('the D7 layout pass', () => {
       expect(band.match(/<li/g)).toHaveLength(4)
     })
 
-    it('keeps all four items and every plan attribution', () => {
-      // The plan label is what tells a reader which of the two paid plans each
-      // capability belongs to. Nothing here was the layout's to drop — the
-      // first half of card D12 was exactly that: the trust row rendered these
-      // bodies without their plan, so the AI reading lost "Básico com limite"
-      // and the price band lost "Essencial".
-      for (const [index, item] of pillars.items.entries()) {
-        expect(bandSection).toContain(messages.foundersPage.hero.promises[index])
-        expect(bandSection).toContain(item.body)
-        expect(bandSection).toContain(item.plan)
+    it('renders Sci’s four pairs, each exactly once', () => {
+      // Title and body now both come from `pillars.items[i]`, which Sci
+      // rewrote on 2026-09-24. "Exactly once" on the whole page, not just
+      // inside the band: the defect this replaces — card D12 — was these four
+      // claims rendered twice, ten thousand characters apart.
+      for (const item of pillars.items) {
+        expect(bandSection, item.title).toContain(item.title)
+        expect(bandSection, item.body).toContain(item.body)
+        expect(out.split(item.body).length - 1, item.body).toBe(1)
       }
+    })
+
+    it('renders no plan label, by value rather than by class name', () => {
+      // Sci's instruction, same day: the four plan attributions stop being
+      // drawn. They stay in `messages/pt-BR.json` — deleting approved copy is
+      // his under §5 — and are carded in DEVELOPMENT_PLAN §5 D14.
+      //
+      // Asserted on the strings themselves. A class-name assertion would pass
+      // the day somebody re-adds them with different utilities.
+      for (const item of pillars.items) {
+        expect(bandSection, item.plan).not.toContain(item.plan)
+      }
+    })
+
+    it('gives each item its own icon, not four copies of one tick', () => {
+      // The failure this replaces is four identical check glyphs, so "an icon
+      // renders" would have passed on the bug. What is asserted is that the
+      // four are *distinct*: the path data of each `<path d="…">` inside the
+      // band, deduplicated, must still number four.
+      const paths = [...band.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1])
+      expect(paths.length, 'the band draws icons at all').toBeGreaterThanOrEqual(4)
+      const cells = band.split('<li').slice(1)
+      expect(cells).toHaveLength(4)
+      const first = cells.map((cell) => cell.match(/<path d="([^"]+)"/)?.[1])
+      expect(first.every(Boolean), 'every cell draws an icon').toBe(true)
+      expect(new Set(first).size, `four cells, ${new Set(first).size} distinct icons`).toBe(4)
+      // And the tick in particular is gone from the band: it is the glyph the
+      // four used to share.
+      expect(band).not.toContain('M5 12l5 5 9-10')
     })
 
     it('divides the items rather than boxing them', () => {
@@ -837,16 +974,29 @@ describe('the founders finish pass', () => {
     expect(source).toBeLessThan(out.indexOf(messages.foundersPage.screening.title))
   })
 
-  it('keeps the four promise titles and their bodies in one band', () => {
+  it('keeps the four titles and their bodies in one band', () => {
     // The band is the only place these four claims are made now. `role="list"`
     // with it: Tailwind v4's preflight sets `list-style: none`, and Safari
     // drops the list semantics along with the marker.
     const band = out.slice(out.indexOf('id="tool"'), out.indexOf(messages.foundersPage.pain.title))
     expect(band).toContain('role="list"')
-    for (const [index, item] of pillars.items.entries()) {
-      expect(band).toContain(messages.foundersPage.hero.promises[index])
-      expect(band).toContain(item.body)
-      expect(band).toContain(item.plan)
+    for (const item of pillars.items) {
+      expect(band, item.title).toContain(item.title)
+      expect(band, item.body).toContain(item.body)
+    }
+  })
+
+  it('leaves hero.promises rendered nowhere, which is why they are carded', () => {
+    // The band used to title each cell with `hero.promises[i]`; it now takes
+    // both halves from `pillars.items[i]`. These four strings are approved
+    // copy that nothing draws any more — exactly the shape `CLAUDE.md` says
+    // must get a card in the same PR rather than a comment. D14 names them.
+    //
+    // The assertion is here so the card cannot be quietly satisfied by
+    // forgetting: if somebody renders one of them again, this goes red and
+    // the card is re-read.
+    for (const promise of messages.foundersPage.hero.promises) {
+      expect(out, promise).not.toContain(promise)
     }
   })
 })
@@ -967,5 +1117,213 @@ describe('the header anchors', () => {
       // heading still landed 57px underneath.
       expect(out.slice(at, at + 240)).toContain('scroll-mt-20')
     }
+  })
+})
+
+/**
+ * The closing ask, rebuilt and moved (Sci, 2026-09-24).
+ *
+ * It was a light `bg-blue-soft` strip at the very bottom of the page, after
+ * the FAQ: a heading, a sentence and a button pushed to the right, with no
+ * price on it at all. It is now a two-column section in the slot the refunds
+ * left, between the timeline and the FAQ, with the offer itself on a card.
+ */
+describe('the closing offer', () => {
+  const { final, signup } = messages.foundersPage
+
+  it('states the price on the card, from the same keys the dialog reads', () => {
+    // Not a second set of numbers written for this card: the same four keys
+    // `signup-form.tsx` renders beside the form. The two agree by
+    // construction, which is the only way two price blocks ever stay in step.
+    const at = out.indexOf(final.title)
+    expect(at, final.title).toBeGreaterThan(-1)
+    const section = out.slice(at, out.indexOf(messages.foundersPage.faq.title))
+    for (const value of [signup.seatsGroup, signup.price, signup.priceUnit, signup.priceWas, signup.priceNote]) {
+      expect(section, value).toContain(value)
+    }
+  })
+
+  it('sits between the timeline and the FAQ, where the refunds used to be', () => {
+    // Document order, because the argument has to land before the questions
+    // rather than after them.
+    const timeline = out.indexOf(messages.foundersPage.timeline.title)
+    const closing = out.indexOf(final.title)
+    const faq = out.indexOf(messages.foundersPage.faq.title)
+    expect(timeline).toBeGreaterThan(-1)
+    expect(closing).toBeGreaterThan(timeline)
+    expect(faq).toBeGreaterThan(closing)
+  })
+
+  it('asks through the dialog, not through an anchor that no longer exists', () => {
+    // `#vaga` went with the form. A CTA still pointing at it would scroll
+    // nowhere, silently, on the page taking sign-ups.
+    const at = out.indexOf(final.title)
+    const section = out.slice(at, out.indexOf(messages.foundersPage.faq.title))
+    expect(section).toContain(messages.founders.offer.cta)
+    expect(section).not.toContain('href="#vaga"')
+    expect(section).not.toContain('<a ')
+  })
+
+  it('carries none of the five ticked lines the draft asked for', () => {
+    // Four of the five exist nowhere in `messages/pt-BR.json`, and "todos os
+    // estados do Brasil" is a coverage claim nothing in this product
+    // substantiates. Writing them here would be writing copy, which is Sci's
+    // under the legal brief — so this test is the guard, not a reminder.
+    for (const invented of [
+      'Acesso completo ao sistema',
+      'Todos os estados do Brasil',
+      'Suporte por e-mail',
+      'Sem pagamento agora',
+    ]) {
+      expect(out, invented).not.toContain(invented)
+    }
+  })
+})
+
+/**
+ * The section eyebrows, blue since 2026-09-24 (Sci).
+ *
+ * `--color-blue` on Ivory measures **5.78:1** — `styles/contrast.test.ts`
+ * records the number — which clears AA for normal text at the 12px `caption`
+ * size these render at. No large-text exemption is being relied on.
+ */
+describe('the section eyebrows', () => {
+  it('draws every eyebrow on ivory in blue', () => {
+    // `SectionLabel` renders `font-mono font-medium tracking-[0.08em] uppercase`
+    // plus one colour utility. Asserted by counting the coloured eyebrows
+    // rather than by looking for one: a single `tone` left behind is exactly
+    // the regression, and one match would have satisfied a `toContain`.
+    const eyebrows = [
+      ...out.matchAll(/font-mono font-medium tracking-\[0\.08em\] uppercase text-\w+ ([a-z-]+)/g),
+    ].map((m) => m[1])
+    expect(eyebrows.length, 'the page renders eyebrows at all').toBeGreaterThan(0)
+    const onIvory = eyebrows.filter((tone) => tone !== 'text-on-brand-faint')
+    expect(onIvory.length).toBeGreaterThan(0)
+    expect(new Set(onIvory), `eyebrows on ivory: ${onIvory.join(', ')}`).toEqual(
+      new Set(['text-blue']),
+    )
+    expect(onIvory).not.toContain('text-muted')
+  })
+
+  it('leaves the two eyebrows inside the brand panel inverse', () => {
+    // `accent` there is blue on its own background. `inverse` is
+    // `on-brand-faint`, 6.00:1 against `#14347f` — measured in tokens.css.
+    const { founderValue } = messages.foundersPage
+    for (const label of [founderValue.label, founderValue.comparisonLabel]) {
+      const at = out.indexOf(label)
+      expect(at, label).toBeGreaterThan(-1)
+      expect(out.slice(Math.max(0, at - 220), at), label).toContain('text-on-brand-faint')
+    }
+  })
+})
+
+/**
+ * The 2026-09-24 contrast and rhythm pass.
+ *
+ * Sci: *"between the section, the background color is the same — when I said
+ * increase the contrast it is about this."* The hairline doing that work
+ * measures 1.22:1 against Ivory, and no darker ground is available: a fill at
+ * ~1.20:1 drags `--color-muted` body text to 4.12:1, under AA. What reads is
+ * the full-bleed edge itself, so the ground goes on the `<section>`.
+ */
+describe('the alternating section grounds', () => {
+  const sections = [...out.matchAll(/<section[^>]*class="([^"]*)"/g)].map((m) => m[1])
+
+  it('paints a ground that runs edge to edge, not inside the wrap', () => {
+    // On the `<section>`, never on `Wrap`: a ground that stops at the 1120px
+    // measure is a panel, and a panel does not read as a boundary.
+    const withGround = sections.filter((c) => c.includes('bg-fill-muted'))
+    expect(withGround.length, 'some sections carry a ground').toBeGreaterThan(0)
+    // `Wrap` is `mx-auto w-full max-w-[1120px]`; no element carrying both the
+    // ground and that measure exists.
+    expect(out).not.toMatch(/class="[^"]*max-w-\[1120px\][^"]*bg-fill-muted/)
+    expect(out).not.toMatch(/class="[^"]*bg-fill-muted[^"]*max-w-\[1120px\]/)
+  })
+
+  it('alternates, so no two neighbouring sections share a ground', () => {
+    const grounds = sections.map((c) => (c.includes('bg-fill-muted') ? 'muted' : 'ivory'))
+    expect(grounds.length).toBeGreaterThanOrEqual(6)
+    for (const [index, ground] of grounds.entries()) {
+      if (index === 0) continue
+      expect(ground, `sections ${index - 1} and ${index} share a ground`).not.toBe(
+        grounds[index - 1],
+      )
+    }
+  })
+
+  it('never draws a rule and a ground change at the same edge', () => {
+    // Belt and braces, and it reads as chrome. A section that changes ground
+    // drops `divided`.
+    for (const cls of sections) {
+      if (cls.includes('bg-fill-muted')) expect(cls).not.toContain('border-t border-line')
+    }
+  })
+
+  it('uses the 48/64/80 rhythm Sci approved, on this page only', () => {
+    // `app/(public)/page-parts.tsx` is shared with the Landing and stays at
+    // 40/48 — `CLAUDE.md`'s parallel-lane rule. This asserts the local one.
+    for (const cls of sections) {
+      expect(cls).toMatch(/p[yb]-12/)
+      expect(cls).toMatch(/min-\[560px\]:p[yb]-16/)
+      expect(cls).toMatch(/min-\[900px\]:p[yb]-20/)
+    }
+  })
+})
+
+describe('the promises band, after the measure pass', () => {
+  // The band's own `<section>`, ending at its own close tag — not at the next
+  // section's heading, which would pull that heading's `<h2>` into the slice
+  // and make "the band renders no h2" pass or fail for the wrong reason.
+  const bandAt = out.indexOf('id="tool"')
+  const band = out.slice(bandAt, out.indexOf('</section>', bandAt))
+
+  it('opens with its eyebrow, like every other section on the page', () => {
+    // It was the only section that opened with nothing — no eyebrow, no
+    // heading. `pillars.label` already renders in the header's anchor nav, so
+    // this introduces no copy. No `<h2>`: `pillars.title` stays orphaned
+    // under D14, by Sci's decision.
+    expect(band).toContain(messages.foundersPage.pillars.label)
+    expect(band).not.toContain('<h2')
+    expect(band).not.toContain(messages.foundersPage.pillars.title)
+  })
+
+  it('goes four across only from 1120px, never from 900', () => {
+    // Sci wants the four on one line. At 900 that leaves each cell a 166px
+    // measure — about 21 characters — which is the tier the audit measured and
+    // the reason the cells read as cramped. At 1120 it is ~221px, about 28.
+    // So the assertion is on *where* four-up starts, not on whether it exists:
+    // `min-[900px]:grid-cols-4` is the regression, and it would pass any test
+    // that merely looked for four columns.
+    const list = band.slice(band.indexOf('<ul'), band.indexOf('>', band.indexOf('<ul')))
+    expect(list).toContain('min-[560px]:grid-cols-2')
+    expect(list).toContain('min-[1120px]:grid-cols-4')
+    expect(list).not.toContain('min-[900px]:grid-cols-4')
+    expect(list).not.toMatch(/grid-cols-3/)
+    // The divider arithmetic is keyed to the same number. Keyed to 900 it
+    // would clear the second row's rule at a width where there still are two
+    // rows — a missing divider at 900–1119 only.
+    expect(band).toContain('min-[1120px]:border-t-0')
+    expect(band).toContain('min-[1120px]:border-l')
+    expect(band).not.toContain('min-[900px]:border-t-0')
+    expect(band).not.toContain('min-[900px]:border-l')
+  })
+
+  it('does not lead with the same three glyphs as the section below it', () => {
+    // The band and `Pain` sat one scroll apart drawing search · tender · money
+    // in that order, in identical blue squares — the strongest "these are the
+    // same thing" signal on the page. Asserted on the drawn paths, so a rename
+    // in the icon set cannot satisfy it while the drawing stays identical.
+    const painAt = out.indexOf(messages.foundersPage.pain.title)
+    const pain = out.slice(painAt, out.indexOf(messages.foundersPage.ruler.title))
+    const glyphs = (html: string) =>
+      [...html.matchAll(/rounded-swatch bg-blue-soft text-blue[^]*?<path d="([^"]+)"/g)].map(
+        (m) => m[1],
+      )
+    const bandGlyphs = glyphs(band)
+    const painGlyphs = glyphs(pain)
+    expect(bandGlyphs).toHaveLength(4)
+    expect(painGlyphs).toHaveLength(3)
+    const shared = bandGlyphs.filter((g) => painGlyphs.includes(g))
+    expect(shared.length, `${shared.length} glyphs drawn in both`).toBeLessThanOrEqual(1)
   })
 })

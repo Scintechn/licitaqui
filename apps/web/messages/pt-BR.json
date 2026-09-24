@@ -144,7 +144,7 @@
     },
     "hero": {
       "badge": "Lista de fundadores · 48 vagas · abertura 08/10",
-      "title": "Ache o edital que você consegue atender. Saiba até quanto ofertar com lucro.",
+      "title": "Ache o edital que você consegue atender. Saiba até quanto ofertar com lucro",
       "subtitle": "O LicitaQui é uma ferramenta de licitações feita para MEI e pequena empresa. Ela lê os editais abertos, mostra o que combina com o seu CNPJ, explica o que pedem e avisa antes do prazo.",
       "promises": [
         "Editais compatíveis com o seu CNAE",
@@ -195,7 +195,7 @@
       "source": "Fonte: dados do Portal Nacional de Contratações Públicas divulgados pela Convergência Digital. Preços de concorrentes: sites oficiais, setembro de 2026."
     },
     "ruler": {
-      "label": "Exemplo real · papel sulfite A4, por resma",
+      "label": "Exemplo real",
       "title": "Parecia lucro. Era prejuízo.",
       "body": "Olhando só o valor do edital, comprar no varejo e revender dava margem. Mas quem venceu ofertou bem abaixo. A ferramenta mostra essa diferença antes da sua proposta e diz até quanto você pode pagar ao fornecedor para disputar com lucro.",
       "source": "Medianas de 8 editais encerrados, consultados em 16/09/2026. Varejo: ofertas online com 10% de frete.",
@@ -218,23 +218,23 @@
       "title": "Da busca à proposta, com a conta feita.",
       "items": [
         {
-          "title": "Encontrar",
-          "body": "Digite o CNPJ. Mostramos os editais abertos compatíveis com as suas atividades, com prazo, valor e se é exclusivo para ME/EPP.",
+          "title": "Compatível com seu CNAE",
+          "body": "O sistema cruza os requisitos do edital com o perfil da sua empresa.",
           "plan": "Básico"
         },
         {
-          "title": "Entender",
-          "body": "A IA lê o edital e aponta atestado, capital mínimo, amostra, entrega, pagamento e o que pode barrar uma empresa pequena, com a página.",
+          "title": "IA lê o edital e mostra a página",
+          "body": "Chega de perder tempo. Você vê o que importa, com referência de página.",
           "plan": "Básico com limite"
         },
         {
-          "title": "Ofertar com lucro",
-          "body": "A faixa em que os vencedores fecharam na sua região e o preço-alvo de compra — o máximo a pagar ao fornecedor para manter a sua margem — item por item.",
+          "title": "Preço máximo de compra por item",
+          "body": "Descubra até quanto pode pagar para manter sua margem de lucro.",
           "plan": "Essencial"
         },
         {
-          "title": "Antes do prazo",
-          "body": "Alertas no Telegram com os editais novos que combinam com você: um resumo por semana, toda segunda de manhã.",
+          "title": "Notificações sobre editais",
+          "body": "Receba no Telegram notificações de editais novos que combinam com a sua empresa.",
           "plan": "Básico e Essencial"
         }
       ]

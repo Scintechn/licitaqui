@@ -352,13 +352,25 @@ test.describe('the founders page at the widths it changes shape', () => {
   for (const [width, tops, lefts] of [
     [390, 3, 0], // one column: a rule above every item but the first
     [700, 2, 2], // two columns: the second row, and the right-hand item of each
-    [1280, 0, 3], // one row: a rule left of every item but the first
+    // 900 and 1119 are the tier that matters most here: the band went four
+    // across from 900px until 2026-09-24, which left each cell a 166px measure
+    // — about 21 characters a line. Four-up now starts at 1120, so both of
+    // these must still draw the 2×2 shape, and a regression to `grid-cols-4`
+    // at 900 fails here rather than in a screenshot nobody takes.
+    [900, 2, 2],
+    [1119, 2, 2],
+    [1280, 0, 3], // four columns: a rule left of every item but the first
   ] as const) {
     test(`divides the four pillars correctly at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
       await page.goto('/fundadores')
 
-      const band = page.getByRole('list').filter({ hasText: messages.foundersPage.pillars.items[0].plan })
+      // Found by the first cell's title. It used to be found by its plan
+      // label, which stopped rendering on 2026-09-24 (Sci) — the locator went
+      // with the copy, the requirement below did not.
+      const band = page
+        .getByRole('list')
+        .filter({ hasText: messages.foundersPage.pillars.items[0].title })
       await expect(band).toHaveCount(1)
 
       const drawn = await band.locator('> li').evaluateAll((items) =>
@@ -374,6 +386,40 @@ test.describe('the founders page at the widths it changes shape', () => {
         ),
       )
       expect(drawn).toEqual({ tops, lefts })
+    })
+  }
+
+  /**
+   * The column count itself, which the divider arithmetic above **cannot**
+   * see.
+   *
+   * Checked: with the grid moved back to `min-[900px]:grid-cols-4` and the
+   * border variants left keyed to 1120, the counts at 900 are still 2 tops and
+   * 2 lefts — the same numbers a correct 2×2 draws. The dividers would be
+   * visibly wrong (a rule above two cells of a single row, none to the left of
+   * the third) and every assertion above would pass. So the tier Sci's
+   * decision actually turns on is asserted directly, by measuring where the
+   * cells land.
+   */
+  for (const [width, columns] of [
+    [390, 1],
+    [700, 2],
+    [900, 2], // the 166px / 21-character tier: never four across here
+    [1119, 2],
+    [1120, 4], // Sci wants the four on one line, from the width it reads at
+    [1280, 4],
+  ] as const) {
+    test(`lays the band out in ${columns} column(s) at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/fundadores')
+      const band = page
+        .getByRole('list')
+        .filter({ hasText: messages.foundersPage.pillars.items[0].title })
+      const rendered = await band
+        .locator('> li')
+        .evaluateAll((items) => new Set(items.map((i) => Math.round(i.getBoundingClientRect().top))).size)
+      // Rows × columns = 4, so the row count is the column count's complement.
+      expect(4 / rendered).toBe(columns)
     })
   }
 
@@ -746,5 +792,203 @@ test.describe('the price chain, four across in its own column', () => {
         .evaluate((el) => getComputedStyle(el).rotate)
       expect(rotated, `at ${width}px`).toBe('90deg')
     }
+  })
+})
+
+/**
+ * The dialog on a phone (Sci, 2026-09-24).
+ *
+ * Sci's worry was that a modal is a poor way to ask for seven fields on a
+ * phone. The geometry was already close to full screen — a 358px card at
+ * 390px — so the pattern was not the problem. The height was: `position:
+ * fixed` measures the *layout* viewport, which does not shrink when an iOS
+ * keyboard opens, so `max-h-full` left the submit behind the keyboard.
+ *
+ * Below 560px the `centre` placement is now full-bleed at `h-dvh`. These
+ * assert the consequences a reader would notice, not the class names.
+ */
+test.describe('the signup dialog on a phone', () => {
+  for (const width of [390, 440]) {
+    test(`fills the screen at ${width}px, and the submit is reachable`, async ({ page }) => {
+      await stubSignup(page)
+      await page.setViewportSize({ width, height: 720 })
+      await page.goto('/fundadores')
+      await openSignup(page)
+
+      const panel = signupForm(page)
+      const box = await panel.boundingBox()
+      expect(box).not.toBeNull()
+      // Edge to edge and top to bottom: no gutter left around the panel, which
+      // is what `p-4` used to put there.
+      expect(Math.round(box!.width)).toBe(width)
+      expect(Math.round(box!.x)).toBe(0)
+      expect(Math.round(box!.y)).toBe(0)
+      expect(Math.round(box!.height)).toBe(720)
+
+      // The form scrolls *inside* the panel rather than the page behind it.
+      const scrolls = await panel.evaluate((el) => el.scrollHeight > el.clientHeight + 1)
+      expect(scrolls, 'the long form scrolls inside the panel').toBe(true)
+
+      // And the submit can actually be reached and pressed — the one failure
+      // this page cannot have. `click()` scrolls it into view first, so a
+      // button that cannot be brought on screen fails here.
+      await fillRequired(page)
+      const submit = panel.getByRole('button', { name: messages.founders.offer.cta })
+      await submit.scrollIntoViewIfNeeded()
+      await expect(submit).toBeInViewport()
+      await submit.click()
+      await expect(page.getByRole('status')).toBeVisible()
+    })
+
+    test(`still closes without an outside to tap, at ${width}px`, async ({ page }) => {
+      // Full-bleed means the scrim is behind the panel and cannot be tapped.
+      // Both remaining ways out must work, and focus must come back.
+      await page.setViewportSize({ width, height: 720 })
+      await page.goto('/fundadores')
+      const trigger = page.getByRole('button', { name: messages.foundersPage.nav.cta })
+
+      for (const exit of ['escape', 'close'] as const) {
+        await trigger.click()
+        await expect(page.getByRole('dialog')).toBeVisible()
+        if (exit === 'escape') {
+          await page.keyboard.press('Escape')
+        } else {
+          await page
+            .getByRole('dialog')
+            .getByRole('button', { name: messages.common.close })
+            .click()
+        }
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await expect(trigger).toBeFocused()
+      }
+    })
+  }
+
+  test('is still a centred card at 560px and above', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 800 })
+    await page.goto('/fundadores')
+    await openSignup(page)
+
+    const box = (await signupForm(page).boundingBox())!
+    // The 420px card, inset from every edge — not the whole viewport.
+    expect(Math.round(box.width)).toBe(420)
+    expect(box.x).toBeGreaterThan(0)
+    expect(box.y).toBeGreaterThan(0)
+    expect(box.height).toBeLessThan(800)
+  })
+})
+
+/**
+ * The hero shot, after the 2026-09-24 rebalance: two sources, one download.
+ */
+test.describe('the hero shot’s two sources', () => {
+  const requests = (page: Page) => {
+    const seen: string[] = []
+    page.on('request', (r) => {
+      if (r.url().includes('radar-preview')) seen.push(r.url())
+    })
+    return seen
+  }
+
+  for (const [width, expected] of [
+    [390, 'mobile'],
+    [440, 'mobile'],
+    [539, 'mobile'],
+    [540, 'desktop'],
+    [900, 'desktop'],
+    [1280, 'desktop'],
+  ] as const) {
+    test(`fetches the ${expected} shot at ${width}px, and only that one`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 })
+      const seen = requests(page)
+      await page.goto('/fundadores')
+      const shot = page.locator('main img[alt=""]').first()
+      await expect(shot).toBeVisible()
+      await shot.evaluate(
+        async (el: HTMLImageElement) =>
+          el.complete || new Promise((done) => el.addEventListener('load', done, { once: true })),
+      )
+
+      // **The hard one**: exactly one of the two files, never both. Two
+      // `next/image` elements toggled with `hidden` would ship both — Chrome
+      // fetches a `display:none` <img> — which is why this is a `<picture>`.
+      const files = new Set(seen.map((u) => (u.includes('mobile') ? 'mobile' : 'desktop')))
+      expect([...files], `fetched: ${seen.join(', ')}`).toEqual([expected])
+
+      // It decoded, and it is the source this viewport is meant to get.
+      const loaded = await shot.evaluate((el: HTMLImageElement) => ({
+        natural: el.naturalWidth,
+        current: decodeURIComponent(el.currentSrc),
+        right: el.getBoundingClientRect().right,
+        width: el.getBoundingClientRect().width,
+      }))
+      expect(loaded.natural).toBeGreaterThan(0)
+      expect(loaded.current.includes('radar-preview-mobile') ? 'mobile' : 'desktop').toBe(expected)
+      // Inside the viewport at every width: a 2880px intrinsic width in a grid
+      // child is the shape that put the brand panel off-screen at 440px.
+      expect(loaded.right).toBeLessThanOrEqual(width + 1)
+      // And the bytes are sized for the box, not for the source.
+      const served = Number(new URL(loaded.current, 'http://x').searchParams.get('w'))
+      expect(served, `${served}px served into a ${loaded.width}px box`).toBeLessThanOrEqual(
+        loaded.width * 2,
+      )
+    })
+  }
+
+  test('serves the desktop shot at the quality a screenshot needs', async ({ page }) => {
+    // `quality={90}`. 75 is tuned for photographs and visibly mushes the 11px
+    // type in this UI screenshot — Sci, 2026-09-24: *"the head image still
+    // blur"*.
+    //
+    // **This assertion cannot live in `page.test.tsx`.** Vitest renders the
+    // page without `next.config.ts`, so the image config falls back to its
+    // defaults there and the URL always says `q=75`. Next 16 *silently
+    // coerces* a quality outside `images.qualities` to the nearest allowed
+    // value, and that allowlist defaults to `[75]` — which is how `quality:
+    // 90` shipped as `q=75` with nothing anywhere to say so. Only a real build
+    // can prove the allowlist and the prop agree, so it is asserted here.
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/fundadores')
+    const shot = page.locator('main img[alt=""]').first()
+    await expect(shot).toBeVisible()
+    const src = decodeURIComponent(await shot.evaluate((el: HTMLImageElement) => el.currentSrc))
+    expect(src, src).toContain('q=90')
+  })
+
+  test('gives the headline four lines and the shot the wider column at 1280px', async ({
+    page,
+  }) => {
+    // Sci at ~1270px: *"the proporcional is not right"* — a five-line 60px h1
+    // beside a 464px shot. The requirement is the proportion, so that is what
+    // is measured: line counts off the rendered text, and the shot wider than
+    // the column the headline sits in.
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/fundadores')
+    await page.waitForFunction(() => document.fonts.status === 'loaded')
+
+    const m = await page.evaluate(() => {
+      const lines = (el: Element) => {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        const rects = [...range.getClientRects()].filter((r) => r.height > 1 && r.width > 1)
+        return new Set(rects.map((r) => Math.round(r.top))).size
+      }
+      const h1 = document.querySelector('main h1')!
+      const p = h1.parentElement!.querySelector('p')!
+      const img = document.querySelector('main img[alt=""]')!
+      return {
+        h1Lines: lines(h1),
+        h1Width: h1.getBoundingClientRect().width,
+        pLines: lines(p),
+        imgWidth: img.getBoundingClientRect().width,
+      }
+    })
+
+    expect(m.h1Lines, 'the headline holds four lines').toBeLessThanOrEqual(4)
+    // Sci's stated budget for the subtitle, in exchange for the shot's width.
+    expect(m.pLines, 'the subtitle stays inside four lines').toBeLessThanOrEqual(4)
+    // The shot takes the wider half — the thing that was backwards.
+    expect(m.imgWidth).toBeGreaterThan(m.h1Width)
+    expect(m.imgWidth).toBeGreaterThan(540)
   })
 })
