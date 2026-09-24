@@ -46,6 +46,7 @@ type HeaderRow = {
   id: string
   agency_cnpj: string
   object: string
+  short_title: string | null
   agency_name: string | null
   unit_name: string | null
   city: string | null
@@ -109,7 +110,7 @@ export async function readTender(
 ): Promise<CacheRead<TenderDetail> | null> {
   const header = await database.execute<HeaderRow>(sql`
     select t.id, t.agency_cnpj, t.object, t.agency_name, t.unit_name, t.city, t.state,
-           t.modality_name, t.status, t.price_registration, t.proposals_open_at,
+           t.short_title, t.modality_name, t.status, t.price_registration, t.proposals_open_at,
            t.proposals_close_at, t.estimated_value, t.confidential_budget,
            t.bidding_system_url, t.me_epp_summary, t.favored_treatment, t.segments,
            t.updated_at, t.pncp_updated_at,
@@ -149,6 +150,7 @@ export async function readTender(
     id: row.id,
     agencyCnpj: row.agency_cnpj,
     object: row.object,
+    shortTitle: row.short_title,
     agencyName: row.agency_name,
     unitName: row.unit_name,
     city: row.city,

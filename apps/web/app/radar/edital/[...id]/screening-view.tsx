@@ -18,7 +18,7 @@ import { format, messages } from '@/lib/messages'
 import { priceHref, screeningHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
-import { agencyLine, tenderTitle } from '@/lib/radar/format'
+import { agencyLine, displayTitle } from '@/lib/radar/format'
 import type { Blocker, Finding, ScreeningModel } from '@/lib/radar/screening-result'
 import { VisitorBanner } from '../../radar-view'
 import { TenderStatusBanner } from '../../tender-status-banner'
@@ -450,7 +450,7 @@ export function ScreeningView({
                   object is that screen's job, and a 120-character PNCP object in
                   block capitals takes eight lines at 390px before the analysis
                   starts. */}
-              {tender ? tenderTitle(tender.object, 80) : page.title}
+              {tender ? displayTitle(tender, 80) : page.title}
             </h1>
             {tender ? <p className="text-meta text-muted">{agencyLine(tender)}</p> : null}
           </div>

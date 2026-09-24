@@ -72,6 +72,7 @@ function tender(id: string, close = '2026-09-30T11:30:00.000Z'): TenderCard {
   return {
     id,
     object: `Objeto ${id}`,
+    shortTitle: null,
     agencyName: 'Prefeitura de Campinas',
     city: 'Campinas',
     state: 'SP',

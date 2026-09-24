@@ -47,6 +47,7 @@ export const HUPE_SUSPENDED: TenderDetail = {
   agencyCnpj: '42498600000171',
   object:
     'Contratação de empresa especializada, mediante a renovação com upgrade do fornecimento da solução Kaspersky Endpoint Security for Business para Kaspersky NEXT EDR Optimum para o Hospital Universitário Pedro Ernesto.',
+  shortTitle: null,
   agencyName: 'ESTADO DO RIO DE JANEIRO',
   unitName: 'HOSPITAL UNIVERSITARIO PEDRO ERNESTO',
   city: 'Rio de Janeiro',

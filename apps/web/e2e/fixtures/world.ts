@@ -139,6 +139,7 @@ export function tender(overrides: Partial<TenderDetail> & { id: string }): Tende
       'AQUISIÇÃO DE MATERIAL DE EXPEDIENTE E PAPELARIA, PROCESSO 2026/0042, PARA AS ' +
       'UNIDADES ADMINISTRATIVAS DA SECRETARIA MUNICIPAL DE EDUCAÇÃO, CONFORME CONDIÇÕES, ' +
       `QUANTIDADES E EXIGÊNCIAS ${OBJECT_TAIL}`,
+    shortTitle: null,
     agencyName: 'PREFEITURA MUNICIPAL DE CAMPINAS',
     agencyCnpj: '51885242000140',
     unitName: 'SECRETARIA MUNICIPAL DE EDUCAÇÃO',
@@ -204,6 +205,7 @@ export function tenderRun(
         `AQUISIÇÃO DE MATERIAL DE EXPEDIENTE, PROCESSO ${processo(n)}, ` +
         `PARA A UNIDADE ADMINISTRATIVA ${n} DA SECRETARIA MUNICIPAL DE EDUCAÇÃO, ` +
         `CONFORME CONDIÇÕES, QUANTIDADES E EXIGÊNCIAS ${OBJECT_TAIL}`,
+      shortTitle: null,
       proposalsCloseAt: inDays(3 + index),
       estimatedValue: String(10_000 * n),
       itemCount: 1 + (index % 5),

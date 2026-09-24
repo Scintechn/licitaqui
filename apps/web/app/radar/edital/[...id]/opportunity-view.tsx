@@ -35,7 +35,7 @@ import {
   deadlineFull,
   deadlineTall,
   meEppSummary,
-  tenderTitle,
+  displayTitle,
 } from '@/lib/radar/format'
 import { tenderBudget } from '@/lib/radar/headline'
 import {
@@ -624,7 +624,7 @@ export function OpportunityView({
 
         <div className="flex flex-col gap-1">
           <h1 className="font-display text-[24px] leading-tight font-semibold text-balance">
-            {tenderTitle(tender.object, 180)}
+            {displayTitle(tender, 180)}
           </h1>
           <p className="text-body text-muted">{agencyLine(tender)}</p>
         </div>

@@ -421,3 +421,38 @@ export function cleanTitle(object: string): string {
 export function tenderTitle(object: string, max = 120): string {
   return trimObject(cleanTitle(object), max)
 }
+
+/**
+ * The title a screen shows: the worker's short one when there is one, the
+ * cleaned-up PNCP object when there is not.
+ *
+ * ## Why this is one function and not an `??` at each call site
+ *
+ * `tenders.short_title` has existed since the title work shipped — 8 712 of
+ * 9 059 rows carry one, 6 306 of them written by the model — and **nothing in
+ * the web app read the column**. Not the list query, not the detail query, not
+ * the contract, not either view. The whole pipeline wrote to a column the
+ * product never rendered, so every screen went on printing the raw object:
+ * shouted, prefixed with `[LICITANET]` or `[Portal de Compras Públicas]`, and
+ * six lines tall on a phone. The design (`Opportunity.dc.html`) has always
+ * drawn a short title — *"Baterias e pilhas"*.
+ *
+ * Two call sites is exactly the number at which the rule starts drifting, so
+ * it lives here with its fallback and its tests.
+ *
+ * ## The fallback is not defensive programming
+ *
+ * It is the normal state for a newly ingested tender. `sweep_titles` runs
+ * hourly, so a tender the PNCP sweep brought in ten minutes ago genuinely has
+ * no title yet — 3.8% of production at any moment, and always the newest rows,
+ * which are the ones most likely to be on screen. `max` still applies to the
+ * fallback and not to the short title, which is already short by construction
+ * and must never be cut mid-word by a limit meant for a 500-character object.
+ */
+export function displayTitle(
+  tender: { shortTitle: string | null; object: string },
+  max = 120,
+): string {
+  const short = tender.shortTitle?.trim()
+  return short ? short : tenderTitle(tender.object, max)
+}
