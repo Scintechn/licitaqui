@@ -100,16 +100,29 @@ function SectionHead({
   children,
   className,
 }: {
-  label: string
+  /**
+   * Optional, and mostly should be omitted.
+   *
+   * A 12px tracked uppercase mono line above a 26px display heading only
+   * earns its place when it says something the heading does not — scoping the
+   * price to founders, naming the commodity a chart is about, labelling a
+   * table that has no heading of its own. Six of the nine on this page just
+   * restated the heading below in worse type, the clearest being "PERGUNTAS"
+   * above "Antes de reservar" in a section that is visibly a list of
+   * questions. Those are gone.
+   */
+  label?: string
   title: string
   children?: ReactNode
   className?: string
 }) {
   return (
     <div className={cn('flex max-w-[720px] flex-col gap-3', className)}>
-      <SectionLabel tone="muted" size="caption">
-        {label}
-      </SectionLabel>
+      {label ? (
+        <SectionLabel tone="muted" size="caption">
+          {label}
+        </SectionLabel>
+      ) : null}
       <H2>{title}</H2>
       {children}
     </div>
@@ -178,11 +191,21 @@ function Refunds() {
   return (
     <Section>
       <Wrap className="max-w-[46em]">
-        <h2 className="text-lead font-semibold">{refunds.title}</h2>
-        <p className="mt-3 text-body text-ink-soft">{refunds.intro}</p>
-        <ul className="mt-3 flex flex-col gap-3">
+        {/* This heading was `text-lead font-semibold` — 15px IBM Plex Sans —
+            while the other eight `<h2>`s on the page are 26px Archivo 700. So
+            the 7-day CDC right of withdrawal and the 30-day guarantee rendered
+            *smaller than the body copy of the sections around them*, directly
+            above a FAQ that got the full display treatment, and read as a
+            stray FAQ entry rather than a section.
+
+            For someone deciding whether to trust an unknown company with a
+            business subscription, this is the most valuable block on the page.
+            No eyebrow: it is a question, so it labels itself. */}
+        <SectionHead title={refunds.title} />
+        <p className="mt-4 text-lead text-ink-soft">{refunds.intro}</p>
+        <ul className="mt-4 flex flex-col gap-3">
           {refunds.items.map((item) => (
-            <li key={item} className="flex items-start gap-2.5 text-body leading-[1.55]">
+            <li key={item} className="flex items-start gap-2.5 text-lead leading-[1.55]">
               <Icon name="check" size={18} strokeWidth={2} className="mt-1 shrink-0 text-blue" />
               <span>{bold(item)}</span>
             </li>
@@ -488,8 +511,17 @@ function FounderValue() {
               {founderValue.comparisonLabel}
             </SectionLabel>
 
+            {/* `overflow-x-auto` did nothing: the table is `w-full`, so it
+                never exceeded the wrapper — measured at 390px, clientWidth
+                310 and scrollWidth 310. The escape hatch was inert and the
+                table simply compressed to 91/104/115px columns, where
+                "a partir de R$ 397/mês" sets in three lines and both column
+                headers wrap. `min-w` makes the wrapper do what it was written
+                for. (Stacking the rows below 560px is the better answer for
+                an audience that will not think to swipe a table — carded,
+                not done here.) */}
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-body leading-[1.55]">
+              <table className="w-full min-w-[420px] border-collapse text-body leading-[1.55]">
                 <thead>
                   <tr>
                     <th scope="col" className="border-b border-ink-line px-2 py-2.5" />
@@ -626,7 +658,13 @@ export default function FoundersOfferPage() {
         {page.nav.skip}
       </a>
 
-      <header>
+      {/* Sticky, because the four CTAs sit at y = 10, 1 702, 7 201 and 9 520
+          on a 9 808px page — and between the form's submit and the next one
+          there are 5 499px, about seven phone screens, of the page's most
+          persuasive material with no affordance on screen at all. That is
+          precisely the stretch where somebody becomes willing to act. The
+          header already holds the right link at 44px; it just scrolled away. */}
+      <header className="sticky top-0 z-10 border-b border-line bg-ivory/95 backdrop-blur-sm">
         <Wrap className="flex min-h-16 items-center justify-between gap-3">
           <a
             href="#topo"

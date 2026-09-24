@@ -361,7 +361,7 @@ function Consent({
           name={id}
           type="checkbox"
           required
-          className="mt-px size-5 shrink-0 accent-blue"
+          className="mt-px size-6 shrink-0 accent-blue"
         />
         <span>{children}</span>
       </label>
