@@ -26,14 +26,15 @@ const page = messages.foundersPage
 /**
  * The three sections the sticky header links to.
  *
- * Ids in English like every other identifier; the labels are the sections'
- * own approved eyebrows, so the header invents no copy — `nav` holds three
- * strings and none of them names a section.
+ * Ids in English, like every other identifier in this repository
+ * (`CLAUDE.md`) — an anchor is code, even though it shows in the address bar.
+ * The labels beside them are the sections' own approved eyebrows, so the
+ * header invents no copy: `nav` holds three strings and none names a section.
  */
 const ANCHORS = {
-  pillars: 'ferramenta',
-  screening: 'triagem',
-  faq: 'perguntas',
+  pillars: 'tool',
+  screening: 'screening',
+  faq: 'faq',
 } as const
 
 const NAV_LINKS = [

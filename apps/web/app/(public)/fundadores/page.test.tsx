@@ -179,7 +179,18 @@ describe('brief §2.2 framing rules', () => {
     // future wide child cannot do the same thing.
     expect(out).not.toContain('min-w-[420px]')
     // `&` and `>` are escaped in the rendered attribute.
-    expect(out).toMatch(/\[&amp;&gt;\*\]:min-w-0/)
+    //
+    // Scoped to the panel's own element. Unscoped, this passed with the guard
+    // deleted from the panel: the page now carries the same utility on the
+    // hero grid and on the price chain, and any one of the three satisfied a
+    // document-wide match — so the test named an element it never checked.
+    // `rounded-feature bg-brand-panel`, not just `bg-brand-panel`: the price
+    // chain's last step is on the same colour and comes first in the
+    // document, so the looser anchor grabs the wrong element.
+    const at = out.indexOf('rounded-feature bg-brand-panel')
+    expect(at).toBeGreaterThan(-1)
+    const openingTag = out.slice(at, out.indexOf('>', at))
+    expect(openingTag).toMatch(/\[&amp;&gt;\*\]:min-w-0/)
   })
 
   it('stacks the comparison table below 560px instead of scrolling it', () => {
@@ -292,8 +303,10 @@ describe('the price example, as a chain', () => {
     // brand panel with the measured `on-brand` ramp, the page's own accent.
     expect(section).not.toContain('success')
     expect(section).toContain('bg-brand-panel')
-    // And the gradient that inverted on a phone is gone entirely.
-    expect(out).not.toContain('linear-gradient')
+    // And the gradient that inverted on a phone is gone. Scoped to this
+    // section: document-wide it would also forbid a gradient in
+    // `ExampleRadar` or a tender card, which is not this test's business.
+    expect(section).not.toContain('linear-gradient')
   })
 
   it('keeps the red for the verdict, which is the one loss on the page', () => {
@@ -404,7 +417,17 @@ describe('the header anchors', () => {
   it('lands the target clear of the bar instead of under it', () => {
     // The bar is 64px and sticky, so a bare `#id` jump parks the heading
     // beneath it and the reader arrives mid-paragraph.
-    for (const id of ['ferramenta', 'triagem', 'perguntas']) {
+    //
+    // The ids are read out of the header rather than written here: this test
+    // is about the offset, not about what the anchors are called, and
+    // hardcoding them made renaming them to English (`CLAUDE.md`: identifiers
+    // are English) fail a test that has nothing to do with naming.
+    const targets = [...header.matchAll(/href="#([^"]+)"/g)]
+      .map((m) => m[1])
+      .filter((id) => id !== 'topo' && id !== 'vaga')
+
+    expect(targets.length).toBeGreaterThanOrEqual(2)
+    for (const id of targets) {
       const at = out.indexOf(`id="${id}"`)
       expect(at).toBeGreaterThan(-1)
       expect(out.slice(at, at + 240)).toMatch(/scroll-mt-/)
