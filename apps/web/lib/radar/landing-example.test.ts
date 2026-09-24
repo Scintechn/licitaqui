@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { deadlineLabel } from '@/app/radar/tender-card'
 import { TENDER_GROUPS } from './contract'
 import { money } from './format'
-import {
-  EXAMPLE_AS_OF,
-  EXAMPLE_NOW,
-  EXAMPLE_TENDERS,
-  exampleCounts,
-} from './landing-example'
+import { EXAMPLE_AS_OF, EXAMPLE_TENDERS, exampleCounts } from './landing-example'
 
 /**
  * The Landing's example panel makes factual claims about three real tenders.
@@ -50,21 +44,43 @@ describe('the Landing example tenders', () => {
   })
 
   /**
-   * The whole point of freezing the clock: the panel reads "13 dias" — the
-   * board's number — today and in two years, instead of counting down to a
-   * deadline in the past and telling a visitor an old tender is still open.
+   * The example is dated, and the date has to make sense: three tenders
+   * *receiving proposals* as of 17/09/2026 cannot have closed before it.
+   *
+   * Note what this does **not** assert: that the deadlines are still ahead of
+   * today. They are not, from 01/10/2026, and that is honest — the caption says
+   * which day these were transcribed. What must never happen is the panel
+   * putting urgency copy over one of them, which is a property of the *render*
+   * and is pinned in `app/(public)/example-radar.test.tsx` at five clocks,
+   * including 2030.
    */
-  it('counts every deadline from the frozen date, not from today', () => {
-    for (const tender of EXAMPLE_TENDERS) {
-      expect(deadlineLabel(tender.proposalsCloseAt, EXAMPLE_NOW)).toBe('13 dias')
-    }
+  it('closes after the date the caption says it was taken', () => {
+    const [day, month, year] = EXAMPLE_AS_OF.split('/').map(Number)
+    // 23:59:59 Brasília on the as-of day, as an instant: the latest moment the
+    // transcription could have been made.
+    const asOf = Date.parse(
+      `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:59:59-03:00`,
+    )
     expect(EXAMPLE_AS_OF).toBe('17/09/2026')
-  })
-
-  it('is stated as of a date that is in the past, and says so', () => {
-    expect(EXAMPLE_NOW.getTime()).toBeLessThan(Date.now() + 86_400_000)
     for (const tender of EXAMPLE_TENDERS) {
       expect(tender.proposalsCloseAt).toMatch(/^2026-09-30T/)
+      expect(Date.parse(tender.proposalsCloseAt ?? '')).toBeGreaterThan(asOf)
+    }
+  })
+
+  /**
+   * **There is no clock in this file, and there must not be one again.**
+   *
+   * `EXAMPLE_NOW` was a `Date` frozen at 17/09/2026 that the panel measured its
+   * countdowns against, which is how three passed deadlines came to sit under
+   * "13 dias" (card D11). A duration is a claim about *now*; this module states
+   * facts about three editais. Re-introducing an instant here under any name —
+   * and every date-shaped export is one — fails this.
+   */
+  it('exports facts, never an instant', async () => {
+    const exported = await import('./landing-example')
+    for (const [name, value] of Object.entries(exported)) {
+      expect(value, `${name} is a Date: the panel's clock is the real one`).not.toBeInstanceOf(Date)
     }
   })
 })

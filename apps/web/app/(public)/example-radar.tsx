@@ -4,7 +4,6 @@ import { format, messages } from '@/lib/messages'
 import { TENDER_GROUPS } from '@/lib/radar/contract'
 import {
   EXAMPLE_AS_OF,
-  EXAMPLE_NOW,
   EXAMPLE_STATE,
   EXAMPLE_TENDERS,
   exampleCounts,
@@ -18,17 +17,16 @@ import { TenderCardView } from '@/app/radar/tender-card'
  *
  * ## It is an example, and it has to keep saying so
  *
- * Three real tenders from the PNCP, frozen at 17/09/2026
+ * Three real tenders from the PNCP, transcribed as they stood on 17/09/2026
  * (`lib/radar/landing-example.ts`). Everything that could let it be read as a
  * live feed is deliberately closed off:
  *
  *  - the panel is headed "Exemplo", in the board's mono label;
  *  - the caption under the list names the date the three are stated as of and
  *    says in as many words that this is not a live search;
- *  - the countdowns are measured against that frozen date, so they never tick
- *    down to a deadline that has passed;
- *  - the cards do not link anywhere (`href={null}`), because the tender behind
- *    each one closed long ago;
+ *  - the cards do not link anywhere (`href={null}`): the id would take a visitor
+ *    to whatever the database holds for it today, or to a 404 once PNCP drops
+ *    it;
  *  - the group chips are a list, not links: the real tabs are on `/radar`, and
  *    a chip here that looked clickable and did nothing would be a worse lie
  *    than no chip at all.
@@ -39,6 +37,30 @@ import { TenderCardView } from '@/app/radar/tender-card'
  * same money and deadline formatting. A second card built for marketing would
  * drift from the product within a sprint, and then the page would be promising
  * something the Radar does not draw.
+ *
+ * ## And the clock it is drawn against is the real one
+ *
+ * The example's *facts* are frozen; its *time* claims are not, because a frozen
+ * countdown is a claim about now that stops being true the day after it is
+ * written — which is exactly what happened (card D11: "13 dias" over a deadline
+ * of 30/09/2026, for ever).
+ *
+ * `now` is read once per render — build time, and every ISR revalidation — and
+ * passed to all three cards, so the panel cannot show one card counting from a
+ * different instant than its neighbour. From there the product's own gate does
+ * the talking: `mayShowUrgency` (§2.2 rule 6) removes the countdown and turns
+ * "Proposta até 30/09" into "Data anterior 30/09" the moment the window closes.
+ * Nothing here needs to know which side of the deadline today is, and nothing
+ * here needs re-dating next month.
+ *
+ * **What is left, stated rather than hidden:** the page is static and
+ * revalidates every ten minutes (`page.tsx`, spec §3.3), so the instant baked
+ * into the HTML can be up to `revalidate` old. A build that landed at 08:29
+ * Brasília on 30/09/2026 could therefore serve "último dia" for the nine
+ * minutes after the 08:30 session — bounded by the cache window, where the
+ * frozen clock was unbounded and permanent. Lowering it further is not this
+ * component's call: §3.3 gives public pages 10–30 minutes, and 600 s is already
+ * the floor.
  */
 
 const copy = messages.radar.landing.example
@@ -46,6 +68,8 @@ const list = messages.radar.list
 
 export function ExampleRadar({ className }: { className?: string }) {
   const counts = exampleCounts()
+  // One instant for the whole panel, and the real one. See the block above.
+  const now = new Date()
 
   return (
     <section
@@ -91,7 +115,7 @@ export function ExampleRadar({ className }: { className?: string }) {
       <ul className="m-0 flex list-none flex-col gap-2.5 p-4">
         {EXAMPLE_TENDERS.map((tender) => (
           <li key={tender.id} className="flex">
-            <TenderCardView tender={tender} now={EXAMPLE_NOW} href={null} />
+            <TenderCardView tender={tender} now={now} href={null} />
           </li>
         ))}
       </ul>
