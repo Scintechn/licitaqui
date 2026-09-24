@@ -475,6 +475,44 @@ describe('an empty tab, when the results are on another one', () => {
     expect(out).toContain(copy.list.changeCompany)
   })
 
+  it('the filter control is not named after the sort order (WCAG 4.1.2)', () => {
+    // "Ordenar: prazo" used to be a second span inside the <summary>, so the
+    // computed name of the control was "Trocar empresa ou filtros Ordenar:
+    // prazo" — a statement about the list welded onto the name of the button
+    // that changes it.
+    const out = render()
+    const summary = out.slice(out.indexOf('<summary'), out.indexOf('</summary>'))
+    expect(summary).toContain(copy.list.changeCompany)
+    expect(summary).not.toContain(copy.list.sort)
+    // It is still on the screen, just not inside the control.
+    expect(out).toContain(copy.list.sort)
+  })
+
+  it('the sort label still sits on the row, and still lets the row be tapped', () => {
+    // It is drawn over the right end of the summary rather than beside it: a
+    // <details> squeezed to the left half would squeeze the full-width form it
+    // opens along with it.
+    const out = render()
+    const sort = out.slice(out.indexOf(copy.list.sort) - 260, out.indexOf(copy.list.sort))
+    expect(sort).toContain('absolute')
+    // Clicks fall through to the summary underneath, so the control keeps the
+    // full-width target it has always had.
+    expect(sort).toContain('pointer-events-none')
+  })
+
+  it('the filter control looks like something that opens', () => {
+    // The native marker is hidden and the `filters` glyph is identical open
+    // and closed, so the only way to change the search read as a caption.
+    const out = render()
+    const summary = out.slice(out.indexOf('<summary'), out.indexOf('</summary>'))
+    // `chevronRight`'s path, rotated a quarter turn by the parent's [open].
+    expect(summary).toContain('M9 6l6 6-6 6')
+    expect(summary).toContain('group-open:rotate-90')
+    // The chevron is decoration next to a label that already names the
+    // control, so it must not reach the accessible name.
+    expect(summary).toContain('aria-hidden="true"')
+  })
+
   it('the company line draws no affordance it cannot honour', () => {
     // It used to render a chevronRight inside a plain <p> — no link, no
     // button, no handler. An affordance that does nothing is worse than none.

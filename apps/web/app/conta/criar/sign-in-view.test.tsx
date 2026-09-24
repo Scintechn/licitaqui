@@ -102,6 +102,58 @@ describe('SignInView', () => {
     expect(render({ google: true }, { error: 'provider' })).toContain(copy.errorBody)
   })
 
+  it('attaches the e-mail error to the e-mail field, not only to a card above it', () => {
+    // The StateCard alone is a standalone block: somebody tabbing straight
+    // into the input was told nothing was wrong, because nothing on the input
+    // said so (WCAG 3.3.1 and 1.3.1).
+    const out = render({ google: true, magicLink: true }, { error: 'email' })
+    expect(out).toContain('aria-invalid="true"')
+    expect(out).toContain('aria-describedby="sign-in-email-error sign-in-email-hint"')
+    expect(out).toContain('id="sign-in-email-error"')
+    // Belt and braces: the card stays, so the message is on the screen for
+    // somebody who never reaches the field.
+    expect(out).toContain(copy.errorTitle)
+    // …and it is the approved string, in both places, not a new sentence.
+    expect(out.split(copy.emailMissing).length - 1).toBe(2)
+  })
+
+  it('leaves the field valid when the round trip came back clean', () => {
+    const out = render({ google: true, magicLink: true })
+    expect(out).not.toContain('aria-invalid')
+    expect(out).toContain('aria-describedby="sign-in-email-hint"')
+  })
+
+  it('puts the required consent tick above the buttons it gates', () => {
+    // `required` on this box is what blocks both submits, so the browser
+    // points its validation bubble at it. Last in the form, on a 390px phone,
+    // that bubble opened below the fold under the button just pressed — the
+    // primary CTA looked dead at the last screen before conversion.
+    const out = render({ google: true, magicLink: true })
+    const tick = out.indexOf('type="checkbox"')
+    expect(tick).toBeGreaterThan(-1)
+    expect(tick).toBeLessThan(out.indexOf(copy.google))
+    expect(tick).toBeLessThan(out.indexOf(copy.emailSubmit))
+    // Still inside the one form, or it would gate nothing at all.
+    expect(out.indexOf('<form')).toBeLessThan(tick)
+  })
+
+  it('keeps the LGPD mechanics the move was not allowed to change', () => {
+    const out = render({ google: true, magicLink: true })
+    // One box, still required, still never pre-ticked (LGPD art. 8 §4), and
+    // still worded with the approved fragments only (legal brief §5).
+    expect(out.match(/type="checkbox"/g)).toHaveLength(1)
+    expect(out).toContain('required=""')
+    expect(out).not.toContain('checked')
+    expect(out).toContain(messages.consent.termsBefore)
+    expect(out).toContain(messages.consent.termsBetween)
+    expect(out).toContain(messages.consent.termsAfter)
+  })
+
+  it('draws the tick at 20px, for an audience that is often over 60', () => {
+    expect(render({ google: true })).toContain('size-5')
+    expect(render({ google: true })).not.toContain('size-4 shrink-0')
+  })
+
   it('always offers to keep browsing without an account', () => {
     expect(render({ google: true })).toContain(copy.keepBrowsing)
   })

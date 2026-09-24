@@ -279,11 +279,32 @@ function GroupHint({ group }: { group: TenderGroup }) {
 }
 
 /**
- * "Filtros" and "Ordenar: prazo". The filters are a `<details>` holding a real
- * GET form, so they work before React has hydrated and the result is a URL the
- * user can share or bookmark. Sorting is by deadline and is not a choice: the
- * list query orders by `proposals_close_at`, and offering a control that
- * changes nothing would be a lie.
+ * "Trocar empresa ou filtros", and "Ordenar: prazo" beside it. The filters are
+ * a `<details>` holding a real GET form, so they work before React has
+ * hydrated and the result is a URL the user can share or bookmark. Sorting is
+ * by deadline and is not a choice: the list query orders by
+ * `proposals_close_at`, and offering a control that changes nothing would be a
+ * lie.
+ *
+ * ## Two things the `<summary>` must not do
+ *
+ * **It must not say the sort order.** "Ordenar: prazo" used to be a second
+ * `<span>` inside the `<summary>`, which made the computed accessible name of
+ * the control "Trocar empresa ou filtros Ordenar: prazo" (WCAG 4.1.2). A
+ * statement about the list is not part of the name of the button that changes
+ * it. The label now sits outside the `<details>` entirely, positioned over the
+ * row's right end so the line looks exactly as it did — and left
+ * `pointer-events-none`, so the summary keeps the full-width tap target it
+ * always had. Do not move it back inside, and do not shrink the `<details>` to
+ * the left half to make room: the form it opens is full-width and would be
+ * squeezed with it.
+ *
+ * **It must look like it opens.** The native marker is hidden and the
+ * `filters` icon is identical open and closed, so this 350×52 control — the
+ * only way to change the search — read as a caption. The `chevronRight`
+ * rotates a quarter turn on open; `group-open:` reads the `[open]` attribute
+ * off the `<details>`, and the reduced-motion rule in `tokens.css` already
+ * flattens the transition for anyone who asked for that.
  */
 function FilterRow({
   query,
@@ -293,11 +314,11 @@ function FilterRow({
   onNavigate?: (href: string) => void
 }) {
   return (
-    <div className="px-gutter">
+    <div className="relative px-gutter">
       <details className="group">
         <summary
           className={cn(
-            'flex cursor-pointer list-none items-center justify-between py-1 text-body',
+            'flex cursor-pointer list-none items-center py-1 text-body',
             '[&::-webkit-details-marker]:hidden',
           )}
         >
@@ -311,8 +332,12 @@ function FilterRow({
           <span className="inline-flex min-h-touch items-center gap-1.5">
             <Icon name="filters" size={16} />
             {list.changeCompany}
+            <Icon
+              name="chevronRight"
+              size={16}
+              className="transition-transform group-open:rotate-90"
+            />
           </span>
-          <span className="text-muted">{list.sort}</span>
         </summary>
 
         <form
@@ -377,7 +402,7 @@ function FilterRow({
               defaultValue={query.q ?? ''}
               placeholder={copy.landing.keywordPlaceholder}
               /* 16px (`text-base`): below that iOS Safari zooms on focus. */
-              className="min-h-control w-full rounded-control border border-line-strong bg-surface px-3 text-base text-ink placeholder:text-muted"
+              className="min-h-control w-full rounded-control border border-field-line bg-surface px-3 text-base text-ink placeholder:text-muted"
             />
           </div>
           <Button type="submit" variant="secondary" className="min-[560px]:w-auto">
@@ -385,6 +410,17 @@ function FilterRow({
           </Button>
         </form>
       </details>
+
+      {/*
+        Outside the `<details>`, so it is not part of the summary's accessible
+        name (4.1.2), and drawn over the row's right end so the line is the one
+        the board drew. `min-h-touch` and `top-1` are the summary's own box —
+        the two labels share a baseline. `pointer-events-none` hands the click
+        back to the summary underneath, which keeps the tap target full width.
+      */}
+      <span className="pointer-events-none absolute top-1 right-gutter inline-flex min-h-touch items-center text-body text-muted">
+        {list.sort}
+      </span>
     </div>
   )
 }
