@@ -46,10 +46,31 @@ describe('the menu (canvas 09)', () => {
       copy.company,
       copy.billing,
       copy.profile,
-      copy.help,
     ]) {
       expect(out, `missing: ${label}`).toContain(label)
     }
+  })
+
+  it('does not link to a route that is not built', () => {
+    // `/ajuda` does not exist. Next prefetches a `<Link>` on viewport entry,
+    // and `lib/routes.ts` spends a paragraph on exactly this: an unbuilt
+    // destination is "a burst of 404s on every page view". This menu renders
+    // six links at once, so it would have been six.
+    //
+    // `copy.help` stays in the catalogue for the day the route exists; this
+    // assertion is what will fail then, which is the reminder to re-add the row.
+    const out = render()
+    expect(out).not.toContain('/ajuda')
+    expect(out).not.toContain(copy.help)
+  })
+
+  it('sends a signed-in person to their account, not to the signup screen', () => {
+    // It pointed at `ACCOUNT_HREF` (`/conta/criar`). The strip above only
+    // renders for a signed-in viewer, so the create-account page is the one
+    // destination "Perfil" can never mean.
+    const out = render()
+    expect(out).toContain('href="/conta"')
+    expect(out).not.toContain('href="/conta/criar"')
   })
 
   it('says the plan and the allowance — the whole reason this screen exists', () => {

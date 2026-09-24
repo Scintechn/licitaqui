@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import {
   AppBar,
+  AppBarAction,
   AppBarActionLink,
   Button,
   Field,
@@ -718,6 +719,7 @@ export function RadarView({
   onNavigate,
   onRetry,
   onLoadMore,
+  onOpenMenu,
 }: RadarViewProps) {
   const showList = status.kind === 'ready' || status.kind === 'manualCnae'
 
@@ -740,6 +742,22 @@ export function RadarView({
           <>
             <AppBarActionLink icon="alert" label={copy.nav.alerts} href={ALERTS_HREF} />
             <AppBarActionLink icon="account" label={copy.nav.account} href={ACCOUNT_HREF} />
+            {/* Canvas 09's trigger.
+
+                The drawer, its API, its view and its tests all shipped in
+                #93 — and this control did not, so `onOpenMenu` sat on the
+                props type, called by nothing, and `radar.nav.menu` ("Abrir
+                menu") stayed the approved string rendered in zero files that
+                `menu-view.tsx`'s own docstring cites as the bug. An unused
+                optional prop is legal TypeScript, so the build was green and
+                every test passed: `menu-view.test.tsx` renders `MenuView`
+                directly and never asks whether anything can reach it.
+
+                Rendered only when a handler exists, so the Landing's example
+                panel does not draw a button that opens nothing. */}
+            {onOpenMenu ? (
+              <AppBarAction icon="menu" label={copy.nav.menu} onClick={onOpenMenu} />
+            ) : null}
           </>
         }
       />

@@ -65,6 +65,19 @@ import { fullDate } from './format'
 export const TENDER_STATUS_KINDS = ['divulgada', 'suspensa', 'revogada', 'anulada'] as const
 export type TenderStatusKind = (typeof TENDER_STATUS_KINDS)[number]
 
+/**
+ * The three halted names as `fold()` produces them, for SQL that has to ask
+ * the same question this module answers.
+ *
+ * None of the four PNCP values carries a diacritic, so `lower(btrim(status))`
+ * in Postgres and `fold()` here agree on all of them — which is what lets a
+ * query use this list instead of reimplementing the folding.
+ */
+export const HALTED_FOLDED: readonly string[] = ['suspensa', 'revogada', 'anulada']
+
+/** `Divulgada no PNCP`, folded. The one value that permits urgency. */
+export const DIVULGADA_FOLDED = 'divulgada no pncp'
+
 /** `tenders.status` for the normal state. The list's sort key compares to it. */
 export const DIVULGADA = 'Divulgada no PNCP'
 

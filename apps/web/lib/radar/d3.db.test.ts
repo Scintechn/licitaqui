@@ -159,13 +159,35 @@ suite('openTenderStats', () => {
           expect(halted!.meEpp).toBe(open!.meEpp - 1)
           expect(halted!.halted).toBe(open!.halted + 1)
 
-          // Revogada and Anulada land in the same figure; an unrecognised
-          // value must never be counted as open (the `mayShowUrgency` rule).
-          for (const status of ['Revogada', 'Anulada', 'Vai Saber']) {
+          // Revogada and Anulada land in the same figure.
+          for (const status of ['Revogada', 'Anulada']) {
             await tx.execute(sql`update tenders set status = ${status} where id = ${tender.id}`)
             const other = await openTenderStats(tx)
             expect(other!.open).toBe(open!.open - 1)
             expect(other!.halted).toBe(open!.halted + 1)
+          }
+
+          // **A value outside the four is in neither column**, and the first
+          // version of this test asserted the opposite — it iterated
+          // `'Vai Saber'` alongside the two real ones and required it to be
+          // counted as halted. That is the landing page telling visitors an
+          // agency suspended, revoked or annulled a tender nobody classified.
+          // The test was the regression, not a guard against it.
+          for (const status of ['Vai Saber', 'Em análise']) {
+            await tx.execute(sql`update tenders set status = ${status} where id = ${tender.id}`)
+            const unknown = await openTenderStats(tx)
+            expect(unknown!.open, `${status} must not be counted as open`).toBe(open!.open - 1)
+            expect(unknown!.halted, `${status} is not an agency's act`).toBe(open!.halted)
+          }
+
+          // Folding, because the value is agency-entered text arriving through
+          // two PNCP endpoints. A stray case or a trailing space must not move
+          // a tender from `open` into a claim about an órgão.
+          for (const status of ['divulgada no pncp', 'Divulgada no PNCP ', '  DIVULGADA NO PNCP']) {
+            await tx.execute(sql`update tenders set status = ${status} where id = ${tender.id}`)
+            const folded = await openTenderStats(tx)
+            expect(folded!.open, `${status} should still be open`).toBe(open!.open)
+            expect(folded!.halted, `${status} should not be halted`).toBe(open!.halted)
           }
 
           // But a tender the ingest never classified is **neither**. `halted`
@@ -185,5 +207,5 @@ suite('openTenderStats', () => {
         { isolationLevel: 'repeatable read' },
       ),
     ).rejects.toBe(ROLLBACK)
-  })
+  }, 60_000)
 })

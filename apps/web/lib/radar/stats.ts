@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
-import { DIVULGADA } from './tender-status'
+import { DIVULGADA_FOLDED, HALTED_FOLDED } from './tender-status'
 
 /**
  * "Hoje no Brasil · [Nº] editais abertos · [Nº] exclusivos ME/EPP · [Nº]
@@ -26,7 +26,25 @@ import { DIVULGADA } from './tender-status'
  * allow-list `mayShowUrgency` uses and for the same reason: an unrecognised
  * status is not counted as open.
  *
- * **`halted` is not the complement of that, and must not be written as one.**
+ * ## Both counts fold, and `halted` is an allow-list
+ *
+ * `tenderStatusKind` folds case, accents and whitespace *"because the value is
+ * agency-entered text that reaches us through two different PNCP endpoints"*.
+ * This query compared the raw string with `=`, so a row arriving as
+ * `'divulgada no pncp'` or with a trailing space was excluded from `open`
+ * **and** counted in `halted` — while the card for that same tender called it
+ * Divulgada and drew no chip. The landing page and the card would have
+ * disagreed about one row.
+ *
+ * And `halted` is now the three halted names, not "anything that is not
+ * Divulgada". The first version excluded only NULL, so any fifth value PNCP
+ * invents — `'Em análise'` is the example `tender-status.test.ts` uses — was
+ * published on the front page as *suspenso, revogado ou anulado **pelo
+ * órgão***, a claim about an agency's act. A status we cannot classify belongs
+ * in neither column, which is what the paragraph below always said and what
+ * the SQL now does.
+ *
+ * **`halted` is not the complement of `open`, and must not be written as one.**
  * It first read `status is distinct from 'Divulgada no PNCP'`, which is TRUE
  * for NULL — so any tender the ingest had not classified would have been
  * published on the front page as *suspenso, revogado ou anulado pelo órgão*,
@@ -77,13 +95,15 @@ type Row = {
 }
 
 export async function openTenderStats(executor?: Executor): Promise<RadarStats | null> {
+  // Bound one value at a time rather than as an array: `= any($1)` needs a
+  // typed `text[]`, and an untyped array parameter fails at the driver.
+  const haltedList = sql`(${sql.join(HALTED_FOLDED.map((name) => sql`${name}`), sql`, `)})`
   try {
     const found = await (executor ?? db()).execute<Row>(sql`
-      select count(*) filter (where status = ${DIVULGADA})                       as open,
-             count(*) filter (where status = ${DIVULGADA}
+      select count(*) filter (where lower(btrim(status)) = ${DIVULGADA_FOLDED})   as open,
+             count(*) filter (where lower(btrim(status)) = ${DIVULGADA_FOLDED}
                                 and me_epp_summary in ('exclusive', 'mixed'))    as me_epp,
-             count(*) filter (where status is not null
-                                and status <> ${DIVULGADA})                      as halted
+             count(*) filter (where lower(btrim(status)) in ${haltedList})       as halted
         from tenders
        where proposals_close_at > now()
     `)
