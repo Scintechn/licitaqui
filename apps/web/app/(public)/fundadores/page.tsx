@@ -133,6 +133,7 @@ function SectionHead({
   label,
   title,
   children,
+  aside,
   className,
 }: {
   /**
@@ -149,10 +150,29 @@ function SectionHead({
   label?: string
   title: string
   children?: ReactNode
+  /**
+   * Opt-in second column: heading on the left, this on the right.
+   *
+   * The default is one 720px stack with the section's content dropped
+   * underneath it, and on a 1120px page that leaves every `<h2>` on a measure
+   * nearly twice the width its type was drawn for — `--text-section` tops out
+   * at 38px, so a two-line heading spans ~700px and reads as a caption over a
+   * wide empty band. Pass `aside` and the heading takes ~45% of the row while
+   * the section's supporting material takes the rest: the same 38px then wraps
+   * to three tight lines in a ~500px measure, which is where it has presence.
+   *
+   * **The type scale is unchanged.** The heading only looks larger because the
+   * column is narrower; `--text-section` is the same token either way.
+   *
+   * One column again below 900px — the same breakpoint the hero, the price
+   * chain and the screening example already collapse at, so the whole page
+   * becomes a single column at one width rather than four.
+   */
+  aside?: ReactNode
   className?: string
 }) {
-  return (
-    <div className={cn('flex max-w-[720px] flex-col gap-3', className)}>
+  const head = (
+    <>
       {label ? (
         <SectionLabel tone="muted" size="caption">
           {label}
@@ -160,6 +180,23 @@ function SectionHead({
       ) : null}
       <H2>{title}</H2>
       {children}
+    </>
+  )
+
+  if (!aside) {
+    return <div className={cn('flex max-w-[720px] flex-col gap-3', className)}>{head}</div>
+  }
+
+  return (
+    <div
+      className={cn(
+        'grid grid-cols-1 items-start gap-x-12 gap-y-6 [&>*]:min-w-0',
+        'min-[900px]:grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)]',
+        className,
+      )}
+    >
+      <div className="flex max-w-[500px] flex-col gap-3">{head}</div>
+      <div>{aside}</div>
     </div>
   )
 }
@@ -334,34 +371,78 @@ function bold(text: string) {
 
 /* ---------------------------------------------------------------- why now */
 
+/**
+ * Same order as `pain.items`: find it, read it, do the sum.
+ *
+ * `money` rather than `margin` for the third: the problem described is losing
+ * money on the contract, not reading a margin sheet, and `money` is already
+ * what `Trust` and `Pillars` give the same idea two sections apart.
+ */
+const PAIN_ICONS = ['search', 'tender', 'money'] as const
+
 function Pain() {
   const { pain } = page
   return (
     <Section>
       <Wrap>
-        <SectionHead label={pain.label} title={pain.title} className="mb-8" />
+        {/*
+          Heading left, the two market figures right.
 
-        <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
-          {pain.items.map((item) => (
-            <Card key={item.title} padding="none" className="flex flex-col gap-2.5 p-5">
-              <H3>{item.title}</H3>
-              <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
-            </Card>
-          ))}
-        </div>
-
-        <div className="mt-7 flex flex-wrap items-baseline gap-8">
-          {pain.facts.map((fact) => (
-            <div key={fact.value}>
-              <b className="block font-display text-stat font-extrabold tabular-nums">
-                {fact.value}
-              </b>
-              <span className="text-body leading-[1.55] text-muted">{fact.label}</span>
+          The figures used to sit *under* the three cards, below the fold of
+          this section on a phone, where they read as a footnote to the cards
+          rather than as the scale of the market the heading is claiming. They
+          are the section's supporting material, so they are what the heading's
+          second column carries.
+        */}
+        <SectionHead
+          label={pain.label}
+          title={pain.title}
+          className="mb-10"
+          aside={
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-wrap items-baseline gap-x-10 gap-y-6">
+                {pain.facts.map((fact) => (
+                  <div key={fact.value} className="min-w-0">
+                    <b className="block font-display text-stat font-extrabold tabular-nums">
+                      {fact.value}
+                    </b>
+                    <span className="text-body leading-[1.55] text-muted">{fact.label}</span>
+                  </div>
+                ))}
+              </div>
+              <Source>{pain.source}</Source>
             </div>
-          ))}
-        </div>
+          }
+        />
 
-        <Source className="mt-3.5">{pain.source}</Source>
+        {/*
+          Numbered, and an `<ol>`, because *Encontrar → Entender → Não perder
+          dinheiro* is the order the work actually happens in — not three
+          parallel complaints. The numerals are `aria-hidden`: the list element
+          already carries the sequence, and a screen reader reading "zero um"
+          before every heading would say it twice.
+        */}
+        <ol className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
+          {pain.items.map((item, index) => (
+            <li key={item.title} className="flex min-w-0">
+              <Card padding="none" className="flex w-full flex-col gap-2.5 p-5">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
+                    <Icon name={PAIN_ICONS[index]} size={22} />
+                  </span>
+                  <span
+                    aria-hidden
+                    className="font-mono text-lead font-medium tabular-nums text-muted"
+                  >
+                    {`0${index + 1}`}
+                  </span>
+                </div>
+                <H3>{item.title}</H3>
+                <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
+              </Card>
+            </li>
+          ))}
+        </ol>
       </Wrap>
     </Section>
   )
@@ -506,20 +587,60 @@ function Pillars() {
     <Section id={ANCHORS.pillars}>
       <Wrap>
         <SectionHead label={pillars.label} title={pillars.title} className="mb-8" />
-        <div className="grid grid-cols-1 gap-4 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4">
+        {/*
+          One panel, not four cards.
+
+          The four are a single claim — *da busca à proposta* — and four
+          separate bordered surfaces make them compete, each with its own edge
+          and its own shadow of white against the ivory. One surface with
+          hairlines between the items says the same thing once: this is the
+          tool, in four parts.
+
+          Gaps are zero, so the dividers are borders on the items themselves,
+          and which edge they sit on depends on how many columns there are:
+
+            <560px   one column   → a rule above every item but the first
+            560px    two columns  → a rule left of the right-hand items (1, 3)
+                                    and above the second row (2, 3)
+            900px    four columns → a rule left of every item but the first
+
+          A tier only ever *clears* a rule a lower tier set; it never sets one
+          the same variant also clears. `min-[560px]:border-t` and
+          `min-[560px]:border-t-0` are the same property under the same media
+          query, settled by stylesheet order rather than by the order they are
+          written here — which is why the rule between the two rows was missing
+          the first time round, at 560–899px only, on a tier nobody screenshots.
+        */}
+        <ul className="grid grid-cols-1 overflow-hidden rounded-panel border border-line bg-surface min-[560px]:grid-cols-2 min-[900px]:grid-cols-4">
           {pillars.items.map((item, index) => (
-            <Card key={item.title} padding="none" className="flex flex-col gap-2.5 p-5">
+            <li
+              key={item.title}
+              className={cn(
+                'flex min-w-0 flex-col gap-2.5 p-5 min-[900px]:p-6',
+                // Stacked: a rule above every item but the first. It also
+                // carries the colour every other rule below inherits.
+                index > 0 && 'border-t border-line',
+                // Two columns: the second item joins the first row…
+                index === 1 && 'min-[560px]:border-t-0',
+                // …and the right-hand item of each row is divided vertically.
+                index % 2 === 1 && 'min-[560px]:border-l',
+                // Four columns: one row, so the second row's rule goes…
+                index >= 2 && 'min-[900px]:border-t-0',
+                // …and the only item still missing a vertical rule gets one.
+                index === 2 && 'min-[900px]:border-l',
+              )}
+            >
               <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
                 <Icon name={PILLAR_ICONS[index]} size={22} />
               </span>
               <H3>{item.title}</H3>
               <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
-              <span className="mt-auto font-mono text-label tracking-[0.06em] text-muted uppercase">
+              <span className="mt-auto pt-1 font-mono text-label tracking-[0.06em] text-muted uppercase">
                 {item.plan}
               </span>
-            </Card>
+            </li>
           ))}
-        </div>
+        </ul>
       </Wrap>
     </Section>
   )
@@ -604,16 +725,18 @@ function Screening() {
 
 /* ------------------------------------------------------- what a founder gets */
 
-/**
- * Index 1 is `money`, not `visitor`. The second benefit used to be "Acesso
- * antes de todos" — a person icon for early access. D7 replaced that claim with
- * the price range, so the icon moved with the sentence; leaving the old one
- * would illustrate a benefit the card no longer names.
- */
-const BENEFIT_ICONS = ['locked', 'money', 'send', 'account'] as const
-
 function FounderValue() {
   const { founderValue } = page
+  /**
+   * The first benefit **is** the price — "R$ 26 por mês durante 6 meses" — and
+   * it was set at 17px in a list of four evenly weighted items, so the cheapest
+   * thing on the page was also the quietest. It is lifted out of the list and
+   * given `--text-stat`, the size this page already gives a figure that carries
+   * a section; the three that remain keep the list.
+   *
+   * Nothing is cut and nothing is reworded: same four strings, same order.
+   */
+  const [price, ...benefits] = founderValue.benefits
   return (
     <Section divided={false}>
       <Wrap>
@@ -633,13 +756,35 @@ function FounderValue() {
             </SectionLabel>
             <H2 className="text-surface">{founderValue.title}</H2>
 
-            <ul className="flex flex-col gap-[18px]">
-              {founderValue.benefits.map((benefit, index) => (
-                <li key={benefit.title} className="grid grid-cols-[36px_minmax(0,1fr)] gap-3.5">
-                  <span className="grid size-9 place-items-center rounded-control bg-brand-raised text-icon-on-brand">
-                    <Icon name={BENEFIT_ICONS[index]} size={20} />
-                  </span>
-                  <div>
+            <div className="flex flex-col gap-1.5">
+              <b className="font-display text-stat font-extrabold tracking-[-0.02em] text-surface text-balance tabular-nums">
+                {price.title}
+              </b>
+              <span className="text-base leading-[1.6] text-on-brand-muted">{price.body}</span>
+            </div>
+
+            <hr className="border-0 border-t border-brand-line" />
+
+            {/* Check glyphs rather than four category icons. Each of the three
+                is a thing the founder gets, which is one idea, and four
+                different pictograms for it made the list look like four
+                different kinds of thing. `icon-on-brand` is the 5.06:1 tier.
+
+                This retires `BENEFIT_ICONS` — including the `visitor` → `money`
+                correction PR #100 made to index 1 when that benefit became the
+                price range. The correction was right and the reason it existed
+                (an icon must illustrate the sentence beside it) is exactly why
+                there is now one glyph: a check illustrates every one of them. */}
+            <ul className="flex flex-col gap-4">
+              {benefits.map((benefit) => (
+                <li key={benefit.title} className="flex items-start gap-3">
+                  <Icon
+                    name="check"
+                    size={20}
+                    strokeWidth={2}
+                    className="mt-1 shrink-0 text-icon-on-brand"
+                  />
+                  <div className="min-w-0">
                     <b className="mb-0.5 block text-subhead font-bold text-surface">
                       {benefit.title}
                     </b>
@@ -648,6 +793,14 @@ function FounderValue() {
                 </li>
               ))}
             </ul>
+
+            {/* The call to action belongs to the offer, not to the comparison
+                table it used to hang under: price, what you get, then the
+                thing to do about it. `mt-auto` so it sits on the floor of the
+                panel at 900px and up, where the table beside it is taller. */}
+            <Button variant="onBrand" href="#vaga" className="mt-auto w-full">
+              {founderValue.cta}
+            </Button>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -766,10 +919,6 @@ function FounderValue() {
             </div>
 
             <p className="text-caption leading-[1.55] text-on-brand-faint">{founderValue.comparisonNote}</p>
-
-            <Button variant="onBrand" href="#vaga" className="mt-auto w-full">
-              {founderValue.cta}
-            </Button>
           </div>
         </div>
       </Wrap>
@@ -779,27 +928,64 @@ function FounderValue() {
 
 /* -------------------------------------------------------------- timeline */
 
+/**
+ * Same order as `timeline.steps`: the day you reserve, the hour it opens, the
+ * weekly Telegram summary, the subscription link.
+ *
+ * `deadline` is this file's calendar — see `icon.tsx`, which explains why no
+ * second name for it was added.
+ */
+const TIMELINE_ICONS = ['deadline', 'clock', 'send', 'link'] as const
+
 function Timeline() {
   const { timeline } = page
   return (
     <Section>
       <Wrap>
         <SectionHead label={timeline.label} title={timeline.title} className="mb-8" />
-        <ol className="grid grid-cols-1 gap-x-0 gap-y-7 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:gap-y-0">
+        {/*
+          A rule over each step said "four things"; it did not say they happen
+          in this order, and the order is the whole argument of the section —
+          you reserve today and decide in October. So: the icon box the rest of
+          the page already uses for a category, the numeral, and an arrow in
+          the gap between consecutive steps.
+
+          The arrows are decoration — the `<ol>` carries the sequence — so they
+          are `aria-hidden`, and they exist only from 900px, the one width at
+          which the steps are actually a row. Between stacked items an arrow
+          pointing right would be pointing at nothing.
+        */}
+        <ol className="grid grid-cols-1 gap-x-4 gap-y-8 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:gap-y-0">
           {timeline.steps.map((step, index) => (
             <li
               key={step.title}
-              className={cn(
-                'relative flex flex-col gap-2 pr-5',
-                "before:mb-3.5 before:block before:h-0.5 before:content-['']",
-                index === 0 ? 'before:bg-blue' : 'before:bg-line-strong',
-              )}
+              className="relative flex min-w-0 flex-col gap-2 min-[900px]:pr-9"
             >
-              <span className="font-mono text-caption font-medium tracking-[0.06em] text-blue uppercase">
+              <div className="flex items-center gap-3">
+                <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
+                  <Icon name={TIMELINE_ICONS[index]} size={22} />
+                </span>
+                <span
+                  aria-hidden
+                  className="font-mono text-lead font-medium tabular-nums text-muted"
+                >
+                  {`0${index + 1}`}
+                </span>
+              </div>
+              <span className="mt-1 font-mono text-caption font-medium tracking-[0.06em] text-blue uppercase">
                 {step.when}
               </span>
               <H3>{step.title}</H3>
               <p className="text-base leading-[1.6] text-ink-soft">{step.body}</p>
+
+              {index < timeline.steps.length - 1 ? (
+                <span
+                  aria-hidden
+                  className="absolute top-5 right-1 hidden -translate-y-1/2 text-line-strong min-[900px]:block"
+                >
+                  <Icon name="arrowRight" size={20} />
+                </span>
+              ) : null}
             </li>
           ))}
         </ol>

@@ -34,6 +34,17 @@ const PATHS = {
   send: ['M21 4L3 11l6 2 2 6 3-4 5 4z'],
   warning: ['M12 3l9 16H3z', 'M12 10v4M12 17h.01'],
   close: ['M6 6l12 12M18 6L6 18'],
+  /**
+   * The founders timeline (task D7) — a moment, and a subscription link.
+   *
+   * No `calendar`: `deadline` above already *is* one, drawn on the same grid,
+   * and a second name for the same two paths is a fork waiting to drift.
+   */
+  clock: ['M21 12a9 9 0 1 0-18 0 9 9 0 0 0 18 0Z', 'M12 7.5v5l3.5 2'],
+  link: [
+    'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
+    'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+  ],
   help: ['M12 21a9 9 0 100-18 9 9 0 000 18z', 'M9.5 9.5a2.5 2.5 0 113 2.45V14', 'M12 17h.01'],
 } as const
 

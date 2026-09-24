@@ -435,6 +435,195 @@ describe('the trust row under the hero', () => {
 })
 
 /**
+ * The sections the D7 layout pass restyled. Every assertion here is about what
+ * the reader gets — an order, a size, a count, a surface — and not about the
+ * utility that happens to produce it. `min-w-[420px]` was once asserted *by
+ * name* in this file, which pinned a bug in place rather than a requirement.
+ */
+describe('the D7 layout pass', () => {
+  const { pain, pillars, timeline, founderValue, screening } = messages.foundersPage
+
+  /** Pain: from its heading to the next section's. */
+  const painSection = out.slice(out.indexOf(pain.title), out.indexOf(messages.foundersPage.ruler.label))
+  /** Pillars: from its heading to the screening heading. */
+  const pillarsSection = out.slice(out.indexOf(pillars.title), out.indexOf(screening.title))
+  const timelineSection = out.slice(out.indexOf(timeline.title), out.indexOf(messages.foundersPage.refunds.title))
+  const founderSection = out.slice(out.indexOf(founderValue.label), out.indexOf(timeline.title))
+
+  describe('the section heading gets its own column', () => {
+    it('puts the market figures beside the heading, not under the three problems', () => {
+      // They used to sit *after* the cards — below the fold of this section on
+      // a phone — where two figures about the size of the market read as a
+      // footnote to the three problems rather than as the claim's evidence.
+      //
+      // Asserted as an order, because that is what a reader experiences: the
+      // figures come between the heading and the first problem. A revert to
+      // the single 720px stack puts them after the third.
+      const heading = out.indexOf(pain.title)
+      const firstProblem = out.indexOf(pain.items[0].title, heading)
+      for (const fact of pain.facts) {
+        const at = out.indexOf(fact.value, heading)
+        expect(at).toBeGreaterThan(heading)
+        expect(at).toBeLessThan(firstProblem)
+      }
+      // And the source line moved with them, still after the figures it names.
+      expect(out.indexOf(pain.source, heading)).toBeLessThan(firstProblem)
+    })
+
+    it('leaves every other section on the single column it already had', () => {
+      // The two-column head is opt-in. `Refunds` passes no `aside` and must
+      // keep the 720px measure the rest of the page is set on.
+      const refunds = out.indexOf(messages.foundersPage.refunds.title)
+      expect(out.slice(Math.max(0, refunds - 300), refunds)).toContain('max-w-[720px]')
+    })
+
+    it('does not change the heading scale to get the heading bigger', () => {
+      // `--text-section` is 26→38px and stays that. The headings look larger
+      // in the draft because the column is ~500px, not because the token
+      // moved; a size of this section's own here would make the page disagree
+      // with every other one that renders an `<h2>`.
+      const headings = [...out.matchAll(/<h2[^>]*class="([^"]*)"/g)].map((m) => m[1])
+      expect(headings.length).toBeGreaterThan(0)
+      for (const cls of headings) {
+        expect(cls).toContain('text-section')
+        expect(cls).not.toMatch(/text-\[/)
+      }
+    })
+  })
+
+  describe('the three problems', () => {
+    it('is a list in the order the work happens, numbered', () => {
+      // Encontrar → Entender → Não perder dinheiro is a sequence, not three
+      // parallel complaints, so it is an `<ol>` and it is numbered.
+      expect(painSection).toContain('<ol')
+      const numerals = ['01', '02', '03'].map((n) => painSection.indexOf(`>${n}<`))
+      for (const at of numerals) expect(at).toBeGreaterThan(-1)
+      expect(numerals).toEqual([...numerals].sort((a, b) => a - b))
+    })
+
+    it('does not read the numerals out on top of the list itself', () => {
+      // The `<ol>` already carries the sequence; a screen reader announcing
+      // "zero um" before every heading says it twice.
+      for (const n of ['01', '02', '03']) {
+        const at = painSection.indexOf(`>${n}<`)
+        expect(painSection.slice(at - 200, at)).toContain('aria-hidden')
+      }
+    })
+
+    it('gives each problem an icon, and keeps all three intact', () => {
+      // Three icons in the tinted square this page already uses for a
+      // category — the same device as the trust row and the pillars.
+      expect(painSection.match(/rounded-swatch bg-blue-soft text-blue/g)).toHaveLength(3)
+      for (const item of pain.items) {
+        expect(painSection).toContain(item.title)
+        expect(painSection).toContain(item.body)
+      }
+    })
+  })
+
+  describe('what you will use', () => {
+    /** The band itself, so the next section's opening tag cannot be counted. */
+    const band = pillarsSection.slice(pillarsSection.indexOf('<ul'), pillarsSection.indexOf('</ul>'))
+
+    it('is one bordered surface, not four competing cards', () => {
+      // Four separate cards make one claim — *da busca à proposta* — look like
+      // four. `Card`'s surface is `rounded-card`; the band is a single panel.
+      expect(pillarsSection).not.toContain('rounded-card')
+      expect(pillarsSection.match(/<ul/g)).toHaveLength(1)
+      expect(band.match(/<li/g)).toHaveLength(4)
+    })
+
+    it('keeps all four items and every plan attribution', () => {
+      // The plan label is what tells a reader which of the two paid plans each
+      // capability belongs to. Nothing here was the layout's to drop.
+      for (const item of pillars.items) {
+        expect(pillarsSection).toContain(item.title)
+        expect(pillarsSection).toContain(item.body)
+        expect(pillarsSection).toContain(item.plan)
+      }
+    })
+
+    it('divides the items rather than boxing them', () => {
+      // One rule between neighbours, never around each item: three of the four
+      // carry a divider, the first carries none.
+      expect(band.match(/border-t border-line/g)).toHaveLength(3)
+    })
+  })
+
+  describe('the timeline', () => {
+    it('stays an ordered list', () => {
+      expect(timelineSection).toContain('<ol')
+    })
+
+    it('shows the sequence with an arrow between consecutive steps', () => {
+      // Four steps, three gaps. A rule over each step said "four things"; it
+      // never said they happen in this order, which is the whole section.
+      const arrows = timelineSection.match(/M5 12h14M13 6l6 6-6 6/g) ?? []
+      expect(arrows).toHaveLength(timeline.steps.length - 1)
+    })
+
+    it('keeps the arrows out of the accessibility tree', () => {
+      // The `<ol>` carries the order; the arrows are decoration.
+      const at = timelineSection.indexOf('M5 12h14M13 6l6 6-6 6')
+      expect(timelineSection.slice(at - 400, at)).toContain('aria-hidden')
+    })
+
+    it('keeps the four dates and the four steps', () => {
+      for (const step of timeline.steps) {
+        expect(timelineSection).toContain(step.when)
+        expect(timelineSection).toContain(step.title)
+        expect(timelineSection).toContain(step.body)
+      }
+    })
+  })
+
+  describe('the founder offer', () => {
+    it('sets the price at the size of a standalone figure', () => {
+      // "R$ 26 por mês durante 6 meses" **is** the offer, and it was 17px in a
+      // list of four evenly weighted items — the cheapest thing on the page
+      // was also its quietest. `--text-stat` is what this page already gives a
+      // figure that carries a section.
+      const at = founderSection.indexOf(founderValue.benefits[0].title)
+      expect(at).toBeGreaterThan(-1)
+      expect(founderSection.slice(at - 300, at)).toContain('text-stat')
+    })
+
+    it('puts the price above the things it buys', () => {
+      const price = founderSection.indexOf(founderValue.benefits[0].title)
+      for (const benefit of founderValue.benefits.slice(1)) {
+        expect(founderSection.indexOf(benefit.title)).toBeGreaterThan(price)
+      }
+    })
+
+    it('cuts none of the four benefits', () => {
+      for (const benefit of founderValue.benefits) {
+        expect(founderSection).toContain(benefit.title)
+        expect(founderSection).toContain(benefit.body)
+      }
+    })
+
+    it('marks the remaining benefits with a check', () => {
+      // One idea — things the founder gets — so one glyph, not four different
+      // pictograms that made the list look like four kinds of thing.
+      const list = founderSection.slice(
+        founderSection.indexOf(founderValue.benefits[1].title) - 600,
+        founderSection.indexOf(founderValue.cta),
+      )
+      expect(list.match(/M5 12l5 5 9-10/g)).toHaveLength(founderValue.benefits.length - 1)
+    })
+
+    it('follows the offer with the call to action, full width', () => {
+      // It used to hang under the comparison table in the other column: price,
+      // what you get, then the thing to do about it.
+      const cta = founderSection.indexOf(founderValue.cta)
+      expect(cta).toBeGreaterThan(founderSection.indexOf(founderValue.benefits[3].title))
+      expect(cta).toBeLessThan(founderSection.indexOf(founderValue.comparisonRows[0].feature))
+      expect(founderSection.slice(cta - 400, cta)).toContain('w-full')
+    })
+  })
+})
+
+/**
  * **A fix to something already on `main`, not part of the restyle.**
  *
  * Below 560px the comparison table is laid out with `display: block`, which

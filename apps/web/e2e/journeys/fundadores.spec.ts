@@ -260,3 +260,83 @@ test.describe('Dona Marta reads the comparison on her phone', () => {
     ).toBeVisible()
   })
 })
+
+test.describe('the founders page at 390px', () => {
+  /**
+   * The timeline's arrows sit *between* steps. Stacked, there is no between —
+   * an arrow pointing right at the item below it points at nothing — so they
+   * exist only from 900px, where the four steps are actually a row.
+   */
+  test('shows no arrows between steps that are stacked, and four on a wide screen', async ({
+    page,
+  }) => {
+    await page.goto('/fundadores')
+    const steps = page.getByRole('list').filter({ hasText: messages.foundersPage.timeline.steps[0].title })
+    await expect(steps).toHaveCount(1)
+
+    const visibleArrows = (locator: ReturnType<Page['locator']>) =>
+      locator.locator('svg').evaluateAll(
+        (nodes) => nodes.filter((n) => n.checkVisibility() && n.getBoundingClientRect().width > 0).length,
+      )
+
+    // Four steps, four category icons, and no arrows.
+    expect(await visibleArrows(steps)).toBe(messages.foundersPage.timeline.steps.length)
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    // One row now: the same four icons plus an arrow in each of the three gaps.
+    expect(await visibleArrows(steps)).toBe(messages.foundersPage.timeline.steps.length * 2 - 1)
+  })
+
+  /**
+   * The panel went off-screen at 440px once, when the comparison table inside
+   * it was given a `min-w-[420px]` and a grid item's `min-width: auto` let it
+   * push the whole panel — call to action included — past the viewport. The
+   * layout pass moved the call to action into that panel, so the guard is
+   * worth more now, not less.
+   */
+  for (const width of [390, 440]) {
+    test(`nothing on the page is wider than a ${width}px screen`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/fundadores')
+
+      const overflow = await page.evaluate(() => {
+        const limit = document.documentElement.clientWidth
+        return [...document.querySelectorAll('body *')]
+          .filter((el) => {
+            const box = el.getBoundingClientRect()
+            return box.width > 0 && (box.right > limit + 1 || box.left < -1)
+          })
+          .map((el) => `${el.tagName} ${String(el.className).slice(0, 80)}`)
+          .slice(0, 5)
+      })
+      expect(overflow).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      )
+    })
+  }
+
+  /** The offer's call to action is the panel's, and it fills the card. */
+  test('the founder panel’s call to action is full width and reachable', async ({ page }) => {
+    await page.goto('/fundadores')
+
+    const cta = page
+      .getByRole('link', { name: messages.foundersPage.founderValue.cta })
+      .first()
+    await expect(cta).toBeVisible()
+
+    const [button, card] = await Promise.all([
+      cta.boundingBox(),
+      cta.evaluate((el) => {
+        const parent = el.parentElement!
+        const box = parent.getBoundingClientRect()
+        return { width: box.width }
+      }),
+    ])
+    expect(button!.width).toBeGreaterThan(card.width - 2)
+
+    // Keyboard focus still lands on it, and still shows.
+    await cta.focus()
+    await expect(cta).toBeFocused()
+  })
+})
