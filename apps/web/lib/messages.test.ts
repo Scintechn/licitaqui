@@ -97,8 +97,16 @@ describe('messages', () => {
     walk(messages, '')
 
     expect(offenders).toEqual([])
-    // "O governo compra todo dia" is about the buyer, not about us, and stays.
-    expect(messages.foundersPage.pain.title).toContain('todo dia')
+    // The sweep must still catch the thing it exists for — otherwise `offenders`
+    // being empty proves nothing about the regex.
+    //
+    // This used to assert that `pain.title` still contained "todo dia": that
+    // heading read "O governo compra todo dia", which is about the buyer and
+    // not about our alerts, so it was the live proof that the sweep is narrow
+    // enough to leave it alone. Sci rewrote the heading on 2026-09-24 and no
+    // string in the catalogue carries the phrase any more, so the guard is
+    // stated directly instead of borrowing a sentence that can be re-edited.
+    expect(DAILY.test('Alertas todo dia no Essencial')).toBe(true)
   })
 
   /**

@@ -19,6 +19,17 @@ export type ButtonVariant =
    * a blue button on a blue panel is its own background.
    */
   | 'onBrand'
+  /**
+   * The blue-outlined alternative, for a second action **beside** a primary
+   * one on the light ground: same weight of voice, visibly not the main ask.
+   *
+   * Neither existing alternative fits that slot. `secondary` is an ink label
+   * on a `field-line` hairline — the "back" voice, which reads as retreat
+   * next to a call to action rather than as a second way forward. `onBrand`
+   * is a white fill with a white border and exists for the blue panel; on
+   * ivory its border measures 1.07:1 and disappears.
+   */
+  | 'outline'
 
 const BASE =
   'inline-flex items-center justify-center gap-2 rounded-control px-4 text-lead font-semibold ' +
@@ -43,6 +54,22 @@ const VARIANT: Record<ButtonVariant, string> = {
    */
   onBrand:
     'min-h-control border border-surface bg-surface text-blue hover:border-blue-soft hover:bg-blue-soft',
+  /**
+   * Measured with `styles/contrast.test.ts`'s own formula, on the two grounds
+   * this actually sits on:
+   *
+   *   label `--color-blue` on `--color-surface`   **6.16:1**  (AA needs 4.5)
+   *   border `--color-blue` on `--color-ivory`    **5.78:1**  (1.4.11 needs 3)
+   *   label on the hover fill `--color-blue-soft` **5.30:1**
+   *
+   * The border is measured against the *page*, not against the button's own
+   * fill: a control's boundary has to be findable against what surrounds it,
+   * which is the mistake `onBrand` on ivory would make (1.07:1). The fill is
+   * `surface` rather than transparent so the ratios above hold wherever it is
+   * placed on the light ground.
+   */
+  outline:
+    'min-h-control border border-blue bg-surface text-blue hover:bg-blue-soft hover:text-blue-hover',
 }
 
 type SharedProps = {

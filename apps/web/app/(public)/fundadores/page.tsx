@@ -5,9 +5,8 @@ import type { ReactNode } from 'react'
 import { Button, Card, CardRow, Icon, Logo, SectionLabel, Status, TagList } from '@/components'
 import { cn } from '@/lib/cn'
 import { messages } from '@/lib/messages'
-import radarPreview from '@/public/radar-preview.png'
-import { ExampleRadar } from '../example-radar'
-import { SignupForm } from './signup-form'
+import radarPreview from './radar-preview.png'
+import { SignupButton, SignupSheet, SignupTextButton } from './signup-sheet'
 
 /**
  * `/fundadores` — the founders offer page (task D2).
@@ -79,12 +78,25 @@ function Wrap({ children, className }: { children: ReactNode; className?: string
 function Section({
   children,
   divided = true,
+  attached = false,
   id,
   className,
 }: {
   children: ReactNode
   /** `.borda-topo` — a hairline separating this section from the one above. */
   divided?: boolean
+  /**
+   * Drops the top padding, for a section that continues the one above it
+   * rather than starting a new beat — the sign-up form under the offer panel
+   * is one offer, not two sections.
+   *
+   * A prop rather than `className="pt-0"` from the caller: `cn` is a plain
+   * join with no `tailwind-merge`, so `py-10 pt-0` leaves both rules in the
+   * sheet and which wins is Tailwind's generation order rather than anything
+   * this file states. `lib/cn.ts` says so in as many words — for an override,
+   * a variant, not a competing utility.
+   */
+  attached?: boolean
   /**
    * The target of a header anchor. `scroll-mt-20` comes with it: the header is
    * sticky and 64px tall, so a bare `#id` jump parks the heading underneath it.
@@ -96,7 +108,7 @@ function Section({
     <section
       id={id}
       className={cn(
-        'py-10 min-[560px]:py-12',
+        attached ? 'pb-10 min-[560px]:pb-12' : 'py-10 min-[560px]:py-12',
         id && 'scroll-mt-20',
         divided && 'border-t border-line',
         className,
@@ -136,6 +148,7 @@ function SectionHead({
   title,
   children,
   aside,
+  wideAside = false,
   className,
 }: {
   /**
@@ -171,6 +184,24 @@ function SectionHead({
    * becomes a single column at one width rather than four.
    */
   aside?: ReactNode
+  /**
+   * Widens the `aside` column from 55% to 62% of the row.
+   *
+   * The default split is a *measure* decision: ~45% keeps a 38px `<h2>` on a
+   * ~500px line, which is where it has presence. One section's aside is not
+   * text, though — the price chain is four boxes in a row, and a row has a
+   * width it either has or has not got. Measured, in IBM Plex Mono at the
+   * sizes the chain uses: `R$ 14,60` at `--text-stat` is **163px** and the
+   * three quiet values are **87px**, so with 16px of padding a side and three
+   * 16px gaps the row needs **600px**. The default aside is 567px at the
+   * page's maximum width — 33px short, which is why the chain was stacking.
+   * At 62% it is 640px and the row fits with 40px to spare.
+   *
+   * The heading keeps a 392px measure at full width, which this particular
+   * heading ("Parecia lucro. Era prejuízo.") sits inside comfortably: its
+   * longest line is 266px at 38px.
+   */
+  wideAside?: boolean
   className?: string
 }) {
   const head = (
@@ -193,11 +224,15 @@ function SectionHead({
     <div
       className={cn(
         'grid grid-cols-1 items-start gap-x-12 gap-y-6 [&>*]:min-w-0',
-        'min-[900px]:grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)]',
+        wideAside
+          ? 'min-[900px]:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]'
+          : 'min-[900px]:grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)]',
         className,
       )}
     >
-      <div className="flex max-w-[500px] flex-col gap-3">{head}</div>
+      <div className={cn('flex flex-col gap-3', wideAside ? 'max-w-[440px]' : 'max-w-[500px]')}>
+        {head}
+      </div>
       <div>{aside}</div>
     </div>
   )
@@ -210,133 +245,34 @@ function Source({ children, className }: { children: ReactNode; className?: stri
   return <p className={cn('text-meta leading-[1.55] text-muted', className)}>{children}</p>
 }
 
-/* -------------------------------------------------------------------- band */
-
-type BandItem = { key: string; content: ReactNode }
-
-/**
- * The hairline dividers between a band's cells, per column count.
- *
- * The rule this encodes was learned at 560–899px, on a tier nobody
- * screenshots: **a tier may only clear a rule a lower tier set.** `border-t`
- * unprefixed, cleared by `min-[560px]:border-t-0`, is safe — a media query
- * beats the base rule whatever the source order. `min-[560px]:border-t` and
- * `min-[560px]:border-t-0` are the same property under the same query and
- * settle by stylesheet order rather than by the order they are written here,
- * which is how the rule between the two rows of pillars went missing.
- *
- * The unprefixed `border-t` also carries the colour every rule below inherits;
- * clearing the width leaves it in place for the vertical rules.
- */
-function bandDividers(index: number, columns: 3 | 4) {
-  const stacked = index > 0 && 'border-t border-line'
-
-  //   <560px   one column    → a rule above every item but the first
-  //   ≥560px   three columns → one row, so a rule left of every item but the first
-  if (columns === 3) return cn(stacked, index > 0 && 'min-[560px]:border-t-0 min-[560px]:border-l')
-
-  //   <560px   one column    → a rule above every item but the first
-  //   560px    two columns   → a rule left of the right-hand items (1, 3) and
-  //                            above the second row (2, 3)
-  //   900px    four columns  → a rule left of every item but the first
-  return cn(
-    stacked,
-    // Two columns: the second item joins the first row…
-    index === 1 && 'min-[560px]:border-t-0',
-    // …and the right-hand item of each row is divided vertically.
-    index % 2 === 1 && 'min-[560px]:border-l',
-    // Four columns: one row, so the second row's rule goes…
-    index >= 2 && 'min-[900px]:border-t-0',
-    // …and the only item still missing a vertical rule gets one.
-    index === 2 && 'min-[900px]:border-l',
-  )
-}
-
-/**
- * One panel with hairlines between the cells, rather than N bordered cards.
- *
- * `Pillars` introduced this for its four parts: the items are a single claim,
- * and four separate bordered surfaces make them compete, each with its own
- * edge and its own shadow of white against the ivory. One surface with rules
- * between the items says it once. The trust row under the hero is the same
- * shape with three items, so the treatment lives here rather than being
- * written a second time and drifting.
- *
- * What the two callers do *not* share is the cell: the pillars carry an `<h3>`
- * and a plan attribution, and the trust row deliberately introduces no heading
- * structure at all (it sits above the page's first `<h2>`, and its three
- * strings already head `Pillars` further down). So the surface, the column
- * tiers and the dividers are shared; the contents stay with the sections.
- *
- * `role="list"`: Tailwind v4's preflight sets `list-style: none`, and Safari
- * drops the list semantics along with the marker.
- */
-function Band({
-  columns,
-  items,
-  className,
-}: {
-  columns: 3 | 4
-  items: BandItem[]
-  className?: string
-}) {
-  return (
-    <ul
-      role="list"
-      className={cn(
-        'grid grid-cols-1 overflow-hidden rounded-panel border border-line bg-surface',
-        columns === 3
-          ? 'min-[560px]:grid-cols-3'
-          : 'min-[560px]:grid-cols-2 min-[900px]:grid-cols-4',
-        className,
-      )}
-    >
-      {items.map((item, index) => (
-        <li
-          key={item.key}
-          className={cn(
-            'flex min-w-0 flex-col gap-2.5 p-5 min-[900px]:p-6',
-            bandDividers(index, columns),
-          )}
-        >
-          {item.content}
-        </li>
-      ))}
-    </ul>
-  )
-}
-
 /* -------------------------------------------------------------------- hero */
 
 /**
- * The hero: the argument on the left, the product on the right, the ask below.
+ * The hero: the argument on the left, the product on the right.
  *
  * The form used to sit in column two, which made the first screen a headline
  * and a set of five inputs. The approved draft gives that column to a wide
- * shot of the Radar instead and moves the form down to the offer, where the
- * reader has been told the price and what it buys before being asked for a
- * name, an e-mail and a WhatsApp number.
+ * shot of the Radar and puts the ask behind a call to action: the form opens
+ * as a dialog (`signup-sheet.tsx`), from here and from the three other CTAs on
+ * the page.
  *
- * Two things keep that from costing sign-ups:
+ * Two calls to action, because they answer different readers. The primary one
+ * opens the form. The secondary is a real link to `/radar` — the product is
+ * public and free to try, and a visitor who wants to see it working rather
+ * than read about it should not have to give a WhatsApp number first. Its
+ * label is `account.screen.radar`, an approved string reused; see the PR for
+ * the note that a `foundersPage` key of its own would read better.
  *
- *  - the CTA below the promises anchors to `#vaga`, so the ask is one click
- *    from the first screen at every width — it is asserted, in a browser, at
- *    390px and at 1280px (`e2e/journeys/fundadores.spec.ts`);
- *  - the form is still `#vaga`, so the header's CTA, the offer panel's and the
- *    final band's all land on it unchanged.
- *
- * **The image is decorative and its `alt` is empty on purpose.** The headline,
- * the subtitle and the four promises beside it already say what the product
- * does; a description of the screenshot would be new user-facing copy, and
- * copy on this page is Sci's under the legal brief. It is a visualisation, not
- * the product — the product itself is `ExampleRadar`, further down, which
- * renders the Radar's own card over three real frozen PNCP tenders.
+ * **The image is decorative and its `alt` is empty on purpose.** The headline
+ * and the subtitle beside it already say what the product does; a description
+ * of the screenshot would be new user-facing copy, and copy on this page is
+ * Sci's under the legal brief.
  *
  * `next/image` with a static import: the source is 1600×1066 and 1.6MB, and an
  * `<img>` in a hero would ship all of it to a phone. The static import carries
  * the intrinsic size, so the box is reserved before the bytes arrive (no CLS),
- * and `sizes` tells the generator which variant each width actually needs.
- * `priority` because this is the LCP element above the fold.
+ * and `sizes` names the box it is actually drawn in. `priority` because this
+ * is the LCP element above the fold.
  */
 function Hero() {
   const { hero } = page
@@ -360,21 +296,22 @@ function Hero() {
 
           <p className="max-w-[34em] text-intro text-ink-soft">{hero.subtitle}</p>
 
-          <ul role="list" className="mt-1 grid grid-cols-1 gap-x-5 gap-y-3 min-[560px]:grid-cols-2">
-            {hero.promises.map((promise) => (
-              <li key={promise} className="flex items-start gap-2.5 text-base leading-[1.45]">
-                <Icon name="check" size={20} strokeWidth={2} className="mt-0.5 text-blue" />
-                {promise}
-              </li>
-            ))}
-          </ul>
+          {/* The two things to do, from the first screen: reserve a seat, or
+              go and use the thing. Both labels are catalogue strings —
+              `founders.offer.cta` is the same ask the offer panel and the
+              form's own submit carry, and `account.screen.radar` is the
+              existing "Ir para o Radar". Nothing new is written here.
 
-          {/* The one thing to do, from the first screen. `founders.offer.cta`
-              is the catalogue's existing ask — the same string the offer panel
-              and the form's own submit carry; nothing new is written here. */}
-          <Button href="#vaga" className="mt-1 w-full min-[560px]:w-auto min-[560px]:self-start">
-            {messages.founders.offer.cta}
-          </Button>
+              Stacked and full width below 560px, primary first: on a phone a
+              row of two would give each about 150px. */}
+          <div className="mt-1 flex flex-col gap-3 min-[560px]:flex-row min-[560px]:items-center">
+            <SignupButton className="w-full min-[560px]:w-auto">
+              {messages.founders.offer.cta}
+            </SignupButton>
+            <Button variant="outline" href="/radar" className="w-full min-[560px]:w-auto">
+              {messages.account.screen.radar}
+            </Button>
+          </div>
         </div>
 
         {/* `w-full h-auto` inside a `min-w-0` grid child: the intrinsic 1600px
@@ -384,7 +321,16 @@ function Hero() {
           src={radarPreview}
           alt=""
           priority
-          sizes="(min-width: 900px) 52vw, 100vw"
+          /*
+            The box this is actually drawn in, measured rather than guessed:
+            `Wrap` is 1120px wide with a 20px gutter and the hero grid is
+            1.1fr/0.9fr with a 48px gap, so the shot gets `(min(vw, 1120) − 88)
+            × 0.45` — **464px from 1120px up**, and one column below 900px.
+            A `52vw` guess claimed 666px at 1280 and fetched the 1080px variant
+            for a 464px box; `priority` then preloads that same wrong variant as
+            the LCP resource.
+          */
+          sizes="(min-width: 1120px) 464px, (min-width: 900px) calc(45vw - 40px), calc(100vw - 40px)"
           className="h-auto w-full rounded-feature border border-line shadow-[0_24px_50px_-36px_rgba(23,23,23,0.45)]"
         />
       </Wrap>
@@ -392,56 +338,111 @@ function Hero() {
   )
 }
 
-/* -------------------------------------------------------------- trust row */
-
-/** Same order as `pillars.items`, so the icons keep meaning the same thing. */
-const TRUST_ICONS = ['search', 'tender', 'money'] as const
+/* ------------------------------------------------------------------- band */
 
 /**
- * The three facts, directly under the hero: compatible with your CNAE, the AI
- * reading with the page it came from, the maximum purchase price.
+ * The four promises, under the hero, as one panel.
  *
- * Every string is `pillars.items[0..2]` — the approved copy for exactly these
- * three, reused rather than rewritten. Note that the full `Pillars` section
- * further down renders the same three plus the Telegram alerts, with their
- * plan attribution; see the PR for the duplication that creates.
+ * This is the hero's old bullet list and the old `Pillars` section, which were
+ * the same four claims rendered twice about ten thousand characters apart —
+ * card **D12**. The draft has one band and no separate four-card section, so
+ * there is one: the bullets' titles, the section's bodies, and the section's
+ * plan attributions, each string rendered exactly once and a test that holds
+ * it there.
  *
- * **The titles are not headings.** They were `<h3>` for one run and it broke
- * the outline in two ways at once: the row sits above the page's first `<h2>`,
- * so the document went `h1` → `h3` with nothing between, and because the same
- * three strings head the `Pillars` section further down, a reader navigating
- * by heading met "Encontrar / Entender / Ofertar com lucro" twice and could
- * not tell the summary from the section. This row introduces no structure —
- * it has no heading of its own — so its titles are `<b>`, the idiom
- * `FounderValue` already uses for a bold lead-in inside a list item. The type
- * is unchanged.
+ * **Two catalogue arrays, paired by position, neither edited.** The title is
+ * `hero.promises[i]` and the body is `pillars.items[i].body`; read in full
+ * they line up one to one — CNAE compatibility, the AI reading with the page,
+ * the range the winners closed at, the Telegram alerts. The promise is the
+ * descriptive line ("Editais compatíveis com o seu CNAE"); `pillars.items[i]`
+ * .title is a bare verb ("Encontrar") and is not what the draft shows here.
+ * A test asserts the two arrays are still the same length, because these are
+ * indexed by position and a fifth promise in `pt-BR.json` would otherwise
+ * render `undefined` on a static route.
+ *
+ * **`item.plan` travels with `item.body`.** Dropping it was the other half of
+ * D12: without it the AI reading loses "Básico com limite" and the price band
+ * loses "Essencial", which changes what an approved sentence claims — a copy
+ * decision, not a rendering one.
+ *
+ * **No heading of its own.** It sits above the page's first `<h2>`, so an
+ * `<h3>` per cell would take the document from `h1` straight to `h3`; the
+ * titles are `<b>`, the idiom `FounderValue` already uses for a bold lead-in.
+ * The check glyph rather than four category icons, for the reason
+ * `FounderValue` gives: each cell is a thing the reader gets, which is one
+ * idea, and four different pictograms made it look like four kinds of thing.
+ *
+ * `id` is the header's `#tool` anchor, which used to point at `Pillars`; the
+ * nav's label for it is `pillars.label`, and this is now the section it names.
+ *
+ * `role="list"`: Tailwind v4's preflight sets `list-style: none`, and Safari
+ * drops the list semantics along with the marker.
  */
-function Trust() {
-  const { pillars } = page
+function Promises() {
+  const { hero, pillars } = page
   return (
-    <Section>
+    <Section id={ANCHORS.pillars}>
       <Wrap>
-        {/* One band, the same one `Pillars` uses — three bare items in a grid
-            read as three loose columns of text directly under a hero that is
-            now two large surfaces, and the row is a single statement about
-            what the tool knows. `Band` owns the surface and the dividers. */}
-        <Band
-          columns={3}
-          items={pillars.items.slice(0, 3).map((item, index) => ({
-            key: item.title,
-            content: (
-              <>
-                <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
-                  <Icon name={TRUST_ICONS[index]} size={22} />
-                </span>
-                <b className="font-display text-subsection font-bold tracking-[-0.01em] text-balance">
-                  {item.title}
+        {/*
+          One panel, not four cards. The four are a single claim — *da busca à
+          proposta* — and four bordered surfaces make them compete, each with
+          its own edge and its own shadow of white against the ivory.
+
+          Gaps are zero, so the dividers are borders on the items themselves,
+          and which edge they sit on depends on how many columns there are:
+
+            <560px   one column   → a rule above every item but the first
+            560px    two columns  → a rule left of the right-hand items (1, 3)
+                                    and above the second row (2, 3)
+            900px    four columns → a rule left of every item but the first
+
+          A tier only ever *clears* a rule a lower tier set; it never sets one
+          the same variant also clears. `min-[560px]:border-t` and
+          `min-[560px]:border-t-0` are the same property under the same media
+          query, settled by stylesheet order rather than by the order they are
+          written here — which is why the rule between the two rows was missing
+          the first time round, at 560–899px only, on a tier nobody screenshots.
+        */}
+        <ul
+          role="list"
+          className="grid grid-cols-1 overflow-hidden rounded-panel border border-line bg-surface min-[560px]:grid-cols-2 min-[900px]:grid-cols-4"
+        >
+          {pillars.items.map((item, index) => (
+            <li
+              key={item.plan + index}
+              className={cn(
+                'flex min-w-0 flex-col gap-2.5 p-5 min-[900px]:p-6',
+                // Stacked: a rule above every item but the first. It also
+                // carries the colour every other rule below inherits.
+                index > 0 && 'border-t border-line',
+                // Two columns: the second item joins the first row…
+                index === 1 && 'min-[560px]:border-t-0',
+                // …and the right-hand item of each row is divided vertically.
+                index % 2 === 1 && 'min-[560px]:border-l',
+                // Four columns: one row, so the second row's rule goes…
+                index >= 2 && 'min-[900px]:border-t-0',
+                // …and the only item still missing a vertical rule gets one.
+                index === 2 && 'min-[900px]:border-l',
+              )}
+            >
+              <div className="flex items-start gap-2.5">
+                <Icon
+                  name="check"
+                  size={20}
+                  strokeWidth={2}
+                  className="mt-0.5 shrink-0 text-blue"
+                />
+                <b className="font-display text-subhead font-bold text-balance">
+                  {hero.promises[index]}
                 </b>
-                <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
-              </>
-            ),
-          }))}
-        />
+              </div>
+              <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
+              <span className="mt-auto pt-1 font-mono text-label tracking-[0.06em] text-muted uppercase">
+                {item.plan}
+              </span>
+            </li>
+          ))}
+        </ul>
       </Wrap>
     </Section>
   )
@@ -519,33 +520,20 @@ function Pain() {
     <Section>
       <Wrap>
         {/*
-          Heading left, the two market figures right.
+          Heading left, the standfirst right — `SectionHead`'s `aside`, the
+          arrangement this section introduced.
 
-          The figures used to sit *under* the three cards, below the fold of
-          this section on a phone, where they read as a footnote to the cards
-          rather than as the scale of the market the heading is claiming. They
-          are the section's supporting material, so they are what the heading's
-          second column carries.
+          The second column used to hold the two market figures. It now holds
+          `pain.standfirst`, which Sci wrote for exactly this position; the
+          figures and the source line that named them stay in the catalogue and
+          render nowhere, carded as **D14** because deleting copy is his under
+          legal brief §5.
         */}
         <SectionHead
           label={pain.label}
           title={pain.title}
           className="mb-10"
-          aside={
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-wrap items-baseline gap-x-10 gap-y-6">
-                {pain.facts.map((fact) => (
-                  <div key={fact.value} className="min-w-0">
-                    <b className="block font-display text-stat font-extrabold tabular-nums">
-                      {fact.value}
-                    </b>
-                    <span className="text-body leading-[1.55] text-muted">{fact.label}</span>
-                  </div>
-                ))}
-              </div>
-              <Source>{pain.source}</Source>
-            </div>
-          }
+          aside={<p className="text-base leading-[1.6] text-ink-soft">{pain.standfirst}</p>}
         />
 
         {/*
@@ -643,19 +631,11 @@ function PriceChain() {
     <Section>
       <Wrap>
         {/*
-          Heading left, the chain right — `SectionHead`'s `aside`, the same
-          arrangement `Pain` and `Screening` already use and the one the draft
-          approved here.
-
-          The chain descends rather than running across. It used to be a row of
-          four from 900px, and that row needs ~790px: the last step holds
-          `R$ 14,60` at 34px mono and cannot wrap. The aside column is ~0.55 of
-          1032px — 567px at the page's full width — so four across would either
-          wrap the figure or push the grid past the viewport. Descending, each
-          step keeps the label/value row it already had below 900px, the
-          connectors point down at every width (they always did, stacked), and
-          the reading order the section argues in is untouched: edital, winner,
-          retail, maximum purchase.
+          Heading left, the chain right — `SectionHead`'s `aside`, the
+          arrangement `Pain` already uses, with `wideAside` because this column
+          holds a row of boxes rather than text. (`Screening` reads the same
+          way but hand-rolls its own grid on the `Wrap`, and so does `Signup`;
+          folding those two into `aside` is a bigger change than this card.)
 
           The verdict strip and the source line stay in this column, directly
           under the chain: the verdict *is* the chain's conclusion — it names
@@ -669,14 +649,45 @@ function PriceChain() {
         <SectionHead
           label={ruler.label}
           title={ruler.title}
+          wideAside
           aside={
-            <>
-              <ol role="list" className="flex flex-col gap-9">
+            /*
+              **A container query, not a media query.**
+
+              Whether the four steps fit in a row is a fact about *this column*,
+              not about the viewport: the same 900px page gives the chain 503px
+              here and 860px when it was full width. Keyed to the viewport, the
+              row either overflows its column or the figure has to shrink — and
+              the figure is the number the whole section exists to produce, so
+              `R$ 14,60` is `--text-stat` at every width and the layout bends
+              around it.
+
+              Measured, in the fonts the page actually loads: the emphasised
+              value is **163px** and the three quiet values **87px**, so with
+              `px-4` and three 16px gaps the row needs **600px**. `@min-[600px]`
+              is therefore the honest threshold, and it is the column's width
+              that is tested. It resolves to a viewport of about **1080px** and
+              up; below that the column is narrower than the row and the steps
+              stack, with the connector rotating to point down — the behaviour
+              the phone layout already had.
+            */
+            <div className="@container">
+              <ol
+                role="list"
+                className={cn(
+                  'grid grid-cols-1 gap-x-4 gap-y-9 [&>*]:min-w-0',
+                  '@min-[600px]:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.6fr)] @min-[600px]:gap-y-0',
+                )}
+              >
                 {steps.map((step, index) => (
                   <li key={step.label} className="relative flex">
                     <div
                       className={cn(
                         'flex w-full items-baseline justify-between gap-3 rounded-panel px-5 py-4',
+                        // The compact form: label on its own line, value under
+                        // it, and the padding the 600px arithmetic assumes.
+                        '@min-[600px]:h-full @min-[600px]:flex-col @min-[600px]:items-start',
+                        '@min-[600px]:justify-between @min-[600px]:gap-2 @min-[600px]:px-4 @min-[600px]:py-4',
                         step.emphasis
                           ? 'bg-brand-panel text-on-brand'
                           : 'border border-line bg-surface',
@@ -684,7 +695,7 @@ function PriceChain() {
                     >
                       <span
                         className={cn(
-                          'text-base leading-[1.4]',
+                          'text-base leading-[1.4] @min-[600px]:text-meta @min-[600px]:leading-[1.35]',
                           step.emphasis ? 'text-on-brand-muted' : 'text-muted',
                         )}
                       >
@@ -702,14 +713,23 @@ function PriceChain() {
                       </span>
                     </div>
 
-                    {/* The connector, centred in the 36px gap below the step.
-                        Decoration — the `<ol>` already carries the order. */}
+                    {/* The connector, in the gap: pointing down while the steps
+                        are stacked, right once they are a row. Decoration —
+                        the `<ol>` already carries the order. */}
                     {index < steps.length - 1 ? (
                       <span
                         aria-hidden
-                        className="absolute -bottom-7 left-1/2 grid h-5 -translate-x-1/2 place-items-center text-line-strong"
+                        className={cn(
+                          'absolute -bottom-7 left-1/2 grid h-5 -translate-x-1/2 place-items-center text-line-strong',
+                          '@min-[600px]:top-1/2 @min-[600px]:-right-4 @min-[600px]:bottom-auto @min-[600px]:left-auto',
+                          '@min-[600px]:w-4 @min-[600px]:-translate-x-0 @min-[600px]:-translate-y-1/2',
+                        )}
                       >
-                        <Icon name="arrowRight" size={20} className="rotate-90" />
+                        <Icon
+                          name="arrowRight"
+                          size={16}
+                          className="rotate-90 @min-[600px]:rotate-0"
+                        />
                       </span>
                     ) : null}
                   </li>
@@ -717,65 +737,23 @@ function PriceChain() {
               </ol>
 
               <div className="mt-9 flex items-start gap-3 rounded-swatch bg-error-soft px-4 py-3.5 text-base leading-[1.6]">
-                <Icon name="warning" size={20} strokeWidth={2} className="mt-0.5 shrink-0 text-error" />
+                <Icon
+                  name="warning"
+                  size={20}
+                  strokeWidth={2}
+                  className="mt-0.5 shrink-0 text-error"
+                />
                 <span>
                   <b className="text-error">{ruler.verdictLead}</b> {ruler.verdictBody}
                 </span>
               </div>
 
               <Source className="mt-4">{ruler.source}</Source>
-            </>
+            </div>
           }
         >
           <p className="text-base leading-[1.6] text-ink-soft">{ruler.body}</p>
         </SectionHead>
-      </Wrap>
-    </Section>
-  )
-}
-
-/* ---------------------------------------------------------------- pillars */
-
-const PILLAR_ICONS = ['search', 'tender', 'money', 'alert'] as const
-
-function Pillars() {
-  const { pillars } = page
-  return (
-    <Section id={ANCHORS.pillars}>
-      <Wrap>
-        <SectionHead label={pillars.label} title={pillars.title} className="mb-8" />
-        {/*
-          One panel, not four cards.
-
-          The four are a single claim — *da busca à proposta* — and four
-          separate bordered surfaces make them compete, each with its own edge
-          and its own shadow of white against the ivory. One surface with
-          hairlines between the items says the same thing once: this is the
-          tool, in four parts.
-
-          `Band` owns that surface, its column tiers and its dividers — the
-          trust row under the hero is the same treatment with three items, and
-          the arithmetic that draws the rules is subtle enough (see
-          `bandDividers`) that a second copy of it would drift.
-        */}
-        <Band
-          columns={4}
-          items={pillars.items.map((item, index) => ({
-            key: item.title,
-            content: (
-              <>
-                <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
-                  <Icon name={PILLAR_ICONS[index]} size={22} />
-                </span>
-                <H3>{item.title}</H3>
-                <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
-                <span className="mt-auto pt-1 font-mono text-label tracking-[0.06em] text-muted uppercase">
-                  {item.plan}
-                </span>
-              </>
-            ),
-          }))}
-        />
       </Wrap>
     </Section>
   )
@@ -800,6 +778,34 @@ function Screening() {
       <Wrap className="grid items-start gap-7 min-[900px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] min-[900px]:gap-10">
         <SectionHead label={screening.label} title={screening.title}>
           <p className="text-lg text-ink-soft">{screening.body}</p>
+
+          {/*
+            What the reading actually gives you, under the paragraph that
+            promises it and beside the card that shows it.
+
+            One check glyph per line, the idiom `Refunds` and the offer panel's
+            benefit list already use: each line is a thing you get, which is
+            one idea, and four different pictograms would make four kinds of
+            thing out of it.
+
+            `role="list"`: Tailwind v4's preflight sets `list-style: none`, and
+            Safari drops the list semantics along with the marker — that exact
+            defect shipped this morning.
+          */}
+          <ul role="list" className="mt-1 flex flex-col gap-2.5">
+            {screening.checks.map((check) => (
+              <li key={check} className="flex items-start gap-2.5 text-base leading-[1.5]">
+                <Icon
+                  name="check"
+                  size={20}
+                  strokeWidth={2}
+                  className="mt-0.5 shrink-0 text-blue"
+                />
+                {check}
+              </li>
+            ))}
+          </ul>
+
           <Source>{screening.source}</Source>
         </SectionHead>
 
@@ -948,9 +954,9 @@ function FounderValue() {
                 it is kept because it is the comparison column that grows when
                 a row is added to the table, and then the offer would end above
                 the panel's floor. */}
-            <Button variant="onBrand" href="#vaga" className="mt-auto w-full">
+            <SignupButton variant="onBrand" className="mt-auto w-full">
               {founderValue.cta}
-            </Button>
+            </SignupButton>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -1076,45 +1082,6 @@ function FounderValue() {
   )
 }
 
-/* ------------------------------------------------------------------ signup */
-
-/**
- * The ask, and the one real product screen on the page, together.
- *
- * The form left the hero (see `Hero`), and this is where it lands: directly
- * under the offer panel, so the order of the page is now price → what it buys
- * → the form, instead of a form beside a headline. It keeps `id="vaga"` and
- * its own `scroll-mt-20` (`signup-form.tsx`), so all four `href="#vaga"` on
- * the page — header, offer panel, final band and the hero's new CTA — land on
- * it with the heading clear of the sticky bar.
- *
- * `ExampleRadar` comes with it, and this is where it earns its place. It is
- * the Radar's own `TenderCardView` over three real PNCP tenders frozen at
- * 17/09/2026, captioned as such — the only actual product on the page, against
- * a hero image that is a visualisation. Its job in the hero was to be evidence
- * beside the ask, and that is exactly the job it still has here: the last
- * thing a visitor reads before typing a name, an e-mail and a WhatsApp number
- * is three real editais, not a drawing. It also gets back the ~510px column it
- * was drawn for on the Landing, which a full-width band would not give it.
- *
- * DOM order is form first: below 900px the column falls in source order, and
- * the ~600px of example must not sit on top of the ask on a phone.
- *
- * `divided={false}`: the offer panel above is its own surface, and a hairline
- * between it and the form would read as a section break through the middle of
- * one offer.
- */
-function Signup() {
-  return (
-    <Section divided={false} className="pt-0 min-[560px]:pt-0">
-      <Wrap className="grid items-start gap-8 [&>*]:min-w-0 min-[900px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] min-[900px]:gap-10">
-        <SignupForm />
-        <ExampleRadar />
-      </Wrap>
-    </Section>
-  )
-}
-
 /* -------------------------------------------------------------- timeline */
 
 /**
@@ -1144,7 +1111,10 @@ function Timeline() {
           which the steps are actually a row. Between stacked items an arrow
           pointing right would be pointing at nothing.
         */}
-        <ol role="list" className="grid grid-cols-1 gap-x-4 gap-y-8 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:gap-y-0">
+        <ol
+          role="list"
+          className="grid grid-cols-1 gap-x-4 gap-y-8 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:gap-y-0"
+        >
           {timeline.steps.map((step, index) => (
             <li
               key={step.title}
@@ -1238,31 +1208,32 @@ function Faq() {
 
 export default function FoundersOfferPage() {
   return (
-    <div className="bg-ivory text-base leading-[1.55] text-ink">
-      <a
-        href="#topo"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-10 focus:rounded-control focus:border focus:border-line focus:bg-surface focus:px-3 focus:py-2 focus:text-meta focus:no-underline"
-      >
-        {page.nav.skip}
-      </a>
+    <SignupSheet>
+      <div className="bg-ivory text-base leading-[1.55] text-ink">
+        <a
+          href="#topo"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-10 focus:rounded-control focus:border focus:border-line focus:bg-surface focus:px-3 focus:py-2 focus:text-meta focus:no-underline"
+        >
+          {page.nav.skip}
+        </a>
 
-      {/* Sticky, because the four CTAs sit at y = 10, 1 702, 7 201 and 9 520
+        {/* Sticky, because the four CTAs sit at y = 10, 1 702, 7 201 and 9 520
           on a 9 808px page — and between the form's submit and the next one
           there are 5 499px, about seven phone screens, of the page's most
           persuasive material with no affordance on screen at all. That is
           precisely the stretch where somebody becomes willing to act. The
           header already holds the right link at 44px; it just scrolled away. */}
-      <header className="sticky top-0 z-10 border-b border-line bg-ivory/95 backdrop-blur-sm">
-        <Wrap className="flex min-h-16 items-center justify-between gap-4">
-          <a
-            href="#topo"
-            aria-label={page.nav.home}
-            className="inline-flex min-h-touch items-center text-ink no-underline"
-          >
-            <Logo size={34} />
-          </a>
+        <header className="sticky top-0 z-10 border-b border-line bg-ivory/95 backdrop-blur-sm">
+          <Wrap className="flex min-h-16 items-center justify-between gap-4">
+            <a
+              href="#topo"
+              aria-label={page.nav.home}
+              className="inline-flex min-h-touch items-center text-ink no-underline"
+            >
+              <Logo size={34} />
+            </a>
 
-          {/* In-page anchors, from 900px up — the width at which the page is
+            {/* In-page anchors, from 900px up — the width at which the page is
               already two columns and the header has room for them beside the
               call to action. Below that the CTA is the only thing in the bar
               that matters, and three more links would crowd it off.
@@ -1270,76 +1241,69 @@ export default function FoundersOfferPage() {
               The labels are the sections' own eyebrows, so nothing here is new
               copy; `scroll-mt-20` on the target keeps the heading clear of
               this bar. */}
-          <nav className="hidden min-w-0 items-center gap-6 min-[900px]:flex">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.id}
-                href={`#${link.id}`}
-                className="inline-flex min-h-touch items-center text-meta font-medium whitespace-nowrap text-ink-soft no-underline hover:text-blue"
-              >
-                {link.label}
-              </a>
-            ))}
-          </nav>
+            <nav className="hidden min-w-0 items-center gap-6 min-[900px]:flex">
+              {NAV_LINKS.map((link) => (
+                <a
+                  key={link.id}
+                  href={`#${link.id}`}
+                  className="inline-flex min-h-touch items-center text-meta font-medium whitespace-nowrap text-ink-soft no-underline hover:text-blue"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </nav>
 
-          <a
-            href="#vaga"
-            className="inline-flex min-h-touch items-center text-lead font-semibold whitespace-nowrap text-blue no-underline hover:text-blue-hover"
-          >
-            {page.nav.cta}
-          </a>
-        </Wrap>
-      </header>
+            <SignupTextButton className="inline-flex min-h-touch cursor-pointer items-center border-0 bg-transparent text-lead font-semibold whitespace-nowrap text-blue hover:text-blue-hover">
+              {page.nav.cta}
+            </SignupTextButton>
+          </Wrap>
+        </header>
 
-      {/* `scroll-mt-20` for the same reason every `Section` carries it: the
+        {/* `scroll-mt-20` for the same reason every `Section` carries it: the
           skip link and the logo both point at `#topo`, and without the offset
           the first thing a keyboard user reveals — the hero badge naming the
           48 seats and the 08/10 opening — renders behind the 64px bar. */}
-      <main id="topo" className="scroll-mt-20">
-        <Hero />
-        <Trust />
-        <Pain />
-        <PriceChain />
-        <Pillars />
-        <Screening />
-        <FounderValue />
-        <Signup />
-        <Timeline />
-      <Refunds />
-        <Faq />
+        <main id="topo" className="scroll-mt-20">
+          <Hero />
+          <Promises />
+          <Pain />
+          <PriceChain />
+          <Screening />
+          <FounderValue />
+          <Timeline />
+          <Refunds />
+          <Faq />
 
-        <Section divided={false}>
-          <Wrap>
-            <div className="flex flex-wrap items-center justify-between gap-6 rounded-feature bg-blue-soft px-5 py-6 min-[560px]:p-8">
-              <div className="flex max-w-[620px] flex-col gap-2">
-                <H2>{page.final.title}</H2>
-                <p className="text-ink-soft">{messages.brand.promise}</p>
+          <Section divided={false}>
+            <Wrap>
+              <div className="flex flex-wrap items-center justify-between gap-6 rounded-feature bg-blue-soft px-5 py-6 min-[560px]:p-8">
+                <div className="flex max-w-[620px] flex-col gap-2">
+                  <H2>{page.final.title}</H2>
+                  <p className="text-ink-soft">{messages.brand.promise}</p>
+                </div>
+                <SignupButton className="w-full min-[560px]:w-auto">
+                  {messages.founders.offer.cta}
+                </SignupButton>
               </div>
-              <Button href="#vaga" className="w-full min-[560px]:w-auto">
-                {messages.founders.offer.cta}
-              </Button>
-            </div>
-          </Wrap>
-        </Section>
-      </main>
+            </Wrap>
+          </Section>
+        </main>
 
-      <footer className="pt-8 pb-12 text-meta leading-[1.55] text-muted">
-        <Wrap className="flex flex-wrap justify-between gap-4">
-          <span>{page.footer.company}</span>
-          <span>
-            <Link
-              href={messages.legal.privacyUrl}
-              className="text-blue hover:text-blue-hover"
-            >
-              {messages.legal.privacyLabel}
-            </Link>{' '}
-            ·{' '}
-            <Link href={messages.legal.termsUrl} className="text-blue hover:text-blue-hover">
-              {messages.legal.termsLabel}
-            </Link>
-          </span>
-        </Wrap>
-      </footer>
-    </div>
+        <footer className="pt-8 pb-12 text-meta leading-[1.55] text-muted">
+          <Wrap className="flex flex-wrap justify-between gap-4">
+            <span>{page.footer.company}</span>
+            <span>
+              <Link href={messages.legal.privacyUrl} className="text-blue hover:text-blue-hover">
+                {messages.legal.privacyLabel}
+              </Link>{' '}
+              ·{' '}
+              <Link href={messages.legal.termsUrl} className="text-blue hover:text-blue-hover">
+                {messages.legal.termsLabel}
+              </Link>
+            </span>
+          </Wrap>
+        </footer>
+      </div>
+    </SignupSheet>
   )
 }

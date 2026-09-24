@@ -1,10 +1,26 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
-import { EXAMPLE_AS_OF, EXAMPLE_TENDERS } from '@/lib/radar/landing-example'
+import { EXAMPLE_AS_OF } from '@/lib/radar/landing-example'
 import FoundersOfferPage, { revalidate } from './page'
+import radarPreview from './radar-preview.png'
 
 const out = renderToStaticMarkup(<FoundersOfferPage />)
+
+/**
+ * The hero shot's own `<img>` tag.
+ *
+ * Scoped to `<main>` and taken as the first image there. It is the only one on
+ * the page today; the moment anything before it renders one — a logo, a fallback
+ * — an unscoped `indexOf('<img')` would silently measure that instead, and two
+ * of the assertions below (`no loading="lazy"`, `alt=""`) would still pass.
+ */
+function heroImage() {
+  const main = out.slice(out.indexOf('<main'))
+  const at = main.indexOf('<img')
+  expect(at, 'the hero renders an <img>').toBeGreaterThan(-1)
+  return main.slice(at, main.indexOf('>', at) + 1)
+}
 
 describe('/fundadores', () => {
   it('drops the "Prévia" banner the source page carried', () => {
@@ -24,52 +40,19 @@ describe('/fundadores', () => {
   })
 
   it('quotes the prices of spec §10 and nothing else', () => {
+    // The founder price and the price it becomes, on the page itself. The
+    // form's own copy of them moved into the dialog with the form, and is
+    // asserted in `signup-form.test.tsx`.
     expect(out).toContain('R$ 26')
     expect(out).toContain('R$ 57')
-    expect(out).toContain('por mês nos 6 primeiros meses')
   })
 
-  it('draws no seat grid until a seat is actually taken', () => {
-    // The page is statically rendered, so the live count is never in this
-    // HTML — which is exactly why the grid used to be forty-eight visibly
-    // empty boxes under "Restam 48 vagas", for every visitor, on the page
-    // founders week points at. Scarcity framing only works above zero.
-    expect(out).not.toContain('aspect-square')
-    // The claim itself stays: it is true at 0 and at 48.
-    expect(out).toContain(messages.foundersPage.signup.seatsLabel)
-  })
-
-  it('labels every form control', () => {
-    for (const id of ['nome', 'email', 'whatsapp', 'cnpj', 'vende', 'aceite-contato', 'aceite-termos']) {
-      expect(out).toContain(`for="${id}"`)
-      expect(out).toContain(`id="${id}"`)
-    }
-  })
-
-  it('submits through fetch, never a browser form navigation (F1)', () => {
-    // The endpoint is called from the submit handler, so nothing about it is in
-    // the static HTML: a bare `action=` would serialise the e-mail and the
-    // WhatsApp number into the URL.
-    expect(out).not.toMatch(/<form[^>]*\saction=/)
-  })
-
-  it('never pre-ticks a consent box (LGPD art. 8 §4, terms Annex B)', () => {
-    for (const box of out.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? []) {
-      expect(box).not.toContain('checked')
-    }
-    expect(out.match(/type="checkbox"/g)).toHaveLength(2)
-    expect(out).toContain(messages.consent.founders)
-    expect(out).toContain(messages.consent.termsBefore)
-    expect(out).toContain(messages.consent.termsBetween)
-  })
-
-  it('lets the reader actually open what they are accepting', () => {
-    // Until the legal lane the two documents were named in plain text and had
-    // nowhere to go, so the box recorded an acceptance nobody could have given.
-    expect(out).toContain(`href="${messages.legal.termsUrl}"`)
-    expect(out).toContain(`href="${messages.legal.privacyUrl}"`)
-    // A new tab, so a half-filled form survives the detour.
-    expect(out).toContain('rel="noopener noreferrer"')
+  it('renders no form of its own: the ask is a dialog', () => {
+    // The form is opened by the page's calls to action (`signup-sheet.tsx`)
+    // and is not in the static HTML at all. What it must never grow — a bare
+    // `action=`, which would serialise the e-mail and the WhatsApp number into
+    // the URL — is asserted against the form itself in `signup-form.test.tsx`.
+    expect(out).not.toContain('<form')
   })
 
   it('carries the company identification the legal brief prescribes', () => {
@@ -108,7 +91,11 @@ describe('the refunds section', () => {
   })
 
   it('says the guarantee next to the price, not only in the small print', () => {
-    expect(out).toContain(messages.foundersPage.refunds.ctaLine)
+    // The line sits beside the price *in the form*, which is now a dialog —
+    // so the requirement is asserted where the price is
+    // (`signup-form.test.tsx`). What must stay on the page is the section
+    // that states both refunds in full, which the tests above cover.
+    expect(out).toContain(messages.foundersPage.refunds.title)
   })
 
   it('does not promise a proportional refund it never offered', () => {
@@ -260,13 +247,16 @@ describe('brief §2.2 framing rules', () => {
 describe('the price example, as a chain', () => {
   const { ruler } = messages.foundersPage
   /**
-   * The price section: from its own eyebrow to the next section's.
+   * The price section: from its own eyebrow to the next section's heading.
    *
-   * Searched *forward from* the price eyebrow, because the header anchors now
-   * render `pillars.label` near the top of the document as well.
+   * Searched *forward from* the price eyebrow. The end marker used to be
+   * `pillars.label`, which the header anchors also render near the top of the
+   * document; it is now the screening heading, because the pillars section
+   * the chain used to precede is gone — its four claims are the band under
+   * the hero.
    */
   const priceAt = out.indexOf(ruler.label)
-  const section = out.slice(priceAt, out.indexOf(messages.foundersPage.pillars.label, priceAt))
+  const section = out.slice(priceAt, out.indexOf(messages.foundersPage.screening.title, priceAt))
 
   /**
    * It used to be a bar with four marks over a green→red gradient, positioned
@@ -375,141 +365,121 @@ describe('the price example, as a chain', () => {
  * to be written against that substring, and what they measured was the price
  * chain's position, not the example's.
  */
-describe('the hero, and the form it no longer holds', () => {
-  /** Where the sign-up form starts: its own price line, which nothing else carries. */
-  const formAt = out.indexOf(messages.foundersPage.signup.priceUnit)
-  /** Where the Radar example starts: its panel label, which is unique. */
-  const exampleAt = out.indexOf(messages.radar.landing.example.panelLabel)
+describe('the hero, and the form that is now a dialog', () => {
+
+  /** Every control that opens the signup dialog. */
+  const triggers = () => out.match(/<button[^>]*>/g) ?? []
 
   it('offers a way to the form from the first screen', () => {
-    // The risk in this change: the form left the hero, so the first screen
-    // must still reach it in one click. The hero's call to action is the
-    // catalogue's existing ask and points at the form's own anchor.
-    const hero = out.slice(0, out.indexOf(messages.foundersPage.pillars.items[0].title))
-    expect(hero).toContain(messages.founders.offer.cta)
-    const cta = hero.indexOf(messages.founders.offer.cta)
-    expect(hero.lastIndexOf('href="#vaga"', cta)).toBeGreaterThan(-1)
+    // The risk in this change: the form is no longer on the page at all, so
+    // the first screen must still reach it. The hero's own call to action is
+    // a button that opens the dialog — asserted in a browser too
+    // (`e2e/journeys/fundadores.spec.ts`), where it is clicked.
+    const heroMarkup = out.slice(0, out.indexOf(messages.foundersPage.pillars.items[0].body))
+    expect(heroMarkup).toContain(messages.founders.offer.cta)
+    const cta = heroMarkup.indexOf(messages.founders.offer.cta)
+    // …and it is a button, not a link to an anchor that no longer exists.
+    expect(heroMarkup.slice(0, cta).lastIndexOf('<button')).toBeGreaterThan(
+      heroMarkup.slice(0, cta).lastIndexOf('<a '),
+    )
   })
 
-  it('keeps every link to the form pointing at something that exists', () => {
-    // Four of them: the header, the hero, the offer panel and the final band.
-    expect(out.match(/href="#vaga"/g)?.length).toBeGreaterThanOrEqual(4)
-    expect(out).toContain('id="vaga"')
+  it('offers the Radar beside it, as a real link', () => {
+    // The product is public and free to try. A visitor who would rather see it
+    // working than hand over a WhatsApp number gets a link, not a dialog —
+    // `account.screen.radar`, an approved string reused.
+    expect(out).toContain(messages.account.screen.radar)
+    const at = out.indexOf(messages.account.screen.radar)
+    expect(out.slice(0, at).lastIndexOf('href="/radar"')).toBeGreaterThan(
+      out.slice(0, at).lastIndexOf('<button'),
+    )
   })
 
-  it('keeps the form clear of the sticky header when it is jumped to', () => {
-    // `scroll-mt-20` on `#vaga`. It was a blocker found in review: without it
-    // a jump parks the form's price behind the 64px bar. The form moved down
-    // the page; the offset moves with it.
-    const at = out.indexOf('id="vaga"')
-    expect(at).toBeGreaterThan(-1)
-    expect(out.slice(at, at + 400)).toContain('scroll-mt-20')
+  it('leaves no link pointing at the anchor the form used to carry', () => {
+    // `#vaga` is gone with the section. A CTA still pointing at it would
+    // scroll nowhere — silently, on the page taking sign-ups.
+    expect(out).not.toContain('href="#vaga"')
+    expect(out).not.toContain('id="vaga"')
   })
 
-  it('asks for a name and a WhatsApp number only after the offer', () => {
-    // The form used to be the second thing on the page, beside the headline.
-    // It now follows the offer panel, so the price and what it buys are read
-    // before the three contact details are asked for.
-    expect(formAt).toBeGreaterThan(out.indexOf(messages.foundersPage.founderValue.title))
+  it('opens the dialog from all four calls to action', () => {
+    // The header, the hero, the offer panel and the final band. Counted by
+    // their labels, because that is what a reader presses.
+    const labels = [
+      messages.foundersPage.nav.cta, // header
+      messages.founders.offer.cta, // hero and final band
+      messages.foundersPage.founderValue.cta, // offer panel
+    ]
+    for (const label of labels) expect(out, label).toContain(label)
+    expect(out.split(messages.founders.offer.cta).length - 1).toBe(2)
+    // Every one of them is a <button>: the page renders no form and no anchor
+    // for them to point at.
+    expect(triggers().length).toBeGreaterThanOrEqual(4)
   })
 
-  it('shows the product itself, not only a picture of it', () => {
-    // `ExampleRadar` renders `TenderCardView` over three real frozen PNCP
-    // tenders. A mock-up built for marketing drifts from the product within a
-    // sprint and starts advertising screens we do not draw — on a page taking
-    // money, that is CDC art. 30. The hero image is a visualisation; this is
-    // the product, and it is still on the page.
-    for (const tender of EXAMPLE_TENDERS) expect(out).toContain(tender.object)
-  })
-
-  it('keeps the caption that says the three are frozen, not a live search', () => {
-    expect(out).toContain(EXAMPLE_AS_OF)
-    expect(out).toContain(messages.radar.landing.example.caption.split('{')[0].trim())
-  })
-
-  it('keeps the form above the example on one column', () => {
-    // The two sit side by side from 900px and fall in DOM order below it. The
-    // example is ~600px tall and this page is taking sign-ups: the ask must
-    // not be underneath it on a phone.
-    expect(exampleAt).toBeGreaterThan(-1)
-    expect(formAt).toBeLessThan(exampleAt)
+  it('keeps the anchors that are still anchors', () => {
+    // `#topo` and the three section ids stay — and keep the offset that was a
+    // review blocker this morning, because they are still jumped to.
+    expect(out).toContain('id="topo"')
+    for (const id of ['tool', 'screening', 'faq']) {
+      const at = out.indexOf(`id="${id}"`)
+      expect(at, id).toBeGreaterThan(-1)
+      expect(out.slice(out.lastIndexOf('<', at), out.indexOf('>', at)), id).toContain('scroll-mt-20')
+    }
   })
 
   it('serves the hero shot through the image pipeline, not as 1.6MB of PNG', () => {
     // The source is 1600×1066 and 1.6MB. `next/image` with a static import
     // gives the optimised variants and the reserved box; a bare <img src=
     // "/radar-preview.png"> in a hero gives neither.
-    const img = out.slice(out.indexOf('<img'), out.indexOf('>', out.indexOf('<img')) + 1)
+    const img = heroImage()
     // `srcSet` as React spells it on the server; the browser sees `srcset`.
     expect(img.toLowerCase()).toContain('srcset=')
+    // Through the optimiser, and pointed at the hashed build asset — not at a
+    // raw file in `public/`, which would ship the 1.6MB original as well.
     expect(img).toContain('/_next/image')
+    expect(img).toContain(encodeURIComponent(radarPreview.src))
     expect(out).not.toContain('src="/radar-preview.png"')
   })
 
   it('reserves the shot’s box before it loads', () => {
     // Intrinsic width and height from the static import: no layout shift when
     // the bytes arrive, which is the whole reason for the static import.
-    const img = out.slice(out.indexOf('<img'), out.indexOf('>', out.indexOf('<img')) + 1)
-    expect(img).toMatch(/width="1600"/)
-    expect(img).toMatch(/height="1066"/)
+    //
+    // Read out of the imported module rather than typed in. `vitest.config.mts`
+    // argues that hand-typing 1600×1066 into the component would copy a fact
+    // the file already states and leave it wrong the day the shot is
+    // regenerated — which is just as true one directory over, in the test.
+    const img = heroImage()
+    expect(radarPreview.width).toBeGreaterThan(0)
+    expect(img).toContain(`width="${radarPreview.width}"`)
+    expect(img).toContain(`height="${radarPreview.height}"`)
   })
 
   it('loads the shot eagerly, because it is the largest thing above the fold', () => {
     // `priority`. Next 16 expresses it as the absence of `loading="lazy"` plus
     // a preload; a lazily-loaded LCP element is a Core Web Vitals regression
     // that no string assertion about `<Image>`'s props would catch.
-    const img = out.slice(out.indexOf('<img'), out.indexOf('>', out.indexOf('<img')) + 1)
+    const img = heroImage()
     expect(img).not.toContain('loading="lazy"')
   })
 
   it('leaves the shot out of the accessibility tree instead of narrating it', () => {
-    // `alt=""` on purpose. The headline, the subtitle and the four promises
-    // beside it already say what the product does, and a description of the
-    // screenshot would be new user-facing copy — which is Sci's, under the
-    // legal brief. An empty alt is the correct answer for a decorative image,
-    // not an omission: `alt` missing altogether is what a screen reader reads
-    // the file name for.
-    const img = out.slice(out.indexOf('<img'), out.indexOf('>', out.indexOf('<img')) + 1)
-    expect(img).toContain('alt=""')
-  })
-})
-
-describe('the trust row under the hero', () => {
-  it('states the three facts in the catalogue’s own words', () => {
-    // CNAE compatibility, the AI reading with the page, the maximum purchase
-    // price — `pillars.items[0..2]`, reused rather than rewritten.
-    const pain = out.indexOf(messages.foundersPage.pain.title)
-    for (const item of messages.foundersPage.pillars.items.slice(0, 3)) {
-      const at = out.indexOf(item.title)
-      expect(at).toBeGreaterThan(-1)
-      expect(at).toBeLessThan(pain)
-      expect(out.indexOf(item.body)).toBeLessThan(pain)
-    }
+    // `alt=""` on purpose. The headline and the subtitle beside it already say
+    // what the product does, and a description of the screenshot would be new
+    // user-facing copy — which is Sci's, under the legal brief. An empty alt
+    // is the correct answer for a decorative image, not an omission: `alt`
+    // missing altogether is what a screen reader reads the file name for.
+    expect(heroImage()).toContain('alt=""')
   })
 
-  it('introduces no heading structure of its own', () => {
-    // It was three `<h3>`s for one run, and that broke the outline twice
-    // over: the row sits above the page's first `<h2>`, so the document went
-    // h1 → h3 with nothing between; and the same three strings head the
-    // `Pillars` section further down, so a reader navigating by heading met
-    // "Encontrar / Entender / Ofertar com lucro" twice with no way to tell
-    // the summary from the section.
-    const headings = [...out.matchAll(/<(h[1-6])[^>]*>(.*?)<\/\1>/g)].map((m) => ({
-      level: Number(m[1][1]),
-      text: m[2].replace(/<[^>]*>/g, ''),
-    }))
-
-    // No level is skipped anywhere on the page.
-    for (const [i, heading] of headings.entries()) {
-      if (i === 0) continue
-      expect(heading.level).toBeLessThanOrEqual(headings[i - 1].level + 1)
-    }
-
-    // And each of the three appears as a heading exactly once — in `Pillars`,
-    // which is a section and has an h2 above it.
-    for (const item of messages.foundersPage.pillars.items.slice(0, 3)) {
-      expect(headings.filter((h) => h.text === item.title)).toHaveLength(1)
-    }
+  it('no longer carries the Radar example', () => {
+    // Removed from this page on Sci's instruction. Nothing is orphaned:
+    // `ExampleRadar` still renders on the Landing (`app/(public)/page.tsx`),
+    // so the component and every string it uses keep a home — and card D11,
+    // the frozen tenders that go stale on 30/09, moves with it to `/`.
+    expect(out).not.toContain(messages.radar.landing.example.panelLabel)
+    expect(out).not.toContain(EXAMPLE_AS_OF)
   })
 })
 
@@ -520,35 +490,49 @@ describe('the trust row under the hero', () => {
  * name* in this file, which pinned a bug in place rather than a requirement.
  */
 describe('the D7 layout pass', () => {
-  const { pain, pillars, timeline, founderValue, screening } = messages.foundersPage
+  const { pain, pillars, timeline, founderValue } = messages.foundersPage
   /** The founder price, from the catalogue: `signup.price` is "R$ 26". */
   const price = messages.foundersPage.signup.price
 
   /** Pain: from its heading to the next section's. */
   const painSection = out.slice(out.indexOf(pain.title), out.indexOf(messages.foundersPage.ruler.label))
-  /** Pillars: from its heading to the screening heading. */
-  const pillarsSection = out.slice(out.indexOf(pillars.title), out.indexOf(screening.title))
+  /**
+   * The band of four promises, under the hero.
+   *
+   * It used to be a section of its own further down, sliced from
+   * `pillars.title`; that heading is gone with the section (card **D14**), so
+   * the band is bounded by the first thing it renders and the next section's
+   * heading.
+   */
+  const bandSection = out.slice(out.indexOf('id="tool"'), out.indexOf(pain.title))
   const timelineSection = out.slice(out.indexOf(timeline.title), out.indexOf(messages.foundersPage.refunds.title))
   const founderSection = out.slice(out.indexOf(founderValue.label), out.indexOf(timeline.title))
 
   describe('the section heading gets its own column', () => {
-    it('puts the market figures beside the heading, not under the three problems', () => {
-      // They used to sit *after* the cards — below the fold of this section on
-      // a phone — where two figures about the size of the market read as a
-      // footnote to the three problems rather than as the claim's evidence.
+    it('puts the standfirst beside the heading, not under the three problems', () => {
+      // The section's supporting material belongs in the heading's second
+      // column, not below the fold of the section on a phone.
       //
-      // Asserted as an order, because that is what a reader experiences: the
-      // figures come between the heading and the first problem. A revert to
-      // the single 720px stack puts them after the third.
+      // That column used to hold the two market figures; Sci replaced them
+      // with `pain.standfirst` on 2026-09-24 and the figures now render
+      // nowhere (card **D14** — they stay in the catalogue because deleting
+      // copy is his). Asserted as an order, because that is what a reader
+      // experiences: the standfirst comes between the heading and the first
+      // problem. A revert to the single 720px stack puts it after the third.
       const heading = out.indexOf(pain.title)
-      const firstProblem = out.indexOf(pain.items[0].title, heading)
-      for (const fact of pain.facts) {
-        const at = out.indexOf(fact.value, heading)
-        expect(at).toBeGreaterThan(heading)
-        expect(at).toBeLessThan(firstProblem)
+      const firstProblem = out.indexOf(pain.items[0].body, heading)
+      const standfirst = out.indexOf(pain.standfirst, heading)
+      expect(standfirst).toBeGreaterThan(heading)
+      expect(standfirst).toBeLessThan(firstProblem)
+    })
+
+    it('renders the three problems Sci wrote, in his order', () => {
+      for (const [index, item] of pain.items.entries()) {
+        const at = out.indexOf(item.body)
+        expect(at, item.body).toBeGreaterThan(-1)
+        expect(painSection, item.title).toContain(item.title)
+        if (index > 0) expect(at).toBeGreaterThan(out.indexOf(pain.items[index - 1].body))
       }
-      // And the source line moved with them, still after the figures it names.
-      expect(out.indexOf(pain.source, heading)).toBeLessThan(firstProblem)
     })
 
     it('leaves every other section on the single column it already had', () => {
@@ -614,23 +598,26 @@ describe('the D7 layout pass', () => {
 
   describe('what you will use', () => {
     /** The band itself, so the next section's opening tag cannot be counted. */
-    const band = pillarsSection.slice(pillarsSection.indexOf('<ul'), pillarsSection.indexOf('</ul>'))
+    const band = bandSection.slice(bandSection.indexOf('<ul'), bandSection.indexOf('</ul>'))
 
     it('is one bordered surface, not four competing cards', () => {
       // Four separate cards make one claim — *da busca à proposta* — look like
       // four. `Card`'s surface is `rounded-card`; the band is a single panel.
-      expect(pillarsSection).not.toContain('rounded-card')
-      expect(pillarsSection.match(/<ul/g)).toHaveLength(1)
+      expect(bandSection).not.toContain('rounded-card')
+      expect(bandSection.match(/<ul/g)).toHaveLength(1)
       expect(band.match(/<li/g)).toHaveLength(4)
     })
 
     it('keeps all four items and every plan attribution', () => {
       // The plan label is what tells a reader which of the two paid plans each
-      // capability belongs to. Nothing here was the layout's to drop.
-      for (const item of pillars.items) {
-        expect(pillarsSection).toContain(item.title)
-        expect(pillarsSection).toContain(item.body)
-        expect(pillarsSection).toContain(item.plan)
+      // capability belongs to. Nothing here was the layout's to drop — the
+      // first half of card D12 was exactly that: the trust row rendered these
+      // bodies without their plan, so the AI reading lost "Básico com limite"
+      // and the price band lost "Essencial".
+      for (const [index, item] of pillars.items.entries()) {
+        expect(bandSection).toContain(messages.foundersPage.hero.promises[index])
+        expect(bandSection).toContain(item.body)
+        expect(bandSection).toContain(item.plan)
       }
     })
 
@@ -674,7 +661,7 @@ describe('the D7 layout pass', () => {
       // Tailwind v4's preflight sets `list-style: none`, and Safari drops the
       // list role when it sees that — so the `<ol>` the numerals are
       // `aria-hidden` in deference to would carry nothing on an iPhone.
-      for (const section of [painSection, pillarsSection, timelineSection]) {
+      for (const section of [painSection, bandSection, timelineSection]) {
         expect(section).toMatch(/<(ol|ul) role="list"/)
       }
     })
@@ -832,7 +819,10 @@ describe('the founders finish pass', () => {
     }
   })
 
-  it('keeps the verdict and the source with the chain, not with the heading', () => {
+  it('keeps the verdict and the source after the chain, in that order', () => {
+    // Order only — which column they land in is geometry, and is asserted in a
+    // browser (`e2e/journeys/fundadores.spec.ts`). This one would pass with the
+    // two-column head removed, and says so rather than claiming otherwise.
     // The verdict is the chain's conclusion — it names the sum that does not
     // close — and the source names where the four figures came from. Both read
     // as a footnote to a heading if they end up in the heading's column.
@@ -844,27 +834,80 @@ describe('the founders finish pass', () => {
     expect(verdict).toBeGreaterThan(lastStep)
     expect(source).toBeGreaterThan(verdict)
     // …and all three still belong to this section, not the next one.
-    expect(source).toBeLessThan(out.indexOf(pillars.title))
+    expect(source).toBeLessThan(out.indexOf(messages.foundersPage.screening.title))
   })
 
-  it('announces the trust row as a list, which preflight would otherwise strip', () => {
-    // Tailwind v4's preflight sets `list-style: none`, and Safari drops the
-    // list semantics with the marker. The band the row now uses is the same
-    // one the pillars use, so the fix applies to both at once.
-    // The `<ul>` the first trust item sits in — the last one opened before it.
-    const upToFirstItem = out.slice(0, out.indexOf(pillars.items[0].title))
-    const band = upToFirstItem.slice(upToFirstItem.lastIndexOf('<ul'))
+  it('keeps the four promise titles and their bodies in one band', () => {
+    // The band is the only place these four claims are made now. `role="list"`
+    // with it: Tailwind v4's preflight sets `list-style: none`, and Safari
+    // drops the list semantics along with the marker.
+    const band = out.slice(out.indexOf('id="tool"'), out.indexOf(messages.foundersPage.pain.title))
     expect(band).toContain('role="list"')
+    for (const [index, item] of pillars.items.entries()) {
+      expect(band).toContain(messages.foundersPage.hero.promises[index])
+      expect(band).toContain(item.body)
+      expect(band).toContain(item.plan)
+    }
+  })
+})
+
+/**
+ * The copy Sci wrote on 2026-09-24, and what it replaced.
+ *
+ * Every string here is his — none of it was written, shortened or
+ * re-punctuated in this repository. What these assert is that the page renders
+ * it, in his order, and that the sentences it replaced are gone rather than
+ * left sitting beside it.
+ */
+describe('the copy Sci supplied for the problem and the screening', () => {
+  const { pain, screening } = messages.foundersPage
+
+  it('renders the standfirst he wrote for the heading’s second column', () => {
+    expect(out).toContain(pain.standfirst)
   })
 
-  it('keeps the three trust facts and the four pillars intact', () => {
-    // One band renders both; a shared component that quietly dropped the plan
-    // attribution or an item would be a copy change nobody asked for.
-    for (const item of pillars.items.slice(0, 3)) {
-      // Twice on the page: once in the row, once in the section below it.
-      expect(out.split(item.title).length - 1).toBeGreaterThanOrEqual(2)
+  it('renders the four checks of the screening, in his order, in that section', () => {
+    // The left column of the screening section: from its heading to the card
+    // it introduces, so a check rendered somewhere else does not count.
+    const section = out.slice(out.indexOf(screening.title), out.indexOf(screening.cardLabel))
+    expect(screening.checks).toHaveLength(4)
+
+    let at = section.indexOf(screening.body)
+    expect(at, 'the paragraph the checks sit under').toBeGreaterThan(-1)
+    for (const check of screening.checks) {
+      const found = section.indexOf(check, at)
+      expect(found, check).toBeGreaterThan(at)
+      at = found
     }
-    for (const item of pillars.items) expect(out).toContain(item.plan)
+  })
+
+  it('announces those checks as a list, which preflight would otherwise strip', () => {
+    // Tailwind v4's preflight sets `list-style: none` and Safari drops the
+    // list role with the marker. The same defect shipped this morning.
+    const upToFirst = out.slice(0, out.indexOf(screening.checks[0]))
+    expect(upToFirst.slice(upToFirst.lastIndexOf('<ul'))).toContain('role="list"')
+  })
+
+  it('replaced the old screening paragraph rather than keeping both', () => {
+    // The sentence it replaced described the caching — "fica pronta para todos
+    // que pedirem depois". The speed claim it also carried survives in
+    // `screening.readIn`, which still renders inside the card.
+    expect(out).not.toContain('fica pronta para todos que pedirem depois')
+    expect(out).toContain(screening.readIn)
+  })
+
+  it('does not leave the old problem copy on the page beside the new', () => {
+    expect(out).not.toContain('O governo compra todo dia')
+    expect(out).not.toContain('São milhares de editais abertos')
+  })
+
+  it('spells the brand the way CLAUDE.md requires, everywhere it appears', () => {
+    // "LicitaQui" — capital L, capital Q, no accent. Some renders of the draft
+    // show it wrong, and these two sentences are the newest copy on the page.
+    for (const text of [pain.standfirst, screening.body]) {
+      if (/licitaqui/i.test(text)) expect(text).toContain(messages.brand.name)
+      expect(text).not.toMatch(/Licitaqui|licitaQui|Licitaquí/)
+    }
   })
 })
 
@@ -873,16 +916,20 @@ describe('the header anchors', () => {
 
   it('links nowhere that does not exist', () => {
     const targets = [...header.matchAll(/href="#([^"]+)"/g)].map((m) => m[1])
-    // The logo, the three anchors and the call to action.
-    expect(targets.length).toBeGreaterThanOrEqual(5)
+    // The logo and the three section anchors. The call to action used to be a
+    // fifth — `href="#vaga"` — and is a dialog trigger now, which is why the
+    // count is four and not five.
+    expect(targets.length).toBeGreaterThanOrEqual(4)
     for (const id of targets) expect(out).toContain(`id="${id}"`)
   })
 
   it('keeps the call to action it was added beside', () => {
     // The header is sticky because between the form's submit and the next CTA
     // there are ~5 499px. Anchors must not have cost the thing it carries.
-    expect(header).toContain('href="#vaga"')
+    // It is a button now — the form is a dialog — but it is still there, and
+    // still labelled with the same approved string.
     expect(header).toContain(messages.foundersPage.nav.cta)
+    expect(header).toContain('<button')
   })
 
   it('labels them with the sections’ own approved eyebrows', () => {
@@ -911,7 +958,7 @@ describe('the header anchors', () => {
     // two anchors that did not work.
     const targets = [...out.matchAll(/href="#([^"]+)"/g)].map((m) => m[1])
 
-    expect(new Set(targets).size).toBeGreaterThanOrEqual(5)
+    expect(new Set(targets).size).toBeGreaterThanOrEqual(4)
     for (const id of new Set(targets)) {
       const at = out.indexOf(`id="${id}"`)
       expect(at).toBeGreaterThan(-1)
