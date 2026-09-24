@@ -765,22 +765,30 @@ export function OpportunityView({
           <Operation tender={tender} />
         </div>
 
-        {/* PNCP's shape: the object, then the record's tabs. */}
-        <Record
-          tender={tender}
-          tab={tab}
-          onSelectTab={onSelectTab}
-          itemsVisible={itemsVisible}
-          onShowMoreItems={onShowMoreItems}
-        />
+        {/* The action, above the record and not after it.
+            
+            It used to be the last thing on the page, below the Itens panel.
+            `ITEMS_PAGE` is 20 and each item card is ~140px at 400px, so the
+            button sat roughly 4 500px down a 700px viewport — six or seven
+            swipes — and **every "Mostrar mais" press pushed it another
+            ~2 800px away**. The control that helps her evaluate was the
+            control that buried the action.
 
-        <div className="mt-auto flex flex-col gap-2 pt-2">
+            It belongs here on the reading, too: everything above is the
+            answer to "is this worth my afternoon", and `Itens`/`Documentos`
+            are its appendix. The conclusion does not go in the appendix.
+
+            The tab strip rises with it, which is the other half of the
+            complaint — at ~2 000px down, a person who never scrolled that far
+            did not know Documentos existed. */}
+        <div className="flex flex-col gap-2 pt-7">
           {/* Legal brief §2.2 rule 5: the AI notice appears on EVERY result
               screen, not only in the terms. This screen prints a compatibility
               reading — "Por que este edital apareceu para você" — so it is a
               result screen, and the notice was missing from it. It sits above
               the call to action, which is where the reading stops being read
-              and starts being acted on. */}
+              and starts being acted on — so it moves **with** the button, and
+              a pinned test now keeps the pair together. */}
           <p className="text-caption leading-relaxed text-muted">{aiNotice}</p>
           {/* Sci: *"I already have the AI Triage for this item … but the
               button remains like the first time, for my user."* — and his
@@ -802,6 +810,18 @@ export function OpportunityView({
               {screening.ready ? page.screeningCostReady : page.screeningCost}
             </p>
           ) : null}
+        </div>
+
+        {/* PNCP's shape: the object, then the record's tabs. */}
+        <Record
+          tender={tender}
+          tab={tab}
+          onSelectTab={onSelectTab}
+          itemsVisible={itemsVisible}
+          onShowMoreItems={onShowMoreItems}
+        />
+
+        <div className="mt-auto flex flex-col gap-2 pt-2">
           {/* The source of every fact above. PNCP is the official record
               (Lei 14.133 art. 174); the bidding system below it is where the
               dispute happens, which is a different place and a different
@@ -810,13 +830,22 @@ export function OpportunityView({
               The accessible name is the visible label plus a hidden "(abre em
               uma nova aba)": an aria-label saying something else would name
               the control differently from its text (WCAG 2.5.3). */}
+          {/* Sci, 2026-09-24: keep it, *"but in a not too express way"*.
+
+              A full-width secondary button gave it the visual weight of a
+              second call to action, competing with the one above — and it is
+              not one. It is the source line: the thing a reader reaches for
+              *after* finishing, to check us against the official record. So it
+              is a link now, not a button. It stays exactly where it was and
+              says exactly what it said; only its volume changed. */}
           {pncpUrl ? (
             <Button
-              variant="secondary"
+              variant="link"
               href={pncpUrl}
               rel="noopener noreferrer"
               target="_blank"
-              fullWidth
+              className="px-0 justify-start"
+              iconEnd="arrowRight"
             >
               {page.pncpLink}
               <span className="sr-only"> {page.pncpLinkNewTab}</span>
