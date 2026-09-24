@@ -85,6 +85,17 @@ const PAIRS: [string, string, string][] = [
   ['ink', 'ivory', 'body copy'],
   ['ink', 'surface', 'body copy on a card'],
   ['ink-soft', 'ivory', 'public-page body copy'],
+
+  /*
+   * `/fundadores` alternates its section grounds between Ivory and
+   * `fill-muted` from 2026-09-24, so every tier of public-page text now gets
+   * painted on the muted fill as well as on Ivory. `muted`/`fill-muted` and
+   * `ink`/`fill-muted` were already here for the in-app chips; these three are
+   * the public page's own tiers, which nothing had checked on that fill.
+   */
+  ['ink-soft', 'fill-muted', 'public-page body copy on an alternating section'],
+  ['blue', 'fill-muted', 'the section eyebrow on an alternating section'],
+  ['muted', 'fill-muted', 'the price chain’s quiet values on an alternating section'],
   ['on-ink', 'ink', 'body copy on the graphite panel'],
   ['on-ink-muted', 'ink', 'secondary copy on the graphite panel'],
 ]
@@ -123,6 +134,15 @@ describe('WCAG AA · every ink/fill pair the product paints text in', () => {
     // The old #a15c00 was 4.42:1 here. If this number moves, somebody changed
     // the token: check the badge at 320px before accepting it.
     expect(contrast(token('attention'), token('attention-soft'))).toBeCloseTo(5.3, 1)
+  })
+
+  it('records what the blue eyebrow measures on ivory, so a change has to be deliberate', () => {
+    // `/fundadores`' section eyebrows went from `tone="muted"` to
+    // `tone="accent"` on 2026-09-24 (Sci). They are 12px `caption`, normal
+    // text, so they need the full 4.5 — no large-text exemption. Recorded
+    // rather than merely bounded: if somebody lightens `--color-blue` for the
+    // buttons, this says what it costs the eyebrows.
+    expect(contrast(token('blue'), token('ivory'))).toBeCloseTo(5.78, 2)
   })
 
   it('checks the ratio maths against a pair with a known answer', () => {
