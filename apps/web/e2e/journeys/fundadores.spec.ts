@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { messages } from '../../lib/messages'
+import { format, messages } from '../../lib/messages'
 
 /**
  * **The founders form, which had no browser test at all.**
@@ -747,4 +747,257 @@ test.describe('the price chain, four across in its own column', () => {
       expect(rotated, `at ${width}px`).toBe('90deg')
     }
   })
+})
+
+/**
+ * **The confirmation, and the three things wrong with it.**
+ *
+ * Sci signed up on production on 2026-09-24 with his own details and found
+ * all three from the screen itself:
+ *
+ *  1. it said a WhatsApp message had been sent, and none had — the worker's
+ *     `WHATSAPP_DELIVERY` kill switch is off, so the job runs, writes
+ *     `whatsapp.dry_run` and finishes `done` without opening a socket. On a
+ *     page taking money that sentence is a binding representation (CDC art.
+ *     30), so it stops being rendered until delivery is proven (card E4);
+ *  2. the seat number was the loudest thing on the screen — 34px in the mono
+ *     face, against a 20px heading — which made "you are number 1 of 48" the
+ *     announcement and "Vaga garantida" its caption;
+ *  3. the last line asked the reader to tell another business owner, and
+ *     there was nothing on screen to tell them with.
+ *
+ * These assert the **requirement**, not the markup: no class names, no DOM
+ * shapes. The hierarchy is checked in computed pixels from the real
+ * stylesheet, which is the only place it exists — `renderToStaticMarkup`
+ * cannot see a font size. The confirmation renders inside the dialog, so
+ * every one of these walks the form the way a person does.
+ */
+test.describe('Dona Marta reads her confirmation', () => {
+  /** Submits a real signup and hands back the confirmation. */
+  async function confirmed(page: Page) {
+    await stubSignup(page)
+    await page.goto('/fundadores')
+    await openSignup(page)
+    await fillRequired(page)
+    await signupForm(page).getByRole('button', { name: messages.founders.offer.cta }).click()
+    const panel = page.getByRole('status')
+    await expect(panel).toBeVisible()
+    return panel
+  }
+
+  test('does not tell her we sent a WhatsApp message, because we did not', async ({ page }) => {
+    const panel = await confirmed(page)
+
+    /*
+     * The claim itself, in full. `nextWhatsapp` is past tense — it asserts a
+     * thing that happened — and nothing sends it while the kill switch is off.
+     *
+     * Deliberately the whole sentence and **not** a bare `not.toContainText(
+     * 'WhatsApp')`, which was tried. That version is over-broad as a
+     * requirement — it forbids the word rather than the claim, so any
+     * future-tense sentence Sci may approve ("no dia 08/10 avisamos no seu
+     * WhatsApp") would turn it red while the requirement was perfectly met —
+     * and under-broad as a guard, since it only ever looks at this one branch.
+     * The requirement is "no statement that a message was already sent".
+     */
+    await expect(panel).not.toContainText(confirmation.nextWhatsapp)
+
+    // And what remains is still a real answer to "o que acontece agora",
+    // rather than an empty heading over nothing.
+    await expect(panel).toContainText(confirmation.nextTitle)
+    await expect(panel).toContainText(confirmation.nextOpening)
+    await expect(panel).toContainText(confirmation.nextNothing)
+  })
+
+  test('is told the same truth when the 48 are gone', async ({ page }) => {
+    /*
+     * The waitlist branch, which no browser test had ever rendered — before
+     * this change or after it. It never carried `nextWhatsapp`, so the fix
+     * cannot have broken it; what is worth pinning is that it never *acquires*
+     * the claim, and that the share control does not leak into a screen whose
+     * copy does not invite sharing.
+     */
+    await page.route('**/api/founders', (route) =>
+      route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'waitlisted', position: 3 }),
+      }),
+    )
+    await page.route('**/api/founders/seats', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ taken: 48, total: 48 }),
+      }),
+    )
+    await page.goto('/fundadores')
+    await openSignup(page)
+    await fillRequired(page)
+    await signupForm(page).getByRole('button', { name: messages.founders.offer.cta }).click()
+
+    const panel = page.getByRole('status')
+    await expect(panel).toContainText(messages.founders.waitlist.title)
+    await expect(panel).toContainText(format(messages.founders.waitlist.position, { posicao: 3 }))
+    await expect(panel).not.toContainText(confirmation.nextWhatsapp)
+    await expect(panel.getByRole('button', { name: messages.common.copy })).toHaveCount(0)
+  })
+
+  test('leads with the good news, and keeps the seat number quiet', async ({ page }) => {
+    const panel = await confirmed(page)
+
+    const title = panel.getByRole('heading', {
+      name: confirmation.title.split('{')[0].trim(),
+      exact: false,
+    })
+    const seat = panel.getByText(confirmation.seat.split('{')[0].trim(), { exact: false })
+    await expect(title).toBeVisible()
+    await expect(seat).toBeVisible()
+
+    const sizeOf = (l: ReturnType<Page['locator']>) =>
+      l.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize))
+
+    const [titleSize, seatSize] = [await sizeOf(title), await sizeOf(seat)]
+
+    // The defect, in one number: the seat used to be 34px against a 20px
+    // heading. Whatever the sizes become, the announcement must outrank the
+    // figure — this is the requirement, not "seat === 13px".
+    expect(seatSize, `seat ${seatSize}px vs title ${titleSize}px`).toBeLessThan(titleSize)
+
+    // "Mono at that size reads as a system readout, not as good news."
+    const seatFont = await seat.evaluate((el) => getComputedStyle(el).fontFamily)
+    expect(seatFont).not.toMatch(/mono/i)
+
+    // It is still there, and still says which seat. The whole formatted
+    // sentence, not just "48" — "48" is a literal in the template, so that
+    // assertion passed whether `{numero}` interpolated to 7, to an empty
+    // string or not at all.
+    await expect(seat).toHaveText(format(confirmation.seat, { numero: 7 }))
+  })
+
+  test('gives her something to share with, not just a suggestion to share', async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    const panel = await confirmed(page)
+
+    // The sentence that asks.
+    await expect(panel).toContainText(confirmation.share)
+
+    // …and the mechanism behind it, which did not exist at all before.
+    const copy = panel.getByRole('button', { name: messages.common.copy })
+    await expect(copy).toBeVisible()
+
+    // Reachable by keyboard, not only by pointer: it is a real button.
+    await copy.focus()
+    await expect(copy).toBeFocused()
+    await page.keyboard.press('Enter')
+
+    // "Copiado" is asserted **first**: it reverts after 2.4 s, and doing the
+    // clipboard read and two regex expects before looking for it is how this
+    // becomes a CI flake on a loaded runner.
+    await expect(panel.getByRole('button', { name: messages.common.copied })).toBeVisible()
+
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText())
+    // An absolute address somebody else's phone can open — not "/fundadores",
+    // which is useless the moment it leaves this browser.
+    expect(clipboard).toMatch(/^https?:\/\/[^/]+\/fundadores$/)
+    expect(new URL(clipboard).pathname).toBe('/fundadores')
+  })
+
+  test('shows her the same address it copies', async ({ page, context }) => {
+    /*
+     * Two strings that can disagree is how a share control ships broken: the
+     * button copies one link and the screen shows another.
+     *
+     * This assertion was first written as `expect(panel).toContainText(
+     * clipboard)` and **the mutation check caught it passing when it should
+     * not have**: the visible absolute URL *contains* the relative path, so a
+     * button that copied `/fundadores` while the screen showed
+     * `https://…/fundadores` was green. Containment is the wrong relation
+     * here. Compare the whole string to the whole string.
+     */
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    const panel = await confirmed(page)
+
+    const copy = panel.getByRole('button', { name: messages.common.copy })
+    const shown = panel.locator(`#${await copy.getAttribute('aria-describedby')}`)
+    const visible = ((await shown.textContent()) ?? '').trim()
+
+    await copy.click()
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText())
+
+    expect(clipboard).toBe(visible)
+    // …and both are an address another phone can open.
+    expect(visible).toMatch(/^https?:\/\/[^/]+\/fundadores$/)
+  })
+
+  test('the copy control says what it copies, to a screen reader too', async ({ page }) => {
+    const panel = await confirmed(page)
+    const copy = panel.getByRole('button', { name: messages.common.copy })
+
+    // "Copiar" alone names no object. The description supplies it, and it must
+    // resolve to a real element holding the real address (WCAG 2.5.3 keeps the
+    // visible label as the accessible name; this is what adds the context).
+    const described = await copy.getAttribute('aria-describedby')
+    expect(described).toBeTruthy()
+    const target = panel.locator(`#${described}`)
+    await expect(target).toHaveCount(1)
+    await expect(target).toContainText('/fundadores')
+  })
+
+  for (const width of [390, 440]) {
+    test(`fits inside a ${width}px screen`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      const panel = await confirmed(page)
+
+      // The panel itself, and the address inside it — a long URL in a flex row
+      // is exactly the thing that pushes a dialog past the viewport.
+      const overflow = await panel.evaluate(
+        (el) => el.scrollWidth - el.clientWidth,
+      )
+      expect(overflow, `panel overflows by ${overflow}px`).toBeLessThanOrEqual(1)
+
+      /*
+       * …and the dialog stays inside the viewport.
+       *
+       * This was first written as `documentElement.scrollWidth -
+       * clientWidth`, which **cannot fail here**: the sheet is `fixed`, and a
+       * fixed box never contributes to the document's scrollable overflow —
+       * `Sheet` also sets `documentElement.style.overflow = 'hidden'` while it
+       * is open. Measured against a deliberately 936px-wide child it still
+       * read 0. Bounding rectangles are what see this, which is the pattern
+       * the page-level test above already uses.
+       */
+      const escaping = await page.evaluate(() => {
+        const limit = document.documentElement.clientWidth
+        const dialog = document.querySelector('[role="dialog"]')
+        if (!dialog) return ['no dialog']
+        return [dialog, ...dialog.querySelectorAll('*')]
+          .filter((el) => {
+            const box = el.getBoundingClientRect()
+            return box.width > 0 && (box.right > limit + 1 || box.left < -1)
+          })
+          .map((el) => `${el.tagName} ${String(el.className).slice(0, 80)}`)
+          .slice(0, 5)
+      })
+      expect(escaping).toEqual([])
+
+      /*
+       * And the address is **readable**, not merely present.
+       *
+       * The first version of this control used `text-ellipsis whitespace-nowrap`
+       * and at 390px rendered "http://…/fund…". Every other assertion in this
+       * file still passed — `textContent` returns the whole string whether or
+       * not it is clipped — while the one thing the visible address exists for,
+       * being legible when the clipboard is refused, was gone. Clipping shows
+       * up as content wider than its own box; nothing else here can see it.
+       */
+      const copy = panel.getByRole('button', { name: messages.common.copy })
+      const shown = panel.locator(`#${await copy.getAttribute('aria-describedby')}`)
+      const clipped = await shown.evaluate((el) => el.scrollWidth - el.clientWidth)
+      expect(clipped, `address clipped by ${clipped}px at ${width}px`).toBeLessThanOrEqual(1)
+    })
+  }
 })
