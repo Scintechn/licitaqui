@@ -669,12 +669,40 @@ function FounderValue() {
                 three columns of two-to-five words do not need to be one: below
                 560px each row becomes the feature name with its two values
                 labelled underneath, which is the same information at a width
-                that fits. `<table>` is kept — it *is* tabular data, and the
-                headers stay for assistive technology, hidden visually where
-                the layout stacks. */}
+                that fits. `<table>` is kept — from 560px up it *is* tabular
+                data, with real `<th scope="col">` associations.
+
+                **Below 560px it is not a table at all**, and the comment that
+                used to stand here said the opposite: "the real `<th>` is still
+                associated with the cell". It is not. Setting `display: block`
+                on a table element strips its implicit ARIA role in every major
+                browser — no table, no row, no cell, and therefore no column
+                header associated with anything. The `<th>`s were `sr-only`
+                (present, announced) and the visible substitute labels inside
+                each cell were `aria-hidden` (ignored), on the strength of that
+                false claim. On a phone, every row announced the feature name
+                and then two bare prices with nothing saying which was the
+                competitor's and which was ours — on the one section whose
+                whole job is that contrast.
+
+                So the substitutes do the work where the semantics are gone,
+                and the two mechanisms swap over at the same breakpoint the
+                layout does:
+
+                  <560px   `<thead>` is `display: none` (out of the tree, not
+                           merely invisible) and each value carries its own
+                           label, announced
+                  ≥560px   the labels are `display: none` and the real
+                           `<th scope="col">` associations are back
+
+                `display: none` in both directions on purpose: `aria-hidden`
+                cannot be made conditional on a media query, and `sr-only`
+                would have left the headers announcing a second time. The
+                labels are `comparisonOther` and `messages.brand.name` — the
+                same two strings the `<th>`s carry. */}
             <div>
               <table className="w-full border-collapse text-body leading-[1.55] max-[559px]:block">
-                <thead className="max-[559px]:sr-only">
+                <thead className="max-[559px]:hidden">
                   <tr>
                     <th scope="col" className="border-b border-brand-line px-2 py-2.5" />
                     <th
@@ -700,11 +728,13 @@ function FounderValue() {
                       <td className="border-b border-brand-line px-2 py-2.5 align-top text-on-brand-muted max-[559px]:block max-[559px]:border-0 max-[559px]:pb-1 max-[559px]:font-semibold max-[559px]:text-on-brand">
                         {row.feature}
                       </td>
-                      {/* Below 560px the column header is `sr-only`, so each
-                          value carries its own label. `aria-hidden` on the
-                          inline label: the real `<th>` is still associated
-                          with the cell, and announcing both would say it
-                          twice. */}
+                      {/* The inline label, and it is **not** `aria-hidden`.
+                          Below 560px it is the only thing that says whose
+                          price this is: `display: block` has stripped the
+                          cell's role, so there is no column header associated
+                          with it any more. `hidden` (display: none) is what
+                          keeps it from being announced twice from 560px up,
+                          where the real `<th scope="col">` works again. */}
                       <td
                         className={cn(
                           'border-b border-brand-line px-2 py-2.5 align-top',
@@ -712,7 +742,7 @@ function FounderValue() {
                           index === 0 && 'font-mono tabular-nums',
                         )}
                       >
-                        <span aria-hidden className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption text-on-brand-faint">
+                        <span className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption text-on-brand-faint">
                           {founderValue.comparisonOther}:
                         </span>
                         {row.other}
@@ -724,7 +754,7 @@ function FounderValue() {
                           index === 0 && 'font-mono tabular-nums',
                         )}
                       >
-                        <span aria-hidden className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption font-normal text-on-brand-faint">
+                        <span className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption font-normal text-on-brand-faint">
                           {messages.brand.name}:
                         </span>
                         {row.us}

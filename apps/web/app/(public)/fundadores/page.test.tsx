@@ -197,8 +197,13 @@ describe('brief §2.2 framing rules', () => {
     // This audience will not think to swipe a table, and three columns of
     // two-to-five words do not need to be three below 560px.
     expect(out).toContain('max-[559px]:block')
-    // The headers stay for assistive technology, hidden only visually.
-    expect(out).toContain('max-[559px]:sr-only')
+    // This used to also assert `max-[559px]:sr-only` on the `<thead>`, under
+    // the heading "the headers stay for assistive technology, hidden only
+    // visually". They did not: `display: block` strips the role off every
+    // element of a table, so below 560px those headers were associated with
+    // nothing and announced as two loose words. What the reader needs is
+    // asserted in "the comparison table on a phone" instead — each value
+    // announced with the name of its column.
   })
 
   it('inverts the panel\u2019s call to action so it is not its own background', () => {
@@ -428,6 +433,57 @@ describe('the trust row under the hero', () => {
     }
   })
 })
+
+/**
+ * **A fix to something already on `main`, not part of the restyle.**
+ *
+ * Below 560px the comparison table is laid out with `display: block`, which
+ * strips the implicit ARIA role from every table element in every major
+ * browser: no table, no row, no cell, and therefore no `<th scope="col">`
+ * association. The `<th>`s were `sr-only` — present and announced — and the
+ * visible substitute labels inside each cell were `aria-hidden`, on a code
+ * comment that asserted "the real `<th>` is still associated with the cell".
+ *
+ * On a phone every row therefore announced the feature name and then two bare
+ * prices, with nothing saying which was the competitor's and which was ours —
+ * on the one section whose entire job is that contrast, on a page taking money.
+ */
+describe('the comparison table on a phone', () => {
+  const { founderValue } = messages.foundersPage
+
+  it('announces each value with the name of its column', () => {
+    // The substitute labels are the only thing left saying whose price this
+    // is once the cell's role is gone, so they must be in the tree. Asserted
+    // as: every rendering of either label is reachable by assistive tech.
+    for (const label of [`${founderValue.comparisonOther}:`, `${messages.brand.name}:`]) {
+      const occurrences = [...out.matchAll(new RegExp(`<span([^>]*)>\\s*${escapeForRegExp(label)}`, 'g'))]
+      expect(occurrences.length).toBeGreaterThanOrEqual(messages.foundersPage.founderValue.comparisonRows.length)
+      for (const [, attributes] of occurrences) expect(attributes).not.toContain('aria-hidden')
+    }
+  })
+
+  it('does not leave the stripped headers announcing a second time', () => {
+    // `sr-only` keeps an element in the tree. Below 560px the `<th>`s say
+    // nothing useful — they are associated with nothing — and would be read
+    // out before the rows as two loose words. `hidden` takes them out.
+    const thead = out.slice(out.indexOf('<thead'), out.indexOf('</thead>'))
+    expect(thead).toContain('max-[559px]:hidden')
+    expect(thead).not.toContain('sr-only')
+  })
+
+  it('keeps the real table semantics from 560px up', () => {
+    // The fix is for the phone. The desktop layout is a real table and must
+    // stay one, headers included.
+    const thead = out.slice(out.indexOf('<thead'), out.indexOf('</thead>'))
+    expect(thead.match(/scope="col"/g)).toHaveLength(3)
+    expect(out).toContain(founderValue.comparisonOther)
+  })
+})
+
+/** `RegExp` needs the currency and punctuation in the labels escaped. */
+function escapeForRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 describe('the header anchors', () => {
   const header = out.slice(out.indexOf('<header'), out.indexOf('</header>'))
