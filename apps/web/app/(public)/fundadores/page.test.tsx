@@ -153,4 +153,29 @@ describe('brief §2.2 framing rules', () => {
       expect(out.slice(at, at + 220)).toMatch(/máximo a pagar ao fornecedor/)
     }
   })
+
+  it('gives the refund guarantees a section heading, not fine print', () => {
+    // It was `text-lead font-semibold` — 15px IBM Plex Sans — while the other
+    // eight h2s are 26px Archivo 700, so the 7-day CDC right of withdrawal and
+    // the 30-day guarantee rendered *smaller than the body copy around them*,
+    // directly above a FAQ with full display treatment.
+    const heading = out.indexOf(messages.foundersPage.refunds.title)
+    expect(heading).toBeGreaterThan(-1)
+    // The display face and size the other sections get.
+    const around = out.slice(Math.max(0, heading - 300), heading)
+    expect(around).toContain('font-display')
+    expect(around).not.toContain('text-lead font-semibold')
+  })
+
+  it('keeps the comparison table wide enough to be a table', () => {
+    // `overflow-x-auto` was inert while the table was `w-full`: measured at
+    // 390px, clientWidth 310 and scrollWidth 310, so nothing ever scrolled
+    // and the columns compressed to 91/104/115px.
+    expect(out).toContain('min-w-[420px]')
+  })
+
+  it('keeps a way to act on screen through the long middle of the page', () => {
+    // Between the form's submit and the next CTA there are ~5 499px.
+    expect(out).toMatch(/<header class="[^"]*sticky/)
+  })
 })
