@@ -7,6 +7,7 @@ import type { IconName } from '@/components'
 import { cn } from '@/lib/cn'
 import { messages } from '@/lib/messages'
 import radarPreviewMobile from './radar-preview-mobile.png'
+import radarFull from './radar-full.png'
 import radarPreview from './radar-preview.png'
 import { SignupButton, SignupSheet, SignupTextButton } from './signup-sheet'
 
@@ -447,14 +448,59 @@ function Hero() {
             panel past the viewport at 440px two days ago. The phone shot is
             capped at its own native 390px and centred, so that between 430 and
             540px it reads as a device rather than as a stretched poster. */}
-        <picture className="mx-auto block w-full max-w-[390px] min-[540px]:max-w-none">
-          <source media={SHOT_DESKTOP_MEDIA} srcSet={shot.desktopSrcSet} sizes={shot.desktopSizes} />
-          <img
-            {...shot.img}
-            alt=""
-            className="aspect-[780/1688] w-full rounded-feature border border-line object-cover shadow-[0_24px_50px_-36px_rgba(23,23,23,0.45)] min-[540px]:aspect-[1180/1120]"
-          />
-        </picture>
+{/*
+          **Two layers, because one flat image cannot be both at 593px.**
+
+          The whole Radar is 1440 logical px of application. At 593 that is
+          0.41x and its 13px text renders at ~5px: recognisable as a product,
+          unreadable as one. A 1:1 crop is the opposite — every word legible,
+          but it reads as a torn fragment. Sci hit both in turn, and they are
+          not a matter of taste: they are the arithmetic of putting a 1440px UI
+          in a 593px box.
+
+          So the base carries the silhouette and the inset carries the content.
+          A reader recognises an application from the sidebar and the three
+          columns without reading a word, then reads `R$ 14,60`, the four
+          compatibility checks and their page references at full size beside it.
+
+          The inset is cut to 344 logical px because that is what 58% of 593
+          is — the crop is sized to the box, not the box to the crop, which is
+          what makes it exactly 1:1 rather than approximately.
+
+          Below 540px neither renders: the phone shot does, at its own native
+          size, where the question does not arise.
+        */}
+        <div className="relative mx-auto block w-full max-w-[390px] min-[540px]:max-w-none">
+          <picture>
+            <source media={SHOT_DESKTOP_MEDIA} srcSet={shot.baseSrcSet} sizes={shot.baseSizes} />
+            <img
+              {...shot.img}
+              alt=""
+              className="aspect-[780/1688] w-full rounded-feature border border-line object-cover shadow-[0_24px_50px_-36px_rgba(23,23,23,0.45)] min-[540px]:aspect-[1600/1000]"
+            />
+          </picture>
+
+          {/*
+            Its own `<picture>` with a transparent fallback rather than an
+            `<img>` hidden by CSS: `hidden` stops it being painted and not
+            being fetched, so a phone would pay for a desktop-only crop. With
+            no matching `<source>` below 540px the 70-byte pixel loads instead.
+
+            `aria-hidden`: a second view of the same decorative screenshot
+            (`alt=""`) — announcing it would add an empty image to the reading
+            order.
+          */}
+          <picture aria-hidden className="absolute right-[-3%] bottom-[-6%] block w-[58%]">
+            <source media={SHOT_DESKTOP_MEDIA} srcSet={shot.insetSrcSet} sizes={shot.insetSizes} />
+            <img
+              src={TRANSPARENT_PIXEL}
+              alt=""
+              loading="eager"
+              decoding="async"
+              className="hidden aspect-[688/620] w-full rounded-card border border-line object-cover shadow-[0_18px_44px_-20px_rgba(23,23,23,0.5)] min-[540px]:block"
+            />
+          </picture>
+        </div>
       </Wrap>
     </div>
   )
@@ -466,6 +512,17 @@ function Hero() {
  * switch on the same number — two sources agreeing by coincidence is how a
  * hero ends up drawing one image inside the other's box.
  */
+/**
+ * A 1x1 transparent GIF, 70 bytes inline.
+ *
+ * It is the inset `<picture>`'s fallback `<img src>`, so a phone does not
+ * download a desktop-only crop it will never see. `hidden` stops an image
+ * being painted, not fetched — the two are routinely confused, and confusing
+ * them here would undo the art direction it sits inside.
+ */
+const TRANSPARENT_PIXEL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
 const SHOT_BREAKPOINT = 540
 const SHOT_DESKTOP_MEDIA = `(min-width: ${SHOT_BREAKPOINT}px)`
 
@@ -503,8 +560,24 @@ function productShot() {
    * both files, and one download is the hard requirement here.
    */
   const common = { alt: '', loading: 'eager', fetchPriority: 'high' } as const
+
+  /*
+   * The base layer: the whole screen, whose job is the silhouette. Deliberately
+   * **not** `quality: 90` — at 0.41x nothing in it is legible at any quality, so
+   * the bytes would buy sharpness no reader can resolve. The budget goes to the
+   * inset, which is the layer anybody reads.
+   */
   const {
-    props: { srcSet: desktopSrcSet, sizes: desktopSizes },
+    props: { srcSet: baseSrcSet, sizes: baseSizes },
+  } = getImageProps({
+    ...common,
+    src: radarFull,
+    sizes: '(min-width: 1120px) 593px, (min-width: 900px) calc(50vw - 36px), calc(100vw - 40px)',
+  })
+
+  /* The inset: the crop, drawn at 58% of the base and cut so that 58% is 1:1. */
+  const {
+    props: { srcSet: insetSrcSet, sizes: insetSizes },
   } = getImageProps({
     ...common,
     src: radarPreview,
@@ -518,7 +591,10 @@ function productShot() {
       resampled into it.
     */
     quality: 90,
-    sizes: '(min-width: 1120px) 593px, (min-width: 900px) calc(50vw - 36px), calc(100vw - 40px)',
+    // 58% of the base box, which is what the CSS draws it at. Claiming the
+    // base's width here would fetch a variant nearly twice the box — the exact
+    // over-claim the docstring above warns about.
+    sizes: '(min-width: 1120px) 344px, (min-width: 900px) calc(29vw - 21px), calc(58vw - 23px)',
   })
   const {
     props: { ...img },
@@ -527,7 +603,7 @@ function productShot() {
     src: radarPreviewMobile,
     sizes: '(min-width: 430px) 390px, calc(100vw - 40px)',
   })
-  return { desktopSrcSet, desktopSizes, img }
+  return { baseSrcSet, baseSizes, insetSrcSet, insetSizes, img }
 }
 
 /* ------------------------------------------------------------------- band */

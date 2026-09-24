@@ -1242,10 +1242,26 @@ test.describe('the hero shot’s two sources', () => {
     // can prove the allowlist and the prop agree, so it is asserted here.
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/fundadores')
-    const shot = page.locator('main img[alt=""]').first()
-    await expect(shot).toBeVisible()
-    const src = decodeURIComponent(await shot.evaluate((el: HTMLImageElement) => el.currentSrc))
-    expect(src, src).toContain('q=90')
+    // **The inset, not the base.** The hero became two layers on 2026-09-24:
+    // the whole screen behind, carrying the silhouette, and a 1:1 crop over it
+    // carrying the content. The base is at the default quality on purpose — at
+    // 0.41x nothing in it is legible at any quality, so those bytes buy a
+    // sharpness no reader can resolve. The budget belongs to the layer people
+    // actually read, and this asserts it is spent there.
+    const shots = page.locator('main img[alt=""]')
+    const base = shots.first()
+    const inset = shots.last()
+    await expect(base).toBeVisible()
+    await expect(inset).toBeVisible()
+
+    const insetSrc = decodeURIComponent(await inset.evaluate((el: HTMLImageElement) => el.currentSrc))
+    expect(insetSrc, insetSrc).toContain('q=90')
+    expect(insetSrc, insetSrc).toContain('radar-preview')
+
+    // …and the base is genuinely the other file, so `.last()` is not picking
+    // the same element twice.
+    const baseSrc = decodeURIComponent(await base.evaluate((el: HTMLImageElement) => el.currentSrc))
+    expect(baseSrc, baseSrc).toContain('radar-full')
   })
 
   /**
