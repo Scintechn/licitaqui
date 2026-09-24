@@ -434,9 +434,10 @@ function Hero() {
               Stacked and full width below 560px, primary first: on a phone a
               row of two would give each about 150px. */}
           <div className="mt-1 flex flex-col gap-3 min-[560px]:flex-row min-[560px]:items-center">
-            <SignupButton className="w-full min-[560px]:w-auto">
-              {messages.founders.offer.cta}
-            </SignupButton>
+            <SignupButton
+              className="w-full min-[560px]:w-auto"
+              label={messages.founders.offer.cta}
+            />
             <Button variant="outline" href="/radar" className="w-full min-[560px]:w-auto">
               {messages.account.screen.radar}
             </Button>
@@ -1315,9 +1316,7 @@ function FounderValue() {
                 it is kept because it is the comparison column that grows when
                 a row is added to the table, and then the offer would end above
                 the panel's floor. */}
-            <SignupButton variant="onBrand" className="mt-auto w-full">
-              {founderValue.cta}
-            </SignupButton>
+            <SignupButton variant="onBrand" className="mt-auto w-full" label={founderValue.cta} />
           </div>
 
           <div className="flex flex-col gap-4">
@@ -1632,7 +1631,7 @@ function ClosingOffer() {
                 <span className="min-w-0">{signup.priceNote}</span>
               </p>
 
-              <SignupButton className="mt-1 w-full">{messages.founders.offer.cta}</SignupButton>
+              <SignupButton className="mt-1 w-full" label={messages.founders.offer.cta} />
             </div>
           }
         >
@@ -1692,9 +1691,10 @@ export default function FoundersOfferPage() {
               ))}
             </nav>
 
-            <SignupTextButton className="inline-flex min-h-touch cursor-pointer items-center border-0 bg-transparent text-lead font-semibold whitespace-nowrap text-blue hover:text-blue-hover">
-              {page.nav.cta}
-            </SignupTextButton>
+            <SignupTextButton
+              className="inline-flex min-h-touch cursor-pointer items-center border-0 bg-transparent text-lead font-semibold whitespace-nowrap text-blue hover:text-blue-hover"
+              label={page.nav.cta}
+            />
           </Wrap>
         </header>
 
