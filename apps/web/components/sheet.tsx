@@ -102,10 +102,15 @@ const PLACEMENT: Record<SheetPlacement, { outer: string; panel: string }> = {
    * reachable only by scrolling inside a box that was itself partly hidden.
    *
    * `h-dvh` tracks the dynamic viewport instead, which is exactly the case it
-   * exists for, and it is what `drawer` above already uses. With the padding,
-   * the radius and the border dropped below 560px the panel is the screen, so
-   * there is no "outside" left to tap — dismissal is Escape and the close
-   * control, both of which `Sheet` owns and neither of which is the scrim.
+   * exists for, and it is what `drawer` above already uses.
+   *
+   * **What this costs, for any future `centre` caller.** With the padding, the
+   * radius and the border dropped below 560px the panel is the screen, so the
+   * scrim is fully covered and there is no "outside" left to tap. `Sheet` owns
+   * Escape and the scrim; it does **not** own the close button — that belongs
+   * to the content (`signup-sheet.tsx` renders one). So below 560px a `centre`
+   * caller that omits a close control has **no pointer dismissal at all**, and
+   * Escape is the only way out. Give `centre` content a close button.
    */
   centre: {
     outer: 'flex items-center justify-center min-[560px]:p-4',

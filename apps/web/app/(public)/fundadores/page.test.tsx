@@ -192,6 +192,37 @@ describe('brief §2.2 framing rules', () => {
     }
   })
 
+  it('keeps the two refunds announcing as a list of two', () => {
+    // `refunds.intro` is *"Em dois casos:"*, so the two guarantees have to
+    // announce as two. Tailwind v4's preflight sets `list-style: none` and
+    // Safari drops the list semantics with the marker, which is why every
+    // other list on this page carries `role="list"` — and this is the one the
+    // move re-homed, so it is the one that could lose it silently. One of the
+    // two items is the CDC art. 49 withdrawal right.
+    const at = out.indexOf(messages.foundersPage.refunds.intro)
+    expect(at).toBeGreaterThan(-1)
+    const answer = out.slice(at, out.indexOf('</ul>', at))
+    expect(answer).toContain('<ul role="list"')
+    expect(answer.match(/<li/g), 'one <li> per refund').toHaveLength(
+      messages.foundersPage.refunds.items.length,
+    )
+  })
+
+  it('names the band’s section, which has no heading to name it', () => {
+    // `#tool` is a header nav target and the only section with no `<h2>` —
+    // `pillars.title` is orphaned by Sci's decision. A landmark a nav points
+    // at that announces as a bare "section" is worse than no landmark, so it
+    // is named by the eyebrow already on screen. No new copy.
+    const at = out.indexOf('id="tool"')
+    const tag = out.slice(out.lastIndexOf('<', at), out.indexOf('>', at))
+    const labelledBy = tag.match(/aria-labelledby="([^"]+)"/)?.[1]
+    expect(labelledBy, 'the band section carries aria-labelledby').toBeTruthy()
+    // …and it points at an element that exists and holds the eyebrow.
+    const target = out.indexOf(`id="${labelledBy}"`)
+    expect(target, `nothing carries id="${labelledBy}"`).toBeGreaterThan(-1)
+    expect(out.slice(target, target + 300)).toContain(messages.foundersPage.pillars.label)
+  })
+
   it('opens the refunds as the FAQ’s first question, under its own title', () => {
     // `refunds.title` is already a question — "Vocês devolvem o dinheiro?" —
     // so it is the row's summary unchanged. First, which is the position the
@@ -528,14 +559,14 @@ describe('the hero, and the form that is now a dialog', () => {
     )
   })
 
-  it('downloads one of the two shots, never both', () => {
-    // Two `next/image` elements toggled with `hidden` would fetch both: Chrome
-    // fetches a `display:none` <img>, measured rather than assumed (see the
-    // journey that counts the requests). `<picture>` selects exactly one.
-    //
-    // What that buys is only real if nothing else on the page renders the
-    // other file, so: exactly one `<picture>`, exactly one `<img>` in it, and
-    // exactly one `<source>`.
+  it('renders exactly one picture, one source and one img', () => {
+    // The **download** claim is a network fact and is asserted where it can be
+    // observed — the journey that counts requests at eight viewports. This one
+    // asserts only what static markup can show, which is the precondition for
+    // it: `<picture>` selects one source, so one of each is what makes the
+    // single download possible. Two `next/image` toggled with `hidden` would
+    // fetch both, Chrome fetching a `display:none` <img> — measured, not
+    // assumed.
     const picture = heroPicture()
     expect(out.match(/<picture/g)).toHaveLength(1)
     expect(picture.match(/<source/g)).toHaveLength(1)
@@ -1228,44 +1259,79 @@ describe('the section eyebrows', () => {
  */
 describe('the alternating section grounds', () => {
   const sections = [...out.matchAll(/<section[^>]*class="([^"]*)"/g)].map((m) => m[1])
+  const ground = (cls: string) => (cls.includes('bg-fill-muted') ? 'muted' : 'ivory')
 
   it('paints a ground that runs edge to edge, not inside the wrap', () => {
     // On the `<section>`, never on `Wrap`: a ground that stops at the 1120px
     // measure is a panel, and a panel does not read as a boundary.
-    const withGround = sections.filter((c) => c.includes('bg-fill-muted'))
-    expect(withGround.length, 'some sections carry a ground').toBeGreaterThan(0)
-    // `Wrap` is `mx-auto w-full max-w-[1120px]`; no element carrying both the
-    // ground and that measure exists.
+    expect(sections.filter((c) => c.includes('bg-fill-muted')).length).toBeGreaterThan(0)
     expect(out).not.toMatch(/class="[^"]*max-w-\[1120px\][^"]*bg-fill-muted/)
     expect(out).not.toMatch(/class="[^"]*bg-fill-muted[^"]*max-w-\[1120px\]/)
   })
 
-  it('alternates, so no two neighbouring sections share a ground', () => {
-    const grounds = sections.map((c) => (c.includes('bg-fill-muted') ? 'muted' : 'ivory'))
-    expect(grounds.length).toBeGreaterThanOrEqual(6)
-    for (const [index, ground] of grounds.entries()) {
-      if (index === 0) continue
-      expect(ground, `sections ${index - 1} and ${index} share a ground`).not.toBe(
-        grounds[index - 1],
-      )
+  /**
+   * **By identity and in document order, not by parity.**
+   *
+   * The first version of this asserted only that no two neighbours shared a
+   * ground. That is a local property: inverting every section on the page
+   * satisfies it exactly as well, and in the inverted state the hero (ivory)
+   * is followed by an ivory band — no boundary at all at the one edge Sci's
+   * complaint was about. Verified: with all eight flipped, this file was still
+   * green. So each section is named and pinned.
+   *
+   * The hero is not a `<section>`; it sits on the page's ivory, which is why
+   * the first section has to be `muted` and not merely "different from the
+   * second one".
+   */
+  const ORDER = [
+    ['the promises band', 'muted'],
+    ['the problem', 'ivory'],
+    ['the price chain', 'muted'],
+    ['the screening', 'ivory'],
+    ['the offer panel', 'muted'],
+    ['the timeline', 'ivory'],
+    ['the closing offer', 'muted'],
+    ['the FAQ', 'ivory'],
+  ] as const
+
+  it('gives each section the ground the page alternates to, in order', () => {
+    expect(sections).toHaveLength(ORDER.length)
+    for (const [index, [what, expected]] of ORDER.entries()) {
+      expect(ground(sections[index]), `${what} (section ${index + 1})`).toBe(expected)
     }
   })
 
-  it('never draws a rule and a ground change at the same edge', () => {
-    // Belt and braces, and it reads as chrome. A section that changes ground
-    // drops `divided`.
-    for (const cls of sections) {
-      if (cls.includes('bg-fill-muted')) expect(cls).not.toContain('border-t border-line')
+  it('opens on a ground the hero does not share, which is the edge Sci named', () => {
+    // The hero renders on the page's ivory and is not a `<section>`, so the
+    // first section carries the page's first boundary on its own.
+    expect(ground(sections[0])).toBe('muted')
+  })
+
+  it('never draws a rule as well as a ground change', () => {
+    // A rule *and* a ground change at the same edge is belt and braces, and
+    // reads as chrome. Because the grounds alternate, **every** boundary here
+    // is a ground change — so no section may carry the hairline, and the
+    // assertion is over all of them rather than over the muted ones.
+    //
+    // The first version looked only at sections carrying `bg-fill-muted`,
+    // which the implementation made structurally incapable of having the
+    // border. It passed while four of the eight boundaries drew both.
+    for (const [index, cls] of sections.entries()) {
+      expect(cls, `section ${index + 1}`).not.toContain('border-t border-line')
     }
+    // Scoped to the `<section>` elements, because the same utility is the
+    // band's own cell divider and the screening card's footer rule — both
+    // inside a section rather than between two, and neither is a doubled edge.
+    // A page-wide `not.toContain` would fail on those and say nothing true.
   })
 
   it('uses the 48/64/80 rhythm Sci approved, on this page only', () => {
     // `app/(public)/page-parts.tsx` is shared with the Landing and stays at
     // 40/48 — `CLAUDE.md`'s parallel-lane rule. This asserts the local one.
     for (const cls of sections) {
-      expect(cls).toMatch(/p[yb]-12/)
-      expect(cls).toMatch(/min-\[560px\]:p[yb]-16/)
-      expect(cls).toMatch(/min-\[900px\]:p[yb]-20/)
+      expect(cls).toContain('py-12')
+      expect(cls).toContain('min-[560px]:py-16')
+      expect(cls).toContain('min-[900px]:py-20')
     }
   })
 })

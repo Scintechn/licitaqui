@@ -88,15 +88,12 @@ function Wrap({ children, className }: { children: ReactNode; className?: string
  */
 function Section({
   children,
-  divided = true,
-  attached = false,
   ground = 'ivory',
   id,
+  labelledBy,
   className,
 }: {
   children: ReactNode
-  /** `.borda-topo` — a hairline separating this section from the one above. */
-  divided?: boolean
   /**
    * The full-bleed ground this section paints, alternating down the page.
    *
@@ -111,8 +108,15 @@ function Section({
    * far below the ratio it needs for a patch. That is why this is on the
    * `<section>` and not on `Wrap`.
    *
-   * A section that changes ground drops `divided`: a rule **and** a ground
-   * change at the same edge is belt and braces, and reads as chrome.
+   * **The `border-t border-line` hairline is gone, and so are `divided` and
+   * `attached` with it.** A rule *and* a ground change at the same edge is
+   * belt and braces and reads as chrome — and because the grounds alternate,
+   * **every** boundary on this page is a ground change, so there is no edge
+   * left for a rule to do work at. The first attempt kept the rule on the
+   * ivory sections and gated it `divided && ground === 'ivory'`, which drew
+   * exactly the doubled edge it was written to remove, at four of the eight
+   * boundaries; its test looked only at the muted sections and so could never
+   * fail. `attached` went at the same time: it had no call site anywhere.
    *
    * **`fill-muted` and not `surface`, measured.** `surface` is white, and it
    * was tried first: three of the eight sections — the promises band, the
@@ -127,34 +131,28 @@ function Section({
    */
   ground?: 'ivory' | 'muted'
   /**
-   * Drops the top padding, for a section that continues the one above it
-   * rather than starting a new beat — the sign-up form under the offer panel
-   * is one offer, not two sections.
-   *
-   * A prop rather than `className="pt-0"` from the caller: `cn` is a plain
-   * join with no `tailwind-merge`, so `py-10 pt-0` leaves both rules in the
-   * sheet and which wins is Tailwind's generation order rather than anything
-   * this file states. `lib/cn.ts` says so in as many words — for an override,
-   * a variant, not a competing utility.
-   */
-  attached?: boolean
-  /**
    * The target of a header anchor. `scroll-mt-20` comes with it: the header is
    * sticky and 64px tall, so a bare `#id` jump parks the heading underneath it.
    */
   id?: string
+  /**
+   * The id of the element naming this section, for the one section that has no
+   * `<h2>` — the promises band, whose heading (`pillars.title`) is orphaned by
+   * Sci's decision. A landmark that a nav link points at and that announces as
+   * a bare "section" is worse than no landmark; this names it with the eyebrow
+   * already on screen rather than with new copy.
+   */
+  labelledBy?: string
   className?: string
 }) {
   return (
     <section
       id={id}
+      aria-labelledby={labelledBy}
       className={cn(
-        attached
-          ? 'pb-12 min-[560px]:pb-16 min-[900px]:pb-20'
-          : 'py-12 min-[560px]:py-16 min-[900px]:py-20',
+        'py-12 min-[560px]:py-16 min-[900px]:py-20',
         id && 'scroll-mt-20',
         ground === 'muted' && 'bg-fill-muted',
-        divided && ground === 'ivory' && 'border-t border-line',
         className,
       )}
     >
@@ -572,20 +570,30 @@ function productShot() {
  * Typed `IconName[]`, so a rename in the icon set is a typecheck failure here
  * rather than an empty square on the page taking sign-ups.
  */
+/** The band's eyebrow, which is also the section's accessible name. */
+const BAND_LABEL_ID = 'tool-label'
+
 const BAND_ICONS: readonly IconName[] = ['company', 'tender', 'margin', 'alert']
 
 function Promises() {
   const { pillars } = page
   return (
-    <Section id={ANCHORS.pillars} ground="muted">
+    <Section id={ANCHORS.pillars} ground="muted" labelledBy={BAND_LABEL_ID}>
       <Wrap>
         {/* The only section on the page that used to open with nothing: no
             eyebrow, no heading. `pillars.label` already renders in the header's
             anchor nav — this introduces no copy. The `<h2>` it used to have
-            (`pillars.title`) stays orphaned under D14, by Sci's decision. */}
-        <SectionLabel tone="accent" size="caption" className="mb-6">
-          {pillars.label}
-        </SectionLabel>
+            (`pillars.title`) stays orphaned under D14, by Sci's decision.
+
+            It carries the section's accessible name instead, through
+            `aria-labelledby`: the header's *"O que você vai usar"* link lands
+            here, and a landmark a nav points at with no name announces as a
+            bare "section". No new string — the same eyebrow, referenced. */}
+        <div id={BAND_LABEL_ID} className="mb-6">
+          <SectionLabel tone="accent" size="caption">
+            {pillars.label}
+          </SectionLabel>
+        </div>
 
         {/*
           One panel, not four cards. The four are a single claim — *da busca à
@@ -701,7 +709,13 @@ function RefundsAnswer() {
   return (
     <div className="pb-4">
       <p className="text-base leading-[1.6] text-ink-soft">{refunds.intro}</p>
-      <ul className="mt-4 flex flex-col gap-3">
+      {/* `role="list"`, like every other list on this page: Tailwind v4's
+          preflight sets `list-style: none` and Safari drops the list
+          semantics with the marker. It matters most here — `refunds.intro` is
+          *"Em dois casos:"*, so without it the two guarantees announce as two
+          unassociated runs of text with nothing saying there are two, and one
+          of them is the CDC art. 49 withdrawal right. */}
+      <ul role="list" className="mt-4 flex flex-col gap-3">
         {refunds.items.map((item) => (
           <li key={item} className="flex items-start gap-2.5 text-base leading-[1.6]">
             <Icon name="check" size={18} strokeWidth={2} className="mt-1 shrink-0 text-blue" />
@@ -864,8 +878,18 @@ function PriceChain() {
           figures came from. Both read as a footnote to a heading if they are
           left in the left-hand column, and neither is about the heading.
 
-          The eyebrow earns its place here: it names the commodity the four
-          figures are about, which the heading deliberately does not.
+          **The eyebrow no longer names the commodity, and nothing else does.**
+          It used to read *"Exemplo real · papel sulfite A4, por resma"* and
+          earned its place on exactly that ground; Sci shortened it to
+          *"Exemplo real"* on 2026-09-24. After that edit `≈ R$ 36`, `≈ R$ 20`,
+          `≈ R$ 29` and `R$ 14,60` sit under a source line reading *"Medianas
+          de 8 editais encerrados"* with nothing on this page saying what was
+          bought — `papel A4` survives only in `radar.landing.opportunity.body`,
+          `radar.price.example` and `radar.price.exampleLead`, which are other
+          pages. It is not a false claim, so it is not a blocker, but it is
+          unattributed figures on the page taking money and it is in the PR and
+          the STATUS row for Sci. The wording is his under the legal brief:
+          this comment records the state rather than restoring the suffix.
         */}
         <SectionHead
           label={ruler.label}
@@ -1100,7 +1124,7 @@ function FounderValue() {
    */
   const [price, ...benefits] = founderValue.benefits
   return (
-    <Section divided={false} ground="muted">
+    <Section ground="muted">
       <Wrap>
         {/* Brand blue, not graphite (Sci, 2026-09-24). The `on-brand` ramp is
             measured against #14347f in `tokens.css`; the graphite ramp's tiers

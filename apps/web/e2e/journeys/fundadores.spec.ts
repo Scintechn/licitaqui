@@ -415,11 +415,18 @@ test.describe('the founders page at the widths it changes shape', () => {
       const band = page
         .getByRole('list')
         .filter({ hasText: messages.foundersPage.pillars.items[0].title })
+      // Measured on the **left** edges, not inferred from the row count.
+      // "rows × columns = 4" only holds when the column count divides 4: a
+      // three-column grid puts four items on two rows, so a row-count
+      // inference reports it as two columns and passes.
       const rendered = await band
         .locator('> li')
-        .evaluateAll((items) => new Set(items.map((i) => Math.round(i.getBoundingClientRect().top))).size)
-      // Rows × columns = 4, so the row count is the column count's complement.
-      expect(4 / rendered).toBe(columns)
+        .evaluateAll((items) => ({
+          columns: new Set(items.map((i) => Math.round(i.getBoundingClientRect().left))).size,
+          rows: new Set(items.map((i) => Math.round(i.getBoundingClientRect().top))).size,
+        }))
+      expect(rendered.columns, `columns at ${width}px`).toBe(columns)
+      expect(rendered.rows, `rows at ${width}px`).toBe(Math.ceil(4 / columns))
     })
   }
 
@@ -864,17 +871,42 @@ test.describe('the signup dialog on a phone', () => {
     })
   }
 
-  test('is still a centred card at 560px and above', async ({ page }) => {
-    await page.setViewportSize({ width: 900, height: 800 })
+  // 560 is the number the placement turns on, so 559 and 560 are the widths
+  // that matter — not 390 and 900, which only say the two ends exist. 900 is
+  // kept as the ordinary desktop case.
+  for (const width of [560, 900]) {
+    test(`is still a centred card at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 })
+      await page.goto('/fundadores')
+      await openSignup(page)
+
+      const box = (await signupForm(page).boundingBox())!
+      // The 420px card, inset from the edges — *not* the viewport.
+      expect(Math.round(box.width)).toBe(420)
+      expect(box.x, 'inset from the left').toBeGreaterThan(0)
+      expect(box.y, 'inset from the top').toBeGreaterThan(0)
+      expect(box.width, 'not the full viewport').toBeLessThan(width)
+      //
+      // **No height assertion here, and that is deliberate.** The obvious one
+      // — "shorter than the viewport" — cannot fail: the founders form is
+      // always taller than the space available, so the panel is
+      // viewport-driven and measures `viewport − 32` whether `min-[560px]
+      // :h-auto` is present or not. Measured at 800px and at 1600px tall, with
+      // and without that class: identical, 768 and 1568 both times. So the
+      // discriminating fact is the **breakpoint**, which the 559px test below
+      // pins, not the height.
+    })
+  }
+
+  test('is still full-bleed at 559px, one pixel below the breakpoint', async ({ page }) => {
+    await page.setViewportSize({ width: 559, height: 800 })
     await page.goto('/fundadores')
     await openSignup(page)
 
     const box = (await signupForm(page).boundingBox())!
-    // The 420px card, inset from every edge — not the whole viewport.
-    expect(Math.round(box.width)).toBe(420)
-    expect(box.x).toBeGreaterThan(0)
-    expect(box.y).toBeGreaterThan(0)
-    expect(box.height).toBeLessThan(800)
+    expect(Math.round(box.width)).toBe(559)
+    expect(Math.round(box.y)).toBe(0)
+    expect(Math.round(box.height)).toBe(800)
   })
 })
 
@@ -955,40 +987,59 @@ test.describe('the hero shot’s two sources', () => {
     expect(src, src).toContain('q=90')
   })
 
-  test('gives the headline four lines and the shot the wider column at 1280px', async ({
-    page,
-  }) => {
-    // Sci at ~1270px: *"the proporcional is not right"* — a five-line 60px h1
-    // beside a 464px shot. The requirement is the proportion, so that is what
-    // is measured: line counts off the rendered text, and the shot wider than
-    // the column the headline sits in.
-    await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/fundadores')
-    await page.waitForFunction(() => document.fonts.status === 'loaded')
+  /**
+   * Sci at ~1270px: *"the proporcional is not right"* — a five-line 60px h1
+   * beside a 464px shot. The requirement is stated at **three** widths, so it
+   * is asserted at three: 1280 and 1120 are the `0.85fr 1.15fr` step, 900 is
+   * the even `1fr 1fr` one. Running only at 1280 left the whole 900–1119 tier
+   * unmeasured — deleting the `min-[1120px]` split entirely was invisible to
+   * every unit test and to two of these three widths.
+   */
+  for (const [width, shot] of [
+    [1280, 'wider'],
+    [1120, 'wider'],
+    [900, 'even'],
+  ] as const) {
+    test(`holds four lines and gives the shot its ${shot} column at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/fundadores')
+      await page.waitForFunction(() => document.fonts.status === 'loaded')
 
-    const m = await page.evaluate(() => {
-      const lines = (el: Element) => {
-        const range = document.createRange()
-        range.selectNodeContents(el)
-        const rects = [...range.getClientRects()].filter((r) => r.height > 1 && r.width > 1)
-        return new Set(rects.map((r) => Math.round(r.top))).size
-      }
-      const h1 = document.querySelector('main h1')!
-      const p = h1.parentElement!.querySelector('p')!
-      const img = document.querySelector('main img[alt=""]')!
-      return {
-        h1Lines: lines(h1),
-        h1Width: h1.getBoundingClientRect().width,
-        pLines: lines(p),
-        imgWidth: img.getBoundingClientRect().width,
+      const m = await page.evaluate(() => {
+        const lines = (el: Element) => {
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          const rects = [...range.getClientRects()].filter((r) => r.height > 1 && r.width > 1)
+          return new Set(rects.map((r) => Math.round(r.top))).size
+        }
+        const h1 = document.querySelector('main h1')!
+        const p = h1.parentElement!.querySelector('p')!
+        const img = document.querySelector('main img[alt=""]')!
+        return {
+          h1Lines: lines(h1),
+          colWidth: h1.parentElement!.getBoundingClientRect().width,
+          pLines: lines(p),
+          imgWidth: img.getBoundingClientRect().width,
+        }
+      })
+
+      expect(m.h1Lines, 'the headline holds four lines').toBeLessThanOrEqual(4)
+      // Sci's stated budget for the subtitle, in exchange for the shot's width.
+      expect(m.pLines, 'the subtitle stays inside four lines').toBeLessThanOrEqual(4)
+
+      if (shot === 'wider') {
+        // 0.85/1.15: the shot takes the wider half — the thing that was
+        // backwards — and by a margin an even split cannot reach.
+        expect(m.imgWidth).toBeGreaterThan(m.colWidth)
+        expect(m.imgWidth / m.colWidth).toBeGreaterThan(1.2)
+      } else {
+        // 1fr/1fr below 1120: both columns the same, within a rounding pixel.
+        // Asserted rather than left open, because it is the step that had no
+        // coverage at all and the one the subtitle's fourth line depends on.
+        expect(Math.abs(m.imgWidth - m.colWidth)).toBeLessThanOrEqual(1)
       }
     })
-
-    expect(m.h1Lines, 'the headline holds four lines').toBeLessThanOrEqual(4)
-    // Sci's stated budget for the subtitle, in exchange for the shot's width.
-    expect(m.pLines, 'the subtitle stays inside four lines').toBeLessThanOrEqual(4)
-    // The shot takes the wider half — the thing that was backwards.
-    expect(m.imgWidth).toBeGreaterThan(m.h1Width)
-    expect(m.imgWidth).toBeGreaterThan(540)
-  })
+  }
 })
