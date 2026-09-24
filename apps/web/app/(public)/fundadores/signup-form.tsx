@@ -205,10 +205,21 @@ export function SignupForm() {
         error={errorText(fieldErrors.whatsapp)}
       />
       {/*
-        The CNPJ is required (Sci's decision on the card's open question): it is
-        what tells the Radar which licitações this business can enter, so the
-        founder's list is ready on opening day instead of empty. It is the one
-        field the approved HTML does not have.
+        The CNPJ is **optional** (Sci, 2026-09-24, reversing the earlier call).
+
+        It was required because it is what makes the founder's Radar list ready
+        on opening day rather than empty — a good reason to *ask*, and not a
+        good enough one to *refuse the signup without it*. This form is the top
+        of the funnel: fourteen digits somebody has to go and look up, on a page
+        that has not yet asked for a single cruzeiro, is the most expensive
+        field here. Somebody who leaves rather than fetch their CNPJ costs the
+        whole lead; somebody who joins without it costs one lookup later.
+
+        `founders_list.cnpj` was already nullable, so nothing in the schema had
+        to change for this — only the two places that insisted.
+
+        The hint still says what it is for, so the reason to fill it in is on
+        screen even though the obligation is gone.
       */}
       <Field
         id="cnpj"
@@ -216,11 +227,15 @@ export function SignupForm() {
         type="text"
         inputMode="numeric"
         autoComplete="organization"
-        required
         mono
         icon="company"
         placeholder={form.cnpjPlaceholder}
-        label={form.cnpjLabel}
+        label={
+          <>
+            {form.cnpjLabel}{' '}
+            <small className="font-normal text-muted">({messages.common.optional})</small>
+          </>
+        }
         hint={form.cnpjHelp}
         error={errorText(fieldErrors.cnpj)}
       />

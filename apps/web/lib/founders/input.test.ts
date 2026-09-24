@@ -54,9 +54,22 @@ describe('signupInput', () => {
     })
   })
 
-  it('requires the CNPJ (Sci\'s decision) and leaves "o que você vende" optional', () => {
-    expect(signupInput.safeParse({ ...valid, cnpj: undefined }).success).toBe(false)
+  it('leaves the CNPJ and "o que você vende" optional, but still checks a CNPJ that is given', () => {
+    // Optional since 2026-09-24: this form is the top of the funnel, and
+    // fourteen digits somebody has to go and look up is the most expensive
+    // field on a page that has not yet asked for money. Somebody who leaves
+    // rather than fetch their CNPJ costs the whole lead; somebody who joins
+    // without it costs one lookup later. `founders_list.cnpj` was already
+    // nullable, so nothing in the schema had to move for it.
+    expect(signupInput.safeParse({ ...valid, cnpj: undefined }).success).toBe(true)
+    expect(signupInput.safeParse({ ...valid, cnpj: '' }).success).toBe(true)
+    expect(signupInput.safeParse({ ...valid, cnpj: '   ' }).success).toBe(true)
+    // …but given and wrong is still a mistake worth naming at the form.
     expect(signupInput.safeParse({ ...valid, cnpj: '123' }).success).toBe(false)
+
+    // Absent means absent, not an empty string in the column.
+    const blank = signupInput.safeParse({ ...valid, cnpj: '' })
+    expect(blank.success && blank.data.cnpj).toBeUndefined()
 
     const withoutSells = signupInput.parse({ ...valid, sells: '   ' })
     expect(withoutSells.sells).toBeUndefined()
