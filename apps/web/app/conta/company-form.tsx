@@ -65,7 +65,6 @@ export function CompanyForm({
         error={invalid ? copy.companyInvalid : undefined}
         hint={hint ? copy.companyHelp : undefined}
         inputMode="numeric"
-        autoComplete="off"
         mono
       />
       <Button type="submit" variant="secondary">

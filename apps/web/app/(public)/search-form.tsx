@@ -79,7 +79,6 @@ export function SearchForm() {
           name="cnpj"
           type="text"
           inputMode="numeric"
-          autoComplete="off"
           maxLength={18}
           mono
           icon="company"
