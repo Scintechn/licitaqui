@@ -139,7 +139,7 @@ Você pode recusar ou apagar esses cookies nas configurações do seu navegador,
 | Após a exclusão da conta | Até 30 dias para apagar ou anonimizar, salvo o que a lei obriga a manter |
 | Dados de cobrança e fiscais | 5 anos, por obrigação legal |
 | Registros de acesso | 6 meses (Marco Civil) |
-| Métricas do Google Analytics | 14 meses, prazo configurado na ferramenta |
+| Métricas do Google Analytics | 2 meses, prazo configurado na ferramenta |
 | Lista de fundadores | Até 24 meses após a inscrição, ou até você pedir a exclusão |
 | Editais, itens e resultados públicos | Por tempo indeterminado, por serem dados públicos |
 
