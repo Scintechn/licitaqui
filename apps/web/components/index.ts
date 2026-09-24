@@ -31,5 +31,8 @@ export type { StatusKind, StatusProps } from './status'
 export { Tabs, TabPanel, panelId, tabId } from './tabs'
 export type { TabItem, TabPanelProps, TabsProps } from './tabs'
 
+export { Sheet } from './sheet'
+export type { SheetProps } from './sheet'
+
 export { Tag, TagList } from './tag'
 export type { TagProps, TagTone } from './tag'

@@ -615,6 +615,21 @@
       "radarTitle": "Radar · LicitaQui",
       "radarDescription": "Os editais abertos que combinam com as atividades do seu CNPJ."
     },
+    "menu": {
+      "title": "Menu",
+      "sectionMain": "Principal",
+      "sectionAccount": "Conta",
+      "radar": "Radar",
+      "alerts": "Alertas",
+      "company": "Minha empresa",
+      "billing": "Plano e pagamento",
+      "profile": "Perfil",
+      "help": "Ajuda",
+      "planVisitor": "Sem conta",
+      "alertsWeekly": "{count, plural, =0 {sem alertas neste plano} one {1 alerta semanal} other {# alertas por semana}}",
+      "upgrade": "Conhecer o Essencial",
+      "signIn": "Criar conta grátis"
+    },
     "nav": {
       "skip": "Ir direto para o conteúdo",
       "home": "LicitaQui, início",
