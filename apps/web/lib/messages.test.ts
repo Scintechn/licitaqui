@@ -66,6 +66,41 @@ describe('messages', () => {
    * makes it mandatory on every result screen and §5 reserves its wording for
    * Sci, so it is excluded here rather than quietly rewritten.
    */
+  /**
+   * The cadence a sales page promises must be one the scheduler runs.
+   *
+   * `/fundadores` said *"toda semana no Básico, todo dia no Essencial"* and
+   * the landing said *"No Essencial, todo dia"*. There is no daily digest
+   * anywhere in the worker — `scheduler.py` holds one entry, `weekly_digest`
+   * at Monday 07:00 BRT — and `plan_limits` had an `alert` row for `basico`
+   * alone, so a paid plan resolved to **zero** alerts by `readLimit`'s own
+   * rule. CDC art. 30 binds an advertised feature.
+   *
+   * This guards the copy half. The entitlement half is
+   * `0006_alert_limits.sql` and `plan-limits.db.test.ts`.
+   */
+  it('never promises an alert cadence faster than the one that runs', () => {
+    const offenders: string[] = []
+    const DAILY = /(alerta|aviso|resumo)[^.]{0,80}todo dia|todo dia[^.]{0,80}(alerta|aviso|resumo)/i
+
+    const walk = (node: unknown, path: string): void => {
+      if (typeof node === 'string') {
+        if (DAILY.test(node)) offenders.push(`${path}: ${node}`)
+        return
+      }
+      if (node && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) {
+          walk(value, path ? `${path}.${key}` : key)
+        }
+      }
+    }
+    walk(messages, '')
+
+    expect(offenders).toEqual([])
+    // "O governo compra todo dia" is about the buyer, not about us, and stays.
+    expect(messages.foundersPage.pain.title).toContain('todo dia')
+  })
+
   it('calls an AI reading a triagem, everywhere but the AI notice', () => {
     const ALLOWED = new Set(['ai.disclaimer'])
     const offenders: string[] = []

@@ -233,7 +233,7 @@
         },
         {
           "title": "Antes do prazo",
-          "body": "Alertas no Telegram com os editais novos que combinam com você: toda semana no Básico, todo dia no Essencial.",
+          "body": "Alertas no Telegram com os editais novos que combinam com você: um resumo por semana, toda segunda de manhã.",
           "plan": "Básico e Essencial"
         }
       ]
@@ -737,7 +737,7 @@
       "alerts": {
         "label": "Alertas",
         "title": "Os editais novos chegam no seu Telegram.",
-        "body": "Com a conta grátis, toda segunda você recebe os editais que combinam com o seu CNPJ. No Essencial, todo dia, com até 10 palavras-chave. Um toque liga o alerta: sem número de telefone para cadastrar.",
+        "body": "Com a conta grátis, toda segunda você recebe os editais que combinam com o seu CNPJ. No Essencial, com até 10 palavras-chave. Um toque liga o alerta: sem número de telefone para cadastrar.",
         "messageLabel": "Exemplo de mensagem no Telegram",
         "when": "segunda, 07:00 · exemplo",
         "heading": "3 editais novos para a sua empresa",
