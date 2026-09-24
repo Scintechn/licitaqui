@@ -469,6 +469,54 @@ describe('an empty tab, when the results are on another one', () => {
     expect(out).toContain(`value="${BASE_QUERY.cnpj}"`)
   })
 
+  /**
+   * **A visitor with no CNPJ could not see a search field at all.**
+   *
+   * The whole search — CNPJ, UF and keyword — lives inside a `<details>`, and
+   * it rendered closed on every load. So somebody arriving at `/radar` without
+   * a CNPJ met a collapsed row labelled *"Trocar empresa ou filtros"* — which
+   * says *change* the company when there is no company yet — over an empty
+   * card whose only affordance was a text link. The page's own copy
+   * (`states.needCnpjBody`) offers a keyword search that was nowhere on screen.
+   *
+   * `/fundadores` now carries an "Ir para o Radar" CTA, which points cold
+   * visitors straight into exactly that state.
+   *
+   * These assert the requirement — a search field is *visible* when there is
+   * nothing to search by — not the attribute, so a different disclosure
+   * mechanism would still have to satisfy them.
+   */
+  /**
+   * The assertions read the `<details>` **opening tag only**, not the element.
+   * The summary inside carries `group-open:rotate-90`, so a naive
+   * `not.toContain('open')` over the whole block passes on the bug — it was
+   * written that way first and went red for the wrong reason.
+   */
+  const detailsTag = (html: string) => {
+    const at = html.indexOf('<details')
+    expect(at).toBeGreaterThan(-1)
+    return html.slice(at, html.indexOf('>', at) + 1)
+  }
+
+  it('opens the search when there is no CNPJ and no keyword', () => {
+    const out = render({ query: { cnpj: null, state: null, q: null, group: 'compatible' } })
+    expect(detailsTag(out)).toContain('open')
+    // …and the fields really are inside the part that is now open.
+    const body = out.slice(out.indexOf('<details'), out.indexOf('</details>'))
+    expect(body).toContain('name="cnpj"')
+    expect(body).toContain('name="q"')
+  })
+
+  it('leaves the search closed once there is something to search by', () => {
+    // With a CNPJ the list is the content and the search is a secondary
+    // action, which is the case the disclosure was built for.
+    expect(detailsTag(render())).not.toContain('open')
+    // A keyword alone is also something to search by.
+    expect(
+      detailsTag(render({ query: { cnpj: null, state: null, q: 'papel', group: 'keyword' } })),
+    ).not.toContain('open')
+  })
+
   it('the filter row says the search is inside it', () => {
     // "Filtros" does not tell anybody the whole search lives in there.
     // `changeCompany` was written for this and rendered nowhere.
