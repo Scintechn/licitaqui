@@ -38,7 +38,60 @@ type FormState =
   | { kind: 'idle' }
   | { kind: 'submitting' }
   | { kind: 'error'; fields: FieldErrors; message?: string }
-  | { kind: 'done'; response: SignupOk; firstName: string }
+
+/**
+ * A finished signup. It is **not** state of this component any more — see
+ * `SignupForm`'s props and the docstring on `signup-sheet.tsx`.
+ */
+export type SignupDone = { response: SignupOk; firstName: string }
+
+/**
+ * The fields in the order they are on screen, and the control that owns each.
+ *
+ * Both halves are needed and neither is derivable from the other: the API
+ * answers in *its* field names (`lib/founders/input.ts`) and the inputs carry
+ * Portuguese ids, so "the first error" can only be resolved by walking the
+ * screen order and then looking the control up. `vende` is absent because
+ * nothing can fail there.
+ */
+const FIELD_ORDER = [
+  'name',
+  'email',
+  'whatsapp',
+  'cnpj',
+  'contactConsent',
+  'acceptedTerms',
+] as const
+
+const INPUT_ID: Record<(typeof FIELD_ORDER)[number], string> = {
+  name: 'nome',
+  email: 'email',
+  whatsapp: 'whatsapp',
+  cnpj: 'cnpj',
+  contactConsent: 'aceite-contato',
+  acceptedTerms: 'aceite-termos',
+}
+
+/**
+ * The card the form and the confirmation are both drawn on.
+ *
+ * One constant, used by both, because the confirmation **replaces the form in
+ * place**: any difference between the two is a visible jump at the moment
+ * somebody has just handed over their details. They were two identical string
+ * literals with a comment asking the next person to keep them in step, which
+ * is the kind of instruction that survives exactly one edit.
+ *
+ * Below 560px it is not a card at all. The sheet is the screen there, so a
+ * radius, a hairline and a 40px shadow were being drawn flush against the
+ * phone's edge, inside a panel, inside a `px-3` wrapper — a card in a card,
+ * and a 324px measure on a 390px screen, which is *narrower* than the same
+ * form had when it was a section of the page. From 560px up the sheet is a
+ * centred card floating on the scrim and every one of them earns its place.
+ */
+const PANEL =
+  'flex flex-col gap-4 bg-surface min-[560px]:rounded-panel min-[560px]:border ' +
+  'min-[560px]:border-line min-[560px]:p-6 ' +
+  'min-[560px]:shadow-[0_1px_0_var(--color-line),0_18px_40px_-28px_rgba(23,23,23,0.35)]'
 
 const ERROR_TEXT: Record<string, string> = {
   nameRequired: errors.nameRequired,
@@ -61,7 +114,18 @@ function errorText(code: string | undefined): string | undefined {
   return ERROR_TEXT[code] ?? GENERIC_ERROR
 }
 
-export function SignupForm() {
+/**
+ * @param done  The finished signup, held by `SignupSheet` — see there for why.
+ *              Non-null renders the confirmation instead of the form.
+ * @param onDone Called once, with the seat, when the API accepts the signup.
+ */
+export function SignupForm({
+  done,
+  onDone,
+}: {
+  done: SignupDone | null
+  onDone: (done: SignupDone) => void
+}) {
   const [state, setState] = useState<FormState>({ kind: 'idle' })
   const [taken, setTaken] = useState<number | null>(null)
   const confirmation = useRef<HTMLDivElement>(null)
@@ -82,8 +146,50 @@ export function SignupForm() {
   }, [])
 
   useEffect(() => {
-    if (state.kind === 'done') confirmation.current?.focus()
-  }, [state.kind])
+    if (done) confirmation.current?.focus()
+  }, [done])
+
+  /**
+   * **Take the reader to the error.** This was the live defect on 2026-09-24.
+   *
+   * At 390px this form is about one and a half screens tall, and the submit is
+   * at the bottom — which is where somebody is standing when the answer comes
+   * back. A rejected e-mail address renders its message roughly 530px *above*
+   * the viewport, and before this nothing moved: the only thing that changed
+   * where the reader was looking was the button reverting from "Guardando sua
+   * vaga…" to its idle label, which reads as *nothing happened*. People press
+   * it again, and again, and eventually leave — on the page taking sign-ups.
+   *
+   * Three things had to be true at once for it to be invisible, and they were:
+   * `noValidate` (deliberate, and it switches off the browser's own
+   * scroll-into-view for an invalid control), no scroll of ours, and a message
+   * that announces nothing — `Field` renders it as a bare `<p>`, correctly
+   * wired to the input through `aria-describedby`, which a screen reader only
+   * reads out when the **input** takes focus.
+   *
+   * So the fix is to focus the control rather than the message: one move
+   * satisfies all three — `aria-describedby` announces the error, the panel
+   * scrolls, and a sighted keyboard user is left on the field they have to
+   * correct. `Field` deliberately does **not** also get an `aria-live` region;
+   * with the focus move it would announce the same sentence twice.
+   *
+   * Field-level errors only. A form-level `state.message` already carries
+   * `role="alert"` and renders immediately above the submit, which is where
+   * the reader is, so moving focus for it would take somebody away from a
+   * message they are already looking at.
+   */
+  useEffect(() => {
+    if (state.kind !== 'error') return
+    const field = FIELD_ORDER.find((name) => state.fields[name])
+    if (!field) return
+    const control = document.getElementById(INPUT_ID[field])
+    if (!control) return
+    // `preventScroll`, then centre it by hand: the browser's own scroll on
+    // focus is "nearest", which parks an error message one line inside the
+    // bottom edge of the panel, under the thumb.
+    control.focus({ preventScroll: true })
+    control.scrollIntoView({ block: 'center' })
+  }, [state])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -123,31 +229,21 @@ export function SignupForm() {
         return
       }
 
-      setState({ kind: 'done', response: payload, firstName: firstName(body.name) })
+      onDone({ response: payload, firstName: firstName(body.name) })
     } catch {
       setState({ kind: 'error', fields: {}, message: messages.errors.network })
     }
   }
 
-  if (state.kind === 'done') {
-    return (
-      <Confirmation response={state.response} firstName={state.firstName} ref={confirmation} />
-    )
+  if (done) {
+    return <Confirmation response={done.response} firstName={done.firstName} ref={confirmation} />
   }
 
   const fieldErrors: FieldErrors = state.kind === 'error' ? state.fields : {}
   const busy = state.kind === 'submitting'
 
   return (
-    <form
-      noValidate
-      onSubmit={handleSubmit}
-      className={
-        'flex flex-col gap-4 rounded-panel border border-line bg-surface p-5 ' +
-        'shadow-[0_1px_0_var(--color-line),0_18px_40px_-28px_rgba(23,23,23,0.35)] ' +
-        'min-[560px]:p-6'
-      }
-    >
+    <form noValidate onSubmit={handleSubmit} className={PANEL}>
       <SectionLabel tone="muted" size="caption">
         {copy.planLabel}
       </SectionLabel>
@@ -437,10 +533,9 @@ function Confirmation({
   // No `id` and no scroll offset: this branch replaces the form *inside the
   // dialog*, which is already in view and already holds focus. Both existed
   // for `#vaga`, which no longer exists.
-  const shell =
-    'flex flex-col gap-4 rounded-panel border border-line bg-surface p-5 ' +
-    'shadow-[0_1px_0_var(--color-line),0_18px_40px_-28px_rgba(23,23,23,0.35)] ' +
-    'min-[560px]:p-6'
+  //
+  // The card itself is `PANEL`, the same constant the form uses — it replaces
+  // the form in place, so the two cannot be allowed to drift apart.
 
   // A repeat signup is not an error and not a second seat: it shows the person
   // where they already are on the list.
@@ -468,7 +563,7 @@ function Confirmation({
         press. Explicitly false, so only the label that changed is announced.
       */
       aria-atomic="false"
-      className={shell}
+      className={PANEL}
     >
       {seat === null ? (
         <>

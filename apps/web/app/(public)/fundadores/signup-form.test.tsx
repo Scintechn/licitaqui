@@ -17,7 +17,13 @@ import { SignupForm } from './signup-form'
  * .mts` is `environment: 'node'` and there is no jsdom in the project.
  */
 
-const out = renderToStaticMarkup(<SignupForm />)
+/**
+ * `done` is `SignupSheet`'s state now, not the form's — the sheet unmounts the
+ * form when it closes, and a confirmation that lives in the unmounted thing is
+ * a seat number somebody loses by pressing Back. So the form takes it as a
+ * prop; `null` is the state every assertion below is about.
+ */
+const out = renderToStaticMarkup(<SignupForm done={null} onDone={() => {}} />)
 const copy = messages.foundersPage.signup
 
 describe('the founders signup form', () => {

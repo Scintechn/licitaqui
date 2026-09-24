@@ -46,13 +46,17 @@ export type SheetPlacement =
   /** Full-height panel against the left edge. The menu drawer (D5). */
   | 'drawer'
   /**
-   * Centred card, capped at the viewport's height and scrolled inside.
+   * Centred card from 560px, capped at the viewport's height and scrolled
+   * inside; the whole screen below that.
    *
    * For a sheet that is a *task* rather than a place — the founders signup,
    * which is a form with a submit and a confirmation. A form in a full-height
    * left drawer reads as navigation on a wide screen, and on a phone the two
-   * resolve to nearly the same thing anyway: `inset-4` with a 420px cap is the
-   * width the form is drawn at.
+   * resolve to nearly the same thing anyway.
+   *
+   * (This used to say "`inset-4` with a 420px cap is the width the form is
+   * drawn at". There has been no `inset-4` here since the panel went
+   * full-bleed below 560px — see `PLACEMENT.centre`.)
    */
   | 'centre'
 
@@ -101,8 +105,32 @@ const PLACEMENT: Record<SheetPlacement, { outer: string; panel: string }> = {
    * opens. So the bottom of the panel — the submit — sat behind the keyboard,
    * reachable only by scrolling inside a box that was itself partly hidden.
    *
-   * `h-dvh` tracks the dynamic viewport instead, which is exactly the case it
-   * exists for, and it is what `drawer` above already uses.
+   * ## `h-dvh` is **not** the keyboard fix, and this comment used to say it was
+   *
+   * The claim here was that `h-dvh` "tracks the dynamic viewport … which is
+   * exactly the case it exists for". It is not. The dynamic viewport units are
+   * defined by *retractable browser chrome* — the address bar that slides away
+   * as you scroll — and the CSS Values spec is explicit that they are **not**
+   * affected by an on-screen keyboard. On iOS the keyboard resizes neither the
+   * layout viewport nor `100dvh`; on Android it depends on a setting the page
+   * does not control by default. A unit that is stable while the keyboard is
+   * open cannot be what moves the submit out from behind it.
+   *
+   * What the `h-dvh` change actually fixed, which is worth having: the panel
+   * used to sit inside a `p-4` gutter it did not need at 390px, and it now
+   * tracks the chrome — so on a phone whose address bar is expanded the panel
+   * is the height of what is visible rather than of what will be visible after
+   * a scroll. That is the toolbar case, and it is real. It is just not the
+   * keyboard.
+   *
+   * The keyboard is the **visual viewport**, and only `window.visualViewport`
+   * reports it. The effect below publishes its height and its offset as
+   * `--sheet-h` / `--sheet-top`, which this panel consumes with `100dvh` and
+   * `0px` fallbacks — so a browser without the API (or a server render) gets
+   * exactly the behaviour that shipped before. The outer is `items-start`
+   * below 560px on purpose: `items-center` would centre the panel in the
+   * layout viewport *and then* translate it down by the offset, putting it
+   * half a keyboard too low.
    *
    * **What this costs, for any future `centre` caller.** With the padding, the
    * radius and the border dropped below 560px the panel is the screen, so the
@@ -113,9 +141,11 @@ const PLACEMENT: Record<SheetPlacement, { outer: string; panel: string }> = {
    * Escape is the only way out. Give `centre` content a close button.
    */
   centre: {
-    outer: 'flex items-center justify-center min-[560px]:p-4',
+    outer: 'flex items-start justify-center min-[560px]:items-center min-[560px]:p-4',
     panel:
-      'relative flex h-dvh w-full flex-col overflow-y-auto min-[560px]:h-auto min-[560px]:max-h-full min-[560px]:max-w-[420px] min-[560px]:rounded-panel min-[560px]:border min-[560px]:border-line',
+      'relative flex h-[var(--sheet-h,100dvh)] w-full translate-y-[var(--sheet-top,0px)] flex-col overflow-y-auto ' +
+      'min-[560px]:h-auto min-[560px]:translate-y-0 min-[560px]:max-h-full min-[560px]:max-w-[420px] ' +
+      'min-[560px]:rounded-panel min-[560px]:border min-[560px]:border-line',
   },
 }
 
@@ -173,6 +203,54 @@ export function Sheet({
     window.scrollTo(0, scrollTop.current)
     opener.current?.focus()
   }, [open])
+
+  /**
+   * The **visual** viewport — the one the on-screen keyboard actually shrinks.
+   *
+   * `100dvh` does not (see `PLACEMENT.centre` above). `window.visualViewport`
+   * is the only thing that reports the keyboard, on both platforms: `height`
+   * is what is left above it, and `offsetTop` is how far the browser has
+   * scrolled the visual viewport down inside the layout viewport to keep a
+   * focused control in sight. Published as custom properties rather than as
+   * inline styles so the panel keeps expressing its own box in one place, with
+   * `100dvh` / `0px` fallbacks that are exactly the previous behaviour — a
+   * browser without the API, or the server render, sees no difference.
+   *
+   * `centre` only: `drawer` is a full-height navigation panel with no text
+   * input in it, and publishing a height it does not consume would leave two
+   * custom properties on `<html>` for the whole time the menu is open.
+   *
+   * Both listeners and both properties come off on cleanup. The properties
+   * live on `<html>`, which outlives the sheet, so leaving them behind would
+   * pin the *next* sheet to the size this one was closed at.
+   *
+   * **Not verifiable by the suite**: Playwright cannot raise a software
+   * keyboard, so no automated test here can prove the panel ends up above one.
+   * What `fundadores.spec.ts` does assert is the mechanism — that the
+   * properties are published from `visualViewport` and that the panel's drawn
+   * height and offset follow them — and the keyboard itself needs a handset.
+   */
+  useEffect(() => {
+    if (!open || placement !== 'centre') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const root = document.documentElement
+    const publish = () => {
+      root.style.setProperty('--sheet-h', `${viewport.height}px`)
+      root.style.setProperty('--sheet-top', `${viewport.offsetTop}px`)
+    }
+
+    publish()
+    viewport.addEventListener('resize', publish)
+    viewport.addEventListener('scroll', publish)
+    return () => {
+      viewport.removeEventListener('resize', publish)
+      viewport.removeEventListener('scroll', publish)
+      root.style.removeProperty('--sheet-h')
+      root.style.removeProperty('--sheet-top')
+    }
+  }, [open, placement])
 
   useEffect(() => {
     if (!open) return
