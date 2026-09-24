@@ -287,6 +287,47 @@ describe('the price example, as a chain', () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
   })
 
+  /**
+   * **Each figure must be announced by its own label.**
+   *
+   * The order test above maps only the four *values*, so swapping the `label:`
+   * fields of two steps left the whole suite green — and that mutation makes
+   * the page read "edital ≈ R$ 20" and "vencedor ofertou ≈ R$ 36", inverting
+   * the argument of the section and publishing two false figures under a
+   * source line that names eight real closed tenders. CDC art. 30 binds an
+   * advertised figure, and this is the page taking money.
+   *
+   * The old ruler carried the pairing inside a single `role="img"` label
+   * string. The chain carries it only in DOM adjacency, so adjacency is what
+   * has to be asserted: each label's own list item holds its value and none of
+   * the other three.
+   */
+  it('announces each figure with the label that belongs to it', () => {
+    const steps = [
+      [ruler.tender, ruler.tenderValue],
+      [ruler.winner, ruler.winnerValue],
+      [ruler.retail, ruler.retailValue],
+      [ruler.maxPurchase, ruler.maxPurchaseValue],
+    ] as const
+
+    const values = steps.map(([, value]) => value)
+
+    for (const [label, value] of steps) {
+      const at = section.indexOf(label)
+      expect(at).toBeGreaterThan(-1)
+
+      // The label's own `<li>`, from the label forward to the end of that item.
+      const end = section.indexOf('</li>', at)
+      expect(end).toBeGreaterThan(at)
+      const item = section.slice(at, end)
+
+      expect(item).toContain(value)
+      for (const other of values) {
+        if (other !== value) expect(item).not.toContain(other)
+      }
+    }
+  })
+
   it('sets the maximum purchase price at the size of a standalone figure', () => {
     // `--text-stat` is 34px: the size this page already gives a figure that
     // carries a section (`pain.facts`, the competitor's price). This one is
@@ -422,15 +463,23 @@ describe('the header anchors', () => {
     // is about the offset, not about what the anchors are called, and
     // hardcoding them made renaming them to English (`CLAUDE.md`: identifiers
     // are English) fail a test that has nothing to do with naming.
-    const targets = [...header.matchAll(/href="#([^"]+)"/g)]
-      .map((m) => m[1])
-      .filter((id) => id !== 'topo' && id !== 'vaga')
+    // **No exemptions.** This filter used to drop `topo` and `vaga`, and both
+    // were in fact broken: `#vaga` is the page's own conversion target — three
+    // of the eight in-page links point at it, including the header's CTA — and
+    // it landed 65px under the bar, clipping the `R$ 26`. `#topo` is the skip
+    // link's target, so the first thing a keyboard user revealed was the hero
+    // badge, behind the bar. The suite passed by excluding by name exactly the
+    // two anchors that did not work.
+    const targets = [...out.matchAll(/href="#([^"]+)"/g)].map((m) => m[1])
 
-    expect(targets.length).toBeGreaterThanOrEqual(2)
-    for (const id of targets) {
+    expect(new Set(targets).size).toBeGreaterThanOrEqual(5)
+    for (const id of new Set(targets)) {
       const at = out.indexOf(`id="${id}"`)
       expect(at).toBeGreaterThan(-1)
-      expect(out.slice(at, at + 240)).toMatch(/scroll-mt-/)
+      // The value, not the prefix. `scroll-mt-2` is 8px against a 64px bar and
+      // satisfied the old `/scroll-mt-/`, so the assertion held while the
+      // heading still landed 57px underneath.
+      expect(out.slice(at, at + 240)).toContain('scroll-mt-20')
     }
   })
 })

@@ -871,7 +871,11 @@ export default function FoundersOfferPage() {
         </Wrap>
       </header>
 
-      <main id="topo">
+      {/* `scroll-mt-20` for the same reason every `Section` carries it: the
+          skip link and the logo both point at `#topo`, and without the offset
+          the first thing a keyboard user reveals — the hero badge naming the
+          48 seats and the 08/10 opening — renders behind the 64px bar. */}
+      <main id="topo" className="scroll-mt-20">
         <Hero />
         <Trust />
         <Pain />
