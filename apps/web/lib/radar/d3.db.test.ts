@@ -168,6 +168,18 @@ suite('openTenderStats', () => {
             expect(other!.halted).toBe(open!.halted + 1)
           }
 
+          // But a tender the ingest never classified is **neither**. `halted`
+          // first read `status is distinct from 'Divulgada no PNCP'`, which is
+          // TRUE for NULL, so an unclassified row would have been published on
+          // the front page as suspended, revoked or annulled *by the órgão* —
+          // a claim about an agency's act that nothing supports, on a figure
+          // CDC art. 30 makes binding. `status` is nullable and the fallback
+          // sweep writes whatever `situacao_nome` it received.
+          await tx.execute(sql`update tenders set status = null where id = ${tender.id}`)
+          const unclassified = await openTenderStats(tx)
+          expect(unclassified!.open).toBe(open!.open - 1)
+          expect(unclassified!.halted).toBe(open!.halted)
+
           throw ROLLBACK
         },
         { isolationLevel: 'repeatable read' },

@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 import { enqueueJob, JOB_KINDS, PRIORITY_USER_WAITING, screeningJobKey, type EnqueuedJob } from '@/lib/jobs'
-import type { ScreeningOk, QuotaView } from './contract'
+import type { ScreeningAvailability, ScreeningOk, QuotaView } from './contract'
 import {
   FEATURES,
   periodStart,
@@ -187,7 +187,11 @@ export async function readScreening(
  * One statement, because this rides on `GET /api/tenders/:id` and Neon may have
  * to wake up for it.
  */
-export type ScreeningAvailability = { ready: boolean; spent: boolean }
+// The shape lives in `contract.ts` — it crosses the wire. It was declared a
+// second time here and the two drifted the moment a field was added to one:
+// `metered` existed on the contract and not on this copy, so the route could
+// not return what this function produced. Re-exported rather than redeclared.
+export type { ScreeningAvailability } from './contract'
 
 export async function screeningAvailability(
   tenderId: string,
@@ -213,7 +217,14 @@ export async function screeningAvailability(
       } as spent
   `)
   const row = found.rows[0]
-  return { ready: Boolean(row?.ready), spent: Boolean(row?.spent) }
+  return {
+    ready: Boolean(row?.ready),
+    spent: Boolean(row?.spent),
+    // `plan_limits.quantity` is null for the paid plans. Without this the
+    // screen tells a founder who just bought "Triagens de edital sem limite"
+    // that each one uses up an allowance.
+    metered: limit.quantity !== null,
+  }
 }
 
 export type ScreeningOutcome =

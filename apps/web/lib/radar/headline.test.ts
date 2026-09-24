@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TenderCard } from './contract'
 import { cardHeadline, deadlineLabel, tenderBudget } from './headline'
-import { messages } from '../messages'
+import { format, messages } from '../messages'
 
 const copy = messages.radar
 const NOW = new Date('2026-09-17T15:00:00.000Z')
@@ -97,6 +97,32 @@ describe('cardHeadline', () => {
     )
     expect(out.anchor).toBeNull()
     expect(out.note).toBe(copy.card.noValue)
+  })
+
+  it('says "Encerrado", not "último dia", once the hour has passed today', () => {
+    // The gate in `tender-status.ts` is to the second; `daysUntil` is
+    // calendar-day and answers 0 all day. Between 08:00 and midnight on the
+    // closing day those two disagreed, and this slot — the largest text on
+    // the card — took the calendar's answer and called it "último dia".
+    //
+    // Verified before the fix: `{"fact":"deadline","text":"último dia"}` four
+    // hours after the deadline had passed.
+    const out = cardHeadline(
+      card({ estimatedValue: null, proposalsCloseAt: '2026-09-17T11:00:00.000Z' }),
+      new Date('2026-09-17T15:00:00.000Z'),
+    )
+    expect(out.anchor).toEqual({ fact: 'deadline', text: copy.card.closed })
+  })
+
+  it('still says "último dia" while the hour is genuinely still to come', () => {
+    const out = cardHeadline(
+      card({ estimatedValue: null, proposalsCloseAt: '2026-09-17T15:00:00.000Z' }),
+      new Date('2026-09-17T11:00:00.000Z'),
+    )
+    expect(out.anchor).toEqual({
+      fact: 'deadline',
+      text: format(copy.card.daysLeft, { count: 0 }),
+    })
   })
 
   it('still promotes a closed deadline, because "encerrado" is the fact', () => {

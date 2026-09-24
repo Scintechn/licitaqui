@@ -23,6 +23,38 @@
   which lost two fixes and had to re-apply them. Wait for the lane to finish, then
   resolve.
 - AI prompt or extraction changes must run `worker/evaluation` and report the score diff.
+- **A "later" in a comment is not a task.** If your change leaves something for
+  somebody else — a column nothing reads yet, a string nothing renders, an event
+  nothing fires, a prop nothing passes — it gets a card in
+  `docs/DEVELOPMENT_PLAN.md` §5 **in the same PR**, or you do not write it.
+  Five instances of this shape have been found in this repo:
+  `tenders.short_title` (8 712 rows, read by no screen for days — its handoff
+  was a sentence inside `0005_tender_short_title.sql`), `locked_block_clicked`
+  (in the closed catalogue, fired nowhere), `radar.list.changeCompany` (approved
+  copy, rendered nowhere), `radar.opportunity.screeningCost` (written, tested,
+  never passed) and `alert_deliveries.opened_at` (read by a Gate 0 card, written
+  by nothing). Every one of them was a truthful task report about work that did
+  nothing, and the tests passed throughout.
+
+## Clocks
+
+Three of them, and mixing two has already produced a wrong answer here:
+
+| | |
+|---|---|
+| **The product** | `America/Sao_Paulo` (BRT, UTC−3). Every deadline a user reads, the Monday 07:00 digest, "último dia" |
+| **The database and the logs** | **UTC.** `now()`, `created_at`, every `ts` in the worker's JSON logs |
+| **Sci's laptop** | Portugal (WEST, UTC+1 in summer) |
+
+So a shell `date` is **four hours ahead of the product** and one hour ahead of
+the database. On 2026-09-23 a worker was declared stalled for an hour on exactly
+that mistake — a database `now()` read against a local clock. It was six minutes.
+
+Always state which clock a time is in, and compare like with like: take both
+sides from `now()`, or convert explicitly (`at time zone 'America/Sao_Paulo'`).
+A scheduled job's hour is BRT (`scheduler.py`'s `daily_at`), and the row it
+writes is UTC.
+
 - Design: use tokens from `apps/web/styles/tokens.css` (Ivory/Graphite/Blue, Archivo/IBM Plex). Brand name is always "LicitaQui".
 
 ## Knowledge base and POCs

@@ -205,6 +205,8 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
       ready: false,
       spent: false,
+      // `visitor` is 2 per total, so this caller is metered.
+      metered: true,
     })
   })
 
@@ -222,6 +224,8 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
       ready: true,
       spent: false,
+      // `visitor` is 2 per total, so this caller is metered.
+      metered: true,
     })
   })
 
@@ -234,6 +238,8 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
       ready: true,
       spent: true,
+      // `visitor` is 2 per total, so this caller is metered.
+      metered: true,
     })
   })
 
@@ -251,9 +257,34 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
       ready: false,
       spent: true,
+      // `visitor` is 2 per total, so this caller is metered.
+      metered: true,
     })
     // …and it agrees with what the triagem screen would actually show.
     expect(await readScreening(tender, db())).toBeNull()
+  })
+
+  it('reports a paid plan as unmetered, straight from plan_limits', async () => {
+    // `plan_limits` gives `promocional`, `essencial` and `pro` a null
+    // quantity. The Opportunity screen used this to decide whether to print
+    // "Usa 1 das suas triagens", and without it every founder who paid on the
+    // morning of founders week was told a triagem spends an allowance their
+    // plan does not have — under a button on a page whose own feature list
+    // says "Triagens de edital sem limite".
+    //
+    // Read through `readLimit` rather than a literal, so a future row that
+    // sets a real number on a paid plan turns this red instead of lying.
+    const tender = await givenTender(25)
+    for (const plan of ['promocional', 'essencial', 'pro']) {
+      const paid = await readLimit(plan, FEATURES.screening, db())
+      expect(paid.quantity, `${plan} should be unlimited in plan_limits`).toBeNull()
+      const seen = await screeningAvailability(tender, spender, paid, db())
+      expect(seen.metered, `${plan} must not be metered`).toBe(false)
+    }
+
+    const basic = await readLimit('basico', FEATURES.screening, db())
+    expect(basic.quantity).toBe(5)
+    expect((await screeningAvailability(tender, spender, basic, db())).metered).toBe(true)
   })
 
   it('never reports spent for a caller with no identity yet', async () => {
@@ -262,6 +293,8 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, null, await limit(), db())).toEqual({
       ready: true,
       spent: false,
+      // `visitor` is 2 per total, so this caller is metered.
+      metered: true,
     })
   })
 

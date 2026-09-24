@@ -357,6 +357,37 @@ suite('U1 — accounts and quota enforcement (database)', () => {
      * jar, still refused. This one is the person the old rule was charging by
      * mistake.
      */
+    /**
+     * The hole a code review found the same day the fix shipped.
+     *
+     * The first version required `user_agent_hash` to match as well. The
+     * user-agent is a request header the caller chooses, and `hash(null)`
+     * returns null — so an empty one switched the CNPJ rule off entirely, and
+     * varying the string minted a new device per request. The rule caught
+     * nothing a script does while still costing the honest user.
+     */
+    it('is not defeated by changing or omitting the user agent', async () => {
+      const machine = { ip: '198.51.100.77', userAgent: 'LicitaQuiTest/real' }
+
+      const first = await searchAs({}, SHARED_CNPJ, machine)
+      expect(first.body.state).toBe('ready')
+      await pool().query(
+        "update visitors set created_at = now() - interval '4 days' where cnpj = $1",
+        [SHARED_CNPJ],
+      )
+
+      // Same address, a user-agent the caller made up. Still expired.
+      const disguised = await searchAs({}, SHARED_CNPJ, { ...machine, userAgent: 'x1' })
+      if (disguised.body.state !== 'ready') throw new Error('expected ready')
+      expect(disguised.body.visitor).toMatchObject({ expired: true })
+
+      // Same address, no user-agent at all — the version that switched the
+      // whole rule off.
+      const bare = await searchAs({}, SHARED_CNPJ, { ...machine, userAgent: '' })
+      if (bare.body.state !== 'ready') throw new Error('expected ready')
+      expect(bare.body.visitor).toMatchObject({ expired: true })
+    }, 120_000)
+
     it('does not expire a different device that happens to search the same CNPJ', async () => {
       const mine = device('owner')
       const stranger = device('somebody-else-entirely')
