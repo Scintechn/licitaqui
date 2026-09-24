@@ -125,7 +125,14 @@ def test_the_welcome_renders_from_the_job_payload() -> None:
     text = templates.render("whatsapp", "founders-welcome", context)
 
     assert context["nome"] == "Maria"
-    assert "número 7 de 48" in text
+    # The seat, without the denominator. Sci dropped "de 48" on 2026-09-24:
+    # the number is the receipt and the thing support quotes back, but "1 de
+    # 48" on an empty list advertises that nobody else has signed up. The same
+    # sentence renders on /fundadores as `founders.confirmation.seat`, and the
+    # two have to say the same thing — a founder who reads one and then the
+    # other must not find them disagreeing.
+    assert "número 7" in text
+    assert "de 48" not in text
 
 
 def test_the_waitlist_renders_from_the_job_payload() -> None:

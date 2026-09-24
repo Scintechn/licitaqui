@@ -1,0 +1,27 @@
+# `docs/STATUS.md` is an append-only log, and git does not know that.
+#
+# Every lane finishes by appending one row to it (`CLAUDE.md`, workflow step 5).
+# Two branches open at the same time therefore append at the same place, and
+# git reports a conflict on every pair — not occasionally, but *by
+# construction*. It collided three times before 2026-09-24 and **seven times on
+# that day alone**, and the resolution was identical every time: keep both
+# sides. A conflict whose answer is always the same is a missing merge driver,
+# not a decision.
+#
+# `union` tells git to take both sides' lines instead of asking. For a file
+# where every change is a new line at the end, that is exactly right.
+#
+# **Two things to know about it.**
+#
+# It is not free of judgement: if two branches ever edit the *same* row, union
+# keeps both copies rather than choosing. For a dated log that is a visible,
+# harmless duplicate — far cheaper than the seven hand-resolutions it replaces,
+# each of which could silently have dropped a row.
+#
+# And it is deliberately **only this file**. `docs/DEVELOPMENT_PLAN.md`
+# conflicts for the same reason (two lanes inserting a card after the same
+# anchor row), but cards there are also *edited* — a status flipped, an
+# acceptance criterion tightened — and union would quietly duplicate an edited
+# card instead of conflicting. That file keeps its conflicts, because there the
+# conflict is a real question.
+docs/STATUS.md merge=union
