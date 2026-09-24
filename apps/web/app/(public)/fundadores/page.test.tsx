@@ -4,6 +4,7 @@ import { messages } from '@/lib/messages'
 import { EXAMPLE_AS_OF } from '@/lib/radar/landing-example'
 import FoundersOfferPage, { revalidate } from './page'
 import radarPreviewMobile from './radar-preview-mobile.png'
+import radarFull from './radar-full.png'
 import radarPreview from './radar-preview.png'
 
 const out = renderToStaticMarkup(<FoundersOfferPage />)
@@ -32,6 +33,21 @@ function heroPicture() {
   const main = out.slice(out.indexOf('<main'))
   const at = main.indexOf('<picture')
   expect(at, 'the hero renders a <picture>').toBeGreaterThan(-1)
+  return main.slice(at, main.indexOf('</picture>', at) + '</picture>'.length)
+}
+
+/**
+ * The **second** `<picture>`: the 1:1 inset laid over the base.
+ *
+ * Deliberately by position rather than by a class or an id — the requirement
+ * is "there are two layers and the second is the callout", and a selector on
+ * styling would keep passing if the two were swapped.
+ */
+function heroInset() {
+  const main = out.slice(out.indexOf('<main'))
+  const first = main.indexOf('<picture')
+  const at = main.indexOf('<picture', main.indexOf('</picture>', first))
+  expect(at, 'the hero renders a second <picture> for the inset').toBeGreaterThan(-1)
   return main.slice(at, main.indexOf('</picture>', at) + '</picture>'.length)
 }
 
@@ -526,11 +542,15 @@ describe('the hero, and the form that is now a dialog', () => {
       // `srcSet` as React spells it on the server; the browser sees `srcset`.
       expect(el.toLowerCase()).toContain('srcset=')
       expect(el).toContain('/_next/image?url=')
-      expect(el).toContain('radar-preview')
+      expect(el).toContain('radar-')
     }
+    // The inset goes through the optimiser too — it is the layer anybody
+    // actually reads, so it is the one that must not be served raw.
+    expect(heroInset()).toContain('/_next/image?url=')
+    expect(heroInset()).toContain(encodeURIComponent('/static/media/radar-preview.'))
     // Both stems, one each side of the breakpoint.
     expect(heroPicture()).toContain('radar-preview-mobile')
-    expect(heroSource()).toContain(encodeURIComponent('/static/media/radar-preview.'))
+    expect(heroSource()).toContain(encodeURIComponent('/static/media/radar-full.'))
     // And nothing bypasses the optimiser: no direct src at a raw PNG.
     expect(out).not.toMatch(/src="[^"]*\.png"/)
     expect(out).not.toContain('src="/radar-preview.png"')
@@ -550,13 +570,36 @@ describe('the hero, and the form that is now a dialog', () => {
     // rather than typed in: a re-export that changes the shape of either file
     // must fail here rather than ship a layout shift.
     expect(img).toContain(`aspect-[${radarPreviewMobile.width}/${radarPreviewMobile.height}]`)
-    expect(img).toContain(`aspect-[${radarPreview.width}/${radarPreview.height}]`)
+    expect(img).toContain(`aspect-[${radarFull.width}/${radarFull.height}]`)
     // Same breakpoint on the CSS ratio and on the source selection.
     const breakpoint = heroSource().match(/min-width:\s*(\d+)px/)?.[1]
     expect(breakpoint, 'the <source> carries a media query').toBeTruthy()
     expect(img).toContain(
-      `min-[${breakpoint}px]:aspect-[${radarPreview.width}/${radarPreview.height}]`,
+      `min-[${breakpoint}px]:aspect-[${radarFull.width}/${radarFull.height}]`,
     )
+    // The inset reserves its own box at its own ratio, read from the module
+    // rather than typed: a re-crop that changes its shape fails here instead
+    // of shifting the hero when the bytes land.
+    expect(heroInset()).toContain(`aspect-[${radarPreview.width}/${radarPreview.height}]`)
+  })
+
+  it('makes the shot a click target for the Radar, without a second tab stop', () => {
+    // Sci asked for click-to-expand; a link to the live product answers the
+    // same instinct better than a bigger picture, and the "Ir para o Radar"
+    // button beside it is already the accessible control for that action.
+    //
+    // So the requirement has two halves and both are asserted: the artwork is
+    // clickable, and it is invisible to the keyboard and to assistive tech —
+    // a second focusable link to the same place would announce the
+    // destination twice and add a tab stop nobody needs.
+    const main = out.slice(out.indexOf('<main'))
+    const at = main.indexOf('<picture')
+    const before = main.slice(0, at)
+    const open = before.slice(before.lastIndexOf('<a '))
+
+    expect(open, 'the shot is wrapped in a link').toContain('href="/radar"')
+    expect(open, 'the link is not a tab stop').toContain('tabindex="-1"')
+    expect(open, 'the link is not announced').toContain('aria-hidden="true"')
   })
 
   it('renders exactly one picture, one source and one img', () => {
@@ -568,9 +611,22 @@ describe('the hero, and the form that is now a dialog', () => {
     // fetch both, Chrome fetching a `display:none` <img> — measured, not
     // assumed.
     const picture = heroPicture()
-    expect(out.match(/<picture/g)).toHaveLength(1)
+    // **Two** now: the base layer and the 1:1 inset over it. Each is its own
+    // `<picture>` with exactly one `<source>` and one `<img>`, which is what
+    // keeps the selection single per layer.
+    expect(out.match(/<picture/g)).toHaveLength(2)
     expect(picture.match(/<source/g)).toHaveLength(1)
     expect(picture.match(/<img/g)).toHaveLength(1)
+
+    // And the inset costs a phone nothing. Its fallback `<img src>` is the
+    // transparent data URI, not the crop: `hidden` stops an image being
+    // painted, never fetched, so a CSS-hidden second `<img>` would ship a
+    // desktop-only file to every phone. Below the breakpoint no `<source>`
+    // matches and the 70-byte pixel is what loads.
+    const inset = heroInset()
+    expect(inset.match(/<source/g)).toHaveLength(1)
+    expect(inset).toContain('src="data:image/gif;base64,')
+    expect(inset).not.toMatch(/src="[^"]*radar-[a-z]+\./)
   })
 
   it('loads the shot eagerly and at high priority, as the LCP element', () => {
