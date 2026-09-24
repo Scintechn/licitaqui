@@ -49,7 +49,12 @@ def test_founders_welcome_renders_the_approved_copy() -> None:
     text = templates.render("whatsapp", "founders-welcome", WELCOME_CONTEXT)
 
     assert text.startswith("Oi, Maria! Aqui é a LicitaQui.")
-    assert "número 7 de 48" in text
+    # The denominator went on 2026-09-24 (Sci): the seat is the receipt, but
+    # "1 de 48" on an empty list advertises that nobody else has signed up.
+    # Asserting its absence too, so the two halves cannot drift apart —
+    # `founders.confirmation.seat` on the page says the same thing.
+    assert "número 7" in text
+    assert "de 48" not in text
     assert "no dia 8 de outubro de 2026" in text
     # Templates README §4: every conversation-opening message ends with it.
     assert text.endswith("Para não receber mais mensagens, responda SAIR.")
