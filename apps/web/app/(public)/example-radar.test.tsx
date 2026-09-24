@@ -21,8 +21,9 @@ const card = messages.radar.card
  * under a countdown measured from a frozen 17/09/2026, so every card read
  * "13 dias" and "Proposta até 30/09" — correct on the day it was written, and
  * from 01/10/2026 three passed deadlines under a live-looking countdown on the
- * page that introduces the product. Six days before launch, and no test had
- * anything to say about it: every assertion in the suite was written against
+ * page that introduces the product. Found six days before the deadline it was
+ * counting down to, and no test had anything to say about it: every assertion
+ * in the suite was written against
  * the same frozen clock the panel was, so the panel and its tests agreed with
  * each other and disagreed with the calendar.
  *
