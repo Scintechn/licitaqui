@@ -445,6 +445,58 @@ describe('OpportunityView · the whole Objeto', () => {
   })
 
   /**
+   * The action, pinned above the record — the same kind of guard as the three
+   * above it, and for the same reason.
+   *
+   * Until 2026-09-24 the CTA was the last thing on the page, under the Itens
+   * panel. `ITEMS_PAGE` is 20 and an item card is ~140px at 400px, so it sat
+   * roughly 4 500px down a 700px viewport, and every "Mostrar mais" press
+   * pushed it another ~2 800px away: the control that helps someone evaluate
+   * was the control that buried the action.
+   *
+   * Sci found it on `08358889000195-1-000160/2026`. Nothing pinned the order,
+   * so nothing would have stopped a later merge putting it back — which is
+   * exactly what happened to the Objeto block and `cc4b766`.
+   */
+  it('offers the AI reading before the record’s tabs, not after twenty items', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    const at = (needle: string) => {
+      const i = out.indexOf(needle)
+      expect(i).toBeGreaterThan(-1)
+      return i
+    }
+    // `page.tabs.items` is "Itens", which also labels a row in the Operação
+    // block above — so the strip is found by its role, which is unique.
+    expect(at(page.screeningCta)).toBeLessThan(at('role="tablist"'))
+    // …and still after the Objeto, which the guard above also asserts: the
+    // agency's own words are read before anything we offer to do with them.
+    expect(at(page.objectTitle)).toBeLessThan(at(page.screeningCta))
+  })
+
+  it('keeps the AI notice with the button it qualifies (§2.2 rule 5)', () => {
+    // The notice belongs where reading stops and acting starts. Moving the
+    // button without it would leave the notice stranded below the item list,
+    // qualifying nothing — a silent break of a rule CI could not see.
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    const notice = out.indexOf(messages.ai.disclaimer)
+    const cta = out.indexOf(page.screeningCta)
+    expect(notice).toBeGreaterThan(-1)
+    expect(notice).toBeLessThan(cta)
+    expect(out.indexOf('role="tablist"')).toBeGreaterThan(cta)
+  })
+
+  it('keeps "Ver no PNCP" available without letting it compete', () => {
+    // Sci, 2026-09-24: keep it, "but in a not too express way". It is the
+    // source line, not a second call to action — so it stays below the record
+    // and is no longer a full-width secondary button.
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    expect(out).toContain(page.pncpLink)
+    expect(out.indexOf(page.pncpLink)).toBeGreaterThan(out.indexOf('role="tablist"'))
+    const anchor = out.slice(out.indexOf(page.pncpLink) - 400, out.indexOf(page.pncpLink))
+    expect(anchor).not.toContain('border-line-strong')
+  })
+
+  /**
    * This test used to assert the opposite, and the flip is the point.
    *
    * It shipped as "caps the measure rather than setting type across the whole
