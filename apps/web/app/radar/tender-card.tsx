@@ -1,6 +1,6 @@
 import { Card, CardLink, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
 import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
-import { agencyLine, deadlineShort, meEppSummary, tenderTitle } from '@/lib/radar/format'
+import { agencyLine, deadlineShort, displayTitle, meEppSummary } from '@/lib/radar/format'
 import { cardHeadline, deadlineLabel } from '@/lib/radar/headline'
 import { mayShowUrgency, statusChipLabel } from '@/lib/radar/tender-status'
 import { format, messages } from '@/lib/messages'
@@ -21,8 +21,9 @@ export { deadlineLabel }
  *  - the Archivo slot holds whichever fact `cardHeadline()` elects, because on
  *    real data the estimated value is absent on almost every card and an anchor
  *    that reads "Valor não informado" nineteen times is not an anchor;
- *  - the title is `tenderTitle()`, not the raw PNCP object, which arrives
- *    shouted and with the sourcing portal bolted on the front.
+ *  - the title is `displayTitle()` — the worker's `short_title` when it has
+ *    written one, and the cleaned-up object when it has not. The raw PNCP
+ *    object arrives shouted and with the sourcing portal bolted on the front.
  *
  * The whole card is one `<a>`: one keyboard stop for the whole tender, one
  * screen-reader target, and the middle button opens it in a tab like any other
@@ -110,7 +111,7 @@ export function TenderCardView({
   const status = STATUS[tender.group]
   const headline = cardHeadline(tender, now)
   const deadline = deadlineShort(tender.proposalsCloseAt)
-  const title = tenderTitle(tender.object)
+  const title = displayTitle(tender)
   // The gate (§2.2 rule 6), asked once for the whole card.
   const urgency = mayShowUrgency(tender, now)
   const statusChip = statusChipLabel(tender)

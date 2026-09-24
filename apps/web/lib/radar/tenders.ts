@@ -69,6 +69,7 @@ export const MAX_LIMIT = 50
 type TenderRow = {
   id: string
   object: string
+  short_title: string | null
   agency_name: string | null
   city: string | null
   state: string | null
@@ -225,7 +226,7 @@ export async function listTenders(
 
   const found = await database.execute<TenderRow>(sql`
     with matched as (
-      select t.id, t.object, t.agency_name, t.city, t.state, t.modality_name,
+      select t.id, t.object, t.short_title, t.agency_name, t.city, t.state, t.modality_name,
              t.proposals_close_at, t.estimated_value, t.confidential_budget,
              t.price_registration, t.me_epp_summary, t.favored_treatment,
              t.segments, t.updated_at, t.status, t.pncp_updated_at,
@@ -270,6 +271,7 @@ function toCard(row: TenderRow, match: CompanyMatch): TenderCard {
   return {
     id: row.id,
     object: row.object,
+    shortTitle: row.short_title,
     agencyName: row.agency_name,
     city: row.city,
     state: row.state,

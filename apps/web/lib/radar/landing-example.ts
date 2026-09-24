@@ -53,6 +53,7 @@ export const EXAMPLE_STATE = 'SP'
 const BATTERIES: TenderCard = {
   id: '51885242000140-1-000744/2026',
   object: 'Registro de preços de baterias e pilhas',
+  shortTitle: null,
   agencyName: 'Prefeitura de Campinas',
   city: null,
   state: 'SP',
@@ -85,6 +86,7 @@ const BATTERIES: TenderCard = {
 const HOSPITAL: TenderCard = {
   id: '47018676000176-1-000383/2026',
   object: 'Registro de preços de materiais hospitalares',
+  shortTitle: null,
   agencyName: 'Rede Mário Gatti',
   city: 'Campinas',
   state: 'SP',
@@ -111,6 +113,7 @@ const HOSPITAL: TenderCard = {
 const SAAS: TenderCard = {
   id: '45781176000166-1-000804/2026',
   object: 'Locação de sistema web (SaaS)',
+  shortTitle: null,
   agencyName: 'Prefeitura de Americana',
   city: null,
   state: 'SP',

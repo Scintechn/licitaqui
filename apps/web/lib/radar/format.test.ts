@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
-  agencyLine,
   ageParts,
+  agencyLine,
+  cleanTitle,
   clockTime,
   daysUntil,
   deadlineFull,
   deadlineShort,
   deadlineTall,
+  displayTitle,
   meEppSummary,
   money,
   moneyExact,
-  cleanTitle,
   shortDate,
   tenderTitle,
   trimObject,
@@ -283,5 +284,54 @@ describe('tenderTitle', () => {
     const object = 'AQUISIÇÃO DE DRONES.'
     expect(tenderTitle(object)).toBe('Aquisição de drones')
     expect(object).toBe('AQUISIÇÃO DE DRONES.')
+  })
+})
+
+describe('displayTitle', () => {
+  /**
+   * `tenders.short_title` existed from the day the title work shipped — 8 712
+   * of 9 059 production rows carry one, 6 306 written by the model — and the
+   * web app read the column **nowhere**: not the queries, not the contract,
+   * not any view. Every screen printed the raw PNCP object instead.
+   */
+  const OBJECT =
+    '[Portal de Compras Públicas] - Aquisição de equipamentos e materiais permanentes, ' +
+    'destinados à estruturação, modernização e adequação da Unidade de Atenção Psicossocial.'
+
+  it('prefers the short title the worker wrote', () => {
+    expect(displayTitle({ shortTitle: 'Equipamentos para unidade de saúde mental', object: OBJECT })).toBe(
+      'Equipamentos para unidade de saúde mental',
+    )
+  })
+
+  it('falls back to the cleaned object while a tender is still untitled', () => {
+    // The normal state for a newly ingested tender: `sweep_titles` is hourly,
+    // so 3.8% of production has no title at any moment — and always the newest
+    // rows, which are the ones most likely to be on screen.
+    const shown = displayTitle({ shortTitle: null, object: OBJECT })
+    expect(shown).toBe(tenderTitle(OBJECT))
+    expect(shown).not.toContain('[Portal de Compras Públicas]')
+    expect(shown.startsWith('Aquisição de equipamentos')).toBe(true)
+  })
+
+  it('treats a blank or whitespace title as no title', () => {
+    // The worker's validator refuses to store one, so this is defence against
+    // a future writer rather than against today's — but a blank h1 is the one
+    // failure mode with no visible symptom until someone opens the page.
+    expect(displayTitle({ shortTitle: '', object: OBJECT })).toBe(tenderTitle(OBJECT))
+    expect(displayTitle({ shortTitle: '   ', object: OBJECT })).toBe(tenderTitle(OBJECT))
+  })
+
+  it('never truncates a short title with the object’s limit', () => {
+    // `max` exists to cut a 500-character object. A short title is short by
+    // construction and must not be cut mid-word by a limit meant for prose.
+    const short = 'Manutenção de ar condicionado e câmaras frias'
+    expect(displayTitle({ shortTitle: short, object: OBJECT }, 20)).toBe(short)
+    expect(short.length).toBeGreaterThan(20)
+
+    // The same limit does apply to the fallback, which is what it is for.
+    const trimmed = displayTitle({ shortTitle: null, object: OBJECT }, 20)
+    expect(trimmed.length).toBeLessThan(tenderTitle(OBJECT).length)
+    expect(trimmed).toMatch(/…$/)
   })
 })

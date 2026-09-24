@@ -35,6 +35,7 @@ const COMPANY: CompanyView = {
 const TENDER: TenderCard = {
   id: '51885242000140-1-000744/2026',
   object: 'Registro de preços de baterias e pilhas',
+  shortTitle: null,
   agencyName: 'Prefeitura de Campinas',
   city: 'Campinas',
   state: 'SP',

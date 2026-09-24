@@ -121,6 +121,17 @@ export type TenderGroup = (typeof TENDER_GROUPS)[number]
 export type TenderCard = {
   id: string
   object: string
+  /**
+   * The short, human title the worker writes to `tenders.short_title` — two
+   * to eight words, deterministic where the object allows it and from the
+   * model where it does not.
+   *
+   * `null` until the hourly sweep reaches a newly ingested tender (3.8% of
+   * production at the time of writing), so every screen falls back to
+   * `tenderTitle(object)`. Never blank: the worker's validator rejects an
+   * empty or unfit title rather than storing one.
+   */
+  shortTitle: string | null
   agencyName: string | null
   city: string | null
   state: string | null

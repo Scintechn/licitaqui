@@ -17,6 +17,7 @@ const NOW = new Date('2026-09-17T15:00:00.000Z')
 const TENDER: TenderCard = {
   id: '51885242000140-1-000744/2026',
   object: 'Registro de preços de baterias e pilhas',
+  shortTitle: null,
   agencyName: 'Prefeitura de Campinas',
   city: 'Campinas',
   state: 'SP',
@@ -176,5 +177,27 @@ describe('the card is a list row again, not an expander', () => {
     )
     expect(out).not.toContain('<a ')
     expect(out).toContain('materiais terapeuticos')
+  })
+
+  it('shows the worker’s short title instead of the shouted object', () => {
+    // The column had 8 712 rows and no reader. The card printed the raw PNCP
+    // object — shouted, portal-prefixed, six lines tall on a phone — while
+    // `Opportunity.dc.html` has always drawn "Baterias e pilhas".
+    const out = render({
+      shortTitle: 'Baterias e pilhas',
+      object: '[LICITANET] - REGISTRO DE PREÇOS PARA AQUISIÇÃO DE BATERIAS E PILHAS DIVERSAS.',
+    })
+    expect(out).toContain('Baterias e pilhas')
+    expect(out).not.toContain('[LICITANET]')
+    expect(out).not.toContain('REGISTRO DE PREÇOS PARA AQUISIÇÃO')
+  })
+
+  it('falls back to the cleaned object on a tender the sweep has not titled yet', () => {
+    const out = render({
+      shortTitle: null,
+      object: '[LICITANET] - REGISTRO DE PREÇOS PARA AQUISIÇÃO DE BATERIAS E PILHAS DIVERSAS.',
+    })
+    expect(out).toContain('Registro de preços para aquisição de baterias e pilhas diversas')
+    expect(out).not.toContain('[LICITANET]')
   })
 })

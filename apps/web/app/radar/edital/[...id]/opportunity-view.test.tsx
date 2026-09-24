@@ -28,6 +28,7 @@ const TENDER: TenderDetail = {
   id: '51885242000140-1-000744/2026',
   agencyCnpj: '51885242000140',
   object: 'Registro de preços de baterias e pilhas',
+  shortTitle: null,
   agencyName: 'Prefeitura de Campinas',
   unitName: 'Secretaria de Saúde',
   city: 'Campinas',
