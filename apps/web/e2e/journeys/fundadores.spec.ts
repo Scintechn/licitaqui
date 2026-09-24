@@ -261,7 +261,7 @@ test.describe('Dona Marta reads the comparison on her phone', () => {
   })
 })
 
-test.describe('the founders page at 390px', () => {
+test.describe('the founders page at the widths it changes shape', () => {
   /**
    * The timeline's arrows sit *between* steps. Stacked, there is no between —
    * an arrow pointing right at the item below it points at nothing — so they
@@ -294,7 +294,7 @@ test.describe('the founders page at 390px', () => {
    * layout pass moved the call to action into that panel, so the guard is
    * worth more now, not less.
    */
-  for (const width of [390, 440]) {
+  for (const width of [390, 440, 560, 700, 900, 1280]) {
     test(`nothing on the page is wider than a ${width}px screen`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
       await page.goto('/fundadores')
@@ -313,6 +313,48 @@ test.describe('the founders page at 390px', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         width,
       )
+    })
+  }
+
+  /**
+   * **The two-column tier of the pillars band, where the rule went missing.**
+   *
+   * The band draws its dividers as borders on the items, and which edge each
+   * one sits on depends on the column count. The first version of that
+   * arithmetic set `min-[560px]:border-t` and cleared it with
+   * `min-[560px]:border-t-0` under the same media query: one property, one
+   * query, settled by stylesheet order and not by source order — so the rule
+   * between the two rows vanished, at 560–899px only. A screenshot caught it.
+   * Nothing in `page.test.tsx` could: the classes are all in the markup either
+   * way, and which of them wins is the cascade's business, not the string's.
+   *
+   * So this asserts the drawn result, per tier, from the computed style.
+   */
+  for (const [width, tops, lefts] of [
+    [390, 3, 0], // one column: a rule above every item but the first
+    [700, 2, 2], // two columns: the second row, and the right-hand item of each
+    [1280, 0, 3], // one row: a rule left of every item but the first
+  ] as const) {
+    test(`divides the four pillars correctly at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/fundadores')
+
+      const band = page.getByRole('list').filter({ hasText: messages.foundersPage.pillars.items[0].plan })
+      await expect(band).toHaveCount(1)
+
+      const drawn = await band.locator('> li').evaluateAll((items) =>
+        items.reduce(
+          (count, item) => {
+            const style = getComputedStyle(item)
+            return {
+              tops: count.tops + (parseFloat(style.borderTopWidth) > 0 ? 1 : 0),
+              lefts: count.lefts + (parseFloat(style.borderLeftWidth) > 0 ? 1 : 0),
+            }
+          },
+          { tops: 0, lefts: 0 },
+        ),
+      )
+      expect(drawn).toEqual({ tops, lefts })
     })
   }
 

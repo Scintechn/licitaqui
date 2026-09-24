@@ -442,6 +442,8 @@ describe('the trust row under the hero', () => {
  */
 describe('the D7 layout pass', () => {
   const { pain, pillars, timeline, founderValue, screening } = messages.foundersPage
+  /** The founder price, from the catalogue: `signup.price` is "R$ 26". */
+  const price = messages.foundersPage.signup.price
 
   /** Pain: from its heading to the next section's. */
   const painSection = out.slice(out.indexOf(pain.title), out.indexOf(messages.foundersPage.ruler.label))
@@ -504,16 +506,26 @@ describe('the D7 layout pass', () => {
     it('does not read the numerals out on top of the list itself', () => {
       // The `<ol>` already carries the sequence; a screen reader announcing
       // "zero um" before every heading says it twice.
+      // Asserted on the numeral's own opening tag. A character window before
+      // it passes on `Icon`'s own `aria-hidden` instead — which is how this
+      // test used to work for 01 and 02, and failed for 03 only because
+      // `money` has two long path strings. That is an accident of path length,
+      // not a guard.
       for (const n of ['01', '02', '03']) {
-        const at = painSection.indexOf(`>${n}<`)
-        expect(painSection.slice(at - 200, at)).toContain('aria-hidden')
+        expect(painSection).toMatch(new RegExp(`<span aria-hidden="true"[^>]*>${n}</span>`))
       }
     })
 
     it('gives each problem an icon, and keeps all three intact', () => {
       // Three icons in the tinted square this page already uses for a
       // category — the same device as the trust row and the pillars.
-      expect(painSection.match(/rounded-swatch bg-blue-soft text-blue/g)).toHaveLength(3)
+      // Asserted against the catalogue's own length, not against 3: the icon
+      // lists are indexed by position, so a fifth bullet added to `pt-BR.json`
+      // would hand `Icon` an undefined name and throw. Here that is a red test
+      // rather than a broken `next build` on a static route.
+      expect(painSection.match(/rounded-swatch bg-blue-soft text-blue/g)).toHaveLength(
+        pain.items.length,
+      )
       for (const item of pain.items) {
         expect(painSection).toContain(item.title)
         expect(painSection).toContain(item.body)
@@ -563,9 +575,29 @@ describe('the D7 layout pass', () => {
     })
 
     it('keeps the arrows out of the accessibility tree', () => {
-      // The `<ol>` carries the order; the arrows are decoration.
-      const at = timelineSection.indexOf('M5 12h14M13 6l6 6-6 6')
-      expect(timelineSection.slice(at - 400, at)).toContain('aria-hidden')
+      // On the wrapper's own tag: `Icon` already sets `aria-hidden` on the
+      // `<svg>` whenever no `title` is passed, so a character window before
+      // the path data is satisfied by the component's default and says nothing
+      // about this element at all.
+      const wrappers = timelineSection.match(/<span aria-hidden="true" class="absolute[^"]*"/g) ?? []
+      expect(wrappers).toHaveLength(timeline.steps.length - 1)
+    })
+
+    it('gives every step an icon, one per step in the catalogue', () => {
+      // `TIMELINE_ICONS` is indexed by position; a fifth step in `pt-BR.json`
+      // would hand `Icon` an undefined name and throw at build time.
+      expect(timelineSection.match(/rounded-swatch bg-blue-soft text-blue/g)).toHaveLength(
+        timeline.steps.length,
+      )
+    })
+
+    it('announces the three lists it restyled as lists', () => {
+      // Tailwind v4's preflight sets `list-style: none`, and Safari drops the
+      // list role when it sees that — so the `<ol>` the numerals are
+      // `aria-hidden` in deference to would carry nothing on an iPhone.
+      for (const section of [painSection, pillarsSection, timelineSection]) {
+        expect(section).toMatch(/<(ol|ul) role="list"/)
+      }
     })
 
     it('keeps the four dates and the four steps', () => {
@@ -578,20 +610,36 @@ describe('the D7 layout pass', () => {
   })
 
   describe('the founder offer', () => {
-    it('sets the price at the size of a standalone figure', () => {
-      // "R$ 26 por mês durante 6 meses" **is** the offer, and it was 17px in a
-      // list of four evenly weighted items — the cheapest thing on the page
-      // was also its quietest. `--text-stat` is what this page already gives a
-      // figure that carries a section.
-      const at = founderSection.indexOf(founderValue.benefits[0].title)
-      expect(at).toBeGreaterThan(-1)
-      expect(founderSection.slice(at - 300, at)).toContain('text-stat')
+    /**
+     * **The price, not "whatever is first".**
+     *
+     * This asserted `benefits[0]` is rendered at `text-stat` — reading index 0
+     * from the same array the component reads index 0 from, which is true by
+     * construction and green in exactly the case the requirement is broken.
+     * The four benefits are copy in an array Sci owns and may reorder; if he
+     * does, "Aviso direto, sem precisar acompanhar redes" becomes the 34px
+     * headline of the offer panel and the price drops into the list, with this
+     * test still passing.
+     *
+     * So the assertion is on the figure the section exists to shout.
+     */
+    it('sets the price — the figure, not the first array element — at display size', () => {
+      const raised = [...founderSection.matchAll(/<b class="[^"]*text-stat[^"]*"[^>]*>([^<]*)</g)].map(
+        (m) => m[1],
+      )
+      expect(raised).toHaveLength(1)
+      expect(raised[0]).toContain(price)
+      // And it is one of the approved benefit strings, not something written
+      // here: whichever of them names the price is the one that is raised.
+      expect(founderValue.benefits.map((b) => b.title)).toContain(raised[0])
     })
 
     it('puts the price above the things it buys', () => {
-      const price = founderSection.indexOf(founderValue.benefits[0].title)
-      for (const benefit of founderValue.benefits.slice(1)) {
-        expect(founderSection.indexOf(benefit.title)).toBeGreaterThan(price)
+      const at = founderSection.indexOf(price)
+      expect(at).toBeGreaterThan(-1)
+      for (const benefit of founderValue.benefits) {
+        if (benefit.title.includes(price)) continue
+        expect(founderSection.indexOf(benefit.title)).toBeGreaterThan(at)
       }
     })
 
@@ -605,18 +653,19 @@ describe('the D7 layout pass', () => {
     it('marks the remaining benefits with a check', () => {
       // One idea — things the founder gets — so one glyph, not four different
       // pictograms that made the list look like four kinds of thing.
-      const list = founderSection.slice(
-        founderSection.indexOf(founderValue.benefits[1].title) - 600,
-        founderSection.indexOf(founderValue.cta),
-      )
-      expect(list.match(/M5 12l5 5 9-10/g)).toHaveLength(founderValue.benefits.length - 1)
+      const list = founderSection.slice(0, founderSection.indexOf(founderValue.cta))
+      // One check per benefit that stayed in the list — every one but the
+      // price, which is raised out of it.
+      expect(list.match(/M5 12l5 5 9-10/g) ?? []).toHaveLength(founderValue.benefits.length - 1)
     })
 
     it('follows the offer with the call to action, full width', () => {
       // It used to hang under the comparison table in the other column: price,
       // what you get, then the thing to do about it.
       const cta = founderSection.indexOf(founderValue.cta)
-      expect(cta).toBeGreaterThan(founderSection.indexOf(founderValue.benefits[3].title))
+      for (const benefit of founderValue.benefits) {
+        expect(cta).toBeGreaterThan(founderSection.indexOf(benefit.title))
+      }
       expect(cta).toBeLessThan(founderSection.indexOf(founderValue.comparisonRows[0].feature))
       expect(founderSection.slice(cta - 400, cta)).toContain('w-full')
     })

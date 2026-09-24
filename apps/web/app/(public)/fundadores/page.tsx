@@ -422,7 +422,17 @@ function Pain() {
           already carries the sequence, and a screen reader reading "zero um"
           before every heading would say it twice.
         */}
-        <ol className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
+        {/*
+          `role="list"` is not redundant. Tailwind v4's preflight sets
+          `list-style: none` on every `ol`/`ul`, and Safari drops the list role
+          when it sees that — measured here, every list on this page computes
+          `list-style-type: none`. Without the role the element announces
+          nothing, and since the numerals are `aria-hidden` on the strength of
+          "the list carries the order", the order would reach nobody on an
+          iPhone. That is the same shape as the table bug in the commit before
+          this one: semantics asserted without checking the browser kept them.
+        */}
+        <ol role="list" className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
           {pain.items.map((item, index) => (
             <li key={item.title} className="flex min-w-0">
               <Card padding="none" className="flex w-full flex-col gap-2.5 p-5">
@@ -611,7 +621,7 @@ function Pillars() {
           written here — which is why the rule between the two rows was missing
           the first time round, at 560–899px only, on a tier nobody screenshots.
         */}
-        <ul className="grid grid-cols-1 overflow-hidden rounded-panel border border-line bg-surface min-[560px]:grid-cols-2 min-[900px]:grid-cols-4">
+        <ul role="list" className="grid grid-cols-1 overflow-hidden rounded-panel border border-line bg-surface min-[560px]:grid-cols-2 min-[900px]:grid-cols-4">
           {pillars.items.map((item, index) => (
             <li
               key={item.title}
@@ -757,13 +767,21 @@ function FounderValue() {
             <H2 className="text-surface">{founderValue.title}</H2>
 
             <div className="flex flex-col gap-1.5">
-              <b className="font-display text-stat font-extrabold tracking-[-0.02em] text-surface text-balance tabular-nums">
+              {/* `--text-stat` carries 1.05 leading because everywhere else on
+                  this page it is one line — `R$ 272,6 bi`, `R$ 14,60`. This is
+                  the first place it carries a sentence, and at 390px that
+                  sentence is two lines in a 310px measure: 34px type on 35.7px
+                  leading puts one line's descenders in the next line's
+                  ascenders. `leading-[1.15]` is the same size on 39px. */}
+              <b className="font-display text-stat leading-[1.15] font-extrabold tracking-[-0.02em] text-surface text-balance">
                 {price.title}
               </b>
               <span className="text-base leading-[1.6] text-on-brand-muted">{price.body}</span>
             </div>
 
-            <hr className="border-0 border-t border-brand-line" />
+            {/* `aria-hidden`: an `<hr>` is `role="separator"` and would be
+                announced between the price and the list it introduces. */}
+            <hr aria-hidden className="border-0 border-t border-brand-line" />
 
             {/* Check glyphs rather than four category icons. Each of the three
                 is a thing the founder gets, which is one idea, and four
@@ -796,8 +814,15 @@ function FounderValue() {
 
             {/* The call to action belongs to the offer, not to the comparison
                 table it used to hang under: price, what you get, then the
-                thing to do about it. `mt-auto` so it sits on the floor of the
-                panel at 900px and up, where the table beside it is taller. */}
+                thing to do about it, full width.
+                
+                `mt-auto` pins it to the floor of a column the grid has
+                stretched. Measured, this column's own content is the taller of
+                the two at every width the row is used (563px against 401px at
+                1120px, 621 against 466 at 900), so today the rule is a no-op —
+                it is kept because it is the comparison column that grows when
+                a row is added to the table, and then the offer would end above
+                the panel's floor. */}
             <Button variant="onBrand" href="#vaga" className="mt-auto w-full">
               {founderValue.cta}
             </Button>
@@ -955,7 +980,7 @@ function Timeline() {
           which the steps are actually a row. Between stacked items an arrow
           pointing right would be pointing at nothing.
         */}
-        <ol className="grid grid-cols-1 gap-x-4 gap-y-8 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:gap-y-0">
+        <ol role="list" className="grid grid-cols-1 gap-x-4 gap-y-8 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:gap-y-0">
           {timeline.steps.map((step, index) => (
             <li
               key={step.title}
