@@ -5,6 +5,7 @@ import { Button, Field, Icon, SectionLabel, StateCard } from '@/components'
 import { FOUNDER_SEATS, seatGrid, seatsLeftLabel, showSeatGrid } from '@/lib/founders'
 import type { SeatsResponse, SignupOk, SignupResponse } from '@/lib/founders/contract'
 import { format, messages } from '@/lib/messages'
+import { ShareSeat } from './share-seat'
 
 const copy = messages.foundersPage.signup
 const form = messages.founders.form
@@ -372,6 +373,58 @@ function Consent({
 
 /* ------------------------------------------------------------ confirmation */
 
+/**
+ * Whether the confirmation may say a WhatsApp message was already sent.
+ *
+ * **It may not, and this is why.** `founders.confirmation.nextWhatsapp` reads
+ * *"Mandamos uma mensagem no seu WhatsApp confirmando a vaga."* — past tense,
+ * a statement that something has happened. Nothing has. The signup does queue
+ * the job (`lib/founders/signup.ts` writes `kind = 'send_whatsapp'` in the
+ * same statement that assigns the seat) and the worker does register a handler
+ * for it, but `WHATSAPP_DELIVERY` gates the transport and **only the exact
+ * word `send` opens it** (`worker/licitaqui/evolution.py`). With the switch
+ * off the job runs every gate, renders the message, writes a
+ * `whatsapp.dry_run` event and finishes `done` — so the queue, the job status
+ * and the delivery log all look healthy and no message leaves the process.
+ * Sci signed up on production on 2026-09-24 and received nothing.
+ *
+ * The switch is off **deliberately** and cannot simply be flipped:
+ * `worker/README.md` records that the only Evolution instance on the server
+ * belongs to another product (`flowdeski-scn-real-estate`), so turning it on
+ * today would deliver LicitaQui's founders welcome from that product's
+ * WhatsApp number.
+ *
+ * `/fundadores` takes money, so the sentence is a binding representation under
+ * CDC art. 30 — the same defect class as the "todo dia" alert claim. The copy
+ * is Sci's under legal brief §5, so it is **not rewritten here**: the string
+ * stays in the catalogue untouched and this stops rendering it, which is a
+ * rendering decision and within what this change may make.
+ *
+ * **Flip this to `true` in the same PR that proves a message arrives** — card
+ * E4 in `docs/DEVELOPMENT_PLAN.md` §5. It is one token. `signup-form.test.tsx`
+ * covers **both** settings of it, so the `true` branch is not untested code
+ * waiting to be discovered on the day; what will go red is the browser
+ * assertion in `fundadores.spec.ts` that the sentence is absent, and E4's
+ * acceptance criteria say to invert it rather than delete it.
+ */
+const WHATSAPP_WELCOME_IS_DELIVERED: boolean = false
+
+/**
+ * "O que acontece agora", minus anything that is not true yet.
+ *
+ * `nextOpening` and `nextNothing` both stay: the first is a promise about
+ * 08/10 which S3 still owns and has not broken, the second is a statement
+ * about the reader. Only `nextWhatsapp` claims a past event that did not
+ * happen.
+ */
+export function nextSteps(delivered: boolean = WHATSAPP_WELCOME_IS_DELIVERED): string[] {
+  const steps = [
+    messages.founders.confirmation.nextOpening,
+    messages.founders.confirmation.nextNothing,
+  ]
+  return delivered ? [messages.founders.confirmation.nextWhatsapp, ...steps] : steps
+}
+
 function Confirmation({
   response,
   firstName,
@@ -406,6 +459,15 @@ function Confirmation({
       tabIndex={-1}
       role="status"
       aria-live="polite"
+      /*
+        `role="status"` carries an implicit `aria-atomic="true"`, which was
+        harmless while nothing in here ever changed. The share control's label
+        does change — "Copiar" → "Copiado", and back 2.4 s later — and atomic
+        would re-read the *entire* confirmation each time: the greeting, the
+        seat, both bullets, the share sentence and the whole URL, twice per
+        press. Explicitly false, so only the label that changed is announced.
+      */
+      aria-atomic="false"
       className={shell}
     >
       {seat === null ? (
@@ -430,6 +492,15 @@ function Confirmation({
         </>
       ) : (
         <>
+          {/*
+            The good news first and loudest. It used to be the *second* thing
+            here by size: the seat sat under it at `text-stat` (34px) in the
+            mono face, 70% larger than the heading above it, which made the
+            number the announcement and "Vaga garantida" its caption. Sci,
+            2026-09-24: "doesn't matter what number in the process you are, the
+            1st or 13th." Mono at that size reads as a system readout, not as
+            good news.
+          */}
           <div className="flex items-center gap-2.5">
             <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-pill bg-success">
               <Icon name="check" size={17} strokeWidth={2.6} className="text-surface" />
@@ -438,19 +509,23 @@ function Confirmation({
               {format(messages.founders.confirmation.title, { nome: firstName })}
             </h2>
           </div>
-          <p className="font-mono text-stat font-medium tabular-nums">
+
+          {/*
+            The seat stays, quietly — it is still true and somebody will want
+            it. Body face, not mono; `tabular-nums` is kept because it is a
+            figure, and that is the whole of the typographic claim being made
+            for it now.
+          */}
+          <p className="-mt-2 text-meta leading-[1.45] text-muted tabular-nums">
             {format(messages.founders.confirmation.seat, { numero: seat })}
           </p>
+
           <div className="flex flex-col gap-2">
             <SectionLabel tone="muted" size="caption">
               {messages.founders.confirmation.nextTitle}
             </SectionLabel>
             <ul className="flex flex-col gap-2 text-body leading-[1.5] text-ink-soft">
-              {[
-                messages.founders.confirmation.nextWhatsapp,
-                messages.founders.confirmation.nextOpening,
-                messages.founders.confirmation.nextNothing,
-              ].map((line) => (
+              {nextSteps().map((line) => (
                 <li key={line} className="flex items-start gap-2">
                   <Icon name="check" size={18} strokeWidth={2} className="mt-0.5 text-blue" />
                   {line}
@@ -458,9 +533,10 @@ function Confirmation({
               ))}
             </ul>
           </div>
-          <p className="text-meta leading-[1.5] text-muted">
-            {messages.founders.confirmation.share}
-          </p>
+
+          {/* `confirmation.share` asks the reader to pass it on; this is what
+              they pass it on *with*. See `share-seat.tsx`. */}
+          <ShareSeat />
         </>
       )}
 
