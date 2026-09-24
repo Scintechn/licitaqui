@@ -44,3 +44,4 @@ blob-report/
 
 # parallel task worktrees
 .worktrees/
+.claude/worktrees/

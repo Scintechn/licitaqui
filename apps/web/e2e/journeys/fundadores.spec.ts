@@ -163,3 +163,222 @@ test.describe('Dona Marta reserves a founder seat', () => {
     expect(captured.body?.acceptedTerms).toBe(false)
   })
 })
+
+/**
+ * What the page *announces*, which is not what it renders.
+ *
+ * The `journeys` project runs at 390px — the width these readers are on — so
+ * these are the phone layout, in a real browser, with the real stylesheet.
+ * `renderToStaticMarkup` cannot see any of it: every defect below is produced
+ * by a media query or by the browser's own role mapping, neither of which
+ * exists in a string of HTML.
+ */
+
+/**
+ * Everything in `el` a screen reader would reach, in order.
+ *
+ * Skips anything inside an `aria-hidden` subtree and anything not rendered —
+ * `display: none` removes a node from the accessibility tree, `sr-only` does
+ * not. That distinction is the whole subject of the first test.
+ */
+async function announcedText(locator: ReturnType<Page['locator']>) {
+  return locator.evaluate((el) => {
+    const parts: string[] = []
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    while (node) {
+      const parent = node.parentElement
+      const text = node.textContent?.trim()
+      if (
+        parent &&
+        text &&
+        !parent.closest('[aria-hidden="true"]') &&
+        parent.checkVisibility({ contentVisibilityAuto: true, visibilityProperty: true })
+      ) {
+        parts.push(text)
+      }
+      node = walker.nextNode()
+    }
+    return parts.join(' ')
+  })
+}
+
+test.describe('Dona Marta reads the comparison on her phone', () => {
+  /**
+   * **A defect already on `main`, not something the layout pass introduced.**
+   *
+   * Below 560px the table is laid out with `display: block`, and that strips
+   * the implicit ARIA role from every table element in every major browser:
+   * no table, no row, no cell, and so no `<th scope="col">` association. The
+   * `<th>`s were `sr-only` — in the tree, announced — and the visible
+   * substitute labels inside each cell were `aria-hidden`, on the strength of
+   * a code comment claiming "the real `<th>` is still associated with the
+   * cell". It is not, and it had not been since the day the row was stacked.
+   *
+   * So on a phone each row announced the feature and then two bare prices,
+   * with nothing saying which was the competitor's and which was ours — on
+   * the section that exists to make exactly that contrast.
+   *
+   * This cannot be asserted in `page.test.tsx`: the layout that strips the
+   * roles is a media query, and the string of HTML is identical either way.
+   */
+  test('every price says whose it is, not just what it is', async ({ page }) => {
+    await page.goto('/fundadores')
+
+    const comparison = messages.foundersPage.founderValue
+    const row = page.locator('tr').filter({ hasText: comparison.comparisonRows[0].feature })
+    await expect(row).toHaveCount(1)
+
+    const announced = await announcedText(row)
+    // The feature, then each value with the name of the column it is in.
+    expect(announced).toContain(comparison.comparisonRows[0].feature)
+    expect(announced).toContain(comparison.comparisonOther)
+    expect(announced).toContain(messages.brand.name)
+    // And each label sits before the value it labels, not after it.
+    expect(announced.indexOf(comparison.comparisonOther)).toBeLessThan(
+      announced.indexOf(comparison.comparisonRows[0].other),
+    )
+  })
+
+  test('the column headers do not announce a second time as two loose words', async ({ page }) => {
+    // They label nothing at this width — `sr-only` would leave them being read
+    // out ahead of the rows, meaning "Ferramentas populares. LicitaQui." with
+    // no values attached.
+    await page.goto('/fundadores')
+    await expect(page.locator('thead')).toBeHidden()
+  })
+
+  test('the desktop table is still a table, with its headers', async ({ page }) => {
+    // The fix is for the phone. From 560px up the roles are real and the
+    // `<th scope="col">` associations are what a screen reader should use.
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/fundadores')
+
+    await expect(page.getByRole('table')).toHaveCount(1)
+    await expect(
+      page.getByRole('columnheader', { name: messages.foundersPage.founderValue.comparisonOther }),
+    ).toBeVisible()
+  })
+})
+
+test.describe('the founders page at the widths it changes shape', () => {
+  /**
+   * The timeline's arrows sit *between* steps. Stacked, there is no between —
+   * an arrow pointing right at the item below it points at nothing — so they
+   * exist only from 900px, where the four steps are actually a row.
+   */
+  test('shows no arrows between steps that are stacked, and four on a wide screen', async ({
+    page,
+  }) => {
+    await page.goto('/fundadores')
+    const steps = page.getByRole('list').filter({ hasText: messages.foundersPage.timeline.steps[0].title })
+    await expect(steps).toHaveCount(1)
+
+    const visibleArrows = (locator: ReturnType<Page['locator']>) =>
+      locator.locator('svg').evaluateAll(
+        (nodes) => nodes.filter((n) => n.checkVisibility() && n.getBoundingClientRect().width > 0).length,
+      )
+
+    // Four steps, four category icons, and no arrows.
+    expect(await visibleArrows(steps)).toBe(messages.foundersPage.timeline.steps.length)
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    // One row now: the same four icons plus an arrow in each of the three gaps.
+    expect(await visibleArrows(steps)).toBe(messages.foundersPage.timeline.steps.length * 2 - 1)
+  })
+
+  /**
+   * The panel went off-screen at 440px once, when the comparison table inside
+   * it was given a `min-w-[420px]` and a grid item's `min-width: auto` let it
+   * push the whole panel — call to action included — past the viewport. The
+   * layout pass moved the call to action into that panel, so the guard is
+   * worth more now, not less.
+   */
+  for (const width of [390, 440, 560, 700, 900, 1280]) {
+    test(`nothing on the page is wider than a ${width}px screen`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/fundadores')
+
+      const overflow = await page.evaluate(() => {
+        const limit = document.documentElement.clientWidth
+        return [...document.querySelectorAll('body *')]
+          .filter((el) => {
+            const box = el.getBoundingClientRect()
+            return box.width > 0 && (box.right > limit + 1 || box.left < -1)
+          })
+          .map((el) => `${el.tagName} ${String(el.className).slice(0, 80)}`)
+          .slice(0, 5)
+      })
+      expect(overflow).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      )
+    })
+  }
+
+  /**
+   * **The two-column tier of the pillars band, where the rule went missing.**
+   *
+   * The band draws its dividers as borders on the items, and which edge each
+   * one sits on depends on the column count. The first version of that
+   * arithmetic set `min-[560px]:border-t` and cleared it with
+   * `min-[560px]:border-t-0` under the same media query: one property, one
+   * query, settled by stylesheet order and not by source order — so the rule
+   * between the two rows vanished, at 560–899px only. A screenshot caught it.
+   * Nothing in `page.test.tsx` could: the classes are all in the markup either
+   * way, and which of them wins is the cascade's business, not the string's.
+   *
+   * So this asserts the drawn result, per tier, from the computed style.
+   */
+  for (const [width, tops, lefts] of [
+    [390, 3, 0], // one column: a rule above every item but the first
+    [700, 2, 2], // two columns: the second row, and the right-hand item of each
+    [1280, 0, 3], // one row: a rule left of every item but the first
+  ] as const) {
+    test(`divides the four pillars correctly at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/fundadores')
+
+      const band = page.getByRole('list').filter({ hasText: messages.foundersPage.pillars.items[0].plan })
+      await expect(band).toHaveCount(1)
+
+      const drawn = await band.locator('> li').evaluateAll((items) =>
+        items.reduce(
+          (count, item) => {
+            const style = getComputedStyle(item)
+            return {
+              tops: count.tops + (parseFloat(style.borderTopWidth) > 0 ? 1 : 0),
+              lefts: count.lefts + (parseFloat(style.borderLeftWidth) > 0 ? 1 : 0),
+            }
+          },
+          { tops: 0, lefts: 0 },
+        ),
+      )
+      expect(drawn).toEqual({ tops, lefts })
+    })
+  }
+
+  /** The offer's call to action is the panel's, and it fills the card. */
+  test('the founder panel’s call to action is full width and reachable', async ({ page }) => {
+    await page.goto('/fundadores')
+
+    const cta = page
+      .getByRole('link', { name: messages.foundersPage.founderValue.cta })
+      .first()
+    await expect(cta).toBeVisible()
+
+    const [button, card] = await Promise.all([
+      cta.boundingBox(),
+      cta.evaluate((el) => {
+        const parent = el.parentElement!
+        const box = parent.getBoundingClientRect()
+        return { width: box.width }
+      }),
+    ])
+    expect(button!.width).toBeGreaterThan(card.width - 2)
+
+    // Keyboard focus still lands on it, and still shows.
+    await cta.focus()
+    await expect(cta).toBeFocused()
+  })
+})

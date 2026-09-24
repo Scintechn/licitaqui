@@ -197,8 +197,13 @@ describe('brief §2.2 framing rules', () => {
     // This audience will not think to swipe a table, and three columns of
     // two-to-five words do not need to be three below 560px.
     expect(out).toContain('max-[559px]:block')
-    // The headers stay for assistive technology, hidden only visually.
-    expect(out).toContain('max-[559px]:sr-only')
+    // This used to also assert `max-[559px]:sr-only` on the `<thead>`, under
+    // the heading "the headers stay for assistive technology, hidden only
+    // visually". They did not: `display: block` strips the role off every
+    // element of a table, so below 560px those headers were associated with
+    // nothing and announced as two loose words. What the reader needs is
+    // asserted in "the comparison table on a phone" instead — each value
+    // announced with the name of its column.
   })
 
   it('inverts the panel\u2019s call to action so it is not its own background', () => {
@@ -285,6 +290,47 @@ describe('the price example, as a chain', () => {
 
     for (const at of positions) expect(at).toBeGreaterThan(-1)
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
+  })
+
+  /**
+   * **Each figure must be announced by its own label.**
+   *
+   * The order test above maps only the four *values*, so swapping the `label:`
+   * fields of two steps left the whole suite green — and that mutation makes
+   * the page read "edital ≈ R$ 20" and "vencedor ofertou ≈ R$ 36", inverting
+   * the argument of the section and publishing two false figures under a
+   * source line that names eight real closed tenders. CDC art. 30 binds an
+   * advertised figure, and this is the page taking money.
+   *
+   * The old ruler carried the pairing inside a single `role="img"` label
+   * string. The chain carries it only in DOM adjacency, so adjacency is what
+   * has to be asserted: each label's own list item holds its value and none of
+   * the other three.
+   */
+  it('announces each figure with the label that belongs to it', () => {
+    const steps = [
+      [ruler.tender, ruler.tenderValue],
+      [ruler.winner, ruler.winnerValue],
+      [ruler.retail, ruler.retailValue],
+      [ruler.maxPurchase, ruler.maxPurchaseValue],
+    ] as const
+
+    const values = steps.map(([, value]) => value)
+
+    for (const [label, value] of steps) {
+      const at = section.indexOf(label)
+      expect(at).toBeGreaterThan(-1)
+
+      // The label's own `<li>`, from the label forward to the end of that item.
+      const end = section.indexOf('</li>', at)
+      expect(end).toBeGreaterThan(at)
+      const item = section.slice(at, end)
+
+      expect(item).toContain(value)
+      for (const other of values) {
+        if (other !== value) expect(item).not.toContain(other)
+      }
+    }
   })
 
   it('sets the maximum purchase price at the size of a standalone figure', () => {
@@ -388,6 +434,295 @@ describe('the trust row under the hero', () => {
   })
 })
 
+/**
+ * The sections the D7 layout pass restyled. Every assertion here is about what
+ * the reader gets — an order, a size, a count, a surface — and not about the
+ * utility that happens to produce it. `min-w-[420px]` was once asserted *by
+ * name* in this file, which pinned a bug in place rather than a requirement.
+ */
+describe('the D7 layout pass', () => {
+  const { pain, pillars, timeline, founderValue, screening } = messages.foundersPage
+  /** The founder price, from the catalogue: `signup.price` is "R$ 26". */
+  const price = messages.foundersPage.signup.price
+
+  /** Pain: from its heading to the next section's. */
+  const painSection = out.slice(out.indexOf(pain.title), out.indexOf(messages.foundersPage.ruler.label))
+  /** Pillars: from its heading to the screening heading. */
+  const pillarsSection = out.slice(out.indexOf(pillars.title), out.indexOf(screening.title))
+  const timelineSection = out.slice(out.indexOf(timeline.title), out.indexOf(messages.foundersPage.refunds.title))
+  const founderSection = out.slice(out.indexOf(founderValue.label), out.indexOf(timeline.title))
+
+  describe('the section heading gets its own column', () => {
+    it('puts the market figures beside the heading, not under the three problems', () => {
+      // They used to sit *after* the cards — below the fold of this section on
+      // a phone — where two figures about the size of the market read as a
+      // footnote to the three problems rather than as the claim's evidence.
+      //
+      // Asserted as an order, because that is what a reader experiences: the
+      // figures come between the heading and the first problem. A revert to
+      // the single 720px stack puts them after the third.
+      const heading = out.indexOf(pain.title)
+      const firstProblem = out.indexOf(pain.items[0].title, heading)
+      for (const fact of pain.facts) {
+        const at = out.indexOf(fact.value, heading)
+        expect(at).toBeGreaterThan(heading)
+        expect(at).toBeLessThan(firstProblem)
+      }
+      // And the source line moved with them, still after the figures it names.
+      expect(out.indexOf(pain.source, heading)).toBeLessThan(firstProblem)
+    })
+
+    it('leaves every other section on the single column it already had', () => {
+      // The two-column head is opt-in. `Refunds` passes no `aside` and must
+      // keep the 720px measure the rest of the page is set on.
+      const refunds = out.indexOf(messages.foundersPage.refunds.title)
+      expect(out.slice(Math.max(0, refunds - 300), refunds)).toContain('max-w-[720px]')
+    })
+
+    it('does not change the heading scale to get the heading bigger', () => {
+      // `--text-section` is 26→38px and stays that. The headings look larger
+      // in the draft because the column is ~500px, not because the token
+      // moved; a size of this section's own here would make the page disagree
+      // with every other one that renders an `<h2>`.
+      const headings = [...out.matchAll(/<h2[^>]*class="([^"]*)"/g)].map((m) => m[1])
+      expect(headings.length).toBeGreaterThan(0)
+      for (const cls of headings) {
+        expect(cls).toContain('text-section')
+        expect(cls).not.toMatch(/text-\[/)
+      }
+    })
+  })
+
+  describe('the three problems', () => {
+    it('is a list in the order the work happens, numbered', () => {
+      // Encontrar → Entender → Não perder dinheiro is a sequence, not three
+      // parallel complaints, so it is an `<ol>` and it is numbered.
+      expect(painSection).toContain('<ol')
+      const numerals = ['01', '02', '03'].map((n) => painSection.indexOf(`>${n}<`))
+      for (const at of numerals) expect(at).toBeGreaterThan(-1)
+      expect(numerals).toEqual([...numerals].sort((a, b) => a - b))
+    })
+
+    it('does not read the numerals out on top of the list itself', () => {
+      // The `<ol>` already carries the sequence; a screen reader announcing
+      // "zero um" before every heading says it twice.
+      // Asserted on the numeral's own opening tag. A character window before
+      // it passes on `Icon`'s own `aria-hidden` instead — which is how this
+      // test used to work for 01 and 02, and failed for 03 only because
+      // `money` has two long path strings. That is an accident of path length,
+      // not a guard.
+      for (const n of ['01', '02', '03']) {
+        expect(painSection).toMatch(new RegExp(`<span aria-hidden="true"[^>]*>${n}</span>`))
+      }
+    })
+
+    it('gives each problem an icon, and keeps all three intact', () => {
+      // Three icons in the tinted square this page already uses for a
+      // category — the same device as the trust row and the pillars.
+      // Asserted against the catalogue's own length, not against 3: the icon
+      // lists are indexed by position, so a fifth bullet added to `pt-BR.json`
+      // would hand `Icon` an undefined name and throw. Here that is a red test
+      // rather than a broken `next build` on a static route.
+      expect(painSection.match(/rounded-swatch bg-blue-soft text-blue/g)).toHaveLength(
+        pain.items.length,
+      )
+      for (const item of pain.items) {
+        expect(painSection).toContain(item.title)
+        expect(painSection).toContain(item.body)
+      }
+    })
+  })
+
+  describe('what you will use', () => {
+    /** The band itself, so the next section's opening tag cannot be counted. */
+    const band = pillarsSection.slice(pillarsSection.indexOf('<ul'), pillarsSection.indexOf('</ul>'))
+
+    it('is one bordered surface, not four competing cards', () => {
+      // Four separate cards make one claim — *da busca à proposta* — look like
+      // four. `Card`'s surface is `rounded-card`; the band is a single panel.
+      expect(pillarsSection).not.toContain('rounded-card')
+      expect(pillarsSection.match(/<ul/g)).toHaveLength(1)
+      expect(band.match(/<li/g)).toHaveLength(4)
+    })
+
+    it('keeps all four items and every plan attribution', () => {
+      // The plan label is what tells a reader which of the two paid plans each
+      // capability belongs to. Nothing here was the layout's to drop.
+      for (const item of pillars.items) {
+        expect(pillarsSection).toContain(item.title)
+        expect(pillarsSection).toContain(item.body)
+        expect(pillarsSection).toContain(item.plan)
+      }
+    })
+
+    it('divides the items rather than boxing them', () => {
+      // One rule between neighbours, never around each item: three of the four
+      // carry a divider, the first carries none.
+      expect(band.match(/border-t border-line/g)).toHaveLength(3)
+    })
+  })
+
+  describe('the timeline', () => {
+    it('stays an ordered list', () => {
+      expect(timelineSection).toContain('<ol')
+    })
+
+    it('shows the sequence with an arrow between consecutive steps', () => {
+      // Four steps, three gaps. A rule over each step said "four things"; it
+      // never said they happen in this order, which is the whole section.
+      const arrows = timelineSection.match(/M5 12h14M13 6l6 6-6 6/g) ?? []
+      expect(arrows).toHaveLength(timeline.steps.length - 1)
+    })
+
+    it('keeps the arrows out of the accessibility tree', () => {
+      // On the wrapper's own tag: `Icon` already sets `aria-hidden` on the
+      // `<svg>` whenever no `title` is passed, so a character window before
+      // the path data is satisfied by the component's default and says nothing
+      // about this element at all.
+      const wrappers = timelineSection.match(/<span aria-hidden="true" class="absolute[^"]*"/g) ?? []
+      expect(wrappers).toHaveLength(timeline.steps.length - 1)
+    })
+
+    it('gives every step an icon, one per step in the catalogue', () => {
+      // `TIMELINE_ICONS` is indexed by position; a fifth step in `pt-BR.json`
+      // would hand `Icon` an undefined name and throw at build time.
+      expect(timelineSection.match(/rounded-swatch bg-blue-soft text-blue/g)).toHaveLength(
+        timeline.steps.length,
+      )
+    })
+
+    it('announces the three lists it restyled as lists', () => {
+      // Tailwind v4's preflight sets `list-style: none`, and Safari drops the
+      // list role when it sees that — so the `<ol>` the numerals are
+      // `aria-hidden` in deference to would carry nothing on an iPhone.
+      for (const section of [painSection, pillarsSection, timelineSection]) {
+        expect(section).toMatch(/<(ol|ul) role="list"/)
+      }
+    })
+
+    it('keeps the four dates and the four steps', () => {
+      for (const step of timeline.steps) {
+        expect(timelineSection).toContain(step.when)
+        expect(timelineSection).toContain(step.title)
+        expect(timelineSection).toContain(step.body)
+      }
+    })
+  })
+
+  describe('the founder offer', () => {
+    /**
+     * **The price, not "whatever is first".**
+     *
+     * This asserted `benefits[0]` is rendered at `text-stat` — reading index 0
+     * from the same array the component reads index 0 from, which is true by
+     * construction and green in exactly the case the requirement is broken.
+     * The four benefits are copy in an array Sci owns and may reorder; if he
+     * does, "Aviso direto, sem precisar acompanhar redes" becomes the 34px
+     * headline of the offer panel and the price drops into the list, with this
+     * test still passing.
+     *
+     * So the assertion is on the figure the section exists to shout.
+     */
+    it('sets the price — the figure, not the first array element — at display size', () => {
+      const raised = [...founderSection.matchAll(/<b class="[^"]*text-stat[^"]*"[^>]*>([^<]*)</g)].map(
+        (m) => m[1],
+      )
+      expect(raised).toHaveLength(1)
+      expect(raised[0]).toContain(price)
+      // And it is one of the approved benefit strings, not something written
+      // here: whichever of them names the price is the one that is raised.
+      expect(founderValue.benefits.map((b) => b.title)).toContain(raised[0])
+    })
+
+    it('puts the price above the things it buys', () => {
+      const at = founderSection.indexOf(price)
+      expect(at).toBeGreaterThan(-1)
+      for (const benefit of founderValue.benefits) {
+        if (benefit.title.includes(price)) continue
+        expect(founderSection.indexOf(benefit.title)).toBeGreaterThan(at)
+      }
+    })
+
+    it('cuts none of the four benefits', () => {
+      for (const benefit of founderValue.benefits) {
+        expect(founderSection).toContain(benefit.title)
+        expect(founderSection).toContain(benefit.body)
+      }
+    })
+
+    it('marks the remaining benefits with a check', () => {
+      // One idea — things the founder gets — so one glyph, not four different
+      // pictograms that made the list look like four kinds of thing.
+      const list = founderSection.slice(0, founderSection.indexOf(founderValue.cta))
+      // One check per benefit that stayed in the list — every one but the
+      // price, which is raised out of it.
+      expect(list.match(/M5 12l5 5 9-10/g) ?? []).toHaveLength(founderValue.benefits.length - 1)
+    })
+
+    it('follows the offer with the call to action, full width', () => {
+      // It used to hang under the comparison table in the other column: price,
+      // what you get, then the thing to do about it.
+      const cta = founderSection.indexOf(founderValue.cta)
+      for (const benefit of founderValue.benefits) {
+        expect(cta).toBeGreaterThan(founderSection.indexOf(benefit.title))
+      }
+      expect(cta).toBeLessThan(founderSection.indexOf(founderValue.comparisonRows[0].feature))
+      expect(founderSection.slice(cta - 400, cta)).toContain('w-full')
+    })
+  })
+})
+
+/**
+ * **A fix to something already on `main`, not part of the restyle.**
+ *
+ * Below 560px the comparison table is laid out with `display: block`, which
+ * strips the implicit ARIA role from every table element in every major
+ * browser: no table, no row, no cell, and therefore no `<th scope="col">`
+ * association. The `<th>`s were `sr-only` — present and announced — and the
+ * visible substitute labels inside each cell were `aria-hidden`, on a code
+ * comment that asserted "the real `<th>` is still associated with the cell".
+ *
+ * On a phone every row therefore announced the feature name and then two bare
+ * prices, with nothing saying which was the competitor's and which was ours —
+ * on the one section whose entire job is that contrast, on a page taking money.
+ */
+describe('the comparison table on a phone', () => {
+  const { founderValue } = messages.foundersPage
+
+  it('announces each value with the name of its column', () => {
+    // The substitute labels are the only thing left saying whose price this
+    // is once the cell's role is gone, so they must be in the tree. Asserted
+    // as: every rendering of either label is reachable by assistive tech.
+    for (const label of [`${founderValue.comparisonOther}:`, `${messages.brand.name}:`]) {
+      const occurrences = [...out.matchAll(new RegExp(`<span([^>]*)>\\s*${escapeForRegExp(label)}`, 'g'))]
+      expect(occurrences.length).toBeGreaterThanOrEqual(messages.foundersPage.founderValue.comparisonRows.length)
+      for (const [, attributes] of occurrences) expect(attributes).not.toContain('aria-hidden')
+    }
+  })
+
+  it('does not leave the stripped headers announcing a second time', () => {
+    // `sr-only` keeps an element in the tree. Below 560px the `<th>`s say
+    // nothing useful — they are associated with nothing — and would be read
+    // out before the rows as two loose words. `hidden` takes them out.
+    const thead = out.slice(out.indexOf('<thead'), out.indexOf('</thead>'))
+    expect(thead).toContain('max-[559px]:hidden')
+    expect(thead).not.toContain('sr-only')
+  })
+
+  it('keeps the real table semantics from 560px up', () => {
+    // The fix is for the phone. The desktop layout is a real table and must
+    // stay one, headers included.
+    const thead = out.slice(out.indexOf('<thead'), out.indexOf('</thead>'))
+    expect(thead.match(/scope="col"/g)).toHaveLength(3)
+    expect(out).toContain(founderValue.comparisonOther)
+  })
+})
+
+/** `RegExp` needs the currency and punctuation in the labels escaped. */
+function escapeForRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 describe('the header anchors', () => {
   const header = out.slice(out.indexOf('<header'), out.indexOf('</header>'))
 
@@ -422,15 +757,23 @@ describe('the header anchors', () => {
     // is about the offset, not about what the anchors are called, and
     // hardcoding them made renaming them to English (`CLAUDE.md`: identifiers
     // are English) fail a test that has nothing to do with naming.
-    const targets = [...header.matchAll(/href="#([^"]+)"/g)]
-      .map((m) => m[1])
-      .filter((id) => id !== 'topo' && id !== 'vaga')
+    // **No exemptions.** This filter used to drop `topo` and `vaga`, and both
+    // were in fact broken: `#vaga` is the page's own conversion target — three
+    // of the eight in-page links point at it, including the header's CTA — and
+    // it landed 65px under the bar, clipping the `R$ 26`. `#topo` is the skip
+    // link's target, so the first thing a keyboard user revealed was the hero
+    // badge, behind the bar. The suite passed by excluding by name exactly the
+    // two anchors that did not work.
+    const targets = [...out.matchAll(/href="#([^"]+)"/g)].map((m) => m[1])
 
-    expect(targets.length).toBeGreaterThanOrEqual(2)
-    for (const id of targets) {
+    expect(new Set(targets).size).toBeGreaterThanOrEqual(5)
+    for (const id of new Set(targets)) {
       const at = out.indexOf(`id="${id}"`)
       expect(at).toBeGreaterThan(-1)
-      expect(out.slice(at, at + 240)).toMatch(/scroll-mt-/)
+      // The value, not the prefix. `scroll-mt-2` is 8px against a 64px bar and
+      // satisfied the old `/scroll-mt-/`, so the assertion held while the
+      // heading still landed 57px underneath.
+      expect(out.slice(at, at + 240)).toContain('scroll-mt-20')
     }
   })
 })

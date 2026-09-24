@@ -133,6 +133,7 @@ function SectionHead({
   label,
   title,
   children,
+  aside,
   className,
 }: {
   /**
@@ -149,10 +150,29 @@ function SectionHead({
   label?: string
   title: string
   children?: ReactNode
+  /**
+   * Opt-in second column: heading on the left, this on the right.
+   *
+   * The default is one 720px stack with the section's content dropped
+   * underneath it, and on a 1120px page that leaves every `<h2>` on a measure
+   * nearly twice the width its type was drawn for — `--text-section` tops out
+   * at 38px, so a two-line heading spans ~700px and reads as a caption over a
+   * wide empty band. Pass `aside` and the heading takes ~45% of the row while
+   * the section's supporting material takes the rest: the same 38px then wraps
+   * to three tight lines in a ~500px measure, which is where it has presence.
+   *
+   * **The type scale is unchanged.** The heading only looks larger because the
+   * column is narrower; `--text-section` is the same token either way.
+   *
+   * One column again below 900px — the same breakpoint the hero, the price
+   * chain and the screening example already collapse at, so the whole page
+   * becomes a single column at one width rather than four.
+   */
+  aside?: ReactNode
   className?: string
 }) {
-  return (
-    <div className={cn('flex max-w-[720px] flex-col gap-3', className)}>
+  const head = (
+    <>
       {label ? (
         <SectionLabel tone="muted" size="caption">
           {label}
@@ -160,6 +180,23 @@ function SectionHead({
       ) : null}
       <H2>{title}</H2>
       {children}
+    </>
+  )
+
+  if (!aside) {
+    return <div className={cn('flex max-w-[720px] flex-col gap-3', className)}>{head}</div>
+  }
+
+  return (
+    <div
+      className={cn(
+        'grid grid-cols-1 items-start gap-x-12 gap-y-6 [&>*]:min-w-0',
+        'min-[900px]:grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)]',
+        className,
+      )}
+    >
+      <div className="flex max-w-[500px] flex-col gap-3">{head}</div>
+      <div>{aside}</div>
     </div>
   )
 }
@@ -334,34 +371,88 @@ function bold(text: string) {
 
 /* ---------------------------------------------------------------- why now */
 
+/**
+ * Same order as `pain.items`: find it, read it, do the sum.
+ *
+ * `money` rather than `margin` for the third: the problem described is losing
+ * money on the contract, not reading a margin sheet, and `money` is already
+ * what `Trust` and `Pillars` give the same idea two sections apart.
+ */
+const PAIN_ICONS = ['search', 'tender', 'money'] as const
+
 function Pain() {
   const { pain } = page
   return (
     <Section>
       <Wrap>
-        <SectionHead label={pain.label} title={pain.title} className="mb-8" />
+        {/*
+          Heading left, the two market figures right.
 
-        <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
-          {pain.items.map((item) => (
-            <Card key={item.title} padding="none" className="flex flex-col gap-2.5 p-5">
-              <H3>{item.title}</H3>
-              <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
-            </Card>
-          ))}
-        </div>
-
-        <div className="mt-7 flex flex-wrap items-baseline gap-8">
-          {pain.facts.map((fact) => (
-            <div key={fact.value}>
-              <b className="block font-display text-stat font-extrabold tabular-nums">
-                {fact.value}
-              </b>
-              <span className="text-body leading-[1.55] text-muted">{fact.label}</span>
+          The figures used to sit *under* the three cards, below the fold of
+          this section on a phone, where they read as a footnote to the cards
+          rather than as the scale of the market the heading is claiming. They
+          are the section's supporting material, so they are what the heading's
+          second column carries.
+        */}
+        <SectionHead
+          label={pain.label}
+          title={pain.title}
+          className="mb-10"
+          aside={
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-wrap items-baseline gap-x-10 gap-y-6">
+                {pain.facts.map((fact) => (
+                  <div key={fact.value} className="min-w-0">
+                    <b className="block font-display text-stat font-extrabold tabular-nums">
+                      {fact.value}
+                    </b>
+                    <span className="text-body leading-[1.55] text-muted">{fact.label}</span>
+                  </div>
+                ))}
+              </div>
+              <Source>{pain.source}</Source>
             </div>
-          ))}
-        </div>
+          }
+        />
 
-        <Source className="mt-3.5">{pain.source}</Source>
+        {/*
+          Numbered, and an `<ol>`, because *Encontrar → Entender → Não perder
+          dinheiro* is the order the work actually happens in — not three
+          parallel complaints. The numerals are `aria-hidden`: the list element
+          already carries the sequence, and a screen reader reading "zero um"
+          before every heading would say it twice.
+        */}
+        {/*
+          `role="list"` is not redundant. Tailwind v4's preflight sets
+          `list-style: none` on every `ol`/`ul`, and Safari drops the list role
+          when it sees that — measured here, every list on this page computes
+          `list-style-type: none`. Without the role the element announces
+          nothing, and since the numerals are `aria-hidden` on the strength of
+          "the list carries the order", the order would reach nobody on an
+          iPhone. That is the same shape as the table bug in the commit before
+          this one: semantics asserted without checking the browser kept them.
+        */}
+        <ol role="list" className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
+          {pain.items.map((item, index) => (
+            <li key={item.title} className="flex min-w-0">
+              <Card padding="none" className="flex w-full flex-col gap-2.5 p-5">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
+                    <Icon name={PAIN_ICONS[index]} size={22} />
+                  </span>
+                  <span
+                    aria-hidden
+                    className="font-mono text-lead font-medium tabular-nums text-muted"
+                  >
+                    {`0${index + 1}`}
+                  </span>
+                </div>
+                <H3>{item.title}</H3>
+                <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
+              </Card>
+            </li>
+          ))}
+        </ol>
       </Wrap>
     </Section>
   )
@@ -506,20 +597,60 @@ function Pillars() {
     <Section id={ANCHORS.pillars}>
       <Wrap>
         <SectionHead label={pillars.label} title={pillars.title} className="mb-8" />
-        <div className="grid grid-cols-1 gap-4 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4">
+        {/*
+          One panel, not four cards.
+
+          The four are a single claim — *da busca à proposta* — and four
+          separate bordered surfaces make them compete, each with its own edge
+          and its own shadow of white against the ivory. One surface with
+          hairlines between the items says the same thing once: this is the
+          tool, in four parts.
+
+          Gaps are zero, so the dividers are borders on the items themselves,
+          and which edge they sit on depends on how many columns there are:
+
+            <560px   one column   → a rule above every item but the first
+            560px    two columns  → a rule left of the right-hand items (1, 3)
+                                    and above the second row (2, 3)
+            900px    four columns → a rule left of every item but the first
+
+          A tier only ever *clears* a rule a lower tier set; it never sets one
+          the same variant also clears. `min-[560px]:border-t` and
+          `min-[560px]:border-t-0` are the same property under the same media
+          query, settled by stylesheet order rather than by the order they are
+          written here — which is why the rule between the two rows was missing
+          the first time round, at 560–899px only, on a tier nobody screenshots.
+        */}
+        <ul role="list" className="grid grid-cols-1 overflow-hidden rounded-panel border border-line bg-surface min-[560px]:grid-cols-2 min-[900px]:grid-cols-4">
           {pillars.items.map((item, index) => (
-            <Card key={item.title} padding="none" className="flex flex-col gap-2.5 p-5">
+            <li
+              key={item.title}
+              className={cn(
+                'flex min-w-0 flex-col gap-2.5 p-5 min-[900px]:p-6',
+                // Stacked: a rule above every item but the first. It also
+                // carries the colour every other rule below inherits.
+                index > 0 && 'border-t border-line',
+                // Two columns: the second item joins the first row…
+                index === 1 && 'min-[560px]:border-t-0',
+                // …and the right-hand item of each row is divided vertically.
+                index % 2 === 1 && 'min-[560px]:border-l',
+                // Four columns: one row, so the second row's rule goes…
+                index >= 2 && 'min-[900px]:border-t-0',
+                // …and the only item still missing a vertical rule gets one.
+                index === 2 && 'min-[900px]:border-l',
+              )}
+            >
               <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
                 <Icon name={PILLAR_ICONS[index]} size={22} />
               </span>
               <H3>{item.title}</H3>
               <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
-              <span className="mt-auto font-mono text-label tracking-[0.06em] text-muted uppercase">
+              <span className="mt-auto pt-1 font-mono text-label tracking-[0.06em] text-muted uppercase">
                 {item.plan}
               </span>
-            </Card>
+            </li>
           ))}
-        </div>
+        </ul>
       </Wrap>
     </Section>
   )
@@ -604,16 +735,18 @@ function Screening() {
 
 /* ------------------------------------------------------- what a founder gets */
 
-/**
- * Index 1 is `money`, not `visitor`. The second benefit used to be "Acesso
- * antes de todos" — a person icon for early access. D7 replaced that claim with
- * the price range, so the icon moved with the sentence; leaving the old one
- * would illustrate a benefit the card no longer names.
- */
-const BENEFIT_ICONS = ['locked', 'money', 'send', 'account'] as const
-
 function FounderValue() {
   const { founderValue } = page
+  /**
+   * The first benefit **is** the price — "R$ 26 por mês durante 6 meses" — and
+   * it was set at 17px in a list of four evenly weighted items, so the cheapest
+   * thing on the page was also the quietest. It is lifted out of the list and
+   * given `--text-stat`, the size this page already gives a figure that carries
+   * a section; the three that remain keep the list.
+   *
+   * Nothing is cut and nothing is reworded: same four strings, same order.
+   */
+  const [price, ...benefits] = founderValue.benefits
   return (
     <Section divided={false}>
       <Wrap>
@@ -633,13 +766,43 @@ function FounderValue() {
             </SectionLabel>
             <H2 className="text-surface">{founderValue.title}</H2>
 
-            <ul className="flex flex-col gap-[18px]">
-              {founderValue.benefits.map((benefit, index) => (
-                <li key={benefit.title} className="grid grid-cols-[36px_minmax(0,1fr)] gap-3.5">
-                  <span className="grid size-9 place-items-center rounded-control bg-brand-raised text-icon-on-brand">
-                    <Icon name={BENEFIT_ICONS[index]} size={20} />
-                  </span>
-                  <div>
+            <div className="flex flex-col gap-1.5">
+              {/* `--text-stat` carries 1.05 leading because everywhere else on
+                  this page it is one line — `R$ 272,6 bi`, `R$ 14,60`. This is
+                  the first place it carries a sentence, and at 390px that
+                  sentence is two lines in a 310px measure: 34px type on 35.7px
+                  leading puts one line's descenders in the next line's
+                  ascenders. `leading-[1.15]` is the same size on 39px. */}
+              <b className="font-display text-stat leading-[1.15] font-extrabold tracking-[-0.02em] text-surface text-balance">
+                {price.title}
+              </b>
+              <span className="text-base leading-[1.6] text-on-brand-muted">{price.body}</span>
+            </div>
+
+            {/* `aria-hidden`: an `<hr>` is `role="separator"` and would be
+                announced between the price and the list it introduces. */}
+            <hr aria-hidden className="border-0 border-t border-brand-line" />
+
+            {/* Check glyphs rather than four category icons. Each of the three
+                is a thing the founder gets, which is one idea, and four
+                different pictograms for it made the list look like four
+                different kinds of thing. `icon-on-brand` is the 5.06:1 tier.
+
+                This retires `BENEFIT_ICONS` — including the `visitor` → `money`
+                correction PR #100 made to index 1 when that benefit became the
+                price range. The correction was right and the reason it existed
+                (an icon must illustrate the sentence beside it) is exactly why
+                there is now one glyph: a check illustrates every one of them. */}
+            <ul className="flex flex-col gap-4">
+              {benefits.map((benefit) => (
+                <li key={benefit.title} className="flex items-start gap-3">
+                  <Icon
+                    name="check"
+                    size={20}
+                    strokeWidth={2}
+                    className="mt-1 shrink-0 text-icon-on-brand"
+                  />
+                  <div className="min-w-0">
                     <b className="mb-0.5 block text-subhead font-bold text-surface">
                       {benefit.title}
                     </b>
@@ -648,6 +811,21 @@ function FounderValue() {
                 </li>
               ))}
             </ul>
+
+            {/* The call to action belongs to the offer, not to the comparison
+                table it used to hang under: price, what you get, then the
+                thing to do about it, full width.
+                
+                `mt-auto` pins it to the floor of a column the grid has
+                stretched. Measured, this column's own content is the taller of
+                the two at every width the row is used (563px against 401px at
+                1120px, 621 against 466 at 900), so today the rule is a no-op —
+                it is kept because it is the comparison column that grows when
+                a row is added to the table, and then the offer would end above
+                the panel's floor. */}
+            <Button variant="onBrand" href="#vaga" className="mt-auto w-full">
+              {founderValue.cta}
+            </Button>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -669,12 +847,40 @@ function FounderValue() {
                 three columns of two-to-five words do not need to be one: below
                 560px each row becomes the feature name with its two values
                 labelled underneath, which is the same information at a width
-                that fits. `<table>` is kept — it *is* tabular data, and the
-                headers stay for assistive technology, hidden visually where
-                the layout stacks. */}
+                that fits. `<table>` is kept — from 560px up it *is* tabular
+                data, with real `<th scope="col">` associations.
+
+                **Below 560px it is not a table at all**, and the comment that
+                used to stand here said the opposite: "the real `<th>` is still
+                associated with the cell". It is not. Setting `display: block`
+                on a table element strips its implicit ARIA role in every major
+                browser — no table, no row, no cell, and therefore no column
+                header associated with anything. The `<th>`s were `sr-only`
+                (present, announced) and the visible substitute labels inside
+                each cell were `aria-hidden` (ignored), on the strength of that
+                false claim. On a phone, every row announced the feature name
+                and then two bare prices with nothing saying which was the
+                competitor's and which was ours — on the one section whose
+                whole job is that contrast.
+
+                So the substitutes do the work where the semantics are gone,
+                and the two mechanisms swap over at the same breakpoint the
+                layout does:
+
+                  <560px   `<thead>` is `display: none` (out of the tree, not
+                           merely invisible) and each value carries its own
+                           label, announced
+                  ≥560px   the labels are `display: none` and the real
+                           `<th scope="col">` associations are back
+
+                `display: none` in both directions on purpose: `aria-hidden`
+                cannot be made conditional on a media query, and `sr-only`
+                would have left the headers announcing a second time. The
+                labels are `comparisonOther` and `messages.brand.name` — the
+                same two strings the `<th>`s carry. */}
             <div>
               <table className="w-full border-collapse text-body leading-[1.55] max-[559px]:block">
-                <thead className="max-[559px]:sr-only">
+                <thead className="max-[559px]:hidden">
                   <tr>
                     <th scope="col" className="border-b border-brand-line px-2 py-2.5" />
                     <th
@@ -700,11 +906,13 @@ function FounderValue() {
                       <td className="border-b border-brand-line px-2 py-2.5 align-top text-on-brand-muted max-[559px]:block max-[559px]:border-0 max-[559px]:pb-1 max-[559px]:font-semibold max-[559px]:text-on-brand">
                         {row.feature}
                       </td>
-                      {/* Below 560px the column header is `sr-only`, so each
-                          value carries its own label. `aria-hidden` on the
-                          inline label: the real `<th>` is still associated
-                          with the cell, and announcing both would say it
-                          twice. */}
+                      {/* The inline label, and it is **not** `aria-hidden`.
+                          Below 560px it is the only thing that says whose
+                          price this is: `display: block` has stripped the
+                          cell's role, so there is no column header associated
+                          with it any more. `hidden` (display: none) is what
+                          keeps it from being announced twice from 560px up,
+                          where the real `<th scope="col">` works again. */}
                       <td
                         className={cn(
                           'border-b border-brand-line px-2 py-2.5 align-top',
@@ -712,7 +920,7 @@ function FounderValue() {
                           index === 0 && 'font-mono tabular-nums',
                         )}
                       >
-                        <span aria-hidden className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption text-on-brand-faint">
+                        <span className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption text-on-brand-faint">
                           {founderValue.comparisonOther}:
                         </span>
                         {row.other}
@@ -724,7 +932,7 @@ function FounderValue() {
                           index === 0 && 'font-mono tabular-nums',
                         )}
                       >
-                        <span aria-hidden className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption font-normal text-on-brand-faint">
+                        <span className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption font-normal text-on-brand-faint">
                           {messages.brand.name}:
                         </span>
                         {row.us}
@@ -736,10 +944,6 @@ function FounderValue() {
             </div>
 
             <p className="text-caption leading-[1.55] text-on-brand-faint">{founderValue.comparisonNote}</p>
-
-            <Button variant="onBrand" href="#vaga" className="mt-auto w-full">
-              {founderValue.cta}
-            </Button>
           </div>
         </div>
       </Wrap>
@@ -749,27 +953,64 @@ function FounderValue() {
 
 /* -------------------------------------------------------------- timeline */
 
+/**
+ * Same order as `timeline.steps`: the day you reserve, the hour it opens, the
+ * weekly Telegram summary, the subscription link.
+ *
+ * `deadline` is this file's calendar — see `icon.tsx`, which explains why no
+ * second name for it was added.
+ */
+const TIMELINE_ICONS = ['deadline', 'clock', 'send', 'link'] as const
+
 function Timeline() {
   const { timeline } = page
   return (
     <Section>
       <Wrap>
         <SectionHead label={timeline.label} title={timeline.title} className="mb-8" />
-        <ol className="grid grid-cols-1 gap-x-0 gap-y-7 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:gap-y-0">
+        {/*
+          A rule over each step said "four things"; it did not say they happen
+          in this order, and the order is the whole argument of the section —
+          you reserve today and decide in October. So: the icon box the rest of
+          the page already uses for a category, the numeral, and an arrow in
+          the gap between consecutive steps.
+
+          The arrows are decoration — the `<ol>` carries the sequence — so they
+          are `aria-hidden`, and they exist only from 900px, the one width at
+          which the steps are actually a row. Between stacked items an arrow
+          pointing right would be pointing at nothing.
+        */}
+        <ol role="list" className="grid grid-cols-1 gap-x-4 gap-y-8 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:gap-y-0">
           {timeline.steps.map((step, index) => (
             <li
               key={step.title}
-              className={cn(
-                'relative flex flex-col gap-2 pr-5',
-                "before:mb-3.5 before:block before:h-0.5 before:content-['']",
-                index === 0 ? 'before:bg-blue' : 'before:bg-line-strong',
-              )}
+              className="relative flex min-w-0 flex-col gap-2 min-[900px]:pr-9"
             >
-              <span className="font-mono text-caption font-medium tracking-[0.06em] text-blue uppercase">
+              <div className="flex items-center gap-3">
+                <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
+                  <Icon name={TIMELINE_ICONS[index]} size={22} />
+                </span>
+                <span
+                  aria-hidden
+                  className="font-mono text-lead font-medium tabular-nums text-muted"
+                >
+                  {`0${index + 1}`}
+                </span>
+              </div>
+              <span className="mt-1 font-mono text-caption font-medium tracking-[0.06em] text-blue uppercase">
                 {step.when}
               </span>
               <H3>{step.title}</H3>
               <p className="text-base leading-[1.6] text-ink-soft">{step.body}</p>
+
+              {index < timeline.steps.length - 1 ? (
+                <span
+                  aria-hidden
+                  className="absolute top-5 right-1 hidden -translate-y-1/2 text-line-strong min-[900px]:block"
+                >
+                  <Icon name="arrowRight" size={20} />
+                </span>
+              ) : null}
             </li>
           ))}
         </ol>
@@ -871,7 +1112,11 @@ export default function FoundersOfferPage() {
         </Wrap>
       </header>
 
-      <main id="topo">
+      {/* `scroll-mt-20` for the same reason every `Section` carries it: the
+          skip link and the logo both point at `#topo`, and without the offset
+          the first thing a keyboard user reveals — the hero badge naming the
+          48 seats and the 08/10 opening — renders behind the 64px bar. */}
+      <main id="topo" className="scroll-mt-20">
         <Hero />
         <Trust />
         <Pain />

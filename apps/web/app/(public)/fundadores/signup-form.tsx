@@ -142,8 +142,18 @@ export function SignupForm() {
       id="vaga"
       noValidate
       onSubmit={handleSubmit}
+      /*
+       * `scroll-mt-20` — the header is sticky and 64px tall, and three of the
+       * eight in-page links on this page point here, including the header's own
+       * CTA and the final one. Without it a jump to `#vaga` parks the form's
+       * top 65px behind the bar: at 1280 the `R$ 26` itself is clipped and the
+       * `FUNDADORES` eyebrow above it is hidden at every width. `Section`
+       * carries the same offset for `#tool`, `#screening` and `#faq`; this
+       * element is not a `Section`, so it was the one anchor the fix missed —
+       * on the page's own conversion target.
+       */
       className={
-        'flex flex-col gap-4 rounded-panel border border-line bg-surface p-5 ' +
+        'scroll-mt-20 flex flex-col gap-4 rounded-panel border border-line bg-surface p-5 ' +
         'shadow-[0_1px_0_var(--color-line),0_18px_40px_-28px_rgba(23,23,23,0.35)] ' +
         'min-[560px]:p-6'
       }
@@ -382,8 +392,11 @@ function Confirmation({
   firstName: string
   ref: Ref<HTMLDivElement>
 }) {
+  // Same `scroll-mt-20` as the form it replaces: this branch also carries
+  // `id="vaga"`, and it is focused programmatically after a signup, which
+  // scrolls it into view — under the sticky bar without the offset.
   const shell =
-    'flex flex-col gap-4 rounded-panel border border-line bg-surface p-5 ' +
+    'scroll-mt-20 flex flex-col gap-4 rounded-panel border border-line bg-surface p-5 ' +
     'shadow-[0_1px_0_var(--color-line),0_18px_40px_-28px_rgba(23,23,23,0.35)] ' +
     'min-[560px]:p-6'
 
