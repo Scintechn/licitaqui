@@ -88,6 +88,18 @@ describe('the founders signup form', () => {
     expect(out).toContain(copy.planLabel)
   })
 
+  it('keeps the 30-day guarantee beside the price, where the purchase happens', () => {
+    // `refunds.ctaLine` did **not** move when the rest of the refunds became a
+    // FAQ row on 2026-09-24. It is the only refund statement left at the point
+    // of purchase, and `docs/legal/faq-cobranca.md` asks the Offer to carry
+    // one below the price — so this is the assertion standing in for a
+    // placement the page no longer satisfies anywhere else.
+    expect(out).toContain(messages.foundersPage.refunds.ctaLine)
+    expect(out.indexOf(messages.foundersPage.refunds.ctaLine)).toBeGreaterThan(
+      out.indexOf(copy.price),
+    )
+  })
+
   it('carries no in-page anchor of its own any more', () => {
     // It used to be `#vaga`, with `scroll-mt-20` so a jump cleared the sticky
     // header. It is a dialog now: nothing links to it, and an id nothing

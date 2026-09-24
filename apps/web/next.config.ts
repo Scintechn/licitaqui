@@ -34,6 +34,21 @@ const RADAR_HEADERS = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  /*
+   * **The optimiser's quality allowlist.**
+   *
+   * Next 16 defaults this to `[75]` and *silently coerces* anything else to
+   * the nearest allowed value — so `quality={90}` on the `/fundadores` hero
+   * shot shipped as `q=75` and the only evidence was `&q=75` in the emitted
+   * `srcSet`. It is an allowlist by design: the endpoint is public, and
+   * without one anybody can make the server transcode at any quality it likes.
+   *
+   * 90 is here for one image: the Radar screenshot in that hero, whose
+   * smallest type is about 11px. 75 is tuned for photographs and visibly
+   * mushes glyph edges at that size. Everything else on the product is a
+   * photograph or an icon and stays at 75.
+   */
+  images: { qualities: [75, 90] },
   async headers() {
     return [
       { source: '/radar', headers: RADAR_HEADERS },

@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
-import Image from 'next/image'
+import { getImageProps } from 'next/image'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Button, Card, CardRow, Icon, Logo, SectionLabel, Status, TagList } from '@/components'
+import type { IconName } from '@/components'
 import { cn } from '@/lib/cn'
 import { messages } from '@/lib/messages'
+import radarPreviewMobile from './radar-preview-mobile.png'
 import radarPreview from './radar-preview.png'
 import { SignupButton, SignupSheet, SignupTextButton } from './signup-sheet'
 
@@ -74,43 +76,83 @@ function Wrap({ children, className }: { children: ReactNode; className?: string
   )
 }
 
-/** The public-page rhythm, 40/48 — see `page-parts.tsx` for why it stepped down. */
+/**
+ * The public-page rhythm, **48 / 64 / 80** on `/fundadores` since 2026-09-24.
+ *
+ * This is a local `Section`, and it now diverges from `app/(public)/
+ * page-parts.tsx`, which is shared with the Landing and stays at 40/48. Sci
+ * stepped the shared one down to 40/48 earlier in the week and has chosen to
+ * step this page back up knowing that — the divergence is deliberate and is
+ * recorded in the PR. The shared file is not edited here: `CLAUDE.md`'s
+ * parallel-lane rule, and a rhythm change on the Landing is not this card.
+ */
 function Section({
   children,
-  divided = true,
-  attached = false,
+  ground = 'ivory',
   id,
+  labelledBy,
   className,
 }: {
   children: ReactNode
-  /** `.borda-topo` — a hairline separating this section from the one above. */
-  divided?: boolean
   /**
-   * Drops the top padding, for a section that continues the one above it
-   * rather than starting a new beat — the sign-up form under the offer panel
-   * is one offer, not two sections.
+   * The full-bleed ground this section paints, alternating down the page.
    *
-   * A prop rather than `className="pt-0"` from the caller: `cn` is a plain
-   * join with no `tailwind-merge`, so `py-10 pt-0` leaves both rules in the
-   * sheet and which wins is Tailwind's generation order rather than anything
-   * this file states. `lib/cn.ts` says so in as many words — for an override,
-   * a variant, not a competing utility.
+   * Sci, 2026-09-24: *"between the section, the background color is the same —
+   * when I said increase the contrast it is about this."* The hairline that was
+   * doing the work measures **1.22:1**, and no ground dark enough to read as a
+   * boundary on its own is available: a fill at ~1.20:1 against Ivory drags
+   * `--color-muted` body text to **4.12:1**, under AA. So no token was added.
+   *
+   * What makes a 1.07:1 change read anyway is that it is *full-bleed* — a
+   * continuous straight edge across the whole viewport, which the eye resolves
+   * far below the ratio it needs for a patch. That is why this is on the
+   * `<section>` and not on `Wrap`.
+   *
+   * **The `border-t border-line` hairline is gone, and so are `divided` and
+   * `attached` with it.** A rule *and* a ground change at the same edge is
+   * belt and braces and reads as chrome — and because the grounds alternate,
+   * **every** boundary on this page is a ground change, so there is no edge
+   * left for a rule to do work at. The first attempt kept the rule on the
+   * ivory sections and gated it `divided && ground === 'ivory'`, which drew
+   * exactly the doubled edge it was written to remove, at four of the eight
+   * boundaries; its test looked only at the muted sections and so could never
+   * fail. `attached` went at the same time: it had no call site anywhere.
+   *
+   * **`fill-muted` and not `surface`, measured.** `surface` is white, and it
+   * was tried first: three of the eight sections — the promises band, the
+   * price chain and the closing offer — carry a white panel of their own, and
+   * on a white ground those panels vanished into it, leaving only a 1.55:1
+   * hairline. `fill-muted` is the same order of change against Ivory
+   * (**1.082:1**, against `surface`'s 1.066:1) so the full-bleed edge reads at
+   * least as well, and it puts the panels *above* their ground instead of
+   * inside it. Both are existing tokens; no new one was added, and none could
+   * be — a fill dark enough to read as a boundary on its own drags
+   * `--color-muted` body text to 4.12:1, under AA.
    */
-  attached?: boolean
+  ground?: 'ivory' | 'muted'
   /**
    * The target of a header anchor. `scroll-mt-20` comes with it: the header is
    * sticky and 64px tall, so a bare `#id` jump parks the heading underneath it.
    */
   id?: string
+  /**
+   * The id of the element naming this section, for the one section that has no
+   * `<h2>` — the promises band, whose heading (`pillars.title`) is orphaned by
+   * Sci's decision. A landmark that a nav link points at and that announces as
+   * a bare "section" is worse than no landmark; this names it with the eyebrow
+   * already on screen rather than with new copy.
+   */
+  labelledBy?: string
   className?: string
 }) {
   return (
     <section
       id={id}
+      aria-labelledby={labelledBy}
       className={cn(
-        attached ? 'pb-10 min-[560px]:pb-12' : 'py-10 min-[560px]:py-12',
+        'py-12 min-[560px]:py-16 min-[900px]:py-20',
         id && 'scroll-mt-20',
-        divided && 'border-t border-line',
+        ground === 'muted' && 'bg-fill-muted',
         className,
       )}
     >
@@ -206,8 +248,21 @@ function SectionHead({
 }) {
   const head = (
     <>
+      {/* `accent` (blue) rather than `muted`, on Sci's instruction, 2026-09-24.
+          Every eyebrow this renders sits on Ivory, where `--color-blue`
+          measures **5.78:1** — AA for normal text at the 12px `caption` size,
+          with room to spare (`styles/contrast.test.ts` pins it).
+
+          It is a prop and not a `text-blue` in `className`: `lib/cn.ts` is a
+          plain join, so a colour utility from the caller would sit beside
+          `SectionLabel`'s own and be settled by stylesheet order — which is how
+          an eyebrow shipped graphite once already.
+
+          The two eyebrows inside the brand-blue offer panel do not come
+          through here; they stay `tone="inverse"`, because `accent` there is
+          blue on its own background. */}
       {label ? (
-        <SectionLabel tone="muted" size="caption">
+        <SectionLabel tone="accent" size="caption">
           {label}
         </SectionLabel>
       ) : null}
@@ -263,27 +318,83 @@ function Source({ children, className }: { children: ReactNode; className?: stri
  * label is `account.screen.radar`, an approved string reused; see the PR for
  * the note that a `foundersPage` key of its own would read better.
  *
- * **The image is decorative and its `alt` is empty on purpose.** The headline
- * and the subtitle beside it already say what the product does; a description
- * of the screenshot would be new user-facing copy, and copy on this page is
- * Sci's under the legal brief.
+ * **Both images are decorative and their `alt` is empty on purpose.** The
+ * headline and the subtitle beside them already say what the product does; a
+ * description of the screenshot would be new user-facing copy, and copy on
+ * this page is Sci's under the legal brief.
  *
- * `next/image` with a static import: the source is 1600×1066 and 1.6MB, and an
- * `<img>` in a hero would ship all of it to a phone. The static import carries
- * the intrinsic size, so the box is reserved before the bytes arrive (no CLS),
- * and `sizes` names the box it is actually drawn in. `priority` because this
- * is the LCP element above the fold.
+ * ## The proportions, and why they changed (2026-09-24)
+ *
+ * Sci, at ~1270px: *"the proporcional is not right"* — the `<h1>` wrapped to
+ * **five lines at 60px** while the shot sat at **464px** beside it, so the
+ * headline read as the page and the product read as a footnote.
+ *
+ * The two levers pull against each other: narrowing the text column to widen
+ * the shot *adds* headline lines at a fixed size. `text-wrap: balance` gives
+ * the minimum line count for a measure, and measured on this string that
+ * minimum is four lines only from about **11.4em** of measure — 464px needs
+ * the headline at 40px, 568px at 48px. So both moved, together:
+ *
+ *  - **`--text-hero`'s clamp steps down to `clamp(2.125rem, 3.6vw, 2.5rem)`**
+ *    (34 → 40px, at its cap from 1112px up). Not a new token: this is the
+ *    page's one `<h1>` and the only thing `--text-hero` dresses. 60px was
+ *    sized for a headline that had the wider half of the row; at 40px the
+ *    same sentence lands in four lines on 464px and the block is 163px tall
+ *    against the shot's 356px, where it used to be 306px against 291px.
+ *  - **The grid splits in two steps, not one.** From 900px it is even
+ *    (`1fr 1fr`, 32px gap): below 1120px the `Wrap` is viewport-bound and
+ *    both columns are already tight, and the subtitle needs ~440px to hold
+ *    four lines. From 1120px the `Wrap` is fixed at 1120 and there is room to
+ *    favour the shot: `0.85fr 1.15fr` with the 48px gap, which is 439/593.
+ *
+ * Sci's stated budget was *"the content below can be in 4 lines"* — the
+ * subtitle runs to four at 1280, 1120 and 900, and the headline to four at
+ * all three.
+ *
+ * **`0.85/1.15` is the end of this lever, measured.** One notch further
+ * (`0.82/1.18`) buys the shot 16px and costs the headline its fifth line;
+ * `0.78/1.22` costs the subtitle one as well. The shot's remaining size is
+ * bounded by `Wrap`'s 1120px measure, not by the split — at a 1280px measure
+ * the same `0.85/1.15` would draw it at 685×428 with the headline still on
+ * four lines, but the hero would then sit 80px wider a side than the sticky
+ * header and every section under it. That is a page-wide decision, and it is
+ * in the PR for Sci rather than taken here.
+ *
+ * ## Two sources, one download
+ *
+ * The 1800×1125 desktop shot is a three-column app UI; rendered below about
+ * **500px** it stops being a screenshot and becomes texture — measured on the
+ * asset itself, where 700px and 520px still read and 400px does not. In the
+ * one-column layout the shot is drawn at `100vw − 40px`, so 500px of it is a
+ * **540px viewport**: that is the breakpoint, and it is where the phone shot
+ * (`radar-preview-mobile.png`, 780×1688, the Radar at native 2×) takes over.
+ * Not a round number — the number legibility gives.
+ *
+ * `<picture>` with a `<source media>` rather than two `next/image` elements
+ * toggled with `hidden`: a `display:none` `<img>` is still fetched by Chrome,
+ * so the `hidden` pair ships both files at every viewport. `<picture>` selects
+ * exactly one, and `e2e/journeys/fundadores.spec.ts` counts the requests
+ * rather than trusting this paragraph.
+ *
+ * `getImageProps` is Next's own art-direction recipe (`next/image` docs, "Art
+ * direction"): both sources still go through the optimiser with a `sizes` that
+ * names the box each is actually drawn in. One difference from the `<Image>`
+ * it replaces, stated plainly: there is **no** `<link rel=preload>`, because a
+ * preload cannot be made viewport-conditional without fetching both files.
+ * The shot is eager and high priority; it is discovered by the parser instead
+ * of by the preload scanner.
+ *
+ * The aspect ratio is set in CSS at the same breakpoint, not left to the
+ * `width`/`height` attributes: those come from the mobile source (the `<img>`
+ * fallback), so on a desktop viewport the reserved box would be 780/1688 until
+ * the bytes land and 1800/1125 after — a hero-sized layout shift.
  */
 function Hero() {
   const { hero } = page
+  const shot = productShot()
   return (
     <div className="pt-7 pb-14">
-      {/* The split favours the headline: `--text-hero` is `clamp(34px, 5.4vw,
-          60px)`, so at 900px the h1 is already 48px and a column narrower than
-          ~440px breaks it into eight lines of three words. 1.1/0.9 keeps the
-          headline on about the measure it had when the form was here, and the
-          shot still takes the larger half of what is left. */}
-      <Wrap className="grid items-center gap-8 [&>*]:min-w-0 min-[900px]:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] min-[900px]:gap-x-12">
+      <Wrap className="grid items-center gap-8 [&>*]:min-w-0 min-[900px]:grid-cols-2 min-[900px]:gap-x-8 min-[1120px]:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] min-[1120px]:gap-x-12">
         <div className="flex flex-col gap-[22px] pt-3">
           <span className="inline-flex items-center gap-2 self-start rounded-badge bg-attention-soft px-2.5 py-1.5 font-mono text-caption font-medium tracking-[0.06em] text-attention uppercase">
             <span aria-hidden className="inline-block size-[7px] rounded-pill bg-attention" />
@@ -314,28 +425,92 @@ function Hero() {
           </div>
         </div>
 
-        {/* `w-full h-auto` inside a `min-w-0` grid child: the intrinsic 1600px
-            never becomes the column's minimum, which is the shape that put the
-            brand panel past the viewport at 440px two days ago. */}
-        <Image
-          src={radarPreview}
-          alt=""
-          priority
-          /*
-            The box this is actually drawn in, measured rather than guessed:
-            `Wrap` is 1120px wide with a 20px gutter and the hero grid is
-            1.1fr/0.9fr with a 48px gap, so the shot gets `(min(vw, 1120) − 88)
-            × 0.45` — **464px from 1120px up**, and one column below 900px.
-            A `52vw` guess claimed 666px at 1280 and fetched the 1080px variant
-            for a 464px box; `priority` then preloads that same wrong variant as
-            the LCP resource.
-          */
-          sizes="(min-width: 1120px) 464px, (min-width: 900px) calc(45vw - 40px), calc(100vw - 40px)"
-          className="h-auto w-full rounded-feature border border-line shadow-[0_24px_50px_-36px_rgba(23,23,23,0.45)]"
-        />
+        {/* `w-full` inside a `min-w-0` grid child: the intrinsic 1800px never
+            becomes the column's minimum, which is the shape that put the brand
+            panel past the viewport at 440px two days ago. The phone shot is
+            capped at its own native 390px and centred, so that between 430 and
+            540px it reads as a device rather than as a stretched poster. */}
+        <picture className="mx-auto block w-full max-w-[390px] min-[540px]:max-w-none">
+          <source media={SHOT_DESKTOP_MEDIA} srcSet={shot.desktopSrcSet} sizes={shot.desktopSizes} />
+          <img
+            {...shot.img}
+            alt=""
+            className="aspect-[780/1688] w-full rounded-feature border border-line object-cover shadow-[0_24px_50px_-36px_rgba(23,23,23,0.45)] min-[540px]:aspect-[2880/1800]"
+          />
+        </picture>
       </Wrap>
     </div>
   )
+}
+
+/**
+ * Where the desktop shot stops being legible: see `Hero`'s docstring. Kept as
+ * one constant because the `<source media>` and the CSS aspect ratio have to
+ * switch on the same number — two sources agreeing by coincidence is how a
+ * hero ends up drawing one image inside the other's box.
+ */
+const SHOT_BREAKPOINT = 540
+const SHOT_DESKTOP_MEDIA = `(min-width: ${SHOT_BREAKPOINT}px)`
+
+/**
+ * The two `<source>`s of the hero shot, each with the `sizes` of the box it is
+ * actually drawn in — measured, not guessed. `Wrap` is `min(vw, 1120)` with a
+ * 20px gutter a side:
+ *
+ *   ≥1120px   two columns, 0.85fr/1.15fr, 48px gap → (1120 − 40 − 48) × 0.575 = 593px
+ *   900–1119  two columns, 1fr/1fr, 32px gap       → (100vw − 40 − 32) / 2
+ *   540–899   one column                            → 100vw − 40
+ *   <540      one column, the phone shot, capped at its native 390px
+ *
+ * A `sizes` that over-claims is not free: a `52vw` guess here once fetched the
+ * 1080px variant for a 464px box and, with `priority`, preloaded it as the LCP
+ * resource. That argument is about the **box**, so replacing the 1800px master
+ * with the untouched 2880×1800 original did not change any number above — what
+ * it changed is which variants exist to be chosen from, and how sharp the
+ * chosen one is.
+ */
+function productShot() {
+  /*
+   * **`loading: 'eager'` + `fetchPriority: 'high'`, not `priority`.**
+   *
+   * `priority` is deprecated in Next 16 in favour of `preload`, and through
+   * `getImageProps` it set *neither* attribute on the emitted `<img>` — no
+   * `loading`, no `fetchpriority`. The shot was therefore eager only by the
+   * browser's default and was never marked high priority. These two say it in
+   * the spelling Next 16 uses, and `page.test.tsx` asserts both.
+   *
+   * `preload` is deliberately left off. Next's own guidance says not to use it
+   * "when you have multiple images that could be considered the LCP element
+   * depending on the viewport", which is exactly what art direction is: a
+   * `<link rel=preload>` cannot be made viewport-conditional without fetching
+   * both files, and one download is the hard requirement here.
+   */
+  const common = { alt: '', loading: 'eager', fetchPriority: 'high' } as const
+  const {
+    props: { srcSet: desktopSrcSet, sizes: desktopSizes },
+  } = getImageProps({
+    ...common,
+    src: radarPreview,
+    /*
+      **`quality={90}`, not the default 75.** 75 is tuned for photographs, and
+      this is a screenshot of a UI whose smallest type is about 11px: at 75 the
+      chrominance subsampling and the quantiser visibly mush exactly the glyph
+      edges that make it read as a product rather than as a texture. Sci,
+      2026-09-24: *"the head image still blur"*. The mobile shot stays at the
+      default — it is drawn at its own native size, so nothing is being
+      resampled into it.
+    */
+    quality: 90,
+    sizes: '(min-width: 1120px) 593px, (min-width: 900px) calc(50vw - 36px), calc(100vw - 40px)',
+  })
+  const {
+    props: { ...img },
+  } = getImageProps({
+    ...common,
+    src: radarPreviewMobile,
+    sizes: '(min-width: 430px) 390px, calc(100vw - 40px)',
+  })
+  return { desktopSrcSet, desktopSizes, img }
 }
 
 /* ------------------------------------------------------------------- band */
@@ -350,27 +525,25 @@ function Hero() {
  * plan attributions, each string rendered exactly once and a test that holds
  * it there.
  *
- * **Two catalogue arrays, paired by position, neither edited.** The title is
- * `hero.promises[i]` and the body is `pillars.items[i].body`; read in full
- * they line up one to one — CNAE compatibility, the AI reading with the page,
- * the range the winners closed at, the Telegram alerts. The promise is the
- * descriptive line ("Editais compatíveis com o seu CNAE"); `pillars.items[i]`
- * .title is a bare verb ("Encontrar") and is not what the draft shows here.
- * A test asserts the two arrays are still the same length, because these are
- * indexed by position and a fifth promise in `pt-BR.json` would otherwise
- * render `undefined` on a static route.
+ * **One catalogue array now, not two paired by position.** Both the title and
+ * the body come from `pillars.items[i]`, which Sci rewrote on 2026-09-24 into
+ * four shorter pairs. It used to take the title from `hero.promises[i]` and
+ * only the body from here, which is why those four promise strings are now
+ * rendered nowhere — carded in `DEVELOPMENT_PLAN.md` §5 **D14**, not deleted,
+ * because the wording is Sci's under the legal brief.
  *
- * **`item.plan` travels with `item.body`.** Dropping it was the other half of
- * D12: without it the AI reading loses "Básico com limite" and the price band
- * loses "Essencial", which changes what an approved sentence claims — a copy
- * decision, not a rendering one.
+ * **`item.plan` is no longer rendered**, on Sci's instruction. The four
+ * strings stay in `messages/pt-BR.json` for the same reason, and are on the
+ * same card.
  *
  * **No heading of its own.** It sits above the page's first `<h2>`, so an
  * `<h3>` per cell would take the document from `h1` straight to `h3`; the
  * titles are `<b>`, the idiom `FounderValue` already uses for a bold lead-in.
- * The check glyph rather than four category icons, for the reason
- * `FounderValue` gives: each cell is a thing the reader gets, which is one
- * idea, and four different pictograms made it look like four kinds of thing.
+ *
+ * **An icon per cell, not four copies of one tick.** Sci, 2026-09-24: the
+ * repeated check said nothing about which cell it sat on. It is drawn in the
+ * tinted rounded square `Pain`'s numbered cards already use, rather than in a
+ * second icon frame invented for this one band.
  *
  * `id` is the header's `#tool` anchor, which used to point at `Pillars`; the
  * nav's label for it is `pillars.label`, and this is now the section it names.
@@ -378,11 +551,50 @@ function Hero() {
  * `role="list"`: Tailwind v4's preflight sets `list-style: none`, and Safari
  * drops the list semantics along with the marker.
  */
+/**
+ * One icon per cell, in the band's order: the CNAE match, the AI reading with
+ * its page reference, the price ceiling, the Telegram alerts. All four names
+ * are on the design-system board (`components/icon.tsx`).
+ *
+ * **Not the retired `Pillars` pairing** (`search · tender · money`). `Pain`
+ * leads with exactly those three, in that order, one scroll below this band
+ * and in an identical blue square — the strongest "these are the same thing"
+ * signal on the page. `company` says *your* firm, which is what matching a
+ * CNAE is about, and `margin` is what this cell's copy says in as many words
+ * (*"manter sua margem de lucro"*). That last swap is the code's own argument
+ * running the other way: `PAIN_ICONS` chose `money` over `margin` because the
+ * problem there is losing money on a contract rather than reading a margin
+ * sheet — which leaves `margin` free for the cell that *is* the margin sheet.
+ * Three glyphs of overlap become one.
+ *
+ * Typed `IconName[]`, so a rename in the icon set is a typecheck failure here
+ * rather than an empty square on the page taking sign-ups.
+ */
+/** The band's eyebrow, which is also the section's accessible name. */
+const BAND_LABEL_ID = 'tool-label'
+
+const BAND_ICONS: readonly IconName[] = ['company', 'tender', 'margin', 'alert']
+
 function Promises() {
-  const { hero, pillars } = page
+  const { pillars } = page
   return (
-    <Section id={ANCHORS.pillars}>
+    <Section id={ANCHORS.pillars} ground="muted" labelledBy={BAND_LABEL_ID}>
       <Wrap>
+        {/* The only section on the page that used to open with nothing: no
+            eyebrow, no heading. `pillars.label` already renders in the header's
+            anchor nav — this introduces no copy. The `<h2>` it used to have
+            (`pillars.title`) stays orphaned under D14, by Sci's decision.
+
+            It carries the section's accessible name instead, through
+            `aria-labelledby`: the header's *"O que você vai usar"* link lands
+            here, and a landmark a nav points at with no name announces as a
+            bare "section". No new string — the same eyebrow, referenced. */}
+        <div id={BAND_LABEL_ID} className="mb-6">
+          <SectionLabel tone="accent" size="caption">
+            {pillars.label}
+          </SectionLabel>
+        </div>
+
         {/*
           One panel, not four cards. The four are a single claim — *da busca à
           proposta* — and four bordered surfaces make them compete, each with
@@ -394,7 +606,26 @@ function Promises() {
             <560px   one column   → a rule above every item but the first
             560px    two columns  → a rule left of the right-hand items (1, 3)
                                     and above the second row (2, 3)
-            900px    four columns → a rule left of every item but the first
+            1120px   four columns → a rule left of every item but the first
+
+          **Four across from 1120px, not from 900.** Sci wants the four on one
+          line and this is the width at which that is readable: the four-up
+          measure is ~221px there (about 28 characters), against **166px — 21
+          characters** at 900, which is what the row used to do and is why the
+          cells read as cramped. Between 560 and 1119 it stays 2×2, so the
+          21-character tier does not exist at any width.
+
+          Padding cannot rescue a measure here and makes it worse: the cells
+          have no gap, so the padding *is* the gutter and every 4px added costs
+          8px of measure. That is why it stops at `p-7`: a `p-8` step at 1120
+          was specified while 1120 was still a *two-column* tier with a 475px
+          measure, and on the four-up row it applies to the narrowest cells on
+          the page — 206px of measure against 214px.
+
+          `p-7` rather than `Pain`'s `p-6` for the same reason: the gap from
+          one cell's copy to its neighbour's is twice the padding here, where
+          the numbered cards have a real gap between them. At `p-6` that
+          measured 41px against `Pain`'s 58px; `p-7` makes it 57px.
 
           A tier only ever *clears* a rule a lower tier set; it never sets one
           the same variant also clears. `min-[560px]:border-t` and
@@ -405,13 +636,13 @@ function Promises() {
         */}
         <ul
           role="list"
-          className="grid grid-cols-1 overflow-hidden rounded-panel border border-line bg-surface min-[560px]:grid-cols-2 min-[900px]:grid-cols-4"
+          className="grid grid-cols-1 overflow-hidden rounded-panel border border-line bg-surface min-[560px]:grid-cols-2 min-[1120px]:grid-cols-4"
         >
           {pillars.items.map((item, index) => (
             <li
-              key={item.plan + index}
+              key={item.title}
               className={cn(
-                'flex min-w-0 flex-col gap-2.5 p-5 min-[900px]:p-6',
+                'flex min-w-0 flex-col gap-2 p-6 min-[560px]:p-7',
                 // Stacked: a rule above every item but the first. It also
                 // carries the colour every other rule below inherits.
                 index > 0 && 'border-t border-line',
@@ -420,26 +651,23 @@ function Promises() {
                 // …and the right-hand item of each row is divided vertically.
                 index % 2 === 1 && 'min-[560px]:border-l',
                 // Four columns: one row, so the second row's rule goes…
-                index >= 2 && 'min-[900px]:border-t-0',
+                index >= 2 && 'min-[1120px]:border-t-0',
                 // …and the only item still missing a vertical rule gets one.
-                index === 2 && 'min-[900px]:border-l',
+                index === 2 && 'min-[1120px]:border-l',
               )}
             >
-              <div className="flex items-start gap-2.5">
-                <Icon
-                  name="check"
-                  size={20}
-                  strokeWidth={2}
-                  className="mt-0.5 shrink-0 text-blue"
-                />
-                <b className="font-display text-subhead font-bold text-balance">
-                  {hero.promises[index]}
-                </b>
-              </div>
-              <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
-              <span className="mt-auto pt-1 font-mono text-label tracking-[0.06em] text-muted uppercase">
-                {item.plan}
+              {/* `mb-1.5` on the icon, not a bigger container gap: 14px above
+                  the title and 8px below it groups the title with the body it
+                  belongs to, where a flat 10px grouped it with neither.
+                  Nothing else sets a margin here, so `cn`'s plain join is
+                  safe. The square itself stays `size-10` with a 22px glyph —
+                  the band, `Pain` and `Timeline` all draw it, and changing one
+                  breaks the family. */}
+              <span className="mb-1.5 grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
+                <Icon name={BAND_ICONS[index] ?? 'check'} size={22} />
               </span>
+              <b className="font-display text-subhead font-bold text-balance">{item.title}</b>
+              <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
             </li>
           ))}
         </ul>
@@ -455,44 +683,48 @@ function Promises() {
  * paraphrased — that file says so itself, and a customer who reads one rule
  * here and another in the contract files a chargeback.
  *
- * It sits directly under the price because `faq-cobranca.md`'s own placement
- * table puts *devolução* on the Offer, and because until today neither refund
- * appeared anywhere in the product: a sweep of the whole catalogue for
- * `devolv|reembols|garantia|arrepend|estorno` returned nothing, while both
- * promises were already contractual under terms §8.
+ * **This is now the FAQ's first row, not a section of its own** (Sci,
+ * 2026-09-24). Recorded rather than argued: `docs/legal/faq-cobranca.md:70`
+ * carries a placement table asking for *devolução* on the Offer page **below
+ * the price**, and an accordion is not that — the CDC art. 49 seven-day
+ * withdrawal right is invisible until somebody clicks. Sci was shown the table
+ * and chose the FAQ; the legal document is unchanged, and this comment exists
+ * so the next reader finds the contradiction here rather than in a chargeback.
+ *
+ * `refunds.ctaLine` did not move with it. It is still beside the price in the
+ * signup dialog, which is the point of purchase and the one place a refund
+ * statement has to be.
+ *
+ * Not one word of the copy changed in the move — `faq-cobranca.md:75` asks for
+ * the same wording in all three places, and §5 reserves it to Sci anyway. That
+ * is why this row carries an intro, a list and a footnote where every other
+ * row carries one string: flattening it into a paragraph would be rewriting it.
  *
  * `**bold**` is resolved here rather than rendered as Markdown: the catalogue
  * holds the sentences verbatim so they can be diffed against the legal file,
  * and this is the only place that needs to display them.
  */
-function Refunds() {
+function RefundsAnswer() {
   const { refunds } = page
   return (
-    <Section>
-      <Wrap className="max-w-[46em]">
-        {/* This heading was `text-lead font-semibold` — 15px IBM Plex Sans —
-            while the other eight `<h2>`s on the page are 26px Archivo 700. So
-            the 7-day CDC right of withdrawal and the 30-day guarantee rendered
-            *smaller than the body copy of the sections around them*, directly
-            above a FAQ that got the full display treatment, and read as a
-            stray FAQ entry rather than a section.
-
-            For someone deciding whether to trust an unknown company with a
-            business subscription, this is the most valuable block on the page.
-            No eyebrow: it is a question, so it labels itself. */}
-        <SectionHead title={refunds.title} />
-        <p className="mt-4 text-base leading-[1.6] text-ink-soft">{refunds.intro}</p>
-        <ul className="mt-4 flex flex-col gap-3">
-          {refunds.items.map((item) => (
-            <li key={item} className="flex items-start gap-2.5 text-base leading-[1.6]">
-              <Icon name="check" size={18} strokeWidth={2} className="mt-1 shrink-0 text-blue" />
-              <span>{bold(item)}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-4 text-meta leading-[1.5] text-muted">{refunds.outro}</p>
-      </Wrap>
-    </Section>
+    <div className="pb-4">
+      <p className="text-base leading-[1.6] text-ink-soft">{refunds.intro}</p>
+      {/* `role="list"`, like every other list on this page: Tailwind v4's
+          preflight sets `list-style: none` and Safari drops the list
+          semantics with the marker. It matters most here — `refunds.intro` is
+          *"Em dois casos:"*, so without it the two guarantees announce as two
+          unassociated runs of text with nothing saying there are two, and one
+          of them is the CDC art. 49 withdrawal right. */}
+      <ul role="list" className="mt-4 flex flex-col gap-3">
+        {refunds.items.map((item) => (
+          <li key={item} className="flex items-start gap-2.5 text-base leading-[1.6]">
+            <Icon name="check" size={18} strokeWidth={2} className="mt-1 shrink-0 text-blue" />
+            <span>{bold(item)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 text-meta leading-[1.5] text-muted">{refunds.outro}</p>
+    </div>
   )
 }
 
@@ -556,8 +788,11 @@ function Pain() {
         <ol role="list" className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
           {pain.items.map((item, index) => (
             <li key={item.title} className="flex min-w-0">
-              <Card padding="none" className="flex w-full flex-col gap-2.5 p-5">
-                <div className="flex items-center gap-3">
+              {/* `padding="none"` plus the padding here rather than an `lg`
+                  step in `components/card.tsx`: that file is shared, and
+                  `CLAUDE.md`'s parallel-lane rule keeps this page out of it. */}
+              <Card padding="none" className="flex w-full flex-col gap-2 p-6 min-[1120px]:p-7">
+                <div className="mb-1.5 flex items-center gap-3">
                   <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
                     <Icon name={PAIN_ICONS[index]} size={22} />
                   </span>
@@ -628,7 +863,7 @@ function PriceChain() {
   ]
 
   return (
-    <Section>
+    <Section ground="muted">
       <Wrap>
         {/*
           Heading left, the chain right — `SectionHead`'s `aside`, the
@@ -643,8 +878,18 @@ function PriceChain() {
           figures came from. Both read as a footnote to a heading if they are
           left in the left-hand column, and neither is about the heading.
 
-          The eyebrow earns its place here: it names the commodity the four
-          figures are about, which the heading deliberately does not.
+          **The eyebrow no longer names the commodity, and nothing else does.**
+          It used to read *"Exemplo real · papel sulfite A4, por resma"* and
+          earned its place on exactly that ground; Sci shortened it to
+          *"Exemplo real"* on 2026-09-24. After that edit `≈ R$ 36`, `≈ R$ 20`,
+          `≈ R$ 29` and `R$ 14,60` sit under a source line reading *"Medianas
+          de 8 editais encerrados"* with nothing on this page saying what was
+          bought — `papel A4` survives only in `radar.landing.opportunity.body`,
+          `radar.price.example` and `radar.price.exampleLead`, which are other
+          pages. It is not a false claim, so it is not a blocker, but it is
+          unattributed figures on the page taking money and it is in the PR and
+          the STATUS row for Sci. The wording is his under the legal brief:
+          this comment records the state rather than restoring the suffix.
         */}
         <SectionHead
           label={ruler.label}
@@ -879,7 +1124,7 @@ function FounderValue() {
    */
   const [price, ...benefits] = founderValue.benefits
   return (
-    <Section divided={false}>
+    <Section ground="muted">
       <Wrap>
         {/* Brand blue, not graphite (Sci, 2026-09-24). The `on-brand` ramp is
             measured against #14347f in `tokens.css`; the graphite ramp's tiers
@@ -1168,8 +1413,16 @@ function Faq() {
    * a question, which is narrower than the questions themselves. Flattened in
    * order, nothing is cut, reordered or reworded — the reading order is the
    * one the file already has, top to bottom.
+   *
+   * **The refunds are the first row**, which is where they sat when they were
+   * a section of their own — the same reading order, one level quieter. Its
+   * answer is markup rather than a string because the copy is three parts and
+   * none of them may be rewritten; see `RefundsAnswer`.
    */
-  const questions = faq.columns.flat()
+  const questions: { q: string; a: ReactNode }[] = [
+    { q: page.refunds.title, a: <RefundsAnswer /> },
+    ...faq.columns.flat(),
+  ]
 
   return (
     <Section id={ANCHORS.faq}>
@@ -1193,12 +1446,82 @@ function Faq() {
                       −
                     </span>
                   </summary>
-                  <p className="pb-4 text-base leading-[1.6] text-ink-soft">{item.a}</p>
+                  {typeof item.a === 'string' ? (
+                    <p className="pb-4 text-base leading-[1.6] text-ink-soft">{item.a}</p>
+                  ) : (
+                    item.a
+                  )}
                 </details>
               ))}
             </div>
           }
         />
+      </Wrap>
+    </Section>
+  )
+}
+
+/* ------------------------------------------------------- closing offer */
+
+/**
+ * The last ask, rebuilt from the light `bg-blue-soft` strip it used to be
+ * (Sci, 2026-09-24) and moved into the slot the refunds left, between the
+ * timeline and the FAQ — so the page's final argument lands before the
+ * questions rather than after them.
+ *
+ * `SectionHead`'s `aside` rather than a fifth hand-rolled grid: `Pain`,
+ * `Screening`, the price chain and the FAQ all use it, and a two-column
+ * section that agrees with those by construction cannot drift from them.
+ *
+ * **The card is on `surface`, not the brand panel.** `FounderValue` already
+ * owns the one dark panel on this page; a second would make the two compete
+ * for the same "this is the offer" reading, and the draft's closing card is
+ * light.
+ *
+ * **Every string here is already rendered by the signup dialog's price block**
+ * (`signup-form.tsx`), read from the same four keys. The two agree because
+ * they read the same catalogue, not because somebody kept them in step.
+ *
+ * **The draft's five ticked lines are deliberately not here.** Four of the
+ * five — *Acesso completo ao sistema*, *Todos os estados do Brasil*, *Suporte
+ * por e-mail*, *Sem pagamento agora* — exist nowhere in `messages/pt-BR.json`,
+ * and "todos os estados" is a coverage claim nothing in this product
+ * substantiates. Writing them here would be writing copy, which §5 reserves to
+ * Sci. When the five arrive they go between `priceNote` and the CTA, inside
+ * the `gap-4` column, as the same `<ul>` idiom `RefundsAnswer` uses; nothing
+ * about this layout has to change to take them.
+ */
+function ClosingOffer() {
+  const { final, signup } = page
+  return (
+    <Section ground="muted">
+      <Wrap>
+        <SectionHead
+          title={final.title}
+          aside={
+            <div className="flex flex-col gap-4 rounded-feature border border-line bg-surface p-5 shadow-[0_1px_0_var(--color-line),0_18px_40px_-28px_rgba(23,23,23,0.35)] min-[560px]:p-6">
+              <SectionLabel tone="accent" size="caption">
+                {signup.seatsGroup}
+              </SectionLabel>
+
+              <div className="flex flex-wrap items-baseline gap-2.5">
+                <span className="font-display text-price font-extrabold tracking-[-0.02em] tabular-nums">
+                  {signup.price}
+                </span>
+                <span className="text-lead text-muted">{signup.priceUnit}</span>
+              </div>
+
+              <p className="-mt-2 flex flex-wrap items-baseline gap-2 text-meta leading-[1.45] text-muted">
+                <s className="font-mono text-body">{signup.priceWas}</s>
+                <span className="min-w-0">{signup.priceNote}</span>
+              </p>
+
+              <SignupButton className="mt-1 w-full">{messages.founders.offer.cta}</SignupButton>
+            </div>
+          }
+        >
+          <p className="text-ink-soft">{messages.brand.promise}</p>
+        </SectionHead>
       </Wrap>
     </Section>
   )
@@ -1271,22 +1594,8 @@ export default function FoundersOfferPage() {
           <Screening />
           <FounderValue />
           <Timeline />
-          <Refunds />
+          <ClosingOffer />
           <Faq />
-
-          <Section divided={false}>
-            <Wrap>
-              <div className="flex flex-wrap items-center justify-between gap-6 rounded-feature bg-blue-soft px-5 py-6 min-[560px]:p-8">
-                <div className="flex max-w-[620px] flex-col gap-2">
-                  <H2>{page.final.title}</H2>
-                  <p className="text-ink-soft">{messages.brand.promise}</p>
-                </div>
-                <SignupButton className="w-full min-[560px]:w-auto">
-                  {messages.founders.offer.cta}
-                </SignupButton>
-              </div>
-            </Wrap>
-          </Section>
         </main>
 
         <footer className="pt-8 pb-12 text-meta leading-[1.55] text-muted">
