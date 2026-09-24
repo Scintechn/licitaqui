@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
+import { EXAMPLE_AS_OF, EXAMPLE_TENDERS } from '@/lib/radar/landing-example'
 import FoundersOfferPage, { revalidate } from './page'
 
 const out = renderToStaticMarkup(<FoundersOfferPage />)
@@ -178,7 +179,18 @@ describe('brief §2.2 framing rules', () => {
     // future wide child cannot do the same thing.
     expect(out).not.toContain('min-w-[420px]')
     // `&` and `>` are escaped in the rendered attribute.
-    expect(out).toMatch(/\[&amp;&gt;\*\]:min-w-0/)
+    //
+    // Scoped to the panel's own element. Unscoped, this passed with the guard
+    // deleted from the panel: the page now carries the same utility on the
+    // hero grid and on the price chain, and any one of the three satisfied a
+    // document-wide match — so the test named an element it never checked.
+    // `rounded-feature bg-brand-panel`, not just `bg-brand-panel`: the price
+    // chain's last step is on the same colour and comes first in the
+    // document, so the looser anchor grabs the wrong element.
+    const at = out.indexOf('rounded-feature bg-brand-panel')
+    expect(at).toBeGreaterThan(-1)
+    const openingTag = out.slice(at, out.indexOf('>', at))
+    expect(openingTag).toMatch(/\[&amp;&gt;\*\]:min-w-0/)
   })
 
   it('stacks the comparison table below 560px instead of scrolling it', () => {
@@ -237,5 +249,188 @@ describe('brief §2.2 framing rules', () => {
     expect(bodyBlocks.length).toBeGreaterThanOrEqual(8)
     // The in-app body idiom must not come back on a marketing page.
     expect(out).not.toContain('text-lead leading-[1.55]')
+  })
+})
+
+describe('the price example, as a chain', () => {
+  const { ruler } = messages.foundersPage
+  /**
+   * The price section: from its own eyebrow to the next section's.
+   *
+   * Searched *forward from* the price eyebrow, because the header anchors now
+   * render `pillars.label` near the top of the document as well.
+   */
+  const priceAt = out.indexOf(ruler.label)
+  const section = out.slice(priceAt, out.indexOf(messages.foundersPage.pillars.label, priceAt))
+
+  /**
+   * It used to be a bar with four marks over a green→red gradient, positioned
+   * by percentage on a R$ 10 – R$ 40 scale. Measured at 390px, the green "you
+   * can still profit" zone was **47px of 308** — a nub — so the gradient read
+   * as one warm band and the colour semantics inverted on the phone this
+   * audience uses. `R$ 14,60`, the number the product exists to produce, was
+   * 16px while a competitor's price in the table below is 34px.
+   */
+  it('reads in the order of the argument, not in the order of a scale', () => {
+    // What the tender estimated, what the winner actually bid, what retail
+    // costs — therefore the most you can pay a supplier. On the ruler these
+    // sat at 86.7%, 33.3%, 63.3% and 15.3%, so the eye met them backwards and
+    // a screen reader met a single `role="img"` with a sentence for a label.
+    const positions = [
+      ruler.tenderValue,
+      ruler.winnerValue,
+      ruler.retailValue,
+      ruler.maxPurchaseValue,
+    ].map((value) => out.indexOf(value))
+
+    for (const at of positions) expect(at).toBeGreaterThan(-1)
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+  })
+
+  it('sets the maximum purchase price at the size of a standalone figure', () => {
+    // `--text-stat` is 34px: the size this page already gives a figure that
+    // carries a section (`pain.facts`, the competitor's price). This one is
+    // the product's whole insight and was two thirds smaller than both.
+    const at = section.indexOf(ruler.maxPurchaseValue)
+    expect(at).toBeGreaterThan(-1)
+    expect(section.slice(at - 200, at)).toContain('text-stat')
+  })
+
+  it('does not spend the product’s green on "this price is safe"', () => {
+    // Green is `success` here and nowhere else: the compatible badge, "Não
+    // exige", "Oportunidade encontrada". A fourth meaning for it would strip
+    // the meaning from every green badge in the app — so the emphasis is the
+    // brand panel with the measured `on-brand` ramp, the page's own accent.
+    expect(section).not.toContain('success')
+    expect(section).toContain('bg-brand-panel')
+    // And the gradient that inverted on a phone is gone. Scoped to this
+    // section: document-wide it would also forbid a gradient in
+    // `ExampleRadar` or a tender card, which is not this test's business.
+    expect(section).not.toContain('linear-gradient')
+  })
+
+  it('keeps the red for the verdict, which is the one loss on the page', () => {
+    // `error` still describes the verdict exactly — it is a warning that the
+    // sum does not close. Removing the ruler must not take it with it.
+    expect(section).toContain(ruler.verdictLead)
+    const at = section.indexOf(ruler.verdictLead)
+    expect(section.slice(at - 400, at)).toContain('bg-error-soft')
+  })
+})
+
+describe('the product in the hero', () => {
+  it('shows a real screen before asking for a name and a WhatsApp number', () => {
+    // The first product on this page was the screening card in section five.
+    // A visitor was asked for three contact details having seen none of it.
+    const example = out.indexOf(messages.radar.landing.example.label)
+    expect(example).toBeGreaterThan(-1)
+    expect(example).toBeLessThan(out.indexOf(messages.foundersPage.pain.title))
+  })
+
+  it('shows the Radar’s own card, not a drawing of one', () => {
+    // `ExampleRadar` renders `TenderCardView` over three real frozen PNCP
+    // tenders. A mock-up built for marketing drifts from the product within a
+    // sprint and starts advertising screens we do not draw — on a page taking
+    // money, that is CDC art. 30.
+    for (const tender of EXAMPLE_TENDERS) expect(out).toContain(tender.object)
+  })
+
+  it('keeps the caption that says the three are frozen, not a live search', () => {
+    expect(out).toContain(EXAMPLE_AS_OF)
+    expect(out).toContain(messages.radar.landing.example.caption.split('{')[0].trim())
+  })
+
+  it('keeps the form above the example on one column', () => {
+    // Below 900px the hero falls in DOM order. The example is ~600px tall and
+    // this page is taking sign-ups: the ask must not be under it.
+    expect(out.indexOf(messages.foundersPage.signup.priceUnit)).toBeLessThan(
+      out.indexOf(messages.radar.landing.example.label),
+    )
+  })
+})
+
+describe('the trust row under the hero', () => {
+  it('states the three facts in the catalogue’s own words', () => {
+    // CNAE compatibility, the AI reading with the page, the maximum purchase
+    // price — `pillars.items[0..2]`, reused rather than rewritten.
+    const pain = out.indexOf(messages.foundersPage.pain.title)
+    for (const item of messages.foundersPage.pillars.items.slice(0, 3)) {
+      const at = out.indexOf(item.title)
+      expect(at).toBeGreaterThan(-1)
+      expect(at).toBeLessThan(pain)
+      expect(out.indexOf(item.body)).toBeLessThan(pain)
+    }
+  })
+
+  it('introduces no heading structure of its own', () => {
+    // It was three `<h3>`s for one run, and that broke the outline twice
+    // over: the row sits above the page's first `<h2>`, so the document went
+    // h1 → h3 with nothing between; and the same three strings head the
+    // `Pillars` section further down, so a reader navigating by heading met
+    // "Encontrar / Entender / Ofertar com lucro" twice with no way to tell
+    // the summary from the section.
+    const headings = [...out.matchAll(/<(h[1-6])[^>]*>(.*?)<\/\1>/g)].map((m) => ({
+      level: Number(m[1][1]),
+      text: m[2].replace(/<[^>]*>/g, ''),
+    }))
+
+    // No level is skipped anywhere on the page.
+    for (const [i, heading] of headings.entries()) {
+      if (i === 0) continue
+      expect(heading.level).toBeLessThanOrEqual(headings[i - 1].level + 1)
+    }
+
+    // And each of the three appears as a heading exactly once — in `Pillars`,
+    // which is a section and has an h2 above it.
+    for (const item of messages.foundersPage.pillars.items.slice(0, 3)) {
+      expect(headings.filter((h) => h.text === item.title)).toHaveLength(1)
+    }
+  })
+})
+
+describe('the header anchors', () => {
+  const header = out.slice(out.indexOf('<header'), out.indexOf('</header>'))
+
+  it('links nowhere that does not exist', () => {
+    const targets = [...header.matchAll(/href="#([^"]+)"/g)].map((m) => m[1])
+    // The logo, the three anchors and the call to action.
+    expect(targets.length).toBeGreaterThanOrEqual(5)
+    for (const id of targets) expect(out).toContain(`id="${id}"`)
+  })
+
+  it('keeps the call to action it was added beside', () => {
+    // The header is sticky because between the form's submit and the next CTA
+    // there are ~5 499px. Anchors must not have cost the thing it carries.
+    expect(header).toContain('href="#vaga"')
+    expect(header).toContain(messages.foundersPage.nav.cta)
+  })
+
+  it('labels them with the sections’ own approved eyebrows', () => {
+    // Copy on this page is the founder's under a legal brief. The header
+    // invents none: `nav` holds three strings and none of them names a
+    // section, so the anchors borrow the labels the sections already carry.
+    expect(header).toContain(messages.foundersPage.pillars.label)
+    expect(header).toContain(messages.foundersPage.screening.label)
+    expect(header).toContain(messages.foundersPage.faq.label)
+  })
+
+  it('lands the target clear of the bar instead of under it', () => {
+    // The bar is 64px and sticky, so a bare `#id` jump parks the heading
+    // beneath it and the reader arrives mid-paragraph.
+    //
+    // The ids are read out of the header rather than written here: this test
+    // is about the offset, not about what the anchors are called, and
+    // hardcoding them made renaming them to English (`CLAUDE.md`: identifiers
+    // are English) fail a test that has nothing to do with naming.
+    const targets = [...header.matchAll(/href="#([^"]+)"/g)]
+      .map((m) => m[1])
+      .filter((id) => id !== 'topo' && id !== 'vaga')
+
+    expect(targets.length).toBeGreaterThanOrEqual(2)
+    for (const id of targets) {
+      const at = out.indexOf(`id="${id}"`)
+      expect(at).toBeGreaterThan(-1)
+      expect(out.slice(at, at + 240)).toMatch(/scroll-mt-/)
+    }
   })
 })
