@@ -191,21 +191,42 @@ export async function attachCnpj(
  *
  * ## What the fingerprint buys, and what it does not
  *
- * `ip_hash` and `user_agent_hash` are SHA-256 with a deployment salt, already
- * written at insert. Requiring **both** to match keeps the rule aimed at what
- * §8 was actually defending against — the same person, same machine, same
- * connection, clearing cookies — while a different person on a different
- * network starts their own window.
+ * The device is `ip_hash` alone, and deliberately **not** `user_agent_hash`.
  *
- * It is a weaker guard than the old rule, deliberately. Someone who clears
- * cookies *and* changes network gets a fresh three days. That is the right
- * trade: the old rule stopped that person at the cost of everyone who shares a
- * CNPJ with them, and there are far more of the second kind. The paid tiers,
- * not this window, are what make the economics work.
+ * The first version of this fix required both to match, which a code review
+ * on the same day showed was no guard at all: the user-agent is a request
+ * header the caller chooses. `hash(null)` returns null, so `curl -A ""` made
+ * `me.user_agent_hash is null` and the CNPJ rule stopped applying *entirely*
+ * — and simply varying the string (`-A x1`, `-A x2`) minted a new device per
+ * request. It caught nothing a script does, while still costing the honest
+ * user. A predicate an attacker can switch off is worse than no predicate,
+ * because it reads like protection.
  *
- * Both hashes must be non-null for the CNPJ rule to apply at all — otherwise
- * every visitor with no fingerprint would match every other one, which is the
- * old bug wearing a different shape.
+ * On the IP alone: clearing cookies does not help, varying the user-agent
+ * does not help, and changing network does. That last one is the trade, and
+ * it is the right one — the old `where cnpj = $1` stopped that person at the
+ * cost of **everyone who shares a CNPJ with them**, and there are far more of
+ * the second kind. The paid tiers, not this window, are what make the
+ * economics work.
+ *
+ * `me.ip_hash` must be non-null for the rule to apply at all: otherwise every
+ * visitor without a fingerprint would match every other one, which is the old
+ * bug wearing a different shape.
+ *
+ * ## What the hash is, exactly
+ *
+ * `hash()` is **unsalted** SHA-256, truncated — see its own comment. This
+ * docstring claimed a deployment salt and that was wrong. It matters more now
+ * than it did: an unsalted digest of an IPv4 is a 2³² brute force, minutes on
+ * a laptop, and this field has stopped being incidental metadata and become a
+ * security control. `lib/rate-limit.ts` already has the salted primitive
+ * (`hashClient`); moving to it invalidates every stored hash, which only ever
+ * errs toward giving someone a fresh window, so it is safe — but it is a
+ * change of its own and is carded rather than smuggled in here.
+ *
+ * The routes also hash the raw `x-forwarded-for` header rather than the first
+ * hop (`clientAddress`), so this fingerprint and the rate-limit key disagree.
+ * Same card.
  */
 export async function windowStartedAt(
   visitor: Visitor,
@@ -219,9 +240,7 @@ export async function windowStartedAt(
       join visitors me on me.id = ${visitor.id}::uuid
      where other.cnpj = ${cnpj}
        and me.ip_hash is not null
-       and me.user_agent_hash is not null
        and other.ip_hash = me.ip_hash
-       and other.user_agent_hash = me.user_agent_hash
   `)
   const started = found.rows[0]?.started_at
   if (!started) return visitor.createdAt

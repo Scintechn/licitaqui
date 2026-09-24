@@ -1,6 +1,6 @@
 import type { TenderCard } from './contract'
 import { daysUntil, meEppSummary, money } from './format'
-import { mayShowDeadline } from './tender-status'
+import { mayShowDeadline, mayShowUrgency } from './tender-status'
 import { format, messages } from '../messages'
 
 /**
@@ -79,7 +79,24 @@ function promoted(tender: TenderCard, now: Date): CardHeadline['anchor'] {
   // dia" at the reader. §2.2 rule 6 through the one gate: it steps out of the
   // chain entirely and the item count takes the slot instead.
   if (mayShowDeadline(tender) && daysUntil(tender.proposalsCloseAt, now) !== null) {
-    return { fact: 'deadline', text: deadlineLabel(tender.proposalsCloseAt, now) }
+    // Two questions, and this slot asks both. `mayShowDeadline` decides
+    // whether the date may be shown at all — only the órgão can make it
+    // meaningless. `mayShowUrgency` decides whether the clock may be called
+    // *running*, and it is the one that knows the hour.
+    //
+    // Swapping this call site to `mayShowDeadline` alone on 2026-09-24 —
+    // done to restore "Encerrado" promotion for `days < 0` — silently dropped
+    // the clock check for `days === 0`. `daysUntil` is calendar-day, so a
+    // tender that closed at 08:00 answered 0 until midnight and this slot,
+    // the largest text on the card, read **"último dia"** for sixteen hours.
+    // Verified: `{"fact":"deadline","text":"último dia"}` four hours after
+    // the deadline had passed. Rule 6 on the screen a person sees first.
+    return {
+      fact: 'deadline',
+      text: mayShowUrgency(tender, now)
+        ? deadlineLabel(tender.proposalsCloseAt, now)
+        : copy.card.closed,
+    }
   }
   if (tender.itemCount !== null) {
     return { fact: 'items', text: format(copy.card.items, { count: tender.itemCount }) }

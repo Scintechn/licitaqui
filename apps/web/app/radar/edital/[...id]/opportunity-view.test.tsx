@@ -65,7 +65,7 @@ const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check'
  * tender they have never screened. The default here so the rest of the file
  * renders the screen as it ships, rather than one with the state missing.
  */
-const FIRST_VISIT = { ready: false, spent: false } as const
+const FIRST_VISIT = { ready: false, spent: false, metered: true } as const
 
 function render(overrides: Partial<OpportunityViewProps> = {}): string {
   const props: OpportunityViewProps = {
@@ -733,13 +733,13 @@ describe('the link out of this screen carries the search', () => {
  */
 describe('the call to action recognises a triagem this user already asked for', () => {
   it('changes the words once this user has requested it', () => {
-    const out = render({ screening: { ready: true, spent: true } })
+    const out = render({ screening: { ready: true, spent: true, metered: true } })
     expect(out).toContain(page.screeningCtaRequested)
     expect(out).not.toContain(page.screeningCta)
   })
 
   it('leaves the first-time label exactly as it ships', () => {
-    const out = render({ screening: { ready: false, spent: false } })
+    const out = render({ screening: { ready: false, spent: false, metered: true } })
     expect(out).toContain(page.screeningCta)
     expect(out).not.toContain(page.screeningCtaRequested)
   })
@@ -752,7 +752,7 @@ describe('the call to action recognises a triagem this user already asked for', 
    * asked for is theirs.
    */
   it('is still the first-time label when somebody else paid for the reading', () => {
-    const out = render({ screening: { ready: true, spent: false } })
+    const out = render({ screening: { ready: true, spent: false, metered: true } })
     expect(out).toContain(page.screeningCta)
     expect(out).not.toContain(page.screeningCtaRequested)
   })
@@ -764,7 +764,7 @@ describe('the call to action recognises a triagem this user already asked for', 
    * found.
    */
   it('recognises a request that has not produced a current reading yet', () => {
-    expect(render({ screening: { ready: false, spent: true } })).toContain(
+    expect(render({ screening: { ready: false, spent: true, metered: true } })).toContain(
       page.screeningCtaRequested,
     )
   })
@@ -784,13 +784,13 @@ describe('the call to action recognises a triagem this user already asked for', 
  */
 describe('the cost line under the button, which is its own question', () => {
   it('is off by default — an unchanged label is what was approved', () => {
-    const out = render({ screening: { ready: false, spent: false } })
+    const out = render({ screening: { ready: false, spent: false, metered: true } })
     expect(out).not.toContain(page.screeningCost)
     expect(out).not.toContain(page.screeningCostReady)
   })
 
   it('warns a first-time reader when it is switched on', () => {
-    const out = render({ screening: { ready: false, spent: false }, showScreeningCost: true })
+    const out = render({ screening: { ready: false, spent: false, metered: true }, showScreeningCost: true })
     expect(out).toContain(page.screeningCost)
     // The label is untouched by the flag: that is the whole point of it.
     expect(out).toContain(page.screeningCta)
@@ -801,14 +801,34 @@ describe('the cost line under the button, which is its own question', () => {
    * "already read" and "free" are different claims and only the first is true.
    */
   it('says a reading exists and still costs one, when it does', () => {
-    const out = render({ screening: { ready: true, spent: false }, showScreeningCost: true })
+    const out = render({ screening: { ready: true, spent: false, metered: true }, showScreeningCost: true })
     expect(out).toContain(page.screeningCostReady)
   })
 
   it('never puts a cost on a triagem this user has already paid for', () => {
-    const out = render({ screening: { ready: true, spent: true }, showScreeningCost: true })
+    const out = render({ screening: { ready: true, spent: true, metered: true }, showScreeningCost: true })
     expect(out).not.toContain(page.screeningCost)
     expect(out).not.toContain(page.screeningCostReady)
     expect(out).toContain(page.screeningCtaRequested)
+  })
+
+  it('never tells an unlimited plan that a triagem uses up an allowance', () => {
+    // `plan_limits` gives `promocional`, `essencial` and `pro` a null
+    // quantity. For six hours on the morning founders week opened, everyone
+    // who had just paid read "Usa 1 das suas triagens" under the button — on
+    // a plan whose own feature list says "Triagens de edital sem limite".
+    const paid = render({
+      screening: { ready: false, spent: false, metered: false },
+      showScreeningCost: true,
+    })
+    expect(paid).not.toContain(page.screeningCost)
+    expect(paid).not.toContain(page.screeningCostReady)
+
+    // …and the visitor, for whom it is true, still sees it.
+    const visitor = render({
+      screening: { ready: false, spent: false, metered: true },
+      showScreeningCost: true,
+    })
+    expect(visitor).toContain(page.screeningCost)
   })
 })

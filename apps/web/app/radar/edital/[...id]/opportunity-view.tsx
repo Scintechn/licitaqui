@@ -805,7 +805,13 @@ export function OpportunityView({
           <Button href={screeningHref(tender.id, search)} fullWidth iconEnd="arrowRight">
             {screening?.spent ? page.screeningCtaRequested : page.screeningCta}
           </Button>
-          {showScreeningCost && screening !== null && !screening.spent ? (
+          {/* `metered` is the third condition and the one that was missing.
+              `plan_limits` gives `promocional`, `essencial` and `pro` a null
+              quantity — unlimited — so for six hours on the morning founders
+              week opened, every person who had just paid read "Usa 1 das suas
+              triagens" under the button, on a plan whose own feature list says
+              "Triagens de edital sem limite". */}
+          {showScreeningCost && screening !== null && screening.metered && !screening.spent ? (
             <p className="text-caption leading-relaxed text-muted">
               {screening.ready ? page.screeningCostReady : page.screeningCost}
             </p>

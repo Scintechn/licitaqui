@@ -178,7 +178,7 @@ test.describe('Dona Marta · the AI triagem', () => {
     // Somebody else already asked for this edital: the analysis exists (§3.2
     // shares the reading) but Dona Marta has spent nothing on it. The switch
     // is `spent`, never `ready` — Sci's ruling, and what this test pins.
-    api.availability.set(EDITAL, { ready: true, spent: false })
+    api.availability.set(EDITAL, { ready: true, spent: false, metered: true })
 
     await page.goto(`/radar/edital/${EDITAL}?cnpj=${MARTA.cnpj}&group=compatible`)
 

@@ -249,6 +249,16 @@ export type ScreeningAvailability = {
   ready: boolean
   /** This caller already spent a screening on this tender, so opening is free. */
   spent: boolean
+  /**
+   * Whether this caller's plan meters triagens at all.
+   *
+   * `plan_limits` stores `quantity = null` for `promocional`, `essencial` and
+   * `pro` — unlimited. Without this field the screen printed *"Usa 1 das suas
+   * triagens"* to every founder who had just paid for a plan whose own feature
+   * list says *"Triagens de edital sem limite"*. The route already reads the
+   * limit; it simply never said so.
+   */
+  metered: boolean
 }
 
 export type TenderOk = {

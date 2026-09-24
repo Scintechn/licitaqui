@@ -297,7 +297,7 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
           state: 'ready',
           tender: row,
           freshness,
-          screening: api.availability.get(id) ?? { ready: false, spent: false },
+          screening: api.availability.get(id) ?? { ready: false, spent: false, metered: true },
         } satisfies TenderResponse)
       }
 
@@ -322,7 +322,7 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
       if (request.method() === 'POST' && !spentOn.has(id)) {
         spentOn.add(id)
         api.screening.used += 1
-        api.availability.set(id, { ready: api.screening.state === 'ready', spent: true })
+        api.availability.set(id, { ready: api.screening.state === 'ready', spent: true, metered: true })
       }
 
       if (api.screening.state === 'pending') {

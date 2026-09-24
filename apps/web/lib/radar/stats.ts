@@ -26,6 +26,16 @@ import { DIVULGADA } from './tender-status'
  * allow-list `mayShowUrgency` uses and for the same reason: an unrecognised
  * status is not counted as open.
  *
+ * **`halted` is not the complement of that, and must not be written as one.**
+ * It first read `status is distinct from 'Divulgada no PNCP'`, which is TRUE
+ * for NULL — so any tender the ingest had not classified would have been
+ * published on the front page as *suspenso, revogado ou anulado pelo órgão*,
+ * a claim about an agency's act that nothing supports. `status` is nullable
+ * (`0001_initial.sql`) and the fallback sweep writes whatever
+ * `situacao_nome` it got, so NULL is reachable even though production held
+ * none when this was written. CDC art. 30 binds an advertised figure; an
+ * unclassified tender is counted in neither column.
+ *
  * ## `halted` is the differentiator, not a footnote
  *
  * The 204 is the number that says what this product does. On the PNCP a person
@@ -72,7 +82,8 @@ export async function openTenderStats(executor?: Executor): Promise<RadarStats |
       select count(*) filter (where status = ${DIVULGADA})                       as open,
              count(*) filter (where status = ${DIVULGADA}
                                 and me_epp_summary in ('exclusive', 'mixed'))    as me_epp,
-             count(*) filter (where status is distinct from ${DIVULGADA})        as halted
+             count(*) filter (where status is not null
+                                and status <> ${DIVULGADA})                      as halted
         from tenders
        where proposals_close_at > now()
     `)
