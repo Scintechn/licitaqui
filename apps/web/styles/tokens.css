@@ -104,6 +104,32 @@
   --color-on-ink-faint: #b8b3ab; /* labels and footnotes on graphite */
   --color-blue-on-ink: #9db6f2; /* icon blue on graphite: --color-blue-light is too dark there */
 
+  /*
+   * The brand panel · Sci, 2026-09-24: "this background black is not linked.
+   * Could change to Blue, like the logo, and work in the contrast."
+   *
+   * Not `--color-blue` itself. Measured, white on #2457d6 is only 6.16:1 —
+   * fine for body text and with no room left underneath it, so the muted tier
+   * lands at 4.14:1 and the faint tier at 3.22:1, both below AA for body copy.
+   * A panel needs three tiers, not one.
+   *
+   * #14347f is the same hue, deep enough to carry all of them, and dark enough
+   * to read as a surface rather than as a very large button:
+   *
+   *   white     #ffffff  11.49:1     muted  #c7d4f2  7.73:1
+   *   faint     #a8bbea   6.00:1     icon   #8fabf0  5.06:1
+   *
+   * Every tier clears AA for body text, where the graphite ramp's icon tier
+   * only ever cleared it for large text.
+   */
+  --color-brand-panel: #14347f;
+  --color-brand-line: #35559f; /* hairline on the brand panel — seen, not read */
+  --color-brand-raised: #21469c; /* a chip raised off the brand panel */
+  --color-on-brand: #ffffff; /* 11.49:1 */
+  --color-on-brand-muted: #c7d4f2; /* 7.73:1 */
+  --color-on-brand-faint: #a8bbea; /* 6.00:1 · labels and footnotes */
+  --color-icon-on-brand: #8fabf0; /* 5.06:1 · the graphite ramp's blue is invisible here */
+
   /* ------------------------------------------------------------ typography */
   /* Archivo is pinned to 600/700/800 (see app/fonts.ts). The wordmark is
      800 / wdth 85% / -3%, drawn as outlines in components/logo.tsx, so no

@@ -484,7 +484,16 @@ function FounderValue() {
   return (
     <Section divided={false}>
       <Wrap>
-        <div className="grid gap-7 rounded-feature bg-ink px-5 py-7 text-on-ink min-[900px]:grid-cols-2 min-[900px]:gap-10 min-[900px]:p-10">
+        {/* Brand blue, not graphite (Sci, 2026-09-24). The `on-brand` ramp is
+            measured against #14347f in `tokens.css`; the graphite ramp's tiers
+            do not survive the move — `blue-on-ink` in particular is 2.71:1 on
+            blue and invisible.
+
+            `min-w-0` on the grid children because a grid item defaults to
+            `min-width: auto`: the comparison table inside once carried a
+            `min-w-[420px]`, which at 440px pushed the whole panel past the
+            viewport and took the call to action out with it. */}
+        <div className="grid gap-7 rounded-feature bg-brand-panel px-5 py-7 text-on-brand [&>*]:min-w-0 min-[900px]:grid-cols-2 min-[900px]:gap-10 min-[900px]:p-10">
           <div className="flex flex-col gap-6">
             <SectionLabel tone="inverse" size="caption">
               {founderValue.label}
@@ -494,14 +503,14 @@ function FounderValue() {
             <ul className="flex flex-col gap-[18px]">
               {founderValue.benefits.map((benefit, index) => (
                 <li key={benefit.title} className="grid grid-cols-[36px_minmax(0,1fr)] gap-3.5">
-                  <span className="grid size-9 place-items-center rounded-control bg-ink-raised text-blue-on-ink">
+                  <span className="grid size-9 place-items-center rounded-control bg-brand-raised text-icon-on-brand">
                     <Icon name={BENEFIT_ICONS[index]} size={20} />
                   </span>
                   <div>
                     <b className="mb-0.5 block text-subhead font-bold text-surface">
                       {benefit.title}
                     </b>
-                    <span className="text-base leading-[1.6] text-on-ink-muted">{benefit.body}</span>
+                    <span className="text-base leading-[1.6] text-on-brand-muted">{benefit.body}</span>
                   </div>
                 </li>
               ))}
@@ -513,54 +522,78 @@ function FounderValue() {
               {founderValue.comparisonLabel}
             </SectionLabel>
 
-            {/* `overflow-x-auto` did nothing: the table is `w-full`, so it
-                never exceeded the wrapper — measured at 390px, clientWidth
-                310 and scrollWidth 310. The escape hatch was inert and the
-                table simply compressed to 91/104/115px columns, where
-                "a partir de R$ 397/mês" sets in three lines and both column
-                headers wrap. `min-w` makes the wrapper do what it was written
-                for. (Stacking the rows below 560px is the better answer for
-                an audience that will not think to swipe a table — carded,
-                not done here.) */}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[420px] border-collapse text-body leading-[1.55]">
-                <thead>
+            {/* Stacked below 560px, a table above it.
+                
+                `overflow-x-auto` around a `w-full` table did nothing —
+                measured at 390px, clientWidth 310 and scrollWidth 310, so the
+                escape hatch was inert and the columns simply compressed to
+                91/104/115px. Adding `min-w-[420px]` made it scroll and
+                **broke the panel**: a grid item is `min-width: auto`, so at
+                440px the table pushed the whole panel past the viewport and
+                carried the call to action out with it.
+                
+                So neither. This audience will not think to swipe a table, and
+                three columns of two-to-five words do not need to be one: below
+                560px each row becomes the feature name with its two values
+                labelled underneath, which is the same information at a width
+                that fits. `<table>` is kept — it *is* tabular data, and the
+                headers stay for assistive technology, hidden visually where
+                the layout stacks. */}
+            <div>
+              <table className="w-full border-collapse text-body leading-[1.55] max-[559px]:block">
+                <thead className="max-[559px]:sr-only">
                   <tr>
-                    <th scope="col" className="border-b border-ink-line px-2 py-2.5" />
+                    <th scope="col" className="border-b border-brand-line px-2 py-2.5" />
                     <th
                       scope="col"
-                      className="border-b border-ink-line px-2 py-2.5 text-left font-mono text-label font-medium tracking-[0.06em] text-on-ink-faint uppercase"
+                      className="border-b border-brand-line px-2 py-2.5 text-left font-mono text-label font-medium tracking-[0.06em] text-on-brand-faint uppercase"
                     >
                       {founderValue.comparisonOther}
                     </th>
                     <th
                       scope="col"
-                      className="border-b border-ink-line px-2 py-2.5 text-left font-mono text-label font-medium tracking-[0.06em] text-on-ink-faint uppercase"
+                      className="border-b border-brand-line px-2 py-2.5 text-left font-mono text-label font-medium tracking-[0.06em] text-on-brand-faint uppercase"
                     >
                       {messages.brand.name}
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="max-[559px]:block">
                   {founderValue.comparisonRows.map((row, index) => (
-                    <tr key={row.feature}>
-                      <td className="border-b border-ink-line px-2 py-2.5 align-top text-on-ink-muted">
+                    <tr
+                      key={row.feature}
+                      className="max-[559px]:block max-[559px]:border-b max-[559px]:border-brand-line max-[559px]:py-3"
+                    >
+                      <td className="border-b border-brand-line px-2 py-2.5 align-top text-on-brand-muted max-[559px]:block max-[559px]:border-0 max-[559px]:pb-1 max-[559px]:font-semibold max-[559px]:text-on-brand">
                         {row.feature}
                       </td>
+                      {/* Below 560px the column header is `sr-only`, so each
+                          value carries its own label. `aria-hidden` on the
+                          inline label: the real `<th>` is still associated
+                          with the cell, and announcing both would say it
+                          twice. */}
                       <td
                         className={cn(
-                          'border-b border-ink-line px-2 py-2.5 align-top',
+                          'border-b border-brand-line px-2 py-2.5 align-top',
+                          'max-[559px]:block max-[559px]:border-0 max-[559px]:py-0.5 max-[559px]:text-on-brand-muted',
                           index === 0 && 'font-mono tabular-nums',
                         )}
                       >
+                        <span aria-hidden className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption text-on-brand-faint">
+                          {founderValue.comparisonOther}:
+                        </span>
                         {row.other}
                       </td>
                       <td
                         className={cn(
-                          'border-b border-ink-line px-2 py-2.5 align-top font-semibold text-surface',
+                          'border-b border-brand-line px-2 py-2.5 align-top font-semibold text-surface',
+                          'max-[559px]:block max-[559px]:border-0 max-[559px]:py-0.5',
                           index === 0 && 'font-mono tabular-nums',
                         )}
                       >
+                        <span aria-hidden className="hidden max-[559px]:mr-1.5 max-[559px]:inline font-sans text-caption font-normal text-on-brand-faint">
+                          {messages.brand.name}:
+                        </span>
                         {row.us}
                       </td>
                     </tr>
@@ -569,9 +602,9 @@ function FounderValue() {
               </table>
             </div>
 
-            <p className="text-caption leading-[1.55] text-on-ink-faint">{founderValue.comparisonNote}</p>
+            <p className="text-caption leading-[1.55] text-on-brand-faint">{founderValue.comparisonNote}</p>
 
-            <Button href="#vaga" className="mt-auto w-full">
+            <Button variant="onBrand" href="#vaga" className="mt-auto w-full">
               {founderValue.cta}
             </Button>
           </div>
