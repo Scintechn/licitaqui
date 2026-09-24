@@ -1,16 +1,32 @@
 # Secret scanning (spec §12).
 #
-# Spec §12 asks for GitHub secret scanning + push protection. Those are part of
-# GitHub Secret Protection, which this private repository does not have: the
-# REST call to enable it answers HTTP 422. Until the repo is public or the paid
-# feature is bought, gitleaks is the substitute — a pull request is scanned over
-# its own commits, `main` is scanned over the whole history, and any finding
-# fails the run. See the step comments for why the two differ.
+# **Both of §12's asks are now live.** The repository became public on
+# 2026-09-24, which makes GitHub secret scanning and push protection free, and
+# both were enabled that day:
 #
-# Differences from the real thing, recorded so nobody assumes more coverage than
-# exists: this runs *after* the push, so it blocks the merge rather than the
-# push itself, and it does not validate whether a leaked credential is live.
-# Make this check required in the branch protection rules for `main`.
+#   gh api repos/Scintechn/licitaqui -q '.security_and_analysis'
+#     secret_scanning:                 enabled
+#     secret_scanning_push_protection: enabled
+#
+# This paragraph used to say the opposite — that a private repository could not
+# have them, and that gitleaks was the substitute. It is kept as a **second
+# layer**, not a stand-in, because the two catch different things:
+#
+# | | GitHub secret scanning | gitleaks, here |
+# |---|---|---|
+# | when | at push time — the secret never reaches the remote | after the push, blocking the merge |
+# | what | known provider patterns (AWS, Stripe, Google…), validated against the provider where supported | those **plus** generic high-entropy strings and custom shapes |
+# | scope | the whole history, continuously | a PR's own commits; the whole history on `main` |
+#
+# `secret_scanning_non_provider_patterns` is deliberately **off**: it is what
+# would make GitHub's scanner find the generic shapes, and it is noisy. gitleaks
+# covers that ground with a config this repository controls.
+#
+# So push protection is now the thing that stops a secret being published, and
+# this workflow is the thing that catches what push protection's pattern list
+# does not know about. Keep it required in the branch protection rules for
+# `main` — it is no longer the only guard, but it is the only one that fails a
+# pull request on a shape GitHub has never seen.
 #
 # gitleaks is installed from its pinned GitHub release and the archive checksum
 # is verified, instead of using gitleaks/gitleaks-action: that action requires a
