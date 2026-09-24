@@ -42,6 +42,20 @@ import { cn } from '@/lib/cn'
  *    unless it is recorded and restored by hand.
  */
 
+export type SheetPlacement =
+  /** Full-height panel against the left edge. The menu drawer (D5). */
+  | 'drawer'
+  /**
+   * Centred card, capped at the viewport's height and scrolled inside.
+   *
+   * For a sheet that is a *task* rather than a place — the founders signup,
+   * which is a form with a submit and a confirmation. A form in a full-height
+   * left drawer reads as navigation on a wide screen, and on a phone the two
+   * resolve to nearly the same thing anyway: `inset-4` with a 420px cap is the
+   * width the form is drawn at.
+   */
+  | 'centre'
+
 export type SheetProps = {
   open: boolean
   /** `id` of the heading that names the sheet. Required — it is the a11y name. */
@@ -58,8 +72,30 @@ export type SheetProps = {
    * technology to ignore. It labelled nothing.
    */
   dismissLabel: string
+  /** Where the panel sits. Default `drawer`, which is what the menu uses. */
+  placement?: SheetPlacement
   children: ReactNode
   className?: string
+}
+
+/**
+ * The panel's own box, per placement.
+ *
+ * A prop rather than something a caller passes through `className`: `lib/cn.ts`
+ * is a plain join with no `tailwind-merge`, so a caller's `max-w-[420px]`
+ * would not replace `max-w-[360px]` — both would be in the sheet and which one
+ * won would be Tailwind's generation order. Variants, not competing utilities.
+ */
+const PLACEMENT: Record<SheetPlacement, { outer: string; panel: string }> = {
+  drawer: {
+    outer: 'flex',
+    panel: 'relative flex h-dvh w-full max-w-[360px] flex-col overflow-y-auto border-r border-line',
+  },
+  centre: {
+    outer: 'flex items-center justify-center p-4',
+    panel:
+      'relative flex max-h-full w-full max-w-[420px] flex-col overflow-y-auto rounded-panel border border-line',
+  },
 }
 
 const FOCUSABLE =
@@ -71,6 +107,7 @@ export function Sheet({
   labelledBy,
   onDismiss,
   dismissLabel,
+  placement = 'drawer',
   children,
   className,
 }: SheetProps) {
@@ -78,6 +115,43 @@ export function Sheet({
   const heading = useRef<HTMLDivElement>(null)
   /** Whatever had focus when this opened. Restored on every exit path. */
   const opener = useRef<HTMLElement | null>(null)
+  /** Where the page was, so the scroll lock can give it back. */
+  const scrollTop = useRef(0)
+  /** True between opening and the close being handled. See the effect below. */
+  const wasOpen = useRef(false)
+
+  /**
+   * Give back the scroll position and the focus, when the sheet **closes**.
+   *
+   * This used to live in the other effect's cleanup, guarded by
+   * `panel.isConnected` — the idea being that the panel is still in the
+   * document when the sheet merely closed, and gone when the tree unmounted
+   * under a navigation. It never was: `open` going false returns `null` from
+   * this component, React detaches the panel during the commit, and the
+   * passive cleanup runs *after* that. So `isConnected` was false on both
+   * paths and focus was restored on neither — while the docstring above
+   * promised it "on every exit". Nothing asserted it, in this repository or
+   * in the drawer that shipped with it; a journey written against the founders
+   * dialog is what finally disproved it.
+   *
+   * An effect keyed on `open` is the honest discriminator: effects do not run
+   * when a component unmounts, so this body runs when and only when the sheet
+   * closed while the page stayed — which is exactly the case where restoring
+   * is right. Following a link out of the sheet unmounts it, this does not
+   * run, and the App Router keeps its own scroll-to-top and its own focus
+   * handling.
+   */
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true
+      return
+    }
+    if (!wasOpen.current) return
+    wasOpen.current = false
+    // iOS Safari drops the offset when the overflow lock is released.
+    window.scrollTo(0, scrollTop.current)
+    opener.current?.focus()
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -89,14 +163,9 @@ export function Sheet({
     heading.current?.focus()
 
     const root = document.documentElement
-    const scrollY = window.scrollY
+    scrollTop.current = window.scrollY
     const previousOverflow = root.style.overflow
     root.style.overflow = 'hidden'
-    // Captured here, not read in the cleanup: the cleanup needs to ask
-    // whether *this* node is still in the document, and by then the ref may
-    // already point elsewhere. This is also what react-hooks/exhaustive-deps
-    // asks for, and here the rule and the intent agree.
-    const openedPanel = panel.current
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -149,30 +218,20 @@ export function Sheet({
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      // Releasing the lock is right on every path, including unmount.
+      // Releasing the lock is right on every path, including unmount — a page
+      // navigated to with `overflow: hidden` left on `<html>` cannot scroll.
+      // Giving back the position and the focus is not: that belongs to the
+      // close, and is in the effect above.
       root.style.overflow = previousOverflow
-
-      // Restoring position and focus is right on exactly one path: the sheet
-      // closing while the page stays. This cleanup also runs when the tree
-      // **unmounts** because somebody followed a link out of it — and there,
-      // both are wrong. `scrollTo` would drag the *destination* page to the
-      // old page's offset, fighting the App Router's own scroll-to-top, and
-      // `opener.current` is a detached node whose `.focus()` silently does
-      // nothing, dropping focus to `<body>`.
-      //
-      // `isConnected` is the distinction: the panel is still in the document
-      // when the sheet merely closed, and gone when the tree unmounted.
-      if (!openedPanel?.isConnected) return
-      // iOS Safari drops the offset when overflow is released.
-      window.scrollTo(0, scrollY)
-      opener.current?.focus()
     }
   }, [open, onDismiss])
 
   if (!open) return null
 
+  const box = PLACEMENT[placement]
+
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className={cn('fixed inset-0 z-50', box.outer)}>
       {/*
         A scrim, not a control. Clicking it dismisses because pointer users
         expect that, but the same action is always on a real button too — a
@@ -191,11 +250,7 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        className={cn(
-          'relative flex h-dvh w-full max-w-[360px] flex-col overflow-y-auto',
-          'border-r border-line bg-surface',
-          className,
-        )}
+        className={cn(box.panel, 'bg-surface', className)}
       >
         {/*
           The focus target on open. `tabIndex={-1}` makes it focusable by
