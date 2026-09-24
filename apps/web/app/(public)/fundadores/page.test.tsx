@@ -178,4 +178,27 @@ describe('brief §2.2 framing rules', () => {
     // Between the form's submit and the next CTA there are ~5 499px.
     expect(out).toMatch(/<header class="[^"]*sticky/)
   })
+
+  /**
+   * `tokens.css` says it in its own words, above the public-page scale:
+   *
+   *   "The 11–15px scale above is the in-app scale, designed for a 390px
+   *    frame full of data. A marketing page needs larger… **Body copy there
+   *    is Tailwind's `text-base`**."
+   *
+   * The page did not follow the instruction written for it. Measured at a
+   * true 390px viewport before the change: 31% of the page's characters were
+   * at 13px or smaller and 44% at 15px, with only 10% at 16px — for readers
+   * who are often in their fifties and sixties, on low-end Android, deciding
+   * whether to trust an unknown company with a business subscription.
+   *
+   * This asserts the idiom rather than every element: the body-copy blocks
+   * use `text-base`, and none of them is left on the in-app `text-lead`.
+   */
+  it('sets body copy at the size the token file specifies for public pages', () => {
+    const bodyBlocks = out.match(/text-base leading-\[1\.6\]/g) ?? []
+    expect(bodyBlocks.length).toBeGreaterThanOrEqual(8)
+    // The in-app body idiom must not come back on a marketing page.
+    expect(out).not.toContain('text-lead leading-[1.55]')
+  })
 })

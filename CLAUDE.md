@@ -89,6 +89,26 @@ mis-attribute both the commit and the Vercel deployment. Verify with
 2. Reply with a short plan: files to create/change, tests, anything missing. Wait for Sci's OK.
 3. Work on branch `task/<id>-<slug>`; use a git worktree when several tasks run in parallel.
 4. Run the checks. Open a PR listing the card's acceptance criteria as a checklist.
+4b. **Review before merging, not after.** On 2026-09-24 two independent reviews
+   found ten defects in work already reported as done, three of them live on
+   production — including a 500 on the founders signup shipped hours earlier by
+   the change meant to fix that exact path. Every one had a green suite.
+
+   The pattern was identical each time: **the test exercised the unit, not the
+   path.** A menu's own test rendered the component and never asked whether
+   anything could reach it — the trigger was never rendered. Every fixture in
+   the signup suite passed a CNPJ, so the optional case was untested, and
+   `/fundadores` had no browser test at all. One test *required* its own bug to
+   pass.
+
+   So: a green suite is not evidence a path works. Before merging anything
+   beyond a one-line fix, have something read the diff that did not write it,
+   and tell it that tests passing is not evidence. Ask specifically for defects
+   where the tests pass and the behaviour is wrong.
+
+   And when you mutation-check, **assert the mutation applied**. A `replace`
+   that matched nothing prints success and proves nothing; that happened here
+   too, in the same afternoon.
 5. Append one line to `docs/STATUS.md`: date · task ID · status · PR link · follow-ups.
 
 Decisions marked open in plan §1.2 are Sci's: stop and ask. External side effects need
