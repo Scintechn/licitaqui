@@ -167,11 +167,48 @@ describe('brief §2.2 framing rules', () => {
     expect(around).not.toContain('text-lead font-semibold')
   })
 
-  it('keeps the comparison table wide enough to be a table', () => {
-    // `overflow-x-auto` was inert while the table was `w-full`: measured at
-    // 390px, clientWidth 310 and scrollWidth 310, so nothing ever scrolled
-    // and the columns compressed to 91/104/115px.
-    expect(out).toContain('min-w-[420px]')
+  it('never lets a child force the brand panel past the viewport', () => {
+    // The first fix for the compressed comparison table gave it
+    // `min-w-[420px]`. A grid item is `min-width: auto`, so at 440px that
+    // pushed the whole panel off-screen and carried the call to action with
+    // it — visible in a screenshot before anything measured it.
+    //
+    // Two guards, because either alone would have let it happen: no fixed
+    // minimum inside the panel, and `min-w-0` on the grid children so a
+    // future wide child cannot do the same thing.
+    expect(out).not.toContain('min-w-[420px]')
+    // `&` and `>` are escaped in the rendered attribute.
+    expect(out).toMatch(/\[&amp;&gt;\*\]:min-w-0/)
+  })
+
+  it('stacks the comparison table below 560px instead of scrolling it', () => {
+    // This audience will not think to swipe a table, and three columns of
+    // two-to-five words do not need to be three below 560px.
+    expect(out).toContain('max-[559px]:block')
+    // The headers stay for assistive technology, hidden only visually.
+    expect(out).toContain('max-[559px]:sr-only')
+  })
+
+  it('inverts the panel\u2019s call to action so it is not its own background', () => {
+    // Sci saw it before any measurement: a blue button on a blue panel
+    // disappears. White ground, blue label — 11.49:1 for the button against
+    // the panel, 6.16:1 for the label against the button.
+    const cta = out.slice(out.indexOf(messages.foundersPage.founderValue.cta) - 400)
+    expect(cta).toContain('bg-surface')
+    expect(cta).toContain('text-blue')
+  })
+
+  it('puts the brand panel on the logo blue, with its own measured ramp', () => {
+    // Sci: "this background black is not linked. Could change to Blue, like
+    // the logo". The graphite ramp does not survive the move — `blue-on-ink`
+    // measures 2.71:1 on blue — so the panel uses `on-brand*`, measured
+    // against #14347f in `tokens.css`.
+    expect(out).toContain('bg-brand-panel')
+    expect(out).toContain('text-on-brand')
+    // The graphite ramp is gone from this page entirely.
+    expect(out).not.toMatch(/\btext-on-ink\b/)
+    expect(out).not.toMatch(/\bblue-on-ink\b/)
+    expect(out).not.toMatch(/\bborder-ink-line\b/)
   })
 
   it('keeps a way to act on screen through the long middle of the page', () => {

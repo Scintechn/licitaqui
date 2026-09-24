@@ -240,10 +240,14 @@ describe('public-page additions (D2)', () => {
     expect(publicPage).not.toContain('text-label')
   })
 
-  it('carries the graphite-panel tone for SectionLabel', () => {
-    expect(html(<SectionLabel tone="inverse">Fundador</SectionLabel>)).toContain(
-      'text-on-ink-faint',
-    )
+  it('carries the dark-panel tone for SectionLabel, measured against that panel', () => {
+    // Was `text-on-ink-faint`, for the graphite panel. The only dark panel in
+    // the product is brand blue now, where the graphite faint tier measures
+    // 3.22:1 — below AA for the labels it sets. `on-brand-faint` is 6.00:1,
+    // measured against `--color-brand-panel` in `tokens.css`.
+    const out = html(<SectionLabel tone="inverse">Fundador</SectionLabel>)
+    expect(out).toContain('text-on-brand-faint')
+    expect(out).not.toContain('text-on-ink-faint')
   })
 
   it('draws the three offer-page glyphs on the same grid as the rest', () => {

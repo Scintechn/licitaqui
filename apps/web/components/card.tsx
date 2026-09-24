@@ -118,7 +118,10 @@ export function SectionLabel({
   const TONE = {
     ink: 'text-ink',
     muted: 'text-muted',
-    inverse: 'text-on-ink-faint',
+    // The only dark panel in the product is the brand-blue one; the
+    // graphite ramp's faint tier measures 3.22:1 there. `on-brand-faint`
+    // is 6.00:1, measured in `tokens.css`.
+    inverse: 'text-on-brand-faint',
     accent: 'text-blue',
   } as const
   return (

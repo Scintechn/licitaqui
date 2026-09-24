@@ -14,6 +14,11 @@ export type ButtonVariant =
   | 'locked'
   /** Text only. Inline, secondary navigation. */
   | 'link'
+  /**
+   * `primary`, inverted for the brand panel. White fill, blue label — because
+   * a blue button on a blue panel is its own background.
+   */
+  | 'onBrand'
 
 const BASE =
   'inline-flex items-center justify-center gap-2 rounded-control px-4 text-lead font-semibold ' +
@@ -27,6 +32,17 @@ const VARIANT: Record<ButtonVariant, string> = {
   locked:
     'min-h-control border border-dashed border-line-strong bg-fill-muted text-muted hover:text-ink',
   link: 'min-h-touch border border-transparent bg-transparent text-blue hover:text-blue-hover',
+  /**
+   * The primary action **on the brand panel**, inverted.
+   *
+   * `primary` is blue on white; on a blue panel it disappears into its own
+   * background — Sci saw it and said so. White ground with blue text is the
+   * inversion, and it measures better in both directions than the original
+   * did: the button is 11.49:1 against `--color-brand-panel`, and its label is
+   * 6.16:1 against the button.
+   */
+  onBrand:
+    'min-h-control border border-surface bg-surface text-blue hover:border-blue-soft hover:bg-blue-soft',
 }
 
 type SharedProps = {
