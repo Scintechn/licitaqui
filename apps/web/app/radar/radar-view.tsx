@@ -320,9 +320,29 @@ function FilterRow({
   query: RadarQuery
   onNavigate?: (href: string) => void
 }) {
+  // **Open when there is nothing to search by.**
+  //
+  // The whole search — CNPJ, UF and keyword — lives inside this `<details>`,
+  // and it was closed on every load. A visitor arriving with no CNPJ therefore
+  // met a Radar with no visible way to search: a collapsed row labelled
+  // "Trocar empresa ou filtros", which says *change* the company when there is
+  // no company yet, and an empty-state card whose only affordance was a text
+  // link. The exposure grew when `/fundadores` gained an "Ir para o Radar" CTA
+  // pointing cold visitors straight at this state.
+  //
+  // The condition is the same one that produces the `needCnpj` state in
+  // `listState()` — no CNPJ and no keyword means nothing to list, so the search
+  // is the only thing on the screen worth doing. Once either is set the
+  // disclosure goes back to being closed by default, because then the list is
+  // the content and the search is a secondary action.
+  //
+  // `open` is only the initial attribute: `<details>` stays uncontrolled, so a
+  // reader can still collapse it.
+  const nothingToSearchBy = !query.cnpj && !query.q
+
   return (
     <div className="relative px-gutter">
-      <details className="group">
+      <details className="group" open={nothingToSearchBy}>
         <summary
           className={cn(
             'flex cursor-pointer list-none items-center py-1 text-body',
