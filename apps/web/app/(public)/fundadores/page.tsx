@@ -604,7 +604,13 @@ function Screening() {
 
 /* ------------------------------------------------------- what a founder gets */
 
-const BENEFIT_ICONS = ['locked', 'visitor', 'send', 'account'] as const
+/**
+ * Index 1 is `money`, not `visitor`. The second benefit used to be "Acesso
+ * antes de todos" — a person icon for early access. D7 replaced that claim with
+ * the price range, so the icon moved with the sentence; leaving the old one
+ * would illustrate a benefit the card no longer names.
+ */
+const BENEFIT_ICONS = ['locked', 'money', 'send', 'account'] as const
 
 function FounderValue() {
   const { founderValue } = page

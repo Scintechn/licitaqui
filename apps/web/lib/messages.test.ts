@@ -101,6 +101,55 @@ describe('messages', () => {
     expect(messages.foundersPage.pain.title).toContain('todo dia')
   })
 
+  /**
+   * **D7 — the founder benefit must name something the founder price buys.**
+   *
+   * `/fundadores` sold *"Acesso antes de todos — você usa o Radar antes da
+   * abertura pública"*. The Radar is public **right now** at `/radar`: no
+   * account, two free triagens, a three-day window. So the page promised a
+   * paying founder a thing every visitor already has, and CDC art. 30 binds
+   * what an advert says — there was nothing to honour.
+   *
+   * What the founder price does buy is Essencial's price range: the band the
+   * winners closed at and the ceiling that keeps a margin. It is `radar.price`,
+   * and it renders as `LockedValue` bars to everyone else.
+   *
+   * So the benefit now quotes **that screen's own approved wording**, and this
+   * asserts the two stay the same sentence. If somebody rewrites the price
+   * screen's intro, the founders page goes red rather than drifting into
+   * describing a feature in words the feature no longer uses.
+   *
+   * `founders.waitlist.nextOpening` is deliberately not caught by the pattern:
+   * it says the list receives the access link before the product opens to the
+   * public on 08/10. That is about the launch, not about the Radar, and it is
+   * true.
+   */
+  it('sells the price range, not early access to a Radar that is already public', () => {
+    const EARLY_RADAR = /radar[^.]{0,80}antes d[ao] abertura/i
+    const offenders: string[] = []
+
+    const walk = (node: unknown, path: string): void => {
+      if (typeof node === 'string') {
+        if (EARLY_RADAR.test(node)) offenders.push(`${path}: ${node}`)
+        return
+      }
+      if (node && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) {
+          walk(value, path ? `${path}.${key}` : key)
+        }
+      }
+    }
+    walk(messages.foundersPage, 'foundersPage')
+    walk(messages.founders, 'founders')
+
+    expect(offenders).toEqual([])
+
+    // …and the benefit that replaced it is the price screen's sentence, not a
+    // new claim written for the sales page.
+    const bodies = messages.foundersPage.founderValue.benefits.map((one) => one.body)
+    expect(bodies.some((body) => body.startsWith(messages.radar.price.intro))).toBe(true)
+  })
+
   it('calls an AI reading a triagem, everywhere but the AI notice', () => {
     const ALLOWED = new Set(['ai.disclaimer'])
     const offenders: string[] = []
