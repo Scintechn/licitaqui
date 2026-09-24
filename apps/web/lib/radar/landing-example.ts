@@ -28,10 +28,27 @@ import type { TenderCard, TenderGroup } from './contract'
  * ISR revalidation, `America/Sao_Paulo` like every other date the product shows
  * — and the card's own gate decides what may be said about time:
  * `mayShowUrgency` (§2.2 rule 6) drops the countdown and relabels the date
- * *"Data anterior"* the moment the window closes. Before 30/09/2026 the panel
- * counts real days down; after it, it shows three dated examples that no longer
- * claim to be open. Both readings are true at the instant they render, which is
- * the only property that cannot go stale.
+ * *"Data anterior"* once the window has closed. Up to the session hour of each
+ * card — 07:30, 08:30 and 09:00 Brasília on 30/09/2026, not one date for all
+ * three — the panel counts real days down; after it, they are three dated
+ * examples that no longer claim to be open.
+ *
+ * Two honest limits on that, because "true whenever it renders" is the claim
+ * this file would otherwise be making and it is not quite the claim it can keep:
+ *
+ *  - the *transition* is a render behind, not instant. The Landing is static
+ *    with `revalidate = 600` and stale-while-revalidate, so a copy generated
+ *    minutes before a session hour keeps being served after it — ten minutes on
+ *    a busy page, longer on a quiet one, and a promote or rollback serves that
+ *    deployment's build clock. Bounded by the cache, where the frozen clock was
+ *    unbounded and permanent;
+ *  - the *status* is a transcription. `mayShowUrgency` asks two questions and
+ *    only one of them has a live answer here: the hour is real, but "Divulgada
+ *    no PNCP" is what PNCP said on 17/09/2026. If an órgão suspended one of
+ *    these three after that date, nothing in this file can know, and the panel
+ *    would keep counting its days down. That is a limit of any frozen example,
+ *    and it is the reason `example-radar.tsx` is not a substitute for a live
+ *    Radar — the caption says as much.
  *
  * What still says "as of 17/09/2026" is `EXAMPLE_AS_OF`, in the caption: the
  * date these *facts* were checked. That is a citation, not a countdown.

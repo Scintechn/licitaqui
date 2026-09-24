@@ -49,18 +49,22 @@ import { TenderCardView } from '@/app/radar/tender-card'
  * passed to all three cards, so the panel cannot show one card counting from a
  * different instant than its neighbour. From there the product's own gate does
  * the talking: `mayShowUrgency` (§2.2 rule 6) removes the countdown and turns
- * "Proposta até 30/09" into "Data anterior 30/09" the moment the window closes.
- * Nothing here needs to know which side of the deadline today is, and nothing
- * here needs re-dating next month.
+ * "Proposta até 30/09" into "Data anterior 30/09" once that card's session hour
+ * has passed — per card, so the SaaS one (07:30) changes an hour before the
+ * hospital one (09:00). Nothing here needs to know which side of the deadline
+ * today is, and nothing here needs re-dating next month.
  *
- * **What is left, stated rather than hidden:** the page is static and
- * revalidates every ten minutes (`page.tsx`, spec §3.3), so the instant baked
- * into the HTML can be up to `revalidate` old. A build that landed at 08:29
- * Brasília on 30/09/2026 could therefore serve "último dia" for the nine
- * minutes after the 08:30 session — bounded by the cache window, where the
- * frozen clock was unbounded and permanent. Lowering it further is not this
- * component's call: §3.3 gives public pages 10–30 minutes, and 600 s is already
- * the floor.
+ * **What is left, stated rather than hidden:** this is a render, and the render
+ * is cached. The page is static with `revalidate = 600` and
+ * stale-while-revalidate (`page.tsx`, spec §3.3), so the first request after
+ * expiry is *served the old HTML* and only then triggers regeneration — and with
+ * no traffic nothing regenerates at all. A copy generated at 08:29 Brasília on
+ * 30/09/2026 therefore keeps saying "último dia" for at least the ten minutes
+ * after the 08:30 session, longer on a quiet page, and a promote or a rollback
+ * serves whatever clock that deployment was built with. Bounded by the cache
+ * window, where the frozen clock was unbounded and permanent. Lowering it
+ * further is not this component's call: §3.3 gives public pages 10–30 minutes,
+ * and 600 s is already the floor.
  */
 
 const copy = messages.radar.landing.example

@@ -4,7 +4,6 @@ import { format, messages } from '@/lib/messages'
 import { FOUNDER_SEATS } from '@/lib/founders/seats'
 import { deadlineShort } from '@/lib/radar/format'
 import { EXAMPLE_AS_OF, EXAMPLE_TENDERS, exampleCounts } from '@/lib/radar/landing-example'
-import { mayShowUrgency } from '@/lib/radar/tender-status'
 
 // The search card calls `useRouter()` for the client-side hop to the Radar,
 // and there is no app router mounted under `react-dom/server`. The assertions
@@ -171,10 +170,17 @@ describe('/ · the approved page, section by section', () => {
    * What it no longer does is freeze the countdown at that date. This used to
    * assert "13 dias" — the board's number, measured from 17/09/2026 — which is
    * the claim card D11 is about: from 01/10/2026 that is a live-looking
-   * countdown over a deadline that has passed. The deadline line is now
-   * whatever is true at render time, and `example-radar.test.tsx` moves the
-   * clock across it. Here the page only has to agree with the card's own rule
-   * (§2.2 rule 6) at the instant this file rendered it.
+   * countdown over a deadline that has passed.
+   *
+   * **What is checked here, and what is not.** The deadline line below is
+   * compared against a plain instant comparison, not against `mayShowUrgency`:
+   * asking the same function the component asks would agree with it by
+   * construction, including when it is wrong. Even so, this assertion can only
+   * discriminate once a deadline has passed — before 30/09/2026 a re-frozen
+   * clock and the real one both say "Proposta até 30/09" and it stays green.
+   * The guard that fails *today* on a frozen clock is
+   * `example-radar.test.tsx`, which moves the system clock; this one is a
+   * coherence check on the page as this file rendered it.
    */
   it('keeps the example visibly an example', () => {
     expect(out).toContain(format(copy.example.caption, { data: EXAMPLE_AS_OF }))
@@ -183,7 +189,11 @@ describe('/ · the approved page, section by section', () => {
 
     for (const tender of EXAMPLE_TENDERS) {
       const quando = deadlineShort(tender.proposalsCloseAt) ?? ''
-      const open = mayShowUrgency(tender, RENDERED_AT)
+      // Both example tenders are Divulgada, so on this data "may we call the
+      // window open?" reduces to "is its hour still ahead?" — asked here of the
+      // clock directly, so a gate that stopped asking the hour would be caught
+      // instead of echoed.
+      const open = Date.parse(tender.proposalsCloseAt ?? '') > RENDERED_AT.getTime()
       expect(out).toContain(
         format(open ? messages.radar.card.proposalsUntil : messages.radar.card.previousDeadline, {
           quando,

@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { format, messages } from '@/lib/messages'
-import { deadlineShort } from '@/lib/radar/format'
+import type { TenderCard } from '@/lib/radar/contract'
+import { deadlineShort, money } from '@/lib/radar/format'
 import { EXAMPLE_AS_OF, EXAMPLE_TENDERS } from '@/lib/radar/landing-example'
 
 // Same stub as `page.test.tsx`: the hero's search card calls `useRouter()` and
@@ -65,10 +66,9 @@ async function panelAt(instant: string): Promise<string> {
   const out = renderToStaticMarkup(await LandingPage())
 
   // The panel runs from its `aria-label` to the end of its caption, which is
-  // its last element and appears nowhere else on the page. Asserted, not
-  // assumed: a `slice` from -1 would silently hand every test below the whole
-  // document, where "dias" appears in copy that has nothing to do with the
-  // example ("Entrega · 15 dias").
+  // its last element. Asserted, not assumed: a `slice` from -1 would silently
+  // hand every test below the whole document, where "dias" appears in copy that
+  // has nothing to do with the example ("Entrega · 15 dias").
   const caption = format(copy.caption, { data: EXAMPLE_AS_OF })
   const start = out.indexOf(copy.panelLabel)
   const end = out.indexOf(caption)
@@ -84,14 +84,49 @@ async function panelAt(instant: string): Promise<string> {
   return out.slice(start, end + caption.length)
 }
 
+/**
+ * The three cards, each one's markup on its own, keyed by tender id.
+ *
+ * Asserting over the whole panel is not enough and the first version of this
+ * file made exactly that mistake: three cards share one region, so
+ * `expect(panel).toContain('último dia')` passes while *one* of the three has
+ * silently lost its countdown — its neighbour supplies the string. Every
+ * deadline assertion below is therefore scoped to the card it is about.
+ */
+async function cardsAt(instant: string): Promise<Map<string, string>> {
+  const panel = await panelAt(instant)
+  // The cards are list items; so are the three group chips above them, which is
+  // why each card is found by its own title rather than by position.
+  const items = panel.split('<li')
+  const cards = new Map<string, string>()
+  for (const tender of EXAMPLE_TENDERS) {
+    const found = items.filter((item) => item.includes(tender.object))
+    expect(found, `exactly one card renders ${tender.id}`).toHaveLength(1)
+    cards.set(tender.id, found[0])
+  }
+  return cards
+}
+
 /** "Proposta até 30/09 · 08:30" — the claim that a window is still open. */
-function openClaim(iso: string | null): string {
-  return format(card.proposalsUntil, { quando: deadlineShort(iso) ?? '' })
+function openClaim(tender: TenderCard): string {
+  return format(card.proposalsUntil, { quando: shortDeadline(tender) })
 }
 
 /** "Data anterior 30/09 · 08:30" — the same date, no longer claiming that. */
-function pastClaim(iso: string | null): string {
-  return format(card.previousDeadline, { quando: deadlineShort(iso) ?? '' })
+function pastClaim(tender: TenderCard): string {
+  return format(card.previousDeadline, { quando: shortDeadline(tender) })
+}
+
+/**
+ * The date these two claims are built around. Asserted rather than defaulted to
+ * `''`: an empty `quando` would leave both expectations as bare prefixes —
+ * "Proposta até " and "Data anterior " — which match almost anything and would
+ * make the pair below agree with a card that printed neither date.
+ */
+function shortDeadline(tender: TenderCard): string {
+  const quando = deadlineShort(tender.proposalsCloseAt)
+  expect(quando, `${tender.id} has a deadline to render`).not.toBeNull()
+  return quando ?? ''
 }
 
 /** Any countdown, in every form `card.daysLeft` can take. */
@@ -106,40 +141,49 @@ afterEach(() => {
 describe('the Landing example panel, against the real clock', () => {
   it('counts real days down while the tenders are open', async () => {
     // 24/09/2026, 09:00 in Brasília. Six Brasília days to 30/09.
-    const panel = await panelAt('2026-09-24T12:00:00.000Z')
+    const cards = await cardsAt('2026-09-24T12:00:00.000Z')
 
-    expect(panel).toContain(format(card.daysLeft, { count: 6 }))
-    // And not the number the frozen clock used to print, on any card.
-    expect(panel).not.toContain(format(card.daysLeft, { count: 13 }))
     for (const tender of EXAMPLE_TENDERS) {
-      expect(panel).toContain(openClaim(tender.proposalsCloseAt))
-      expect(panel).not.toContain(pastClaim(tender.proposalsCloseAt))
+      const own = cards.get(tender.id) ?? ''
+      expect(own).toContain(format(card.daysLeft, { count: 6 }))
+      // Not the number the frozen clock used to print. On this card.
+      expect(own).not.toContain(format(card.daysLeft, { count: 13 }))
+      expect(own).toContain(openClaim(tender))
+      expect(own).not.toContain(pastClaim(tender))
     }
   })
 
   it('counts Brasília days, not UTC ones', async () => {
     // 29/09/2026, 23:00 in Brasília — already 30/09 in UTC. One Brasília day
     // to a deadline on the 30th; "último dia" here would be a day early.
-    const panel = await panelAt('2026-09-30T02:00:00.000Z')
+    const cards = await cardsAt('2026-09-30T02:00:00.000Z')
 
-    expect(panel).toContain(format(card.daysLeft, { count: 1 }))
-    expect(panel).not.toContain(format(card.daysLeft, { count: 0 }))
+    for (const tender of EXAMPLE_TENDERS) {
+      const own = cards.get(tender.id) ?? ''
+      expect(own).toContain(format(card.daysLeft, { count: 1 }))
+      expect(own).not.toContain(format(card.daysLeft, { count: 0 }))
+    }
   })
 
   it('stops claiming a window is open at the hour it closes, card by card', async () => {
     // 30/09/2026, 08:00 in Brasília: the SaaS session (07:30) has passed, the
     // batteries (08:30) and the hospital one (09:00) have not. Three cards on
-    // one day, and the day is not what decides.
-    const panel = await panelAt('2026-09-30T11:00:00.000Z')
+    // one day, and the day is not what decides — `daysUntil` answers 0 for all
+    // three, which is the bug `headline.ts` records as sixteen hours of "último
+    // dia" after a deadline had passed.
+    const cards = await cardsAt('2026-09-30T11:00:00.000Z')
 
     for (const tender of [BATTERIES, HOSPITAL]) {
-      expect(panel).toContain(format(card.daysLeft, { count: 0 }))
-      expect(panel).toContain(openClaim(tender.proposalsCloseAt))
-      expect(panel).not.toContain(pastClaim(tender.proposalsCloseAt))
+      const own = cards.get(tender.id) ?? ''
+      expect(own).toContain(format(card.daysLeft, { count: 0 }))
+      expect(own).toContain(openClaim(tender))
+      expect(own).not.toContain(pastClaim(tender))
     }
 
-    expect(panel).toContain(pastClaim(SAAS.proposalsCloseAt))
-    expect(panel).not.toContain(openClaim(SAAS.proposalsCloseAt))
+    const closed = cards.get(SAAS.id) ?? ''
+    expect(closed).not.toMatch(COUNTDOWN)
+    expect(closed).toContain(pastClaim(SAAS))
+    expect(closed).not.toContain(openClaim(SAAS))
   })
 
   /**
@@ -151,16 +195,22 @@ describe('the Landing example panel, against the real clock', () => {
     ['01/10/2026, 09:00 in Brasília — the day the old panel went stale', '2026-10-01T12:00:00.000Z'],
     ['01/01/2030 — and it is not going to rot then either', '2030-01-01T12:00:00.000Z'],
   ])('shows no countdown once every deadline has passed (%s)', async (_when, instant) => {
-    const panel = await panelAt(instant)
-
-    // Not "13 dias", not "1 dia", not "último dia": no duration at all.
-    expect(panel).not.toMatch(COUNTDOWN)
-    expect(panel).not.toContain(card.closed)
+    const cards = await cardsAt(instant)
 
     for (const tender of EXAMPLE_TENDERS) {
+      const own = cards.get(tender.id) ?? ''
+      // Not "13 dias", not "1 dia", not "último dia": no duration at all.
+      expect(own).not.toMatch(COUNTDOWN)
       // The date stays — it says which edital this was — and says it is past.
-      expect(panel).toContain(pastClaim(tender.proposalsCloseAt))
-      expect(panel).not.toContain(openClaim(tender.proposalsCloseAt))
+      expect(own).toContain(pastClaim(tender))
+      expect(own).not.toContain(openClaim(tender))
+      // The 22px anchor is the money, on every clock, because all three carry a
+      // value (`cardHeadline`). Pinned because it decides which branch the two
+      // assertions above are testing: drop a value from the example and the
+      // deadline is promoted into the anchor instead, where `promoted()` would
+      // print "encerrado" and this test would be watching the wrong slot.
+      expect(own).toContain(money(tender.estimatedValue))
+      expect(own).not.toContain(card.closed)
     }
   })
 
