@@ -182,6 +182,31 @@ suite('founders signup (database)', () => {
     })
   })
 
+  it('seats a founder who left the CNPJ blank', async () => {
+    // The case PR #92 shipped and did not cover. `founders_list.cnpj` is
+    // nullable and the Zod schema turns blank into `undefined` — but Drizzle
+    // **drops an `undefined` embedded value from the template entirely**
+    // rather than binding NULL, so the statement became `select $1, $2, $3, ,`
+    // and Postgres answered `syntax error at or near ","`. Every signup that
+    // left the field blank returned a 500, on a live founders page where the
+    // field is labelled "(opcional)".
+    //
+    // Every fixture in this file passed `cnpj: CNPJ`, and there is no e2e for
+    // `/fundadores` at all, so nothing in the suite went near it.
+    await expectEmptyList()
+
+    const response = await POST(request(body(1, { cnpj: undefined })))
+    expect(response.status, await response.text()).toBe(201)
+
+    const stored = await pool().query<{ cnpj: string | null; seat: number }>(
+      'select cnpj, seat from founders_list where email = $1',
+      [`f1-1@${DOMAIN}`],
+    )
+    // Absent, not an empty string in a char(14) column.
+    expect(stored.rows[0]?.cnpj).toBeNull()
+    expect(Number(stored.rows[0]?.seat)).toBe(1)
+  })
+
   it('answers a repeat signup without taking a second seat or queueing a second message', async () => {
     await expectEmptyList()
     await POST(request(body(2)))

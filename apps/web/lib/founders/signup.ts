@@ -133,11 +133,26 @@ export async function signUpFounder(
       'privacy_consent_at', ${provenance.consentAt.toISOString()}::text
     )`
 
+    /*
+     * `?? null` on the CNPJ, the way `sells` and `source` already have it.
+     *
+     * Drizzle **drops an `undefined` embedded value from the template
+     * entirely** rather than binding NULL, so this statement became
+     * `select $1, $2, $3, ,` and Postgres answered `syntax error at or near
+     * ","`. The CNPJ was a required string until 2026-09-24; the change that
+     * made it optional moved the Zod schema and not this line, so every
+     * signup that left the field blank — the one case that change existed to
+     * allow — returned a 500 from a live founders page where the field is
+     * labelled "(opcional)".
+     *
+     * Nothing caught it: every fixture in `signup.db.test.ts` passed a CNPJ,
+     * and there is no e2e for `/fundadores` at all.
+     */
     const written = await tx.execute<WriteRow>(sql`
       with new_founder as (
         insert into founders_list
           (name, email, whatsapp, cnpj, sells, source, seat, contact_consent)
-        select ${input.name}, ${input.email}, ${input.whatsapp}, ${input.cnpj},
+        select ${input.name}, ${input.email}, ${input.whatsapp}, ${input.cnpj ?? null},
                ${input.sells ?? null}, ${input.source ?? null},
                -- The lowest seat nobody holds, or null once all 48 are taken.
                (select min(g.seat)

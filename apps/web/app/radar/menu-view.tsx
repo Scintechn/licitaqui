@@ -3,7 +3,7 @@ import { Button, Icon, Logo, SectionLabel, type IconName } from '@/components'
 import type { AccountSummary } from '@/lib/account/summary'
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
-import { ACCOUNT_HREF, accountHref } from '@/lib/routes'
+import { ACCOUNT_PATH, accountHref, PLAN_HREF } from '@/lib/routes'
 
 /**
  * Canvas 09 — `docs/design/wireframes/Menu.dc.html` — finally rendered.
@@ -40,6 +40,9 @@ import { ACCOUNT_HREF, accountHref } from '@/lib/routes'
 const copy = messages.radar.menu
 const account = messages.account.screen
 
+/** Plans that already include everything the upgrade link would sell. */
+const PAID_PLANS = new Set(['promocional', 'essencial', 'pro'])
+
 type Item = { href: string; icon: IconName; label: string }
 
 const MAIN: Item[] = [
@@ -49,10 +52,18 @@ const MAIN: Item[] = [
   { href: '/conta', icon: 'money', label: copy.billing },
 ]
 
-const ACCOUNT: Item[] = [
-  { href: ACCOUNT_HREF, icon: 'account', label: copy.profile },
-  { href: '/ajuda', icon: 'help', label: copy.help },
-]
+/**
+ * `/ajuda` is **not built**. `lib/routes.ts` spends a paragraph on exactly
+ * this: Next prefetches a `<Link>` on viewport entry, so an unbuilt
+ * destination is "a burst of 404s on every page view" — and this menu renders
+ * six links at once. The row is out until the route exists; `copy.help` stays
+ * in the catalogue for the day it does.
+ *
+ * `Perfil` goes to `ACCOUNT_PATH` (`/conta`), not `ACCOUNT_HREF`
+ * (`/conta/criar`). The strip above it only renders for a signed-in viewer,
+ * so the sign-up screen is the one page that item can never mean.
+ */
+const ACCOUNT: Item[] = [{ href: ACCOUNT_PATH, icon: 'account', label: copy.profile }]
 
 /**
  * `plan_limits` and `users.plan` spell the plans in Portuguese ids; the
@@ -190,8 +201,23 @@ function PlanStrip({ summary }: { summary: AccountSummary | null }) {
           <div className="h-full rounded-pill bg-blue" style={{ width: `${pct}%` }} />
         </div>
       )}
-      <Button variant="link" href={summary.signedIn ? '/conta' : accountHref('/radar')} className="px-0" iconEnd="arrowRight">
-        {summary.signedIn ? copy.upgrade : copy.signIn}
+      {/* `PLAN_HREF`, not `/conta`. `lib/routes.ts` defines it as `/fundadores`
+          precisely because billing does not open until M5 and "during
+          founders week the honest upgrade path is the offer itself" — every
+          "assinar" control must read that constant so F2 moves them all in
+          one edit. This one was hard-coded to the account page.
+
+          And the label switches on the **plan**, not on `signedIn`: a founder
+          on `promocional` has Essencial's entitlements already
+          (`0002_plan_limits.sql`), so inviting them to "conhecer o Essencial"
+          is selling somebody what they bought this morning. */}
+      <Button
+        variant="link"
+        href={summary.signedIn ? PLAN_HREF : accountHref('/radar')}
+        className="px-0"
+        iconEnd="arrowRight"
+      >
+        {!summary.signedIn ? copy.signIn : PAID_PLANS.has(summary.plan) ? account.plans : copy.upgrade}
       </Button>
     </div>
   )

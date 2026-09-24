@@ -48,7 +48,15 @@ export type SheetProps = {
   labelledBy: string
   /** Called for Escape, the scrim and the close control. */
   onDismiss: () => void
-  /** Accessible name of the close control. */
+  /**
+   * Accessible name for the scrim, which is the one dismiss affordance
+   * `Sheet` owns. The close **button** belongs to the content — `MenuView`
+   * renders its own — so this does not name that.
+   *
+   * It was previously rendered as an `sr-only` span *outside* the
+   * `role="dialog"` element, which `aria-modal="true"` tells assistive
+   * technology to ignore. It labelled nothing.
+   */
   dismissLabel: string
   children: ReactNode
   className?: string
@@ -84,6 +92,11 @@ export function Sheet({
     const scrollY = window.scrollY
     const previousOverflow = root.style.overflow
     root.style.overflow = 'hidden'
+    // Captured here, not read in the cleanup: the cleanup needs to ask
+    // whether *this* node is still in the document, and by then the ref may
+    // already point elsewhere. This is also what react-hooks/exhaustive-deps
+    // asks for, and here the rule and the intent agree.
+    const openedPanel = panel.current
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -101,9 +114,30 @@ export function Sheet({
         heading.current?.focus()
         return
       }
+
+      // Containment, not edge identity.
+      //
+      // The first version compared `activeElement` against the first and last
+      // stops only. Focus starts on the heading wrapper, which is
+      // `tabIndex={-1}` and therefore excluded from `FOCUSABLE` — so it
+      // matched neither, and the very first **Shift+Tab** fell through with no
+      // `preventDefault` and walked backwards out of the dialog into the page
+      // behind it. Worse, it did not recover: once focus was outside, it
+      // matched neither edge on every subsequent press either, so the trap
+      // stayed disarmed. The docstring above claimed "both directions", and a
+      // keyboard user's most likely second keystroke disproved it.
       const first = stops[0]
       const last = stops[stops.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
+      const inside = panel.current.contains(document.activeElement)
+
+      if (!inside) {
+        // Whatever let focus out, take it back rather than tracking where it
+        // went. Shift+Tab re-enters at the end, Tab at the start.
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+        return
+      }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === heading.current)) {
         event.preventDefault()
         last.focus()
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -115,7 +149,20 @@ export function Sheet({
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      // Releasing the lock is right on every path, including unmount.
       root.style.overflow = previousOverflow
+
+      // Restoring position and focus is right on exactly one path: the sheet
+      // closing while the page stays. This cleanup also runs when the tree
+      // **unmounts** because somebody followed a link out of it — and there,
+      // both are wrong. `scrollTo` would drag the *destination* page to the
+      // old page's offset, fighting the App Router's own scroll-to-top, and
+      // `opener.current` is a detached node whose `.focus()` silently does
+      // nothing, dropping focus to `<body>`.
+      //
+      // `isConnected` is the distinction: the panel is still in the document
+      // when the sheet merely closed, and gone when the tree unmounted.
+      if (!openedPanel?.isConnected) return
       // iOS Safari drops the offset when overflow is released.
       window.scrollTo(0, scrollY)
       opener.current?.focus()
@@ -132,10 +179,12 @@ export function Sheet({
         backdrop click is unreachable by keyboard and invisible to a screen
         reader, so it can never be the only way out.
       */}
-      <div
+      <button
+        type="button"
         className="absolute inset-0 bg-ink/45"
         onClick={onDismiss}
-        aria-hidden="true"
+        tabIndex={-1}
+        aria-label={dismissLabel}
       />
       <div
         ref={panel}
@@ -156,7 +205,6 @@ export function Sheet({
           {children}
         </div>
       </div>
-      <span className="sr-only">{dismissLabel}</span>
     </div>
   )
 }
