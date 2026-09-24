@@ -33,6 +33,8 @@ const PATHS = {
   money: ['M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z', 'M14.5 12a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z'],
   send: ['M21 4L3 11l6 2 2 6 3-4 5 4z'],
   warning: ['M12 3l9 16H3z', 'M12 10v4M12 17h.01'],
+  close: ['M6 6l12 12M18 6L6 18'],
+  help: ['M12 21a9 9 0 100-18 9 9 0 000 18z', 'M9.5 9.5a2.5 2.5 0 113 2.45V14', 'M12 17h.01'],
 } as const
 
 export type IconName = keyof typeof PATHS

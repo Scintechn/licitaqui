@@ -111,6 +111,12 @@ export type RadarViewProps = {
    */
   onNavigate?: (href: string) => void
   onRetry?: () => void
+  /**
+   * Opens the menu drawer (canvas 09). Absent on the server pass and wherever
+   * there is no drawer to open — the control is then not rendered at all
+   * rather than rendered inert.
+   */
+  onOpenMenu?: () => void
 }
 
 /* ------------------------------------------------------------------ pieces */

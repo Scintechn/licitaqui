@@ -36,6 +36,13 @@ import type { QuotaView } from './contract'
 export const FEATURES = {
   screening: 'screening',
   deepAnalysis: 'deep_analysis',
+  /**
+   * How many alert messages a plan includes per period. Read by the menu's
+   * plan strip; `plan_limits` has carried the row since 0002 and nothing in
+   * the web had ever asked for it, which is part of why `/fundadores` could
+   * advertise a cadence no plan entitles (card D6).
+   */
+  alert: 'alert',
   /** Not a quota: the number of days the visitor window lasts. */
   days: 'days',
 } as const

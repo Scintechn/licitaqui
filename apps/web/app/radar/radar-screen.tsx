@@ -28,7 +28,14 @@ import {
 } from '@/lib/radar/list-cache'
 import { appendTenders } from '@/lib/radar/pagination'
 import { waitForData } from '@/lib/radar/poll'
+import { Sheet } from '@/components'
+import { messages } from '@/lib/messages'
+import type { AccountSummary } from '@/lib/account/summary'
+import { MenuView } from './menu-view'
 import { RadarView, type RadarQuery, type RadarStatus } from './radar-view'
+
+/** The drawer's accessible name lives on the menu's own hidden heading. */
+const MENU_TITLE_ID = 'menu-title'
 import { normaliseUf } from '@/lib/radar/ufs'
 
 /**
@@ -588,12 +595,28 @@ export function RadarScreen() {
   )
 
   /** Retry means "ask again", so the snapshot must not answer for the route. */
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [summary, setSummary] = useState<AccountSummary | null>(null)
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+  const openMenu = useCallback(() => {
+    setMenuOpen(true)
+    // Re-read every time it opens: a triagem spent since the last look must
+    // not be shown as unspent, and a stale strip is worse than a slow one.
+    fetch('/api/conta/resumo')
+      .then((answer) => (answer.ok ? (answer.json() as Promise<AccountSummary>) : null))
+      .then((value) => setSummary(value))
+      .catch(() => {
+        // The strip is the only thing that needs it; every link still works.
+      })
+  }, [])
+
   const onRetry = useCallback(() => {
     forgetList(key)
     setAttempt((value) => value + 1)
   }, [key])
 
   return (
+    <>
     <RadarView
       query={query}
       status={data.status}
@@ -607,6 +630,21 @@ export function RadarScreen() {
       onNavigate={onNavigate}
       onRetry={onRetry}
       onLoadMore={onLoadMore}
+      onOpenMenu={openMenu}
     />
+      <Sheet
+        open={menuOpen}
+        labelledBy={MENU_TITLE_ID}
+        onDismiss={closeMenu}
+        dismissLabel={messages.common.close}
+      >
+        <MenuView
+          summary={summary}
+          current="/radar"
+          onDismiss={closeMenu}
+          titleId={MENU_TITLE_ID}
+        />
+      </Sheet>
+    </>
   )
 }
