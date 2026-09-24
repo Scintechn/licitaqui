@@ -120,7 +120,7 @@
       "title": "Você está na lista de espera",
       "position": "Você é o {posicao}º da fila.",
       "body": "As 48 vagas de fundador acabaram. Se alguém desistir, a vaga passa para quem está na frente da fila e a gente te avisa.",
-      "basicNote": "De qualquer forma, quando a LicitaQui abrir você vai poder usar o plano Básico, que é gratuito: busca pelo CNPJ da sua empresa, 5 leituras de edital por mês e um aviso por semana no Telegram."
+      "basicNote": "De qualquer forma, quando a LicitaQui abrir você vai poder usar o plano Básico, que é gratuito: busca pelo CNPJ da sua empresa, 5 triagens de edital por mês e um aviso por semana no Telegram."
     },
     "errors": {
       "nameRequired": "Diga como podemos te chamar.",
@@ -148,7 +148,7 @@
       "subtitle": "O LicitaQui é uma ferramenta de licitações feita para MEI e pequena empresa. Ela lê os editais abertos, mostra o que combina com o seu CNPJ, explica o que pedem e avisa antes do prazo.",
       "promises": [
         "Editais compatíveis com o seu CNAE",
-        "Leitura do edital por IA, com a página",
+        "Triagem do edital por IA, com a página",
         "Faixa em que os vencedores fecharam na sua região",
         "Alertas no Telegram antes do prazo"
       ]
@@ -241,7 +241,7 @@
     "screening": {
       "label": "Triagem de um edital real",
       "title": "58 páginas resumidas no que decide se vale disputar.",
-      "body": "Cada ponto vem com a página do edital, para você conferir. A leitura de um edital leva segundos e fica pronta para todos que pedirem depois.",
+      "body": "Cada ponto vem com a página do edital, para você conferir. A triagem de um edital leva segundos e fica pronta para todos que pedirem depois.",
       "source": "A IA ajuda a ler e pode errar: confira sempre no edital. Não é assessoria jurídica.",
       "cardLabel": "Exemplo de triagem por IA",
       "modality": "Pregão eletrônico",
@@ -453,7 +453,7 @@
       "price": "R$ 0",
       "summary": "Para começar e entender se licitação é para você.",
       "feature1": "Busca pelo CNPJ da sua empresa ou por palavra-chave",
-      "feature2": "5 leituras de edital por inteligência artificial por mês",
+      "feature2": "5 triagens de edital por inteligência artificial por mês",
       "feature3": "Edital e anexos liberados",
       "feature4": "1 aviso por semana no Telegram, com 1 palavra-chave e 1 estado"
     },
@@ -468,7 +468,7 @@
       "name": "Essencial",
       "price": "R$ 57",
       "summary": "Para quem já disputa e quer decidir mais rápido.",
-      "feature1": "Leituras de edital sem limite",
+      "feature1": "Triagens de edital sem limite",
       "feature2": "Avisos diários no Telegram, com 10 palavras-chave e as atividades do seu CNPJ",
       "feature3": "Faixa em que os vencedores fecharam e preço-alvo de compra: o máximo a pagar ao fornecedor para manter a sua margem",
       "feature4": "10 análises completas por mês, com trechos citados do edital"
@@ -489,10 +489,10 @@
       "cta": "Ver os planos"
     },
     "quota": {
-      "visitorLeft": "{count, plural, =0 {Você já usou suas 2 leituras gratuitas} one {Resta 1 leitura gratuita} other {Restam # leituras gratuitas}}",
-      "visitorSpent": "Crie sua conta gratuita e continue com 5 leituras por mês.",
-      "basicLeft": "{count, plural, =0 {Você já usou suas 5 leituras deste mês} one {Resta 1 leitura neste mês} other {Restam # leituras neste mês}}",
-      "basicSpent": "Suas leituras deste mês acabaram. Elas voltam no dia {data}, ou você pode assinar e ler sem limite.",
+      "visitorLeft": "{count, plural, =0 {Você já usou suas 2 triagens gratuitas} one {Resta 1 triagem gratuita} other {Restam # triagens gratuitas}}",
+      "visitorSpent": "Crie sua conta gratuita e continue com 5 triagens por mês.",
+      "basicLeft": "{count, plural, =0 {Você já usou suas 5 triagens deste mês} one {Resta 1 triagem neste mês} other {Restam # triagens neste mês}}",
+      "basicSpent": "Suas triagens deste mês acabaram. Elas voltam no dia {data}, ou você pode assinar e ler sem limite.",
       "cta": "Assinar"
     }
   },
@@ -530,7 +530,7 @@
     "cancel": {
       "cta": "Cancelar assinatura",
       "title": "Quer mesmo cancelar?",
-      "body": "Sua conta volta para o plano Básico, que é gratuito: você continua buscando editais e tem 5 leituras por mês.",
+      "body": "Sua conta volta para o plano Básico, que é gratuito: você continua buscando editais e tem 5 triagens por mês.",
       "untilWhen": "Você continua com o plano pago até {data}, que é o fim do período já pago.",
       "confirm": "Sim, cancelar",
       "keep": "Não, continuar assinante",
@@ -751,7 +751,7 @@
         "body": "Plano mensal, sem fidelidade. Cancele em 1 clique e receba aviso 3 dias antes de cada cobrança.",
         "basicEyebrow": "Para conhecer",
         "basicVisitorGroup": "Sem cadastro · 3 dias",
-        "basicVisitorScreenings": "2 leituras de edital por inteligência artificial",
+        "basicVisitorScreenings": "2 triagens de edital por inteligência artificial",
         "basicAccountGroup": "Com conta",
         "basicCta": "Começar sem cadastro",
         "essentialEyebrow": "Para começar a vender",
@@ -785,7 +785,7 @@
           [
             {
               "q": "Preciso criar conta para usar?",
-              "a": "Não nos primeiros 3 dias: você busca editais e faz 2 leituras por inteligência artificial. Para baixar o edital, ligar o aviso no Telegram e continuar usando, crie a conta grátis."
+              "a": "Não nos primeiros 3 dias: você busca editais e faz 2 triagens por inteligência artificial. Para baixar o edital, ligar o aviso no Telegram e continuar usando, crie a conta grátis."
             },
             {
               "q": "Serve para MEI?",
@@ -807,7 +807,7 @@
             },
             {
               "q": "A inteligência artificial pode errar?",
-              "a": "Pode. Cada ponto da leitura mostra a página do edital para você conferir. Não substitui assessoria jurídica ou contábil."
+              "a": "Pode. Cada ponto da triagem mostra a página do edital para você conferir. Não substitui assessoria jurídica ou contábil."
             }
           ]
         ]
@@ -1069,7 +1069,7 @@
       "validation": "Confira os campos e tente de novo.",
       "badRequest": "Não entendemos este pedido. Tente de novo pela página inicial.",
       "notFound": "Não encontramos o que você procurou.",
-      "quotaExceeded": "Suas leituras por IA acabaram por enquanto.",
+      "quotaExceeded": "Suas triagens por IA acabaram por enquanto.",
       "visitorExpired": "Seus 3 dias de visitante acabaram. Crie a conta grátis para continuar.",
       "accountRequired": "Crie sua conta gratuita para ver esta parte."
     },
@@ -1095,12 +1095,12 @@
       "detailsTitle": "Detalhes da análise",
       "requirementsTitle": "Entrega, pagamento e produto",
       "blockersTitle": "Pontos de atenção para empresa pequena",
-      "noBlockers": "A leitura não achou exigência que impeça uma empresa pequena.",
+      "noBlockers": "A triagem não achou exigência que impeça uma empresa pequena.",
       "page": "p.{numero}",
       "noPage": "—",
       "pageUnverified": "A página citada não confere: procure no edital inteiro.",
       "citations": "{conferidas} de {total} páginas citadas conferem com o edital.",
-      "citationsNone": "Esta leitura não citou página nenhuma.",
+      "citationsNone": "Esta triagem não citou página nenhuma.",
       "shared": "Análise compartilhada: quem pedir este edital depois lê a mesma.",
       "verdict": {
         "good": "Boa para empresa pequena",
@@ -1111,7 +1111,7 @@
         "scoreLabel": "Nota da triagem"
       },
       "analyzingTitle": "Lendo o edital…",
-      "timeoutTitle": "A leitura está demorando mais que o normal",
+      "timeoutTitle": "A triagem está demorando mais que o normal",
       "timeoutBody": "Ela continua rodando por aqui e aparece nesta tela assim que terminar. Não precisa sair nem pedir de novo.",
       "failedTitle": "Não conseguimos ler este edital",
       "failedBody": "O documento pode estar fora do ar no PNCP ou em um formato que ainda não lemos. Tente de novo em alguns minutos.",
@@ -1202,11 +1202,11 @@
       "createTitle": "Entrar · LicitaQui",
       "createDescription": "Crie sua conta grátis na LicitaQui e continue acompanhando os editais do seu CNPJ.",
       "title": "Sua conta · LicitaQui",
-      "description": "Seu plano, suas leituras de edital e seus dados na LicitaQui."
+      "description": "Seu plano, suas triagens de edital e seus dados na LicitaQui."
     },
     "signIn": {
       "title": "Entre ou crie sua conta grátis",
-      "subtitle": "Com a conta, o edital e os anexos ficam liberados, você ganha mais leituras por IA todo mês e um aviso por semana no Telegram. É de graça e não pede cartão.",
+      "subtitle": "Com a conta, o edital e os anexos ficam liberados, você ganha mais triagens por IA todo mês e um aviso por semana no Telegram. É de graça e não pede cartão.",
       "google": "Entrar com Google",
       "or": "ou",
       "emailLabel": "Seu e-mail",
@@ -1237,7 +1237,7 @@
     "screen": {
       "title": "Sua conta",
       "planLabel": "Seu plano",
-      "screeningsLabel": "Leituras de edital por IA",
+      "screeningsLabel": "Triagens de edital por IA",
       "screeningsMonth": "{usadas} de {total} neste mês",
       "screeningsTotal": "{usadas} de {total}",
       "screeningsUnlimited": "Sem limite",

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { messages } from '../../lib/messages'
 import { installRadarApi } from '../fixtures/radar-api'
 import { card } from '../fixtures/screen'
 import { MARTA, processo, tenderRun } from '../fixtures/world'
@@ -86,7 +87,7 @@ test.describe('Dona Marta · the AI triagem', () => {
 
     // §3.1's sixty seconds pass with the job still running.
     await advance(page, 70_000)
-    await expect(page.getByText('A leitura está demorando mais que o normal')).toBeVisible()
+    await expect(page.getByText(messages.radar.screening.timeoutTitle)).toBeVisible()
     await expect(
       page.getByText('Ela continua rodando por aqui e aparece nesta tela assim que terminar'),
     ).toBeVisible()
@@ -110,7 +111,7 @@ test.describe('Dona Marta · the AI triagem', () => {
     await advance(page, 25_000)
 
     await expect(page.getByText('Boa para empresa pequena')).toBeVisible()
-    await expect(page.getByText('A leitura está demorando mais que o normal')).toHaveCount(0)
+    await expect(page.getByText(messages.radar.screening.timeoutTitle)).toHaveCount(0)
     expect(page.url(), 'the answer arrived on the same screen, no second navigation').toBe(address)
     expect(api.calls.screeningPost.length, 'and without spending another triagem').toBe(1)
   })

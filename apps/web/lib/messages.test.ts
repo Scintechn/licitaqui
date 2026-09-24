@@ -51,4 +51,41 @@ describe('messages', () => {
     expect(messages.brand.name).toBe('LicitaQui')
     expect(messages.foundersPage.hero.promises).toHaveLength(4)
   })
+
+  /**
+   * One name for the thing, decided by Sci on 2026-09-24: **triagem**.
+   *
+   * The catalogue had drifted to 23 `triagem*` strings against 21 `leitura*`
+   * ones, split straight through the funnel a visitor walks — the landing hero
+   * said "2 triagens por IA", the plans card beside it said "2 leituras", the
+   * button said "Ver triagem por IA", and the wall that appeared when she ran
+   * out said "Suas triagens acabaram" over an API error reading "Suas leituras
+   * por IA acabaram". Nothing asserted any of it, which is how all 21 drifted.
+   *
+   * The one deliberate exception is the AI notice: legal brief §2.2 rule 5
+   * makes it mandatory on every result screen and §5 reserves its wording for
+   * Sci, so it is excluded here rather than quietly rewritten.
+   */
+  it('calls an AI reading a triagem, everywhere but the AI notice', () => {
+    const ALLOWED = new Set(['ai.disclaimer'])
+    const offenders: string[] = []
+
+    const walk = (node: unknown, path: string): void => {
+      if (typeof node === 'string') {
+        if (/leitur/i.test(node) && !ALLOWED.has(path)) offenders.push(`${path}: ${node}`)
+        return
+      }
+      if (node && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) {
+          walk(value, path ? `${path}.${key}` : key)
+        }
+      }
+    }
+    walk(messages, '')
+
+    expect(offenders).toEqual([])
+    // …and the exception is still there, so this does not quietly pass by the
+    // notice having been deleted.
+    expect(messages.ai.disclaimer).toMatch(/leitura/i)
+  })
 })
