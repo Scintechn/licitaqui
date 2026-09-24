@@ -247,6 +247,9 @@ function Controls() {
         <Button variant="secondary" fullWidth>
           Botão secundário
         </Button>
+        <Button variant="outline" fullWidth>
+          Botão contorno
+        </Button>
         <Button variant="locked" fullWidth>
           Travado: precisa de conta
         </Button>

@@ -165,20 +165,21 @@
       "note": "Não cobramos nada agora. Quando o plano abrir, você recebe o link de assinatura e decide se quer entrar."
     },
     "pain": {
-      "label": "Por que agora",
-      "title": "O governo compra todo dia. Quem está começando entra no escuro.",
+      "label": "O problema",
+      "title": "O problema não é encontrar um edital. É saber se vale a pena disputar.",
+      "standfirst": "Muitos editais parecem uma boa oportunidade, mas escondem exigências, custos e preços que não fecham a conta. O LicitaQui te ajuda a evitar esse risco com informações claras e objetivas.",
       "items": [
         {
-          "title": "Achar o edital certo",
-          "body": "São milhares de editais abertos. A busca por palavra traz muito item que não tem nada a ver com o que você vende."
+          "title": "Encontrar",
+          "body": "A gente filtra os editais que fazem sentido para o seu negócio, com base no seu CNAE e no seu perfil."
         },
         {
-          "title": "Entender o que pedem",
-          "body": "Dezenas de páginas de edital e termo de referência para descobrir se exigem atestado, capital mínimo, amostra ou licença."
+          "title": "Entender",
+          "body": "O sistema lê o edital e resume as exigências, mostrando o que você precisa atender."
         },
         {
           "title": "Não perder dinheiro",
-          "body": "O valor estimado do edital engana. Na disputa o preço cai, e quem não fez a conta ganha o contrato no prejuízo."
+          "body": "Calcula o preço máximo de compra por item, considerando a sua margem de lucro."
         }
       ],
       "facts": [
@@ -241,7 +242,13 @@
     "screening": {
       "label": "Triagem de um edital real",
       "title": "58 páginas resumidas no que decide se vale disputar.",
-      "body": "Cada ponto vem com a página do edital, para você conferir. A triagem de um edital leva segundos e fica pronta para todos que pedirem depois.",
+      "body": "O LicitaQui transforma documentos complexos em uma análise clara, com os pontos que realmente importam para o seu negócio.",
+      "checks": [
+        "Requisitos e exigências",
+        "Prazo e local de entrega",
+        "Valor estimado e oportunidades",
+        "Resumo objetivo, com referência de página"
+      ],
       "source": "A IA ajuda a ler e pode errar: confira sempre no edital. Não é assessoria jurídica.",
       "cardLabel": "Exemplo de triagem por IA",
       "modality": "Pregão eletrônico",
