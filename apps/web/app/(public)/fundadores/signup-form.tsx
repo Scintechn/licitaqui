@@ -503,7 +503,20 @@ function Consent({
  * assertion in `fundadores.spec.ts` that the sentence is absent, and E4's
  * acceptance criteria say to invert it rather than delete it.
  */
-const WHATSAPP_WELCOME_IS_DELIVERED: boolean = false
+/**
+ * **Proven on 2026-09-24, so the sentence is true and renders again.**
+ *
+ * Sci set the four Evolution variables on the worker container and redeployed.
+ * Job `84044` (`send_whatsapp`, `founders:1`) then ran once and wrote
+ * `whatsapp.sent` with `status: 201` and a real `message_id`, and the message
+ * arrived on his handset at 21:51 BRT with the right name, seat and price.
+ *
+ * The evidence that matters is the **event**, not the job row — and not
+ * `WHATSAPP_DELIVERY` being set, which is configuration rather than proof.
+ * Turning this back to `false` is the correct move if delivery ever stops:
+ * the page must never claim a message it did not send (CDC art. 30).
+ */
+const WHATSAPP_WELCOME_IS_DELIVERED: boolean = true
 
 /**
  * "O que acontece agora", minus anything that is not true yet.
