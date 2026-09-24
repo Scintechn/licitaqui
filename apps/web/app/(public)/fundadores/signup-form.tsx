@@ -227,6 +227,7 @@ export function SignupForm() {
         type="text"
         inputMode="numeric"
         autoComplete="organization"
+        maxLength={18}
         mono
         icon="company"
         placeholder={form.cnpjPlaceholder}

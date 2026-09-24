@@ -54,7 +54,7 @@ export function HowItWorks() {
               <Panel className="flex w-full flex-col gap-2.5 p-5">
                 <span className="font-mono text-meta font-medium text-blue">{step.eyebrow}</span>
                 <H3>{step.title}</H3>
-                <p className="text-lead leading-[1.55] text-ink-soft">{step.body}</p>
+                <p className="text-base leading-[1.6] text-ink-soft">{step.body}</p>
 
                 {/* The board puts the three Radar groups inside step 2: the
                     badges are the product's own, so the legend and the Radar
@@ -408,7 +408,7 @@ export function Faq() {
                       −
                     </span>
                   </summary>
-                  <p className="pb-4 text-lead leading-[1.55] text-ink-soft">{item.a}</p>
+                  <p className="pb-4 text-base leading-[1.6] text-ink-soft">{item.a}</p>
                 </details>
               ))}
             </div>

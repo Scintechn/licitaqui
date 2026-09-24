@@ -131,7 +131,9 @@ function SectionHead({
 
 /** `.fonte` — the provenance line under a figure. */
 function Source({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cn('text-caption leading-[1.55] text-muted', className)}>{children}</p>
+  // 13px, not 12px. These name where a figure came from — they are trust
+  // signals, and the quietest text on the page was carrying them.
+  return <p className={cn('text-meta leading-[1.55] text-muted', className)}>{children}</p>
 }
 
 /* -------------------------------------------------------------------- hero */
@@ -155,7 +157,7 @@ function Hero() {
 
           <ul className="mt-1 grid grid-cols-1 gap-x-5 gap-y-3 min-[560px]:grid-cols-2">
             {hero.promises.map((promise) => (
-              <li key={promise} className="flex items-start gap-2.5 text-lead leading-[1.4]">
+              <li key={promise} className="flex items-start gap-2.5 text-base leading-[1.45]">
                 <Icon name="check" size={20} strokeWidth={2} className="mt-0.5 text-blue" />
                 {promise}
               </li>
@@ -202,10 +204,10 @@ function Refunds() {
             business subscription, this is the most valuable block on the page.
             No eyebrow: it is a question, so it labels itself. */}
         <SectionHead title={refunds.title} />
-        <p className="mt-4 text-lead text-ink-soft">{refunds.intro}</p>
+        <p className="mt-4 text-base leading-[1.6] text-ink-soft">{refunds.intro}</p>
         <ul className="mt-4 flex flex-col gap-3">
           {refunds.items.map((item) => (
-            <li key={item} className="flex items-start gap-2.5 text-lead leading-[1.55]">
+            <li key={item} className="flex items-start gap-2.5 text-base leading-[1.6]">
               <Icon name="check" size={18} strokeWidth={2} className="mt-1 shrink-0 text-blue" />
               <span>{bold(item)}</span>
             </li>
@@ -237,7 +239,7 @@ function Pain() {
           {pain.items.map((item) => (
             <Card key={item.title} padding="none" className="flex flex-col gap-2.5 p-5">
               <H3>{item.title}</H3>
-              <p className="text-lead leading-[1.55] text-ink-soft">{item.body}</p>
+              <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
             </Card>
           ))}
         </div>
@@ -349,7 +351,7 @@ function PriceRuler() {
               <span>{ruler.scaleEnd}</span>
             </div>
 
-            <div className="mt-4 flex items-start gap-3 rounded-swatch bg-error-soft px-4 py-3.5 text-lead leading-[1.55]">
+            <div className="mt-4 flex items-start gap-3 rounded-swatch bg-error-soft px-4 py-3.5 text-base leading-[1.6]">
               <Icon
                 name="warning"
                 size={20}
@@ -384,7 +386,7 @@ function Pillars() {
                 <Icon name={PILLAR_ICONS[index]} size={22} />
               </span>
               <H3>{item.title}</H3>
-              <p className="text-lead leading-[1.55] text-ink-soft">{item.body}</p>
+              <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
               <span className="mt-auto font-mono text-label tracking-[0.06em] text-muted uppercase">
                 {item.plan}
               </span>
@@ -499,7 +501,7 @@ function FounderValue() {
                     <b className="mb-0.5 block text-subhead font-bold text-surface">
                       {benefit.title}
                     </b>
-                    <span className="text-lead leading-[1.55] text-on-ink-muted">{benefit.body}</span>
+                    <span className="text-base leading-[1.6] text-on-ink-muted">{benefit.body}</span>
                   </div>
                 </li>
               ))}
@@ -601,7 +603,7 @@ function Timeline() {
                 {step.when}
               </span>
               <H3>{step.title}</H3>
-              <p className="text-lead leading-[1.55] text-ink-soft">{step.body}</p>
+              <p className="text-base leading-[1.6] text-ink-soft">{step.body}</p>
             </li>
           ))}
         </ol>
@@ -635,7 +637,7 @@ function Faq() {
                       −
                     </span>
                   </summary>
-                  <p className="pb-4 text-lead leading-[1.55] text-ink-soft">{item.a}</p>
+                  <p className="pb-4 text-base leading-[1.6] text-ink-soft">{item.a}</p>
                 </details>
               ))}
             </div>
