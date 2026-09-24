@@ -382,3 +382,267 @@ test.describe('the founders page at the widths it changes shape', () => {
     await expect(cta).toBeFocused()
   })
 })
+
+/**
+ * **The finish pass: the hero gives its second column to the product shot and
+ * the form moves down to the offer.**
+ *
+ * Everything asserted below is produced by a media query, by the cascade or by
+ * the image pipeline. None of it is visible to `renderToStaticMarkup`: the
+ * string of HTML is identical whether a heading sits beside its content or
+ * above it, whether a hairline is drawn or cleared by a later rule of the same
+ * specificity, and whether a 1.6MB PNG or a 60KB variant is what actually
+ * arrives. Two defects shipped this morning of exactly that shape.
+ *
+ * The widths are the ones the page changes shape at, plus the two phone widths
+ * the layout is checked at by hand: 390 and 440.
+ */
+
+/** The rectangles of two elements, in viewport coordinates. */
+async function rects(a: ReturnType<Page['locator']>, b: ReturnType<Page['locator']>) {
+  const [one, two] = await Promise.all([a.boundingBox(), b.boundingBox()])
+  if (!one || !two) throw new Error('an element the layout test measures is not rendered')
+  return { one, two }
+}
+
+test.describe('the form a visitor can still reach', () => {
+  /**
+   * **The risk in this change, asserted.**
+   *
+   * `/fundadores` is live and taking sign-ups, and the form left the first
+   * screen. What has to remain true is that the ask is one click away from the
+   * top of the page at every width — and that the click lands on the form
+   * rather than parking it behind the 64px sticky bar, which is the blocker
+   * review found this morning on this very anchor.
+   */
+  for (const width of [390, 440, 1280]) {
+    test(`is one click from the first screen at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 })
+      await page.goto('/fundadores')
+
+      // A visible link to the form inside the first screenful, before any
+      // scrolling — and **not** the sticky header's own CTA. The header would
+      // satisfy "reachable" on its own, which is exactly why asserting it
+      // proves nothing about the hero: this same test passed with the hero's
+      // call to action deleted until it was scoped to `main`.
+      const inHero = page.locator('main a[href="#vaga"]')
+      const withinFirstScreen = await inHero.evaluateAll(
+        (links, height) =>
+          links.filter((link) => {
+            const box = link.getBoundingClientRect()
+            return box.width > 0 && box.top < height && box.bottom > 0
+          }).length,
+        844,
+      )
+      expect(withinFirstScreen).toBeGreaterThan(0)
+
+      // And it arrives at the form, with the form's top clear of the bar.
+      await inHero.first().click()
+      const form = page.locator('#vaga')
+      await expect(form).toBeInViewport()
+
+      const headerHeight = await page
+        .locator('header')
+        .evaluate((el) => el.getBoundingClientRect().height)
+      const top = await form.evaluate((el) => el.getBoundingClientRect().top)
+      expect(top).toBeGreaterThanOrEqual(headerHeight - 1)
+    })
+  }
+
+  test('follows the offer, so the price is read before the contact details', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/fundadores')
+
+    const offer = page.getByRole('heading', { name: messages.foundersPage.founderValue.title })
+    const { one, two } = await rects(offer, page.locator('#vaga'))
+    expect(two.y).toBeGreaterThan(one.y)
+  })
+})
+
+test.describe('the product shot in the hero', () => {
+  test('is decorative, and says so', async ({ page }) => {
+    await page.goto('/fundadores')
+    // `alt=""` keeps it out of the accessibility tree. Anything else would be
+    // new user-facing copy, which is Sci's under the legal brief.
+    await expect(page.locator('main img[alt=""]').first()).toBeVisible()
+  })
+
+  for (const width of [390, 440, 1280]) {
+    test(`renders inside the ${width}px viewport and loads a variant sized for it`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 })
+      await page.goto('/fundadores')
+
+      const shot = page.locator('main img[alt=""]').first()
+      await expect(shot).toBeVisible()
+
+      const loaded = await shot.evaluate(async (el: HTMLImageElement) => {
+        if (!el.complete) await new Promise((done) => el.addEventListener('load', done, { once: true }))
+        const box = el.getBoundingClientRect()
+        return {
+          natural: el.naturalWidth,
+          current: el.currentSrc,
+          right: box.right,
+          width: box.width,
+        }
+      })
+
+      // It actually decoded — a broken optimiser path renders a 0×0 box that
+      // no string assertion would notice.
+      expect(loaded.natural).toBeGreaterThan(0)
+      // Inside the viewport: a 1600px intrinsic width in a grid child is the
+      // exact shape that put the brand panel off-screen at 440px.
+      expect(loaded.right).toBeLessThanOrEqual(width + 1)
+      // And the bytes are sized for the screen, not the source. The PNG is
+      // 1600px and 1.6MB; a phone must not be sent it.
+      const served = Number(new URL(loaded.current, 'http://x').searchParams.get('w'))
+      expect(served).toBeGreaterThan(0)
+      expect(served).toBeLessThanOrEqual(width <= 440 ? 1080 : 2048)
+    })
+  }
+})
+
+test.describe('the two-column section head, where the draft asked for it', () => {
+  /**
+   * `SectionHead`'s `aside`: the heading takes ~45% of the row from 900px and
+   * the section's material takes the rest; one column below that, in the order
+   * it reads now. `Pain` and `Screening` already used it — the price chain and
+   * the FAQ now do too.
+   */
+  const cases = [
+    {
+      what: 'the price chain',
+      heading: () => messages.foundersPage.ruler.title,
+      content: (page: Page) =>
+        page.locator('ol').filter({ hasText: messages.foundersPage.ruler.maxPurchaseValue }),
+    },
+    {
+      what: 'the FAQ',
+      heading: () => messages.foundersPage.faq.title,
+      content: (page: Page) =>
+        page.locator('details').filter({ hasText: messages.foundersPage.faq.columns[0][0].q }),
+    },
+  ]
+
+  for (const item of cases) {
+    test(`puts ${item.what} beside its heading on a wide screen`, async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto('/fundadores')
+
+      const heading = page.getByRole('heading', { name: item.heading() })
+      const content = item.content(page).first()
+      const { one, two } = await rects(heading, content)
+
+      // Beside: the content starts to the right of the heading's column…
+      expect(two.x).toBeGreaterThanOrEqual(one.x + one.width - 1)
+      // …and the two share the row rather than following one another.
+      expect(two.y).toBeLessThan(one.y + one.height)
+      // The heading is on a measure its type was drawn for, not the full 1080.
+      expect(one.width).toBeLessThan(620)
+    })
+
+    for (const width of [390, 440]) {
+      test(`stacks ${item.what} under its heading at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 844 })
+        await page.goto('/fundadores')
+
+        const heading = page.getByRole('heading', { name: item.heading() })
+        const content = item.content(page).first()
+        const { one, two } = await rects(heading, content)
+
+        expect(two.y).toBeGreaterThanOrEqual(one.y + one.height - 1)
+        expect(Math.abs(two.x - one.x)).toBeLessThan(2)
+      })
+    }
+  }
+
+  test('keeps the verdict and the source under the chain, in that order', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/fundadores')
+
+    const chain = page
+      .locator('ol')
+      .filter({ hasText: messages.foundersPage.ruler.maxPurchaseValue })
+      .first()
+    const verdict = page.getByText(messages.foundersPage.ruler.verdictLead)
+    const source = page.getByText(messages.foundersPage.ruler.source)
+
+    const chainBox = (await chain.boundingBox())!
+    const verdictBox = (await verdict.boundingBox())!
+    const sourceBox = (await source.boundingBox())!
+
+    // Under the chain, in its column — not stranded beside the heading.
+    expect(verdictBox.y).toBeGreaterThanOrEqual(chainBox.y + chainBox.height - 1)
+    expect(sourceBox.y).toBeGreaterThanOrEqual(verdictBox.y + verdictBox.height - 1)
+    expect(verdictBox.x).toBeGreaterThanOrEqual(chainBox.x - 1)
+  })
+})
+
+test.describe('the trust row, as one band', () => {
+  /**
+   * The same treatment the pillars band already had: one surface with
+   * hairlines between the cells, rather than three bare columns of text under
+   * a hero that is now two large surfaces.
+   *
+   * The dividers are the part worth measuring. They are borders on the items,
+   * and which edge each one sits on depends on the column count — the
+   * arithmetic that got this wrong at 560–899px for the pillars is now shared
+   * by both bands (`bandDividers`), so a regression would take out both.
+   *
+   * `.first()`: both bands render `pillars.items[0]`, and the trust row is the
+   * one above the page's first `<h2>`.
+   */
+  const band = (page: Page) =>
+    page.getByRole('list').filter({ hasText: messages.foundersPage.pillars.items[0].body }).first()
+
+  test('is one surface, not three cards', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/fundadores')
+
+    const panel = await band(page).evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        border: parseFloat(style.borderTopWidth),
+        radius: parseFloat(style.borderTopLeftRadius),
+      }
+    })
+    expect(panel.border).toBeGreaterThan(0)
+    expect(panel.radius).toBeGreaterThan(0)
+
+    // …and the cells inside it carry no rounding of their own.
+    const rounded = await band(page)
+      .locator('> li')
+      .evaluateAll((items) =>
+        items.filter((item) => parseFloat(getComputedStyle(item).borderTopLeftRadius) > 0).length,
+      )
+    expect(rounded).toBe(0)
+  })
+
+  for (const [width, tops, lefts] of [
+    [390, 2, 0], // one column: a rule above every item but the first
+    [700, 0, 2], // three columns: one row, a rule left of every item but the first
+    [1280, 0, 2],
+  ] as const) {
+    test(`divides the three facts correctly at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/fundadores')
+
+      const drawn = await band(page)
+        .locator('> li')
+        .evaluateAll((items) =>
+          items.reduce(
+            (count, item) => {
+              const style = getComputedStyle(item)
+              return {
+                tops: count.tops + (parseFloat(style.borderTopWidth) > 0 ? 1 : 0),
+                lefts: count.lefts + (parseFloat(style.borderLeftWidth) > 0 ? 1 : 0),
+              }
+            },
+            { tops: 0, lefts: 0 },
+          ),
+        )
+      expect(drawn).toEqual({ tops, lefts })
+    })
+  }
+})

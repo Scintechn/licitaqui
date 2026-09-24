@@ -364,20 +364,61 @@ describe('the price example, as a chain', () => {
   })
 })
 
-describe('the product in the hero', () => {
-  it('shows a real screen before asking for a name and a WhatsApp number', () => {
-    // The first product on this page was the screening card in section five.
-    // A visitor was asked for three contact details having seen none of it.
-    const example = out.indexOf(messages.radar.landing.example.label)
-    expect(example).toBeGreaterThan(-1)
-    expect(example).toBeLessThan(out.indexOf(messages.foundersPage.pain.title))
+/**
+ * The hero, the image in it, and the form that left it.
+ *
+ * Every index below is taken against `messages.radar.landing.example.panelLabel`
+ * — "Exemplo do Radar", the example panel's own `aria-label` — and never
+ * against `example.label`, which is the four letters "Exemplo" and matches the
+ * price chain's eyebrow ("Exemplo real · papel sulfite…") and the screening
+ * card's label ("Exemplo de triagem por IA") as well. Two assertions here used
+ * to be written against that substring, and what they measured was the price
+ * chain's position, not the example's.
+ */
+describe('the hero, and the form it no longer holds', () => {
+  /** Where the sign-up form starts: its own price line, which nothing else carries. */
+  const formAt = out.indexOf(messages.foundersPage.signup.priceUnit)
+  /** Where the Radar example starts: its panel label, which is unique. */
+  const exampleAt = out.indexOf(messages.radar.landing.example.panelLabel)
+
+  it('offers a way to the form from the first screen', () => {
+    // The risk in this change: the form left the hero, so the first screen
+    // must still reach it in one click. The hero's call to action is the
+    // catalogue's existing ask and points at the form's own anchor.
+    const hero = out.slice(0, out.indexOf(messages.foundersPage.pillars.items[0].title))
+    expect(hero).toContain(messages.founders.offer.cta)
+    const cta = hero.indexOf(messages.founders.offer.cta)
+    expect(hero.lastIndexOf('href="#vaga"', cta)).toBeGreaterThan(-1)
   })
 
-  it('shows the Radar’s own card, not a drawing of one', () => {
+  it('keeps every link to the form pointing at something that exists', () => {
+    // Four of them: the header, the hero, the offer panel and the final band.
+    expect(out.match(/href="#vaga"/g)?.length).toBeGreaterThanOrEqual(4)
+    expect(out).toContain('id="vaga"')
+  })
+
+  it('keeps the form clear of the sticky header when it is jumped to', () => {
+    // `scroll-mt-20` on `#vaga`. It was a blocker found in review: without it
+    // a jump parks the form's price behind the 64px bar. The form moved down
+    // the page; the offset moves with it.
+    const at = out.indexOf('id="vaga"')
+    expect(at).toBeGreaterThan(-1)
+    expect(out.slice(at, at + 400)).toContain('scroll-mt-20')
+  })
+
+  it('asks for a name and a WhatsApp number only after the offer', () => {
+    // The form used to be the second thing on the page, beside the headline.
+    // It now follows the offer panel, so the price and what it buys are read
+    // before the three contact details are asked for.
+    expect(formAt).toBeGreaterThan(out.indexOf(messages.foundersPage.founderValue.title))
+  })
+
+  it('shows the product itself, not only a picture of it', () => {
     // `ExampleRadar` renders `TenderCardView` over three real frozen PNCP
     // tenders. A mock-up built for marketing drifts from the product within a
     // sprint and starts advertising screens we do not draw — on a page taking
-    // money, that is CDC art. 30.
+    // money, that is CDC art. 30. The hero image is a visualisation; this is
+    // the product, and it is still on the page.
     for (const tender of EXAMPLE_TENDERS) expect(out).toContain(tender.object)
   })
 
@@ -387,11 +428,49 @@ describe('the product in the hero', () => {
   })
 
   it('keeps the form above the example on one column', () => {
-    // Below 900px the hero falls in DOM order. The example is ~600px tall and
-    // this page is taking sign-ups: the ask must not be under it.
-    expect(out.indexOf(messages.foundersPage.signup.priceUnit)).toBeLessThan(
-      out.indexOf(messages.radar.landing.example.label),
-    )
+    // The two sit side by side from 900px and fall in DOM order below it. The
+    // example is ~600px tall and this page is taking sign-ups: the ask must
+    // not be underneath it on a phone.
+    expect(exampleAt).toBeGreaterThan(-1)
+    expect(formAt).toBeLessThan(exampleAt)
+  })
+
+  it('serves the hero shot through the image pipeline, not as 1.6MB of PNG', () => {
+    // The source is 1600×1066 and 1.6MB. `next/image` with a static import
+    // gives the optimised variants and the reserved box; a bare <img src=
+    // "/radar-preview.png"> in a hero gives neither.
+    const img = out.slice(out.indexOf('<img'), out.indexOf('>', out.indexOf('<img')) + 1)
+    // `srcSet` as React spells it on the server; the browser sees `srcset`.
+    expect(img.toLowerCase()).toContain('srcset=')
+    expect(img).toContain('/_next/image')
+    expect(out).not.toContain('src="/radar-preview.png"')
+  })
+
+  it('reserves the shot’s box before it loads', () => {
+    // Intrinsic width and height from the static import: no layout shift when
+    // the bytes arrive, which is the whole reason for the static import.
+    const img = out.slice(out.indexOf('<img'), out.indexOf('>', out.indexOf('<img')) + 1)
+    expect(img).toMatch(/width="1600"/)
+    expect(img).toMatch(/height="1066"/)
+  })
+
+  it('loads the shot eagerly, because it is the largest thing above the fold', () => {
+    // `priority`. Next 16 expresses it as the absence of `loading="lazy"` plus
+    // a preload; a lazily-loaded LCP element is a Core Web Vitals regression
+    // that no string assertion about `<Image>`'s props would catch.
+    const img = out.slice(out.indexOf('<img'), out.indexOf('>', out.indexOf('<img')) + 1)
+    expect(img).not.toContain('loading="lazy"')
+  })
+
+  it('leaves the shot out of the accessibility tree instead of narrating it', () => {
+    // `alt=""` on purpose. The headline, the subtitle and the four promises
+    // beside it already say what the product does, and a description of the
+    // screenshot would be new user-facing copy — which is Sci's, under the
+    // legal brief. An empty alt is the correct answer for a decorative image,
+    // not an omission: `alt` missing altogether is what a screen reader reads
+    // the file name for.
+    const img = out.slice(out.indexOf('<img'), out.indexOf('>', out.indexOf('<img')) + 1)
+    expect(img).toContain('alt=""')
   })
 })
 
@@ -722,6 +801,72 @@ describe('the comparison table on a phone', () => {
 function escapeForRegExp(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+/**
+ * The finish pass: two more sections take the two-column head, the trust row
+ * becomes a band, and the hero swaps the form for the product shot.
+ *
+ * What is *drawn* by those changes — a heading beside its content rather than
+ * above it, a hairline between two cells — is not in this file's reach: it is
+ * produced by media queries and by the cascade, and the string of HTML is
+ * identical either way. Those assertions are in
+ * `e2e/journeys/fundadores.spec.ts`, measured in a browser at the widths that
+ * change shape. What belongs here is what the markup must carry whatever the
+ * width: the copy, and the order it reads in.
+ */
+describe('the founders finish pass', () => {
+  const { faq, ruler, pillars } = messages.foundersPage
+
+  it('keeps every FAQ question and answer, in the catalogue’s order', () => {
+    // The two catalogue columns became one list. Flattening is a layout
+    // change, not an editorial one: nothing may be dropped or reordered.
+    const questions = faq.columns.flat()
+    expect(questions.length).toBeGreaterThan(0)
+
+    let at = out.indexOf(faq.title)
+    for (const item of questions) {
+      const q = out.indexOf(item.q, at)
+      expect(q, item.q).toBeGreaterThan(at)
+      expect(out.indexOf(item.a, q), item.q).toBeGreaterThan(q)
+      at = q
+    }
+  })
+
+  it('keeps the verdict and the source with the chain, not with the heading', () => {
+    // The verdict is the chain's conclusion — it names the sum that does not
+    // close — and the source names where the four figures came from. Both read
+    // as a footnote to a heading if they end up in the heading's column.
+    const lastStep = out.indexOf(ruler.maxPurchaseValue)
+    const verdict = out.indexOf(ruler.verdictLead)
+    const source = out.indexOf(ruler.source)
+
+    expect(lastStep).toBeGreaterThan(-1)
+    expect(verdict).toBeGreaterThan(lastStep)
+    expect(source).toBeGreaterThan(verdict)
+    // …and all three still belong to this section, not the next one.
+    expect(source).toBeLessThan(out.indexOf(pillars.title))
+  })
+
+  it('announces the trust row as a list, which preflight would otherwise strip', () => {
+    // Tailwind v4's preflight sets `list-style: none`, and Safari drops the
+    // list semantics with the marker. The band the row now uses is the same
+    // one the pillars use, so the fix applies to both at once.
+    // The `<ul>` the first trust item sits in — the last one opened before it.
+    const upToFirstItem = out.slice(0, out.indexOf(pillars.items[0].title))
+    const band = upToFirstItem.slice(upToFirstItem.lastIndexOf('<ul'))
+    expect(band).toContain('role="list"')
+  })
+
+  it('keeps the three trust facts and the four pillars intact', () => {
+    // One band renders both; a shared component that quietly dropped the plan
+    // attribution or an item would be a copy change nobody asked for.
+    for (const item of pillars.items.slice(0, 3)) {
+      // Twice on the page: once in the row, once in the section below it.
+      expect(out.split(item.title).length - 1).toBeGreaterThanOrEqual(2)
+    }
+    for (const item of pillars.items) expect(out).toContain(item.plan)
+  })
+})
 
 describe('the header anchors', () => {
   const header = out.slice(out.indexOf('<header'), out.indexOf('</header>'))
