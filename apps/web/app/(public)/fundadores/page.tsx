@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Button, Card, CardRow, Icon, Logo, SectionLabel, Status, TagList } from '@/components'
 import { cn } from '@/lib/cn'
 import { messages } from '@/lib/messages'
+import { ExampleRadar } from '../example-radar'
 import { SignupForm } from './signup-form'
 
 /**
@@ -21,6 +22,25 @@ import { SignupForm } from './signup-form'
  */
 
 const page = messages.foundersPage
+
+/**
+ * The three sections the sticky header links to.
+ *
+ * Ids in English like every other identifier; the labels are the sections'
+ * own approved eyebrows, so the header invents no copy — `nav` holds three
+ * strings and none of them names a section.
+ */
+const ANCHORS = {
+  pillars: 'ferramenta',
+  screening: 'triagem',
+  faq: 'perguntas',
+} as const
+
+const NAV_LINKS = [
+  { id: ANCHORS.pillars, label: page.pillars.label },
+  { id: ANCHORS.screening, label: page.screening.label },
+  { id: ANCHORS.faq, label: page.faq.label },
+]
 
 export const metadata: Metadata = {
   title: page.meta.title,
@@ -56,15 +76,29 @@ function Wrap({ children, className }: { children: ReactNode; className?: string
 function Section({
   children,
   divided = true,
+  id,
   className,
 }: {
   children: ReactNode
   /** `.borda-topo` — a hairline separating this section from the one above. */
   divided?: boolean
+  /**
+   * The target of a header anchor. `scroll-mt-20` comes with it: the header is
+   * sticky and 64px tall, so a bare `#id` jump parks the heading underneath it.
+   */
+  id?: string
   className?: string
 }) {
   return (
-    <section className={cn('py-10 min-[560px]:py-12', divided && 'border-t border-line', className)}>
+    <section
+      id={id}
+      className={cn(
+        'py-10 min-[560px]:py-12',
+        id && 'scroll-mt-20',
+        divided && 'border-t border-line',
+        className,
+      )}
+    >
       {children}
     </section>
   )
@@ -138,12 +172,32 @@ function Source({ children, className }: { children: ReactNode; className?: stri
 
 /* -------------------------------------------------------------------- hero */
 
+/**
+ * The hero, which until now showed the product nowhere.
+ *
+ * `/fundadores` asks for a name, an e-mail and a WhatsApp number before the
+ * reader has seen a single screen of the thing: the first piece of product on
+ * the page was the screening card in section five, roughly 3 400px down. So
+ * `ExampleRadar` moves up here — **that** component and no mock-up of it. It
+ * renders `TenderCardView`, the Radar's own card, over three real PNCP tenders
+ * frozen at 17/09/2026, and it carries its own caption saying so; a marketing
+ * drawing of the same thing would drift from the product within a sprint and
+ * start promising screens we do not draw (CDC art. 30 on a page taking money).
+ *
+ * Three children, one grid, and the order is load-bearing:
+ *
+ *  - **≥900px** the form is pinned to column two across both rows, so the
+ *    example tucks under the headline and beside the form;
+ *  - **below that** the single column falls in DOM order — headline, form,
+ *    example. The form stays above the ~600px of example, because the page is
+ *    taking sign-ups this week and the example is evidence, not the ask.
+ */
 function Hero() {
   const { hero } = page
   return (
     <div className="pt-7 pb-14">
-      <Wrap className="grid items-start gap-7 min-[900px]:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] min-[900px]:gap-12">
-        <div className="flex flex-col gap-[22px] pt-3">
+      <Wrap className="grid items-start gap-7 [&>*]:min-w-0 min-[900px]:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] min-[900px]:gap-x-12 min-[900px]:gap-y-10">
+        <div className="flex flex-col gap-[22px] pt-3 min-[900px]:col-start-1 min-[900px]:row-start-1">
           <span className="inline-flex items-center gap-2 self-start rounded-badge bg-attention-soft px-2.5 py-1.5 font-mono text-caption font-medium tracking-[0.06em] text-attention uppercase">
             <span aria-hidden className="inline-block size-[7px] rounded-pill bg-attention" />
             {hero.badge}
@@ -165,9 +219,60 @@ function Hero() {
           </ul>
         </div>
 
-        <SignupForm />
+        <div className="min-[900px]:col-start-2 min-[900px]:row-span-2 min-[900px]:row-start-1">
+          <SignupForm />
+        </div>
+
+        <ExampleRadar className="min-[900px]:col-start-1 min-[900px]:row-start-2" />
       </Wrap>
     </div>
+  )
+}
+
+/* -------------------------------------------------------------- trust row */
+
+/** Same order as `pillars.items`, so the icons keep meaning the same thing. */
+const TRUST_ICONS = ['search', 'tender', 'money'] as const
+
+/**
+ * The three facts, directly under the hero: compatible with your CNAE, the AI
+ * reading with the page it came from, the maximum purchase price.
+ *
+ * Every string is `pillars.items[0..2]` — the approved copy for exactly these
+ * three, reused rather than rewritten. Note that the full `Pillars` section
+ * further down renders the same three plus the Telegram alerts, with their
+ * plan attribution; see the PR for the duplication that creates.
+ *
+ * **The titles are not headings.** They were `<h3>` for one run and it broke
+ * the outline in two ways at once: the row sits above the page's first `<h2>`,
+ * so the document went `h1` → `h3` with nothing between, and because the same
+ * three strings head the `Pillars` section further down, a reader navigating
+ * by heading met "Encontrar / Entender / Ofertar com lucro" twice and could
+ * not tell the summary from the section. This row introduces no structure —
+ * it has no heading of its own — so its titles are `<b>`, the idiom
+ * `FounderValue` already uses for a bold lead-in inside a list item. The type
+ * is unchanged.
+ */
+function Trust() {
+  const { pillars } = page
+  return (
+    <Section>
+      <Wrap>
+        <ul className="grid grid-cols-1 gap-x-6 gap-y-6 min-[560px]:grid-cols-3">
+          {pillars.items.slice(0, 3).map((item, index) => (
+            <li key={item.title} className="flex min-w-0 flex-col gap-2.5">
+              <span className="grid size-10 place-items-center rounded-swatch bg-blue-soft text-blue">
+                <Icon name={TRUST_ICONS[index]} size={22} />
+              </span>
+              <b className="font-display text-subsection font-bold tracking-[-0.01em] text-balance">
+                {item.title}
+              </b>
+              <p className="text-base leading-[1.6] text-ink-soft">{item.body}</p>
+            </li>
+          ))}
+        </ul>
+      </Wrap>
+    </Section>
   )
 }
 
@@ -261,109 +366,130 @@ function Pain() {
   )
 }
 
-/* ------------------------------------------------------------- price ruler */
+/* ------------------------------------------------------------- price chain */
 
 /**
- * A marker on the price ruler. `side` decides whether it hangs above the bar or
- * below it; `left` is its position on the R$ 10 – R$ 40 scale.
+ * The four prices, as a chain of labelled steps in reading order.
+ *
+ * ## What it replaced, and why
+ *
+ * A horizontal bar with four marks hung above and below it, over a
+ * green→red gradient. Three measured problems, all of them worst on the phone
+ * this audience reads on:
+ *
+ *  1. at 390px the "you can still profit" zone was **47px of 308** — a nub.
+ *     The gradient's whole job was to divide the scale at R$ 14,60, and at
+ *     that width the green end read as part of the pink, so the colour
+ *     semantics inverted: the bar looked like one warm band with the good
+ *     news lost in its left edge;
+ *  2. `R$ 14,60` — the number the product exists to produce — was set at 16px,
+ *     while a competitor's price in the comparison table below is 34px;
+ *  3. the marks were positioned by percentage on a R$ 10–R$ 40 scale, so the
+ *     reading order was spatial (15.3%, 33.3%, 63.3%, 86.7%) and not the order
+ *     of the argument. A screen reader got none of it: the whole figure was
+ *     one `role="img"` with a sentence for an `aria-label`.
+ *
+ * The chain fixes all three by not being a chart. Four steps, in the order the
+ * argument is made — what the tender estimated, what the winner actually bid,
+ * what retail costs, and therefore the most you can pay your supplier — with
+ * the last one on the brand panel at `--text-stat`. It is an `<ol>` of real
+ * text, so it reads in order with no alt text to maintain.
+ *
+ * ## Colour
+ *
+ * No green, and no gradient. Green is `success` in this product — the
+ * compatible badge, "Não exige", "Oportunidade encontrada" — and a fourth
+ * meaning for it here ("this price is safe") would spend that. The emphasis is
+ * `--color-brand-panel` with the measured `on-brand*` ramp, the same device as
+ * the founder panel. The red stays exactly where it already was: on the
+ * verdict, which is a warning about a loss and the one thing in this section
+ * that `error` correctly describes.
  */
-function RulerMark({
-  left,
-  side,
-  tone,
-  value,
-  label,
-}: {
-  left: string
-  side: 'above' | 'below'
-  tone: string
-  value: string
-  label: string
-}) {
-  return (
-    <div
-      style={{ left }}
-      className={cn(
-        'absolute flex w-24 -translate-x-1/2 flex-col items-center gap-1 text-center min-[560px]:w-[130px]',
-        side === 'above' ? 'top-0' : 'bottom-0 flex-col-reverse',
-        tone,
-      )}
-    >
-      <span className="font-mono text-base font-medium min-[560px]:text-xl">{value}</span>
-      <span className="text-caption leading-[1.25] whitespace-nowrap text-muted">{label}</span>
-      <span aria-hidden className="mt-0.5 h-[22px] w-0.5 bg-current" />
-    </div>
-  )
-}
-
-function PriceRuler() {
+function PriceChain() {
   const { ruler } = page
+  const steps = [
+    { label: ruler.tender, value: ruler.tenderValue },
+    { label: ruler.winner, value: ruler.winnerValue },
+    { label: ruler.retail, value: ruler.retailValue },
+    { label: ruler.maxPurchase, value: ruler.maxPurchaseValue, emphasis: true },
+  ]
+
   return (
     <Section>
       <Wrap>
-        <div className="grid items-center gap-7 rounded-panel border border-line bg-surface p-5 min-[560px]:p-7 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] min-[900px]:gap-9">
-          <div className="flex flex-col gap-3.5">
-            <SectionLabel tone="muted" size="caption">
-              {ruler.label}
-            </SectionLabel>
-            <H2>{ruler.title}</H2>
-            <p className="text-ink-soft">{ruler.body}</p>
-            <Source>{ruler.source}</Source>
-          </div>
+        {/* The eyebrow earns its place here: it names the commodity the four
+            figures are about, which the heading deliberately does not. */}
+        <SectionHead label={ruler.label} title={ruler.title} className="mb-8">
+          <p className="text-base leading-[1.6] text-ink-soft">{ruler.body}</p>
+        </SectionHead>
 
-          <div>
-            <div className="relative pt-[84px] pb-[92px]" role="img" aria-label={ruler.alt}>
-              <RulerMark
-                left="33.3%"
-                side="above"
-                tone="text-ink"
-                value={ruler.winnerValue}
-                label={ruler.winner}
-              />
-              <RulerMark
-                left="86.7%"
-                side="above"
-                tone="text-ink"
-                value={ruler.tenderValue}
-                label={ruler.tender}
-              />
-              {/* 15.3% is where a 15% margin stops being possible: green up to
-                  there, red after it. */}
-              <div className="relative h-3.5 rounded-pill border border-line bg-[linear-gradient(90deg,var(--color-success-soft)_0_15.3%,var(--color-error-soft)_15.3%_100%)]" />
-              <RulerMark
-                left="15.3%"
-                side="below"
-                tone="text-success"
-                value={ruler.maxPurchaseValue}
-                label={ruler.maxPurchase}
-              />
-              <RulerMark
-                left="63.3%"
-                side="below"
-                tone="text-error"
-                value={ruler.retailValue}
-                label={ruler.retail}
-              />
-            </div>
+        {/*
+          One row from 900px, one column below it. No 2×2 tier: the chain is an
+          argument in four steps, and a grid that puts step 3 under step 1
+          breaks the reading order the change exists to create.
 
-            <div className="mt-2 flex justify-between font-mono text-label text-muted">
-              <span>{ruler.scaleStart}</span>
-              <span>{ruler.scaleEnd}</span>
-            </div>
+          Track sizes: the last step holds `R$ 14,60` at 34px mono and cannot
+          wrap, so it gets 1.35fr against the other three. Measured at a 900px
+          viewport, the narrowest width at which the row is used: 860px of
+          Wrap, less three 24px gaps, is 788px over 4.35fr — 181px each for the
+          quiet steps and 245px for the last, against the ~203px its value and
+          padding need. `[&>*]:min-w-0` so no step can force the grid wider
+          than the viewport, the way the comparison table's `min-w-[420px]`
+          did to the panel below.
+        */}
+        <ol className="grid grid-cols-1 gap-x-6 gap-y-9 [&>*]:min-w-0 min-[900px]:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.35fr)] min-[900px]:gap-y-0">
+          {steps.map((step, index) => (
+            <li key={step.label} className="relative flex">
+              <div
+                className={cn(
+                  'flex w-full items-baseline justify-between gap-3 rounded-panel px-5 py-4',
+                  'min-[900px]:h-full min-[900px]:flex-col min-[900px]:items-start min-[900px]:justify-between min-[900px]:gap-3 min-[900px]:py-5',
+                  step.emphasis ? 'bg-brand-panel text-on-brand' : 'border border-line bg-surface',
+                )}
+              >
+                <span
+                  className={cn(
+                    'text-base leading-[1.4]',
+                    step.emphasis ? 'text-on-brand-muted' : 'text-muted',
+                  )}
+                >
+                  {step.label}
+                </span>
+                <span
+                  className={cn(
+                    'font-mono whitespace-nowrap tabular-nums',
+                    step.emphasis
+                      ? 'text-stat font-semibold text-on-brand'
+                      : 'text-xl font-medium text-ink',
+                  )}
+                >
+                  {step.value}
+                </span>
+              </div>
 
-            <div className="mt-4 flex items-start gap-3 rounded-swatch bg-error-soft px-4 py-3.5 text-base leading-[1.6]">
-              <Icon
-                name="warning"
-                size={20}
-                strokeWidth={2}
-                className="mt-0.5 shrink-0 text-error"
-              />
-              <span>
-                <b className="text-error">{ruler.verdictLead}</b> {ruler.verdictBody}
-              </span>
-            </div>
-          </div>
+              {/* The connector, in the gap: pointing down while the steps are
+                  stacked, right once they are a row. Decoration — the order is
+                  already in the markup. */}
+              {index < steps.length - 1 ? (
+                <span
+                  aria-hidden
+                  className="absolute -bottom-7 left-1/2 grid h-5 -translate-x-1/2 place-items-center text-line-strong min-[900px]:top-1/2 min-[900px]:-right-6 min-[900px]:bottom-auto min-[900px]:left-auto min-[900px]:w-6 min-[900px]:-translate-x-0 min-[900px]:-translate-y-1/2"
+                >
+                  <Icon name="arrowRight" size={20} className="rotate-90 min-[900px]:rotate-0" />
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+
+        <div className="mt-9 flex max-w-[46em] items-start gap-3 rounded-swatch bg-error-soft px-4 py-3.5 text-base leading-[1.6]">
+          <Icon name="warning" size={20} strokeWidth={2} className="mt-0.5 shrink-0 text-error" />
+          <span>
+            <b className="text-error">{ruler.verdictLead}</b> {ruler.verdictBody}
+          </span>
         </div>
+
+        <Source className="mt-4">{ruler.source}</Source>
       </Wrap>
     </Section>
   )
@@ -376,7 +502,7 @@ const PILLAR_ICONS = ['search', 'tender', 'money', 'alert'] as const
 function Pillars() {
   const { pillars } = page
   return (
-    <Section>
+    <Section id={ANCHORS.pillars}>
       <Wrap>
         <SectionHead label={pillars.label} title={pillars.title} className="mb-8" />
         <div className="grid grid-cols-1 gap-4 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4">
@@ -413,7 +539,7 @@ function Screening() {
   const rows: ScreeningRow[] = screening.rows
 
   return (
-    <Section>
+    <Section id={ANCHORS.screening}>
       <Wrap className="grid items-start gap-7 min-[900px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] min-[900px]:gap-10">
         <SectionHead label={screening.label} title={screening.title}>
           <p className="text-lg text-ink-soft">{screening.body}</p>
@@ -650,7 +776,7 @@ function Timeline() {
 function Faq() {
   const { faq } = page
   return (
-    <Section>
+    <Section id={ANCHORS.faq}>
       <Wrap>
         <SectionHead label={faq.label} title={faq.title} className="mb-8" />
         <div className="grid grid-cols-1 gap-x-10 min-[900px]:grid-cols-2">
@@ -700,7 +826,7 @@ export default function FoundersOfferPage() {
           precisely the stretch where somebody becomes willing to act. The
           header already holds the right link at 44px; it just scrolled away. */}
       <header className="sticky top-0 z-10 border-b border-line bg-ivory/95 backdrop-blur-sm">
-        <Wrap className="flex min-h-16 items-center justify-between gap-3">
+        <Wrap className="flex min-h-16 items-center justify-between gap-4">
           <a
             href="#topo"
             aria-label={page.nav.home}
@@ -708,6 +834,27 @@ export default function FoundersOfferPage() {
           >
             <Logo size={34} />
           </a>
+
+          {/* In-page anchors, from 900px up — the width at which the page is
+              already two columns and the header has room for them beside the
+              call to action. Below that the CTA is the only thing in the bar
+              that matters, and three more links would crowd it off.
+
+              The labels are the sections' own eyebrows, so nothing here is new
+              copy; `scroll-mt-20` on the target keeps the heading clear of
+              this bar. */}
+          <nav className="hidden min-w-0 items-center gap-6 min-[900px]:flex">
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.id}
+                href={`#${link.id}`}
+                className="inline-flex min-h-touch items-center text-meta font-medium whitespace-nowrap text-ink-soft no-underline hover:text-blue"
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
+
           <a
             href="#vaga"
             className="inline-flex min-h-touch items-center text-lead font-semibold whitespace-nowrap text-blue no-underline hover:text-blue-hover"
@@ -719,8 +866,9 @@ export default function FoundersOfferPage() {
 
       <main id="topo">
         <Hero />
+        <Trust />
         <Pain />
-        <PriceRuler />
+        <PriceChain />
         <Pillars />
         <Screening />
         <FounderValue />
