@@ -470,7 +470,30 @@ function Hero() {
           Below 540px neither renders: the phone shot does, at its own native
           size, where the question does not arise.
         */}
-        <div className="relative mx-auto block w-full max-w-[390px] min-[540px]:max-w-none">
+        {/*
+          **A link, not a lightbox.** Sci asked whether tapping the shot should
+          expand it. Someone who clicks a product screenshot is asking to see
+          more of the product — and the better answer to that is their own
+          editais, live, which is what `/radar` is. A 2x JPEG is not.
+
+          `aria-hidden` with `tabIndex={-1}`: the "Ir para o Radar" button a few
+          pixels away is already the accessible control for this exact action,
+          so a second one would add a duplicate tab stop and announce the same
+          destination twice. This is a mouse convenience over decorative
+          artwork (`alt=""`), and it is deliberately invisible to the keyboard
+          and to assistive technology rather than half-exposed to them.
+
+          Not a dialog, which is the other thing it could have been: that needs
+          a real accessible name, a role, a focus trap and an Escape — and a
+          label string, which is Sci's to write. The cost is not the `Sheet`;
+          it is the copy and a third interactive element in a hero whose whole
+          job is two actions.
+        */}
+        <Link
+          href="/radar"
+          aria-hidden
+          tabIndex={-1}
+          className="relative mx-auto block w-full max-w-[390px] no-underline min-[540px]:max-w-none">
           <picture>
             <source media={SHOT_DESKTOP_MEDIA} srcSet={shot.baseSrcSet} sizes={shot.baseSizes} />
             <img
@@ -500,7 +523,7 @@ function Hero() {
               className="hidden aspect-[688/620] w-full rounded-card border border-line object-cover shadow-[0_18px_44px_-20px_rgba(23,23,23,0.5)] min-[540px]:block"
             />
           </picture>
-        </div>
+        </Link>
       </Wrap>
     </div>
   )

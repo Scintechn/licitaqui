@@ -583,6 +583,25 @@ describe('the hero, and the form that is now a dialog', () => {
     expect(heroInset()).toContain(`aspect-[${radarPreview.width}/${radarPreview.height}]`)
   })
 
+  it('makes the shot a click target for the Radar, without a second tab stop', () => {
+    // Sci asked for click-to-expand; a link to the live product answers the
+    // same instinct better than a bigger picture, and the "Ir para o Radar"
+    // button beside it is already the accessible control for that action.
+    //
+    // So the requirement has two halves and both are asserted: the artwork is
+    // clickable, and it is invisible to the keyboard and to assistive tech —
+    // a second focusable link to the same place would announce the
+    // destination twice and add a tab stop nobody needs.
+    const main = out.slice(out.indexOf('<main'))
+    const at = main.indexOf('<picture')
+    const before = main.slice(0, at)
+    const open = before.slice(before.lastIndexOf('<a '))
+
+    expect(open, 'the shot is wrapped in a link').toContain('href="/radar"')
+    expect(open, 'the link is not a tab stop').toContain('tabindex="-1"')
+    expect(open, 'the link is not announced').toContain('aria-hidden="true"')
+  })
+
   it('renders exactly one picture, one source and one img', () => {
     // The **download** claim is a network fact and is asserted where it can be
     // observed — the journey that counts requests at eight viewports. This one
