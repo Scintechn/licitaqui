@@ -38,7 +38,12 @@ import {
   tenderTitle,
 } from '@/lib/radar/format'
 import { tenderBudget } from '@/lib/radar/headline'
-import { mayShowUrgency, statusChipLabel, statusNotice } from '@/lib/radar/tender-status'
+import {
+  mayShowDeadline,
+  mayShowUrgency,
+  statusChipLabel,
+  statusNotice,
+} from '@/lib/radar/tender-status'
 import { TenderTags } from '../../tender-card'
 import { TenderStatusBanner } from '../../tender-status-banner'
 import { CopyId } from './copy-id'
@@ -111,7 +116,7 @@ export function reasons(tender: TenderDetail, now: Date): string[] {
   // `mayShowUrgency`, the same predicate the countdown and the deadline block
   // ask, which is what stops the next reason anybody adds from forgetting.
   const days = daysUntil(tender.proposalsCloseAt, now)
-  if (mayShowUrgency(tender) && days !== null && days >= 0) {
+  if (mayShowUrgency(tender, now) && days !== null && days >= 0) {
     out.push(format(page.why.open, { prazo: format(copy.card.daysLeft, { count: days }) }))
   }
 
@@ -592,7 +597,7 @@ export function OpportunityView({
   // The gate (§2.2 rule 6). `urgency === false` suppresses the countdown, the
   // "restantes" caption and the closed notice below — not the dates, which
   // stay on the screen, muted and labelled as the previous ones.
-  const urgency = mayShowUrgency(tender)
+  const urgency = mayShowUrgency(tender, now)
   const notice = statusNotice(tender)
   const statusChip = statusChipLabel(tender)
   const days = daysUntil(tender.proposalsCloseAt, now)
@@ -637,7 +642,7 @@ export function OpportunityView({
             on a suspended tender it is false — the órgão may resume it with new
             dates. So it passes through the same gate as the countdown rather
             than standing beside the status banner contradicting it. */}
-        {tender.closed && urgency ? (
+        {tender.closed && mayShowDeadline(tender) ? (
           <p className="rounded-[10px] bg-attention-soft px-3 py-2.5 text-meta text-ink">
             {page.closedNotice}
           </p>
@@ -666,12 +671,24 @@ export function OpportunityView({
                 <div className="pt-1 text-meta text-muted">{statusCopy.previousDeadline}</div>
               ) : null}
             </div>
-            {!urgency || days === null ? null : (
+            {/* This column carries two different things and they need two
+                different gates. "13 dias" over "restantes" is urgency, and it
+                may only appear while the clock is genuinely running.
+                "Encerrado" is a fact, and it is most worth printing exactly
+                when urgency is forbidden.
+
+                Reading `days < 0` alone was the bug: `daysUntil` is
+                calendar-day, so a tender that closed at 08:00 still answers 0
+                at noon and printed "último dia" over "restantes" for the rest
+                of the day. `urgency` is to the second and settles it; the
+                agency's own halt still removes the column entirely, because a
+                suspended tender's date is spoken for by the banner above. */}
+            {days === null || !mayShowDeadline(tender) ? null : (
               <div className="text-right">
                 <div className="font-display text-[22px] leading-none font-semibold">
-                  {days < 0 ? copy.card.closed : format(copy.card.daysLeft, { count: days })}
+                  {urgency ? format(copy.card.daysLeft, { count: days }) : copy.card.closed}
                 </div>
-                {days < 0 ? null : <div className="text-meta text-muted">{page.remaining}</div>}
+                {urgency ? <div className="text-meta text-muted">{page.remaining}</div> : null}
               </div>
             )}
           </div>

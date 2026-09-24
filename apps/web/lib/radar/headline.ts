@@ -1,6 +1,6 @@
 import type { TenderCard } from './contract'
 import { daysUntil, meEppSummary, money } from './format'
-import { mayShowUrgency } from './tender-status'
+import { mayShowDeadline } from './tender-status'
 import { format, messages } from '../messages'
 
 /**
@@ -78,7 +78,7 @@ function promoted(tender: TenderCard, now: Date): CardHeadline['anchor'] {
   // on a stopped tender this — not the small print — is what shouts "último
   // dia" at the reader. §2.2 rule 6 through the one gate: it steps out of the
   // chain entirely and the item count takes the slot instead.
-  if (mayShowUrgency(tender) && daysUntil(tender.proposalsCloseAt, now) !== null) {
+  if (mayShowDeadline(tender) && daysUntil(tender.proposalsCloseAt, now) !== null) {
     return { fact: 'deadline', text: deadlineLabel(tender.proposalsCloseAt, now) }
   }
   if (tender.itemCount !== null) {

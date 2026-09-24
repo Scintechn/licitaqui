@@ -99,8 +99,87 @@ export function tenderStatusKind(
  * tempo" and every other call to hurry asks this and nothing else. `false`
  * does not mean hide the tender or hide its dates — it means stop claiming the
  * clock is still running.
+ *
+ * ## It asks two things, because there are two ways the clock can stop
+ *
+ * The órgão can halt the tender — that is `status`, and it is why this file
+ * exists. The hour can simply pass — that is `closed`, and it was missed.
+ *
+ * Until 2026-09-24 this predicate read `status` alone, so a tender that closed
+ * at 08:00 went on rendering **"último dia"**, **"restantes"** and
+ * **"✓ Ainda dá tempo"** for the rest of the day — directly above
+ * `As propostas deste edital já encerraram`, which the same screen prints from
+ * the same field. Two clocks on one page disagreeing, one of them a green tick.
+ *
+ * Found on 2026-09-24 by a persona walkthrough and reproduced on production
+ * against `18114272000188-1-000054/2026`, closing that morning at 08:00.
+ *
+ * That is the same defect as the suspended tender in the header of this file,
+ * reached by a different route. Rule 6's subject is not "is it suspended"; it
+ * is **"may we claim the clock is still running"**, and a deadline in the past
+ * is that claim just as falsely as a suspension is.
+ *
+ * ## Why the deadline and not `TenderDetail.closed`
+ *
+ * `closed` is the obvious input and it is the wrong one here: it exists on
+ * `TenderDetail` and **not** on `TenderCard`, so a gate that took it could not
+ * be asked by the list — which is one of the four callers, and the one a
+ * person sees first. `proposalsCloseAt` is on both, and comparing it to `now`
+ * gives the same answer the database gives (`proposals_close_at <= now()`)
+ * without a contract change, a query change, or a second field that can drift
+ * from the first.
+ *
+ * It also fixes the drift directly. The countdown beside this gate is
+ * calendar-day (`daysUntil` rounds to midnight), so on the closing day it
+ * reads `0` → "último dia" from 00:00 to 23:59 regardless of the hour. The
+ * gate is to the second.
+ *
+ * `now` is a parameter rather than a call to `new Date()` because every caller
+ * already carries one for exactly this reason — the countdown on every card is
+ * assertable only because the clock is injected.
+ *
+ * A tender with **no** deadline is not closed; nothing can claim its clock is
+ * running either, because every urgency element is downstream of a countdown
+ * that needs a date. Status remains the only gate there.
  */
-export function mayShowUrgency(tender: Pick<TenderCard, 'status'>): boolean {
+export function mayShowUrgency(
+  tender: Pick<TenderCard, 'status' | 'proposalsCloseAt'>,
+  now: Date = new Date(),
+): boolean {
+  if (!mayShowDeadline(tender)) return false
+  if (!tender.proposalsCloseAt) return true
+  return new Date(tender.proposalsCloseAt).getTime() > now.getTime()
+}
+
+/**
+ * **The other question**, and it is not the same one.
+ *
+ * May this screen present the tender's deadline as a fact at all?
+ *
+ * Only the *agency* can make a deadline meaningless. When PNCP says the tender
+ * was suspended, revoked or annulled, the dates stop describing anything and
+ * the status banner speaks instead — so the headline slot takes the item count
+ * and the closed notice does not render. But a deadline that has merely
+ * **passed** is still a fact, and a useful one: the card promotes it and
+ * renders *"Encerrado"*, which is exactly what someone scanning a list needs to
+ * know.
+ *
+ * ## Why this exists as a second predicate
+ *
+ * Because on 2026-09-24 it did not, and `mayShowUrgency` was asked both
+ * questions at once. Adding the deadline to the urgency gate — correctly — had
+ * two silent consequences that its own tests caught: a closed tender stopped
+ * promoting *"Encerrado"* into the headline (`headline.ts`), and the
+ * *"As propostas deste edital já encerraram"* notice disappeared from the
+ * screen at the precise moment it became true (`opportunity-view.tsx:640`,
+ * whose condition `tender.closed && urgency` had been spelling "closed, and
+ * not halted by the agency" in the only vocabulary available to it).
+ *
+ * Two questions, two names. The gate's own docstring already drew this line —
+ * *"`false` does not mean hide the tender or hide its dates"* — and the code
+ * had no way to say it.
+ */
+export function mayShowDeadline(tender: Pick<TenderCard, 'status'>): boolean {
   return tenderStatusKind(tender.status) === 'divulgada'
 }
 

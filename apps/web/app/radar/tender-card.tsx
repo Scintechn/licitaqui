@@ -112,7 +112,7 @@ export function TenderCardView({
   const deadline = deadlineShort(tender.proposalsCloseAt)
   const title = tenderTitle(tender.object)
   // The gate (§2.2 rule 6), asked once for the whole card.
-  const urgency = mayShowUrgency(tender)
+  const urgency = mayShowUrgency(tender, now)
   const statusChip = statusChipLabel(tender)
 
   // When the deadline has been promoted into the anchor it is the same string
@@ -133,8 +133,12 @@ export function TenderCardView({
               used to be is exactly where they were already looking. */}
           {statusChip === null ? null : <Status kind="check">{statusChip}</Status>}
         </div>
+        {/* 13px ink, not 12px muted. Measured in the 2026-09-24 audit: this
+            was the smallest text on the card — quieter than the buyer's name
+            — while being the number that decides whether anyone opens the
+            tender at all. `ink` on `surface` is 17.9:1. */}
         {countdown === null ? null : (
-          <span className="text-caption text-muted">{countdown}</span>
+          <span className="text-meta font-medium text-ink">{countdown}</span>
         )}
       </div>
 
