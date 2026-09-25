@@ -78,13 +78,22 @@ def test_a_blank_value_is_a_missing_placeholder(value: object) -> None:
         templates.render("whatsapp", "founders-welcome", {**WELCOME_CONTEXT, "nome": value})
 
 
-def test_the_optout_confirmation_refuses_to_render_while_it_carries_a_todo() -> None:
-    """Templates README §7: a `TODO(Sci):` is a question for Sci, not copy."""
-    template = templates.load("whatsapp", "optout-confirmation")
-    assert not template.ready_to_send
+def test_the_optout_confirmation_renders_now_that_its_question_is_answered() -> None:
+    """Sci removed this template's `TODO(Sci):` on 2026-09-25 (`b681aa4`), so the
+    tripwire that stood here fired. Inverted rather than deleted, the same way
+    the footer's and the opening e-mail's were.
 
-    with pytest.raises(TemplateNotApproved):
-        template.render({"email_contato": "oi@licitaqui.com.br"})
+    This one matters more than it looks. It is the **only** message the worker
+    may send to a number after a SAIR reply, so a template that refused to
+    render did not fail loudly to a colleague — it hung up on someone who had
+    just asked to be left alone, and told them nothing.
+    """
+    template = templates.load("whatsapp", "optout-confirmation")
+    assert template.ready_to_send, "a TODO(Sci): came back; a SAIR reply would go unanswered"
+    assert "TODO(Sci):" not in template.body
+
+    rendered = template.render({"email_contato": "contato@licitaquiapp.com.br"})
+    assert "{{" not in rendered
 
 
 def test_no_whatsapp_template_is_approved_yet() -> None:
