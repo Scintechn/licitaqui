@@ -199,14 +199,23 @@ def enqueue(
     template: str,
     *,
     priority: int = 3,
+    key: str | None = None,
     **payload: Any,
 ) -> int | None:
     """Queue a message. F1 does this inline in SQL; this is for tests and any
-    future caller that wants it, mirroring `whatsapp.enqueue`."""
+    future caller that wants it, mirroring `whatsapp.enqueue`.
+
+    ``key`` defaults to :func:`job_key` (one welcome per founder). The opening
+    broadcast passes `whatsapp.opening_key` for the same reason its own channel
+    does: `jobs_dedupe` is unique on ``(kind, key)``, so an opening e-mail sent
+    under `founders:<id>` would collide with the welcome e-mail already sitting
+    there and be silently deduped away — the founder would simply never receive
+    it, with nothing in the logs to say so.
+    """
     return queue.enqueue(
         conn,
         JOB_KIND,
-        job_key(founders_list_id),
+        key or job_key(founders_list_id),
         priority=priority,
         payload={"template": template, "founders_list_id": founders_list_id, **payload},
     )

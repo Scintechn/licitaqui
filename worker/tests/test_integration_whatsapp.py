@@ -24,7 +24,7 @@ import httpx
 import psycopg
 import pytest
 
-from licitaqui import breaker, evolution, queue, whatsapp
+from licitaqui import breaker, email, evolution, queue, whatsapp
 from licitaqui.consumer import Consumer
 from licitaqui.evolution import DELIVERY_SEND, DELIVERY_VAR, EvolutionClient
 from licitaqui.queue import Job
@@ -597,6 +597,47 @@ def test_the_broadcast_enqueues_one_opening_message_per_seated_founder(
         (whatsapp.JOB_KIND, whatsapp.opening_key(waitlisted)),
     ).fetchone()
     assert waitlisted_job is None, "a waitlisted founder must not receive the opening broadcast"
+
+
+def test_the_broadcast_enqueues_the_opening_email_beside_the_whatsapp(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """**E12.** `email/founders-opening.md`'s front matter said "Pairs with
+    whatsapp/founders-opening" while nothing paired them: the sweep fanned out
+    WhatsApp only. On 08/10 the WhatsApp message would have shipped and the
+    e-mail carrying the identical promise would not — silently, to people whose
+    consent box named *both* channels.
+
+    Also pins the key choice, which is where this would have failed quietly
+    even once wired: `jobs_dedupe` is unique on (kind, key), so an opening
+    e-mail queued under the welcome's `founders:<id>` would have been deduped
+    away against the welcome already sitting there, and the founder would
+    simply never receive it.
+    """
+    seated = insert_seated_founder(e2_conn, "broadcast-email", seat=45)
+    # A welcome e-mail already queued under the *other* key, so the assertion
+    # below is about dedupe and not about an empty table.
+    email.enqueue(e2_conn, seated, "founders-welcome", numero_vaga=45)
+
+    key = broadcast_test_key("email-fanout")
+    whatsapp.enqueue_opening_broadcast(e2_conn, run_after=datetime.now(UTC), key=key)
+    assert _run(e2_conn, whatsapp.BROADCAST_JOB_KIND, key) == "done"
+
+    opening = e2_conn.execute(
+        "select payload from jobs where kind = %s and key = %s",
+        (email.JOB_KIND, whatsapp.opening_key(seated)),
+    ).fetchone()
+    assert opening is not None, "the opening e-mail was never queued"
+    assert opening[0]["template"] == "founders-opening"
+    assert opening[0]["numero_vaga"] == 45
+
+    welcome = e2_conn.execute(
+        "select payload ->> 'template' from jobs where kind = %s and key = %s",
+        (email.JOB_KIND, email.job_key(seated)),
+    ).fetchone()
+    assert welcome is not None and welcome[0] == "founders-welcome", (
+        "the opening e-mail displaced the welcome instead of sitting beside it"
+    )
 
 
 def test_the_sweep_itself_sends_nothing(e2_conn: psycopg.Connection) -> None:

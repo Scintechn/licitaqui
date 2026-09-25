@@ -501,8 +501,9 @@ E2_EMAIL_PREFIX = f"e2-test-{RUN_ID}-"
 #: it). `send_email` (E6) added alongside the original two. E5's
 #: `founders_opening_broadcast` is deliberately **not** here — it is one row
 #: per opening day, not one per founder, and has its own sweep below
-#: (`E2_BROADCAST_KEY_PREFIX`); the `send_whatsapp` jobs it fans out to (keyed
-#: `founders-opening:<id>`) are already covered by `send_whatsapp` above.
+#: (`E2_BROADCAST_KEY_PREFIX`); the `send_whatsapp` **and** `send_email` jobs it
+#: fans out to (both keyed `founders-opening:<id>`, E12) are already covered by
+#: the two kinds above, since the id is still in position 2 of the key.
 E2_JOB_KINDS = ("send_whatsapp", "whatsapp_inbound", "send_email")
 
 #: Delivery-log prefixes cleanup sweeps by `props ->> 'founders_list_id'`.
