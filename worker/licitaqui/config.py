@@ -112,6 +112,19 @@ def sentry_dsn() -> str | None:
     return resolve_secret(SENTRY_DSN_VAR)
 
 
+#: Where a link in an outbound message points (spec §9). Overridable so a
+#: preview deployment can send links to itself without a code change — the
+#: same value `telegram_alerts.py` already resolves on its own. Kept here too,
+#: rather than imported from there, so a business-logic module (`whatsapp.py`,
+#: `email.py`) never has to reach into a sibling one for a single string.
+APP_BASE_URL_VAR = "APP_BASE_URL"
+DEFAULT_APP_BASE_URL = "https://www.licitaquiapp.com.br"
+
+
+def app_base_url() -> str:
+    return (os.environ.get(APP_BASE_URL_VAR) or DEFAULT_APP_BASE_URL).rstrip("/")
+
+
 def env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     return default if raw in (None, "") else int(raw)

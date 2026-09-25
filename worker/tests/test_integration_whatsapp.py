@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import socket
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ from licitaqui import breaker, evolution, queue, whatsapp
 from licitaqui.consumer import Consumer
 from licitaqui.evolution import DELIVERY_SEND, DELIVERY_VAR, EvolutionClient
 from licitaqui.queue import Job
-from tests.conftest import e2_email, e2_whatsapp
+from tests.conftest import E2_BROADCAST_KEY_PREFIX, e2_email, e2_whatsapp
 
 FIXTURES = Path(__file__).parent / "fixtures" / "evolution"
 RECORDED_200 = json.loads((FIXTURES / "send_text_200.json").read_text())
@@ -542,3 +543,173 @@ def test_the_waitlist_payload_also_runs(e2_conn: psycopg.Connection) -> None:
 
     assert run_one(e2_conn, founder) == "done"
     assert [name for name, _ in log_rows(e2_conn, founder)] == ["whatsapp.dry_run"]
+
+
+# -- opening broadcast (E5) --------------------------------------------------
+#
+# The one part of this suite that takes a real seat — deliberately rare, one
+# per test, and released by `e2_clean_dsn`'s own teardown like every other row
+# here. Telling a seated founder from a waitlisted one is the whole point of
+# these tests, and `founders_list.seat` cannot be faked past its `check
+# (seat between 1 and 48)` constraint the way `whatsapp` or `email` can.
+
+
+def insert_seated_founder(conn: psycopg.Connection, label: str, seat: int) -> int:
+    row = conn.execute(
+        "insert into founders_list (name, email, whatsapp, contact_consent, seat)"
+        " values (%s, %s, %s, true, %s) returning id",
+        (FOUNDER_NAME, e2_email(label), e2_whatsapp(abs(hash(label)) % 1000), seat),
+    ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def broadcast_test_key(label: str) -> str:
+    """A **run-scoped** key for the sweep itself — never `whatsapp.broadcast_key()`,
+    a fixed per-day string two concurrent runs would collide on. See
+    `conftest.E2_BROADCAST_KEY_PREFIX`."""
+    return f"{E2_BROADCAST_KEY_PREFIX}{label}"
+
+
+def test_the_broadcast_enqueues_one_opening_message_per_seated_founder(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """Seated founders get the opening message; waitlisted founders get
+    nothing from this sweep — see `whatsapp.founders_opening_broadcast`'s
+    own docstring for why that gap is reported rather than invented shut."""
+    seated = insert_seated_founder(e2_conn, "broadcast-seated", seat=48)
+    waitlisted = insert_founder(e2_conn, "broadcast-waitlisted")
+
+    key = broadcast_test_key("fanout")
+    whatsapp.enqueue_opening_broadcast(e2_conn, run_after=datetime.now(UTC), key=key)
+    assert _run(e2_conn, whatsapp.BROADCAST_JOB_KIND, key) == "done"
+
+    seated_job = e2_conn.execute(
+        "select payload from jobs where kind = %s and key = %s",
+        (whatsapp.JOB_KIND, whatsapp.opening_key(seated)),
+    ).fetchone()
+    assert seated_job is not None
+    assert seated_job[0]["template"] == "founders-opening"
+    assert seated_job[0]["numero_vaga"] == 48
+
+    waitlisted_job = e2_conn.execute(
+        "select 1 from jobs where kind = %s and key = %s",
+        (whatsapp.JOB_KIND, whatsapp.opening_key(waitlisted)),
+    ).fetchone()
+    assert waitlisted_job is None, "a waitlisted founder must not receive the opening broadcast"
+
+
+def test_the_sweep_itself_sends_nothing(e2_conn: psycopg.Connection) -> None:
+    """It only enqueues — the same property `weekly_digest` has, and for the
+    same three reasons (retries, dedupe, throughput; see the section
+    docstring in `whatsapp.py`)."""
+    seated = insert_seated_founder(e2_conn, "broadcast-sends-nothing", seat=46)
+
+    key = broadcast_test_key("sends-nothing")
+    whatsapp.enqueue_opening_broadcast(e2_conn, run_after=datetime.now(UTC), key=key)
+    _run(e2_conn, whatsapp.BROADCAST_JOB_KIND, key)
+
+    assert log_rows(e2_conn, seated) == []
+
+
+def test_the_opening_key_does_not_collide_with_the_welcome_key(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """A founder can hold a queued welcome and a queued opening message at
+    once — `jobs_dedupe` is unique on (kind, key), and the two keys differ."""
+    seated = insert_seated_founder(e2_conn, "broadcast-distinct", seat=47)
+    whatsapp.enqueue(e2_conn, seated, "founders-welcome", numero_vaga=47)
+
+    key = broadcast_test_key("distinct")
+    whatsapp.enqueue_opening_broadcast(e2_conn, run_after=datetime.now(UTC), key=key)
+    _run(e2_conn, whatsapp.BROADCAST_JOB_KIND, key)
+
+    welcome = e2_conn.execute(
+        "select payload ->> 'template' from jobs where kind = %s and key = %s",
+        (whatsapp.JOB_KIND, whatsapp.job_key(seated)),
+    ).fetchone()
+    opening = e2_conn.execute(
+        "select payload ->> 'template' from jobs where kind = %s and key = %s",
+        (whatsapp.JOB_KIND, whatsapp.opening_key(seated)),
+    ).fetchone()
+    assert welcome is not None and welcome[0] == "founders-welcome"
+    assert opening is not None and opening[0] == "founders-opening"
+
+
+def test_a_future_run_after_is_not_claimable_yet(e2_conn: psycopg.Connection) -> None:
+    """Proves the dated-run primitive itself: `run_after` in the future means
+    `queue.claim`'s own `run_after <= now()` filter leaves the row alone."""
+    key = broadcast_test_key("future")
+    future = datetime.now(UTC) + timedelta(days=1)
+
+    whatsapp.enqueue_opening_broadcast(e2_conn, run_after=future, key=key)
+
+    claimable = e2_conn.execute(
+        "select id from jobs where kind = %s and key = %s"
+        "   and status = 'queued' and run_after <= now()",
+        (whatsapp.BROADCAST_JOB_KIND, key),
+    ).fetchone()
+    assert claimable is None
+
+    row = e2_conn.execute(
+        "select run_after > now() from jobs where kind = %s and key = %s",
+        (whatsapp.BROADCAST_JOB_KIND, key),
+    ).fetchone()
+    assert row is not None and row[0] is True
+
+
+def test_the_sweep_is_deduped_by_its_own_key(e2_conn: psycopg.Connection) -> None:
+    key = broadcast_test_key("dedupe")
+
+    first = whatsapp.enqueue_opening_broadcast(e2_conn, run_after=datetime.now(UTC), key=key)
+    second = whatsapp.enqueue_opening_broadcast(e2_conn, run_after=datetime.now(UTC), key=key)
+
+    assert first is not None
+    assert second is None
+
+
+def test_an_opted_out_seated_founder_is_skipped_when_their_message_runs(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """The broadcast fans out through `send()`'s ordinary gates — a `SAIR`
+    already on file stops the opening message the same as it stops anything
+    else."""
+    seated = insert_seated_founder(e2_conn, "broadcast-optout", seat=45)
+    whatsapp.record_optout(e2_conn, seated)
+
+    key = broadcast_test_key("optout")
+    whatsapp.enqueue_opening_broadcast(e2_conn, run_after=datetime.now(UTC), key=key)
+    _run(e2_conn, whatsapp.BROADCAST_JOB_KIND, key)
+
+    assert _run(e2_conn, whatsapp.JOB_KIND, whatsapp.opening_key(seated)) == "done"
+    # `record_optout` above already wrote its own event; `send()` adds the skip.
+    assert [name for name, _ in log_rows(e2_conn, seated)] == [
+        "whatsapp.optout",
+        "whatsapp.skipped",
+    ]
+
+
+def test_the_opening_message_renders_with_the_access_link(
+    e2_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As close to a live send as this suite gets, the same way
+    `test_the_message_that_would_be_sent_is_the_approved_copy` is for the
+    welcome — bolted to an `httpx.MockTransport`, never the network."""
+    monkeypatch.setenv(DELIVERY_VAR, DELIVERY_SEND)
+    seated = insert_seated_founder(e2_conn, "broadcast-wire", seat=44)
+    client, seen = mock_client()
+
+    delivery = whatsapp.send(
+        e2_conn,
+        founders_list_id=seated,
+        template="founders-opening",
+        payload={"numero_vaga": 44},
+        client=client,
+        sleep=lambda _s: None,
+    )
+
+    assert delivery.outcome == "sent"
+    body = json.loads(seen[0].content)
+    assert "chegou a hora" in body["text"]
+    assert whatsapp.opening_link() in body["text"]
+    assert body["text"].endswith("Para não receber mais mensagens, responda SAIR.")

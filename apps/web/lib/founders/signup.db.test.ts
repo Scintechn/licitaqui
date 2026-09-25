@@ -5,7 +5,7 @@ import { closeDb, pool } from '@/lib/db'
 import { testDatabaseUrl } from '@/lib/db/test-url'
 import { resetRateLimits } from '@/lib/rate-limit'
 import { FOUNDER_SEATS } from './seats'
-import { DUPLICATE_EVENT, SIGNUP_EVENT, WELCOME_JOB_KIND } from './signup'
+import { DUPLICATE_EVENT, EMAIL_JOB_KIND, SIGNUP_EVENT, WELCOME_JOB_KIND } from './signup'
 
 /**
  * The F1 acceptance criterion, run against the real database:
@@ -170,16 +170,20 @@ suite('founders signup (database)', () => {
     expect(serialised).not.toContain('00394429000100')
 
     const jobs = await pool().query<{ kind: string; priority: number; payload: Record<string, unknown> }>(
-      'select kind, priority, payload from jobs where key = $1',
+      'select kind, priority, payload from jobs where key = $1 order by kind',
       [`founders:${rows[0].id}`],
     )
-    expect(jobs.rows).toHaveLength(1)
-    expect(jobs.rows[0].kind).toBe(WELCOME_JOB_KIND)
-    expect(jobs.rows[0].payload).toMatchObject({
-      template: 'founders-welcome',
-      founders_list_id: Number(rows[0].id),
-      numero_vaga: 1,
-    })
+    // Both channels, the same key, the same statement (E6): `jobs_dedupe` is
+    // unique on (kind, key), not on key alone, so both rows coexist.
+    expect(jobs.rows).toHaveLength(2)
+    expect(jobs.rows.map((row) => row.kind)).toEqual([EMAIL_JOB_KIND, WELCOME_JOB_KIND])
+    for (const job of jobs.rows) {
+      expect(job.payload).toMatchObject({
+        template: 'founders-welcome',
+        founders_list_id: Number(rows[0].id),
+        numero_vaga: 1,
+      })
+    }
   })
 
   it('seats a founder who left the CNPJ blank', async () => {
@@ -224,7 +228,9 @@ suite('founders signup (database)', () => {
     const jobs = await pool().query('select id from jobs where key = $1', [
       `founders:${(await pool().query('select id from founders_list where email = $1', [`f1-2@${DOMAIN}`])).rows[0].id}`,
     ])
-    expect(jobs.rows).toHaveLength(1)
+    // One per channel (WhatsApp + e-mail), not two per channel: the repeat
+    // submit above must not have queued a second welcome on either.
+    expect(jobs.rows).toHaveLength(2)
 
     // Scoped to this suite's own founder, not `select name from events`.
     // `events` is shared: the Radar suites write `cnpj_searched` and U1's
@@ -260,16 +266,20 @@ suite('founders signup (database)', () => {
     const second = await POST(request(body(50), '198.51.100.50'))
     expect(await second.json()).toEqual({ status: 'waitlisted', position: 2 })
 
-    const waitlistJob = await pool().query<{ payload: Record<string, unknown> }>(
-      `select payload from jobs where key = 'founders:' ||
-         (select id from founders_list where email = $1)`,
+    const waitlistJobs = await pool().query<{ kind: string; payload: Record<string, unknown> }>(
+      `select kind, payload from jobs where key = 'founders:' ||
+         (select id from founders_list where email = $1)
+        order by kind`,
       [`f1-49@${DOMAIN}`],
     )
-    expect(waitlistJob.rows[0].payload).toMatchObject({
-      template: 'founders-waitlist',
-      numero_vaga: null,
-      posicao_espera: 1,
-    })
+    expect(waitlistJobs.rows.map((row) => row.kind)).toEqual([EMAIL_JOB_KIND, WELCOME_JOB_KIND])
+    for (const job of waitlistJobs.rows) {
+      expect(job.payload).toMatchObject({
+        template: 'founders-waitlist',
+        numero_vaga: null,
+        posicao_espera: 1,
+      })
+    }
 
     // A repeat submit from someone on the waitlist keeps their place.
     const repeat = await POST(request(body(49), '198.51.100.51'))
@@ -387,13 +397,21 @@ suite('60 parallel signups (F1 acceptance criterion)', () => {
         )
         expect(rows.rows[0]).toEqual({ seats: '48', waiting: '12', total: '60' })
 
-        // One welcome queued per person, one event per person, no duplicates.
+        // One welcome queued per person per channel, one event per person,
+        // no duplicates.
         const jobs = await pool().query<{ count: string }>(
           `select count(*) from jobs
             where kind = $1 and key like 'founders:%'`,
           [WELCOME_JOB_KIND],
         )
         expect(jobs.rows[0].count).toBe('60')
+
+        const emailJobs = await pool().query<{ count: string }>(
+          `select count(*) from jobs
+            where kind = $1 and key like 'founders:%'`,
+          [EMAIL_JOB_KIND],
+        )
+        expect(emailJobs.rows[0].count).toBe('60')
 
         const events = await pool().query<{ count: string }>(
           'select count(*) from events where name = $1',

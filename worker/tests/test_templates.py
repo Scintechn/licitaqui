@@ -272,3 +272,95 @@ def test_the_tender_alert_renders_every_combination_of_its_optional_rows(
     assert "\n\n📅" not in text
     # §4: every WhatsApp message that starts a conversation carries the opt-out.
     assert text.endswith("Para não receber mais mensagens, responda SAIR.")
+
+
+# -- render_subject (E6: nothing rendered a subject before this task) ------
+
+
+def test_render_subject_fills_placeholders(tmp_path: Path) -> None:
+    write(
+        tmp_path,
+        "email",
+        "greet",
+        "---\nid: greet\nchannel: email\nsubject: 'Oi, {{nome}}!'\nplaceholders: [nome]\n"
+        "---\n\ncorpo\n",
+    )
+
+    template = templates.load("email", "greet", root=tmp_path)
+
+    assert template.render_subject({"nome": "Maria"}) == "Oi, Maria!"
+
+
+def test_render_subject_raises_on_a_missing_placeholder(tmp_path: Path) -> None:
+    write(
+        tmp_path,
+        "email",
+        "greet2",
+        "---\nid: greet2\nchannel: email\nsubject: 'Oi, {{nome}}!'\nplaceholders: [nome]\n"
+        "---\n\ncorpo\n",
+    )
+    template = templates.load("email", "greet2", root=tmp_path)
+
+    with pytest.raises(MissingPlaceholder):
+        template.render_subject({})
+
+
+def test_render_subject_raises_when_the_template_has_no_subject(tmp_path: Path) -> None:
+    write(tmp_path, "whatsapp", "nosubj", "---\nid: nosubj\nplaceholders: []\n---\n\ncorpo\n")
+    template = templates.load("whatsapp", "nosubj", root=tmp_path)
+
+    with pytest.raises(TemplateError, match="no subject"):
+        template.render_subject({})
+
+
+def test_render_subject_refuses_a_todo_the_same_as_the_body(tmp_path: Path) -> None:
+    """README §7's rule applies to the subject line too, not only the body."""
+    write(
+        tmp_path,
+        "email",
+        "open-question",
+        "---\nid: open-question\nchannel: email\nsubject: 'Oi, {{nome}}'\nplaceholders: [nome]\n"
+        "---\n\ncorpo\n\nTODO(Sci): decidir o assunto de verdade.\n",
+    )
+    template = templates.load("email", "open-question", root=tmp_path)
+
+    with pytest.raises(TemplateNotApproved):
+        template.render_subject({"nome": "Maria"})
+
+
+# -- the founders e-mail trio (E6): what actually blocks a real send -------
+#
+# `worker/licitaqui/email.py` is the caller that proves these two facts in
+# context (real `founders_list` rows, the delivery log); these two pin the
+# facts themselves, directly against the real files, so a change to either
+# template's front matter is caught here even by someone who never opens
+# `email.py`.
+
+
+@pytest.mark.parametrize(
+    "template_id", ["founders-welcome", "founders-waitlist", "founders-opening"]
+)
+def test_every_founders_email_declares_the_footer_partial(template_id: str) -> None:
+    template = templates.load("email", template_id)
+    assert "partial-footer" in template.partials
+
+
+def test_the_footer_still_carries_the_todo_that_blocks_every_founders_email() -> None:
+    """The tripwire for E6's one open blocker (docs/CLAIMS.md).
+
+    When this fails, Sci has written the footer — update the PR notes rather
+    than the assertion's intent, the same instruction `test_no_whatsapp_
+    template_is_approved_yet` carries above.
+    """
+    footer = templates.load("email", "partial-footer")
+    assert not footer.ready_to_send
+    with pytest.raises(TemplateNotApproved):
+        footer.render({})
+
+
+def test_founders_opening_email_carries_its_own_independent_todo() -> None:
+    """A second, unrelated blocker on this one template (its price question),
+    on top of the shared footer. Both must be gone before it can render."""
+    template = templates.load("email", "founders-opening")
+    assert not template.ready_to_send
+    assert "TODO(Sci):" in template.body
