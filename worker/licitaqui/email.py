@@ -79,7 +79,7 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import queue, resend, templates
+from . import config, queue, resend, templates
 from .breaker import CircuitOpen
 from .observability import get_logger
 from .registry import REGISTRY, JobContext
@@ -110,6 +110,31 @@ SKIP_ALREADY_SENT = "already_sent"
 #: the same constant `telegram_alerts.py` already sends in its own templates.
 #: Not a decision this task made.
 CONTACT_EMAIL = "contato@licitaquiapp.com.br"
+
+#: `partial-footer` declares three placeholders and the sender bound only one
+#: of them, so every founders e-mail raised `MissingPlaceholder` the moment the
+#: footer stopped being blocked by its own `TODO(Sci):`. The old tests never
+#: reached it: they asserted `TemplateNotApproved`, which short-circuits before
+#: rendering. Approving the footer did not break this — it uncovered it.
+#:
+#: **The privacy link** is a public page (`/privacidade`), so it needs nothing
+#: but the base URL.
+#:
+#: **The unsubscribe link is the awkward one.** `telegram_alerts.py` binds
+#: `link_preferencias` to the alerts screen, and that screen requires a
+#: session. A founder has no account, so sending them there would put a link
+#: they cannot open under a sentence promising they can stop receiving — the
+#: footer's own front matter already recorded that as unresolved.
+#:
+#: So this binds the one revocation route a founder can actually use today: a
+#: `mailto:` that pre-fills SAIR, the e-mail counterpart of the "responda SAIR"
+#: the WhatsApp templates already end with. It honours the approved sentence
+#: without inventing a route that would 404, and LGPD art. 8 §5 asks that
+#: withdrawing consent be as easy as giving it, not that it be one click.
+#:
+#: A tokenised one-click page is the better answer and is carded as **E13** —
+#: it needs a route and a token column, which is a migration and its own PR.
+UNSUBSCRIBE_LINK = f"mailto:{CONTACT_EMAIL}?subject=SAIR"
 
 _log = get_logger("email")
 
@@ -201,6 +226,11 @@ def build_context(*, name: str, payload: dict[str, Any], template_id: str) -> di
     """
     context = _base_context(name=name, payload=payload, template_id=template_id)
     context["email_contato"] = CONTACT_EMAIL
+    # Every founders e-mail appends `partial-footer`, so its placeholders are
+    # this channel's to supply — see UNSUBSCRIBE_LINK for why the second one
+    # is a mailto rather than the alerts screen Telegram uses.
+    context["link_privacidade"] = f"{config.app_base_url()}/privacidade"
+    context["link_preferencias"] = UNSUBSCRIBE_LINK
     return context
 
 

@@ -189,15 +189,55 @@ def test_render_email_raises_when_the_main_body_cannot_render(tmp_path: Path) ->
         ("founders-opening", {"numero_vaga": 1}),
     ],
 )
-def test_every_real_founders_email_is_blocked_by_the_unapproved_footer(
+def test_every_real_founders_email_binds_what_the_footer_declares(
     template_id: str, payload: dict
 ) -> None:
-    """The E6 tripwire, from `email.py`'s own render path rather than
-    `templates.py` directly — this is the call `send()` actually makes."""
-    context = email.build_context(name="Maria Silva", payload=payload, template_id=template_id)
+    """**The defect the old tripwire here was hiding.**
 
-    with pytest.raises(TemplateNotApproved):
-        email.render_email(template_id, context)
+    This used to assert `TemplateNotApproved`, which short-circuits *before*
+    rendering ever looks at a placeholder. So while the footer carried its
+    `TODO(Sci):`, nobody noticed that `build_context` bound `email_contato`
+    and neither of the footer's other two declarations. The day Sci approved
+    the footer, every founders e-mail raised `MissingPlaceholder` instead of
+    sending — welcome, waitlist and the 08/10 opening.
+
+    Asserted against the footer's own front matter rather than a hardcoded
+    list, so adding a placeholder there fails here instead of in production.
+    """
+    context = email.build_context(name="Maria Silva", payload=payload, template_id=template_id)
+    footer = templates.load("email", "partial-footer")
+
+    missing = [name for name in footer.placeholders if name not in context]
+    assert missing == [], f"{template_id}: the footer declares {missing}, nothing binds them"
+
+
+@pytest.mark.parametrize(
+    ("template_id", "payload"),
+    [
+        ("founders-welcome", {"numero_vaga": 1}),
+        ("founders-waitlist", {"posicao_espera": 2}),
+        ("founders-opening", {"numero_vaga": 1}),
+    ],
+)
+def test_every_ready_founders_email_renders_end_to_end(template_id: str, payload: dict) -> None:
+    """Through `email.py`'s own path — the call `send()` actually makes.
+
+    A template still holding a `TODO(Sci):` skips with that named as the
+    reason, so this stops skipping by itself the day the question is answered
+    rather than needing someone to remember this file exists.
+    """
+    template = templates.load("email", template_id)
+    if not template.ready_to_send:
+        pytest.skip(f"{template_id} still carries a TODO(Sci): — a question for Sci, not a defect")
+
+    context = email.build_context(name="Maria Silva", payload=payload, template_id=template_id)
+    subject, body = email.render_email(template_id, context)
+
+    # `render()` raises on a leftover `{{...}}`, so reaching here already means
+    # every placeholder resolved. These assert the footer actually arrived.
+    assert subject
+    assert email.CONTACT_EMAIL in body
+    assert email.UNSUBSCRIBE_LINK in body
 
 
 # -- keys -----------------------------------------------------------------
