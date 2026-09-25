@@ -1,5 +1,11 @@
 # LicitaQui · Development Plan
 
+> **Claims:** a card that exists because the product already promised something
+> has a row in [`CLAIMS.md`](CLAIMS.md) as well — currently **D8**, **E5**, **E6**,
+> **B8** and **D11b**. The card says what to build; the register says what was
+> promised, where it renders and when it comes due. Close the row with evidence
+> per recipient, never with a deploy.
+
 > Version 0.3 · 2026-09-17 · companion to `TECHNICAL_SPEC.md` (v0.4) and the viability study (v10)
 > Team: **one developer (Sci) + Claude Code agents**, 40+ h/week. Dates follow the Phase 0 schedule in the study.
 

@@ -1,6 +1,16 @@
 # LicitaQui — agent guide
 
 - Read `docs/TECHNICAL_SPEC.md` and `docs/DEVELOPMENT_PLAN.md` before any task.
+- **`docs/CLAIMS.md` is the register of promises the product has made and not
+  yet kept** — the claim, where it renders, what would make it true, and the
+  date it comes due. **Read it before writing or approving any user-facing
+  sentence, and before any launch date.** It exists because the same defect was
+  found four times in two days from four directions: a sentence describing
+  something the product does not do. `DEVELOPMENT_PLAN.md` knows what is
+  unbuilt; it does not know what has already been promised in public, and the
+  join between those two is where every one of them hid. A new claim that is
+  not yet true gets a row **in the same PR** — the mirror of the "a later in a
+  comment is not a task" rule below.
 - `docs/TO_VALIDATE.md` lists contradictions waiting on Sci. Check it before
   changing billing copy, legal text or the `subscriptions` schema — the answer may
   already be known to be undecided. The task card is the scope; do not widen it.
