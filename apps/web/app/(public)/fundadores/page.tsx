@@ -35,7 +35,12 @@ const page = messages.foundersPage
  * The labels beside them are the sections' own approved eyebrows, so the
  * header invents no copy: `nav` holds three strings and none names a section.
  */
-const ANCHORS = {
+/**
+ * Exported for `page.test.tsx`, which asserts the header's in-page anchors are
+ * this exact set rather than a count — a count passes when one anchor is
+ * swapped for another, which is the likeliest accident here.
+ */
+export const ANCHORS = {
   pillars: 'tool',
   screening: 'screening',
   faq: 'faq',
@@ -1663,13 +1668,29 @@ export default function FoundersOfferPage() {
           header already holds the right link at 44px; it just scrolled away. */}
         <header className="sticky top-0 z-10 border-b border-line bg-ivory/95 backdrop-blur-sm">
           <Wrap className="flex min-h-16 items-center justify-between gap-4">
-            <a
-              href="#topo"
+            {/*
+              **The Landing, not the top of this page.**
+
+              This was `href="#topo"` while its accessible name was
+              `nav.home` — so the control announced itself as "home" and
+              scrolled you 300px instead. Sci, 2026-09-25: a logo is the one
+              affordance every reader already knows the meaning of, and on a
+              page reached from Instagram or a WhatsApp link it is how somebody
+              goes to look at the product properly.
+
+              `#topo` keeps its consumer: the skip link above still targets it,
+              which is what it was written for.
+
+              `Link` rather than `<a>`: this is an internal route, so it
+              prefetches and navigates on the client like every other one.
+            */}
+            <Link
+              href="/"
               aria-label={page.nav.home}
               className="inline-flex min-h-touch items-center text-ink no-underline"
             >
               <Logo size={34} />
-            </a>
+            </Link>
 
             {/* In-page anchors, from 900px up — the width at which the page is
               already two columns and the header has room for them beside the
