@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { FOUNDERS_LEAD_EVENT } from '../../lib/founders/lead-event'
 import { format, messages } from '../../lib/messages'
 
 /**
@@ -135,6 +136,80 @@ test.describe('Dona Marta reserves a founder seat', () => {
     // Posted as typed. `normaliseCnpj` runs server-side in the Zod schema —
     // the form's job is to send what was entered, not to pre-clean it.
     expect(String(captured.body?.cnpj)).toContain('00.394.429/0001-00')
+  })
+
+  /**
+   * **The Google Ads conversion, on the path rather than in the unit.**
+   *
+   * `lead-event.test.ts` proves the function decides correctly. It cannot
+   * prove the form ever calls it — which is the exact shape of the defect
+   * this whole file was written for: a unit tested, a path untested.
+   *
+   * And nothing in the product would show it. A missing push is a silent
+   * zero in Google Ads; a push on the wrong branch is silent overbidding.
+   */
+  async function dataLayerEvents(page: Page): Promise<string[]> {
+    return page.evaluate(() => {
+      const layer = (globalThis as { dataLayer?: { event?: string }[] }).dataLayer ?? []
+      return layer.map((entry) => entry?.event ?? '').filter(Boolean)
+    })
+  }
+
+  test('a successful signup pushes the founders lead event for Tag Manager', async ({ page }) => {
+    await stubSignup(page)
+    await page.goto('/fundadores')
+    await openSignup(page)
+
+    expect(await dataLayerEvents(page)).not.toContain(FOUNDERS_LEAD_EVENT)
+
+    await fillRequired(page)
+    await signupForm(page).getByRole('button', { name: messages.founders.offer.cta }).click()
+    await expect(
+      page.getByText(confirmation.title.split('{')[0].trim(), { exact: false }),
+    ).toBeVisible()
+
+    // Exactly once: the conversion carries a value, so a double push would be
+    // double revenue in the bidding, not a cosmetic duplicate.
+    const events = await dataLayerEvents(page)
+    expect(events.filter((name) => name === FOUNDERS_LEAD_EVENT)).toHaveLength(1)
+  })
+
+  test('a repeat signup pushes nothing — it is not a new lead', async ({ page }) => {
+    await page.route('**/api/founders', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'already_registered', seat: 7, position: null }),
+      }),
+    )
+    await page.route('**/api/founders/seats', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ taken: 6, total: 48 }),
+      }),
+    )
+    await page.goto('/fundadores')
+    await openSignup(page)
+
+    await fillRequired(page)
+    await signupForm(page).getByRole('button', { name: messages.founders.offer.cta }).click()
+    await expect(
+      page.getByText(confirmation.title.split('{')[0].trim(), { exact: false }),
+    ).toBeVisible()
+
+    expect(await dataLayerEvents(page)).not.toContain(FOUNDERS_LEAD_EVENT)
+  })
+
+  test('a failed signup pushes nothing', async ({ page }) => {
+    await stubSignup(page, 500)
+    await page.goto('/fundadores')
+    await openSignup(page)
+
+    await fillRequired(page)
+    await signupForm(page).getByRole('button', { name: messages.founders.offer.cta }).click()
+
+    expect(await dataLayerEvents(page)).not.toContain(FOUNDERS_LEAD_EVENT)
   })
 
   test('a failed signup says so instead of pretending it worked', async ({ page }) => {

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode, type Ref }
 import { Button, Field, Icon, SectionLabel, StateCard } from '@/components'
 import { FOUNDER_SEATS, seatGrid, seatsLeftLabel, showSeatGrid } from '@/lib/founders'
 import type { SeatsResponse, SignupOk, SignupResponse } from '@/lib/founders/contract'
+import { pushFoundersLead } from '@/lib/founders/lead-event'
 import { format, messages } from '@/lib/messages'
 import { ShareSeat } from './share-seat'
 
@@ -258,6 +259,11 @@ export function SignupForm({
         })
         return
       }
+
+      // After the server confirms, never on the click — and not for a repeat
+      // submission. See `pushFoundersLead`: the dialog changes no URL, so this
+      // is the only thing Tag Manager can trigger the conversion on.
+      pushFoundersLead(payload.status)
 
       onDone({ response: payload, firstName: firstName(body.name) })
     } catch {
