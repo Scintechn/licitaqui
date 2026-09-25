@@ -1,7 +1,7 @@
 ---
 id: founders-opening
 channel: whatsapp
-status: draft
+status: approved
 placeholders: [nome, link_acesso]
 notes: Opening broadcast, 08/10 at 19:00, fired from the /admin button. Opt-in only, ~1 message every 20-30 s.
 ---
