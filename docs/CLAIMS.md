@@ -49,6 +49,12 @@ a real `message_id`, and by the message arriving on a handset.
 
 These bind on people we are about to pay to attract.
 
+**As of 2026-09-25 the only seat taken is Sci's**, so every message described
+below as delivered to a handset was delivered to him. Nothing in this file
+binds a third party yet, which is why the rows below are copy corrections and
+not retractions. That stops being true with the first real signup: these are
+dated for the publicity, not for today's audience of one.
+
 | Claim, verbatim | Renders in | What would make it true | Card | Due |
 |---|---|---|---|---|
 | *"Resumo toda segunda"* · *"Até 3 editais que combinam com você, já triados, no Telegram"* | `foundersPage.timeline.steps[2]` and `founderValue.benefits[1].body`, both on `/fundadores` | **A founder cannot receive this.** `telegram_alerts.py`'s `ELIGIBLE_SQL` requires a `users` row, a linked `telegram_links` row **and** an `alerts` row. A founder has none, nothing in the funnel asks them to link Telegram, and `founders_list` is never read by that file | **E7** | **overdue** — the first Monday it describes is 28/09 07:00 BRT |
@@ -59,17 +65,27 @@ These bind on people we are about to pay to attract.
 | Three editais named as closing **30/09**, as literal strings with no clock | `radar.landing.opportunity.deadlineValue`/`deadlineNote`, `radar.landing.alerts.items[0].note`, and `foundersPage.screening.buyer` — *"sessão 30/09 às 08:30"*, **on the page that takes the money** | D11 unfroze the clock on the `ExampleRadar` panel **only**. These three are hardcoded, and `alerts.items[0]` carries no as-of date at all | **D11b** | **30/09** |
 | *"Você usa o Radar antes da abertura pública"* and its variants | `founders.confirmation.nextOpening`; `timeline.steps[3].body` (*"Acesso antecipado"*, added 2026-09-25); `whatsapp/founders-welcome.md`, **delivered to a handset**; `email/founders-welcome.md`, approved **the day after D7 was closed** | the Radar is public now. D7 changed one benefit string and closed on a guard that requires the literal word *"radar"* and walks only `messages.*` | **D7** | with the publicity |
 
-## Due when the Essencial plan goes on sale
+## Also due 08/10 — Essencial goes on sale that day
 
-Sci, 2026-09-25: Essencial is weeks away, so these do not gate the founders
-publicity — but they are advertised on the public landing **today**.
+Sci, 2026-09-25, **superseding the note that stood here earlier the same day**:
+the opening and the payment both start on 08/10. A founder receives the
+subscription link, subscribes to Essencial at the promotional price and pays
+for it, and the features that plan advertises are what they are paying for.
+The promotional price applies only while seats remain; once all 48 are taken, a
+new subscriber pays the standard Essencial price.
+
+These four were deferred that morning on the premise that Essencial was weeks
+away and therefore did not gate the publicity. **That premise is gone.** On
+08/10 Essencial is the thing being sold, and its card on `/` is the description
+of what the money buys — which is the strictest reading CDC art. 30 has, not
+the loosest.
 
 | Claim, verbatim | Renders in | What would make it true | Card | Due |
 |---|---|---|---|---|
-| *"Avisos diários no Telegram, com 10 palavras-chave e as atividades do seu CNPJ"* | `plans.essential.feature2`, the Essencial card on `/` | a daily digest job. `0006_alert_limits` set `essencial` to `alert · week · 1`; the scheduler holds one `weekly_digest`. **This is D6 alive again in different words** — the guard keys on *"todo dia"* and *"diários"* walks past it | **D6** | Essencial on sale |
-| *"Faixa em que os vencedores fecharam e preço-alvo de compra"* | `plans.essential.feature3` on `/`; `timeline.steps[3].body` promises the same for 08/10 | **not a data-depth question.** `price-view.tsx:217-227` masks band, market price and ceiling **unconditionally** — no plan check, no branch. `TenderDetail` has no field for a band, nothing reads `awards`, and `0002_plan_limits` grants `market_price` to **`pro` alone**, so Essencial resolves to zero by `readLimit`'s rule | **B8** · 08/10 half is **E9** | Essencial on sale |
-| *"10 análises completas por mês, com trechos citados do edital"* | `plans.essential.feature4` on `/` | `deep_analysis` has quota rows and a name in a constants map. **Nothing else reads it** — no route, no handler, no job | **E10** | Essencial on sale |
-| *"avisamos por e-mail 30 dias antes"* of the price change | six copy sites, and the **terms** | job `promo_price_change` — not a registered kind, no scheduler entry, no mail sender. Its template's front matter: *"The value may **NEVER** change before this email is confirmed as sent"* — a gate on revenue recorded only in a template | **E11** | gates the first price change |
+| *"Avisos diários no Telegram, com 10 palavras-chave e as atividades do seu CNPJ"* | `plans.essential.feature2`, the Essencial card on `/` | a daily digest job. `0006_alert_limits` set `essencial` to `alert · week · 1`; the scheduler holds one `weekly_digest`. **This is D6 alive again in different words** — the guard keys on *"todo dia"* and *"diários"* walks past it | **D6** | **08/10** |
+| *"Faixa em que os vencedores fecharam e preço-alvo de compra"* | `plans.essential.feature3` on `/`; `timeline.steps[3].body` promises the same for 08/10 | **not a data-depth question.** `price-view.tsx:217-227` masks band, market price and ceiling **unconditionally** — no plan check, no branch. `TenderDetail` has no field for a band, nothing reads `awards`, and `0002_plan_limits` grants `market_price` to **`pro` alone**, so Essencial resolves to zero by `readLimit`'s rule | **B8** · 08/10 half is **E9** | **08/10** |
+| *"10 análises completas por mês, com trechos citados do edital"* | `plans.essential.feature4` on `/` | `deep_analysis` has quota rows and a name in a constants map. **Nothing else reads it** — no route, no handler, no job | **E10** | **08/10** |
+| *"avisamos por e-mail 30 dias antes"* of the price change | six copy sites, and the **terms** | job `promo_price_change` — not a registered kind, no scheduler entry, no mail sender. Its template's front matter: *"The value may **NEVER** change before this email is confirmed as sent"* — a gate on revenue recorded only in a template | **E11** | **09/03/2027**, derived — a first charge on 08/10 puts the seventh at 08/04/2027, so the 30-day notice falls a month before it. `price-change-30-days.md`'s own `TODO(Sci)` flags that the Asaas cycle decides whether that charge lands on the change date or after, so confirm before trusting the day |
 
 ### The query that measures B8's data half
 
