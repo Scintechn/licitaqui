@@ -374,9 +374,16 @@ def test_the_footer_renders_now_that_sci_has_approved_it() -> None:
     assert "TODO" not in rendered
 
 
-def test_founders_opening_email_carries_its_own_independent_todo() -> None:
-    """A second, unrelated blocker on this one template (its price question),
-    on top of the shared footer. Both must be gone before it can render."""
+def test_the_founders_opening_email_renders_now_that_the_price_is_decided() -> None:
+    """This template's own blocker — the price question — was answered by Sci on
+    2026-09-25, so the tripwire that stood here fired and is inverted.
+
+    The question it held open was whether 08/10 is free or paid. It is paid:
+    the founder receives the subscription link, joins Essencial at the
+    promotional price and pays. That decision is what removed the TODO, so
+    this test now guards the thing the decision bought — an opening e-mail
+    that can actually render on the night.
+    """
     template = templates.load("email", "founders-opening")
-    assert not template.ready_to_send
-    assert "TODO(Sci):" in template.body
+    assert template.ready_to_send, "a TODO(Sci): came back and blocks the 08/10 opening e-mail"
+    assert "TODO(Sci):" not in template.body

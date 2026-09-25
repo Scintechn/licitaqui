@@ -15,7 +15,7 @@ O que você tem por ser fundador:
 • R$ 26 por mês nos 6 primeiros meses, depois R$ 57 por mês
 • sem fidelidade: cancela quando quiser
 
-Agora você não precisa fazer nada. No dia {{data_abertura}} eu mando aqui o link de acesso.
+Agora você não precisa fazer nada. No dia {{data_abertura}} eu mando aqui o link de acesso e você decide se quer entrar.
 
 A LicitaQui procura, todos os dias, os editais abertos que combinam com o que a sua empresa já faz, e lê o edital para você em português claro: o que pedem, até quando dá para enviar a proposta e o que pode te desclassificar.
 

@@ -26,7 +26,7 @@ A triagem é feita por inteligência artificial e serve para você decidir rápi
 
 SOBRE O PREÇO
 
-Enquanto a LicitaQui é gratuita para você, nada muda. Quando abrirmos as assinaturas, você entra no preço de fundador: R$ 26 por mês nos 6 primeiros meses e R$ 57 por mês a partir do sétimo, sempre com aviso de 30 dias antes da mudança e sem fidelidade.
+O LicitaQui gratuito para busca, nada muda. Quando abrirmos as assinaturas, você terá acesso as funcionalidades premium, com o preço de fundador: R$ 26 por mês nos 6 primeiros meses e R$ 57 por mês a partir do sétimo, sempre com aviso de 30 dias antes da mudança e sem fidelidade.
 
 O QUE EU PEÇO EM TROCA
 
@@ -35,5 +35,3 @@ Me conte o que funcionou e o que atrapalhou. Pode responder este e-mail ou escre
 Boas licitações.
 
 Equipe LicitaQui
-
-TODO(Sci): confirmar se na abertura (08/10) as assinaturas já estão fechadas. O bloco "Sobre o preço" está escrito assumindo que sim — o plano coloca o link de assinatura em 29/10 (tarefa S4).
