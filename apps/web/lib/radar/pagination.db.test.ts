@@ -131,8 +131,8 @@ suite('the Radar list, page by page (database)', () => {
     await insertPage()
   }, 180_000)
 
-  beforeEach(() => {
-    resetRateLimits()
+  beforeEach(async () => {
+    await resetRateLimits()
   })
 
   afterAll(async () => {

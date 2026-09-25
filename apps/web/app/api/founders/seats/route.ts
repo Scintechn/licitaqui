@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic'
 const RATE_LIMIT = { limit: 120, windowMs: 60_000 }
 
 export async function GET(request: Request): Promise<NextResponse<SeatsResponse | null>> {
-  const decision = rateLimitRequest('founders-seats', request.headers, RATE_LIMIT)
+  const decision = await rateLimitRequest('founders-seats', request.headers, RATE_LIMIT)
   if (!decision.ok) {
     return NextResponse.json(null, {
       status: 429,

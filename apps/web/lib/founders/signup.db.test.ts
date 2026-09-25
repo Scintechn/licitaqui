@@ -114,7 +114,7 @@ suite('founders signup (database)', () => {
   beforeAll(configurePool)
 
   beforeEach(async () => {
-    resetRateLimits()
+    await resetRateLimits()
     await cleanup()
   })
 
@@ -242,6 +242,70 @@ suite('founders signup (database)', () => {
     expect(events.rows.map((row) => row.name)).toEqual([SIGNUP_EVENT, DUPLICATE_EVENT])
   })
 
+  it('blocks a second signup that reuses a WhatsApp number under a new e-mail, in any spelling', async () => {
+    // The abuse case the audit found: `founders_list.whatsapp` has no unique
+    // constraint, so nothing stopped a stranger's number being signed up
+    // again and again under throwaway e-mails — each accepted signup queues a
+    // real WhatsApp send to that number. This asserts the application-level
+    // guard added in `lib/founders/signup.ts`; a migration adding a real
+    // constraint is its own, separate PR.
+    await expectEmptyList()
+
+    const first = await POST(request(body(4)))
+    expect(first.status).toBe(201)
+    const firstJson = (await first.json()) as { status: string; seat: number }
+    expect(firstJson).toMatchObject({ status: 'seated', seat: 1 })
+
+    // Same digits as body(4)'s WhatsApp number, spelled differently, under a
+    // brand-new e-mail, from a different address (not what the per-IP rate
+    // limiter is being tested here).
+    const attempt = await POST(
+      request(
+        body(4, {
+          email: `f1-4-throwaway@${DOMAIN}`,
+          whatsapp: '+55 (11) 9 0000-0004',
+        }),
+        '198.51.100.4',
+      ),
+    )
+    expect(attempt.status).toBe(200)
+    expect(await attempt.json()).toEqual({
+      status: 'already_registered',
+      seat: firstJson.seat,
+      position: null,
+    })
+
+    // No second row, no second seat taken, no second job queued.
+    const rows = await pool().query<{ id: string; seat: number }>(
+      'select id, seat from founders_list where whatsapp = $1',
+      ['+5511900000004'],
+    )
+    expect(rows.rows).toHaveLength(1)
+    expect(await seatsInDatabase()).toEqual([1])
+
+    const jobs = await pool().query('select id from jobs where key = $1', [
+      `founders:${rows.rows[0].id}`,
+    ])
+    expect(jobs.rows).toHaveLength(1)
+
+    // Scoped by founders_list_id, per the comment on the repeat-e-mail test
+    // above: `events` is shared with other suites running concurrently.
+    const events = await pool().query<{ name: string; props: Record<string, unknown> }>(
+      `select e.name, e.props from events e
+        where (e.props->>'founders_list_id')::bigint = $1
+        order by e.id`,
+      [rows.rows[0].id],
+    )
+    expect(events.rows.map((row) => row.name)).toEqual([SIGNUP_EVENT, DUPLICATE_EVENT])
+    expect(events.rows[1].props.matched_by).toBe('whatsapp')
+
+    // No throwaway e-mail was seated either.
+    const throwaway = await pool().query('select id from founders_list where email = $1', [
+      `f1-4-throwaway@${DOMAIN}`,
+    ])
+    expect(throwaway.rows).toHaveLength(0)
+  })
+
   it('puts founder 49 on the waitlist, in arrival order', async () => {
     await expectEmptyList()
     // Fill all 48 seats in one statement: this test is about seat 49, not about
@@ -345,7 +409,7 @@ suite('60 parallel signups (F1 acceptance criterion)', () => {
       // Two rounds in one run: a race that only shows up on the second attempt
       // is still a race, and a single green run proves very little.
       for (const round of [1, 2]) {
-        resetRateLimits()
+        await resetRateLimits()
         await cleanup()
         await expectEmptyList()
 

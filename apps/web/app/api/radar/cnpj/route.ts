@@ -49,7 +49,7 @@ function fail(body: CnpjResponse, status: number, headers?: HeadersInit) {
 }
 
 export async function POST(request: Request): Promise<NextResponse<CnpjResponse>> {
-  const decision = rateLimitRequest('radar-cnpj', request.headers, RATE_LIMIT)
+  const decision = await rateLimitRequest('radar-cnpj', request.headers, RATE_LIMIT)
   if (!decision.ok) {
     return fail({ state: 'error', error: 'rate_limited' }, 429, {
       'retry-after': String(decision.retryAfter),
