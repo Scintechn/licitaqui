@@ -84,7 +84,19 @@ test('the Radar keeps its own stricter Referrer-Policy alongside the new global 
 test('nothing on the landing page trips the new Content-Security-Policy', async ({ page }) => {
   const cspViolations: string[] = []
   page.on('console', (message) => {
-    if (message.type() === 'error' && /content security policy|refused to/i.test(message.text())) {
+    // Only "Content-Security-Policy" — every CSP violation Chromium reports
+    // names the directive it violated, in those words. A bare "refused to"
+    // is not enough: `next start` outside Vercel's own edge network 404s
+    // `/_vercel/insights/script.js` and `/_vercel/speed-insights/script.js`
+    // (those paths are served by Vercel's platform layer in production,
+    // never by this app), and the browser then refuses to *execute* that
+    // 404 page under `X-Content-Type-Options: nosniff` — a real MIME-type
+    // refusal, phrased with the same "Refused to execute" prefix, and
+    // nothing to do with the CSP this test exists to check. The broader
+    // regex caught that message too and reddened this test on every local
+    // and CI run, for a reason this test was never meant to catch — found
+    // by running it against a real build rather than trusting it unread.
+    if (message.type() === 'error' && /content security policy/i.test(message.text())) {
       cspViolations.push(message.text())
     }
   })
