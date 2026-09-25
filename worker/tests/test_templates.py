@@ -345,17 +345,33 @@ def test_every_founders_email_declares_the_footer_partial(template_id: str) -> N
     assert "partial-footer" in template.partials
 
 
-def test_the_footer_still_carries_the_todo_that_blocks_every_founders_email() -> None:
-    """The tripwire for E6's one open blocker (docs/CLAIMS.md).
+def test_the_footer_renders_now_that_sci_has_approved_it() -> None:
+    """The tripwire that stood here fired on 2026-09-25, when Sci answered both
+    of the footer's `TODO(Sci):` items (PR #117) — exactly as it was written to.
 
-    When this fails, Sci has written the footer — update the PR notes rather
-    than the assertion's intent, the same instruction `test_no_whatsapp_
-    template_is_approved_yet` carries above.
+    Its instruction was to keep the intent and update the notes, so the intent
+    is kept and pointed the other way. Every founders e-mail declares this
+    partial and none of them carries its words in their own body, so the day it
+    regains a TODO is the day all three stop rendering at once, from a file
+    nobody was looking at.
+
+    Both properties are asserted, because they are **different claims** and
+    only one of them blocks a send: `ready_to_send` is `TODO_MARKER not in
+    body` and says nothing about `status`, while `approved` is the copy
+    sign-off and gates nothing by itself. That asymmetry is not academic — it
+    is exactly why `whatsapp/founders-opening.md` can sit at `status: draft`
+    and still send the moment the switch flips (E5).
     """
     footer = templates.load("email", "partial-footer")
-    assert not footer.ready_to_send
-    with pytest.raises(TemplateNotApproved):
-        footer.render({})
+    assert footer.ready_to_send, "a TODO(Sci): came back and blocks every founders e-mail"
+    assert footer.approved, "the copy sign-off was reverted, which `ready_to_send` cannot see"
+    assert "TODO(Sci):" not in footer.body
+
+    # Render for real rather than trusting the flag: `ready_to_send` and a body
+    # that actually resolves are different claims, and it is the second one the
+    # recipient receives.
+    rendered = footer.render({name: f"<{name}>" for name in footer.placeholders})
+    assert "TODO" not in rendered
 
 
 def test_founders_opening_email_carries_its_own_independent_todo() -> None:
