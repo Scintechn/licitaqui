@@ -41,7 +41,7 @@ export const dynamic = 'force-dynamic'
 const RATE_LIMIT = { limit: 60, windowMs: 60_000 }
 
 export async function GET(request: Request): Promise<NextResponse<AccountSummary | { error: string }>> {
-  const decision = rateLimitRequest('conta-resumo', request.headers, RATE_LIMIT)
+  const decision = await rateLimitRequest('conta-resumo', request.headers, RATE_LIMIT)
   if (!decision.ok) {
     return NextResponse.json(
       { error: 'rate_limited' },

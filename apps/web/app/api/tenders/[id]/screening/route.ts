@@ -73,7 +73,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<ScreeningResponse>> {
-  const decision = rateLimitRequest('screening', request.headers, RATE_LIMIT)
+  const decision = await rateLimitRequest('screening', request.headers, RATE_LIMIT)
   if (!decision.ok) {
     return fail({ state: 'error', error: 'rate_limited' }, 429, {
       'retry-after': String(decision.retryAfter),
@@ -190,7 +190,7 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<ScreeningReadResponse>> {
-  const decision = rateLimitRequest('screening-read', request.headers, READ_RATE_LIMIT)
+  const decision = await rateLimitRequest('screening-read', request.headers, READ_RATE_LIMIT)
   if (!decision.ok) {
     return fail({ state: 'error', error: 'rate_limited' }, 429, {
       'retry-after': String(decision.retryAfter),

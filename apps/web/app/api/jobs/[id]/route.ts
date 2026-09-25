@@ -51,7 +51,7 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<JobResponse>> {
-  const decision = rateLimitRequest('jobs', request.headers, RATE_LIMIT)
+  const decision = await rateLimitRequest('jobs', request.headers, RATE_LIMIT)
   if (!decision.ok) {
     return fail({ state: 'error', error: 'rate_limited' }, 429, {
       'retry-after': String(decision.retryAfter),

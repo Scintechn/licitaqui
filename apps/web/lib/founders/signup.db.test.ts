@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { POST } from '@/app/api/founders/route'
 import { GET } from '@/app/api/founders/seats/route'
@@ -29,6 +30,29 @@ const suite = url ? describe : describe.skip
 /** `.invalid` can never be a real domain (RFC 2606), so no real person is mailed. */
 const DOMAIN = 'f1.test.licitaqui.invalid'
 
+/**
+ * **Per-run client addresses.**
+ *
+ * The durable limiter counts in the shared `rate_limits` table, so a *fixed*
+ * address makes two concurrent runs of this suite share one counter: the
+ * sixth request 429s in whichever run arrives second, and the burst test
+ * fails for a reason that has nothing to do with the code under test. It
+ * failed exactly that way here once and passed on the retry — which is the
+ * worst shape for a failure to have, because a retry looks like a fix.
+ *
+ * `resetRateLimits()` cannot cover this: it deliberately deletes only the
+ * keys *this process* wrote, since a broader sweep would clear other suites'
+ * counts in the same window.
+ *
+ * So the bucket has to differ per run. `clientAddress()` returns the header
+ * verbatim, so any unique string does; these stay readable as addresses by
+ * using the IPv6 documentation range. Same reasoning as `RUN_ID` in
+ * `worker/tests/conftest.py`, which `CLAUDE.md` requires of anything writing
+ * to a shared database — a task-scoped constant looks isolated and is not.
+ */
+const RUN = randomUUID().replaceAll('-', '').slice(0, 8)
+const ip = (n: number) => `2001:db8:${RUN.slice(0, 4)}:${RUN.slice(4, 8)}::${n.toString(16)}`
+
 /** A real, checksum-valid CNPJ (the Banco Central's). The column is not unique. */
 const CNPJ = '00.394.429/0001-00'
 
@@ -46,7 +70,7 @@ function body(index: number, overrides: Record<string, unknown> = {}) {
 }
 
 /** A request that looks like it came from its own visitor, per the rate limiter. */
-function request(payload: unknown, address = '198.51.100.1') {
+function request(payload: unknown, address = ip(1)) {
   return new Request('https://licitaqui.test/api/founders', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-forwarded-for': address },
@@ -114,7 +138,7 @@ suite('founders signup (database)', () => {
   beforeAll(configurePool)
 
   beforeEach(async () => {
-    resetRateLimits()
+    await resetRateLimits()
     await cleanup()
   })
 
@@ -215,7 +239,7 @@ suite('founders signup (database)', () => {
     await expectEmptyList()
     await POST(request(body(2)))
 
-    const again = await POST(request(body(2, { name: 'Outro Nome' }), '198.51.100.2'))
+    const again = await POST(request(body(2, { name: 'Outro Nome' }), ip(2)))
     expect(again.status).toBe(200)
     expect(await again.json()).toEqual({ status: 'already_registered', seat: 1, position: null })
 
@@ -248,6 +272,80 @@ suite('founders signup (database)', () => {
     expect(events.rows.map((row) => row.name)).toEqual([SIGNUP_EVENT, DUPLICATE_EVENT])
   })
 
+  it('blocks a second signup that reuses a WhatsApp number under a new e-mail, in any spelling', async () => {
+    // The abuse case the audit found: `founders_list.whatsapp` has no unique
+    // constraint, so nothing stopped a stranger's number being signed up
+    // again and again under throwaway e-mails — each accepted signup queues a
+    // real WhatsApp send to that number. This asserts the application-level
+    // guard added in `lib/founders/signup.ts`; a migration adding a real
+    // constraint is its own, separate PR.
+    await expectEmptyList()
+
+    const first = await POST(request(body(4)))
+    expect(first.status).toBe(201)
+    const firstJson = (await first.json()) as { status: string; seat: number }
+    expect(firstJson).toMatchObject({ status: 'seated', seat: 1 })
+
+    // Same digits as body(4)'s WhatsApp number, spelled differently, under a
+    // brand-new e-mail, from a different address (not what the per-IP rate
+    // limiter is being tested here).
+    const attempt = await POST(
+      request(
+        body(4, {
+          email: `f1-4-throwaway@${DOMAIN}`,
+          whatsapp: '+55 (11) 9 0000-0004',
+        }),
+        ip(4),
+      ),
+    )
+    expect(attempt.status).toBe(200)
+    expect(await attempt.json()).toEqual({
+      status: 'already_registered',
+      seat: firstJson.seat,
+      position: null,
+    })
+
+    // No second row, no second seat taken, no second job queued.
+    const rows = await pool().query<{ id: string; seat: number }>(
+      'select id, seat from founders_list where whatsapp = $1',
+      ['+5511900000004'],
+    )
+    expect(rows.rows).toHaveLength(1)
+    expect(await seatsInDatabase()).toEqual([1])
+
+    // Two jobs, not one. The single successful signup enqueues `send_whatsapp`
+    // **and** `send_email` in the same transaction under the same
+    // `founders:<id>` key — E6 added the second after this test was written,
+    // and the bare `toHaveLength(1)` that stood here failed on the merge.
+    //
+    // Asserted by kind rather than by count, because the claim this test makes
+    // is that the *duplicate* attempt queued nothing: a count says two things
+    // happened, a kind list says which two, and would still fail if a third
+    // sender were wired in without anyone revisiting this file.
+    const jobs = await pool().query<{ kind: string }>(
+      'select kind from jobs where key = $1 order by kind',
+      [`founders:${rows.rows[0].id}`],
+    )
+    expect(jobs.rows.map((row) => row.kind)).toEqual([EMAIL_JOB_KIND, WELCOME_JOB_KIND])
+
+    // Scoped by founders_list_id, per the comment on the repeat-e-mail test
+    // above: `events` is shared with other suites running concurrently.
+    const events = await pool().query<{ name: string; props: Record<string, unknown> }>(
+      `select e.name, e.props from events e
+        where (e.props->>'founders_list_id')::bigint = $1
+        order by e.id`,
+      [rows.rows[0].id],
+    )
+    expect(events.rows.map((row) => row.name)).toEqual([SIGNUP_EVENT, DUPLICATE_EVENT])
+    expect(events.rows[1].props.matched_by).toBe('whatsapp')
+
+    // No throwaway e-mail was seated either.
+    const throwaway = await pool().query('select id from founders_list where email = $1', [
+      `f1-4-throwaway@${DOMAIN}`,
+    ])
+    expect(throwaway.rows).toHaveLength(0)
+  })
+
   it('puts founder 49 on the waitlist, in arrival order', async () => {
     await expectEmptyList()
     // Fill all 48 seats in one statement: this test is about seat 49, not about
@@ -259,11 +357,11 @@ suite('founders signup (database)', () => {
       [FOUNDER_SEATS],
     )
 
-    const first = await POST(request(body(49), '198.51.100.49'))
+    const first = await POST(request(body(49), ip(49)))
     expect(first.status).toBe(201)
     expect(await first.json()).toEqual({ status: 'waitlisted', position: 1 })
 
-    const second = await POST(request(body(50), '198.51.100.50'))
+    const second = await POST(request(body(50), ip(50)))
     expect(await second.json()).toEqual({ status: 'waitlisted', position: 2 })
 
     const waitlistJobs = await pool().query<{ kind: string; payload: Record<string, unknown> }>(
@@ -282,7 +380,7 @@ suite('founders signup (database)', () => {
     }
 
     // A repeat submit from someone on the waitlist keeps their place.
-    const repeat = await POST(request(body(49), '198.51.100.51'))
+    const repeat = await POST(request(body(49), ip(51)))
     expect(await repeat.json()).toEqual({
       status: 'already_registered',
       seat: null,
@@ -296,7 +394,7 @@ suite('founders signup (database)', () => {
 
     const response = await GET(
       new Request('https://licitaqui.test/api/founders/seats', {
-        headers: { 'x-forwarded-for': '198.51.100.3' },
+        headers: { 'x-forwarded-for': ip(3) },
       }),
     )
     expect(response.status).toBe(200)
@@ -326,7 +424,7 @@ suite('founders signup (database)', () => {
   })
 
   it('rate limits a burst from one address', async () => {
-    const address = '198.51.100.200'
+    const address = ip(200)
     const statuses: number[] = []
     for (let i = 0; i < 8; i += 1) {
       statuses.push((await POST(request(body(100 + i), address))).status)
@@ -337,7 +435,7 @@ suite('founders signup (database)', () => {
     const last = await POST(request(body(200), address))
     expect(last.headers.get('retry-after')).toBeTruthy()
     // Somebody else is unaffected.
-    expect((await POST(request(body(201), '198.51.100.201'))).status).toBe(201)
+    expect((await POST(request(body(201), ip(201)))).status).toBe(201)
   }, 60_000)
 })
 
@@ -355,7 +453,7 @@ suite('60 parallel signups (F1 acceptance criterion)', () => {
       // Two rounds in one run: a race that only shows up on the second attempt
       // is still a race, and a single green run proves very little.
       for (const round of [1, 2]) {
-        resetRateLimits()
+        await resetRateLimits()
         await cleanup()
         await expectEmptyList()
 

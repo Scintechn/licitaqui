@@ -160,8 +160,8 @@ suite('Radar read APIs (database)', () => {
     for (const fixture of fixtures) await insertFixture(db(), fixture)
   }, 180_000)
 
-  beforeEach(() => {
-    resetRateLimits()
+  beforeEach(async () => {
+    await resetRateLimits()
   })
 
   afterAll(async () => {

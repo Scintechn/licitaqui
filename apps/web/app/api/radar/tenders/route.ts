@@ -57,7 +57,7 @@ function fail(body: TenderListResponse, status: number, headers?: HeadersInit) {
 }
 
 export async function GET(request: Request): Promise<NextResponse<TenderListResponse>> {
-  const decision = rateLimitRequest('radar-tenders', request.headers, RATE_LIMIT)
+  const decision = await rateLimitRequest('radar-tenders', request.headers, RATE_LIMIT)
   if (!decision.ok) {
     return fail({ state: 'error', error: 'rate_limited' }, 429, {
       'retry-after': String(decision.retryAfter),

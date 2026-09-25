@@ -176,7 +176,7 @@ suite('E3 · the linking journey (database)', () => {
   })
 
   beforeEach(async () => {
-    resetRateLimits()
+    await resetRateLimits()
     await cleanup()
   })
 
