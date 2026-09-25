@@ -112,7 +112,7 @@
       "seat": "Você é o fundador número {numero}.",
       "nextTitle": "O que acontece agora",
       "nextWhatsapp": "Mandamos uma mensagem no seu WhatsApp confirmando a vaga.",
-      "nextOpening": "No dia da abertura você recebe o link de acesso, antes da abertura ao público.",
+      "nextOpening": "No dia da abertura você recebe o link de acesso.",
       "nextNothing": "Da sua parte, nada. Pode fechar esta página tranquilo.",
       "share": "Conhece outro dono de empresa pequena que disputa licitação? Ainda dá tempo de ele pegar uma vaga."
     },
@@ -379,12 +379,12 @@
         {
           "when": "Semanas seguintes",
           "title": "Resumo toda segunda",
-          "body": "Até 3 editais que combinam com você, já triados, no Telegram."
+          "body": "Com a conta grátis, você recebe 1 aviso por semana no Telegram, com 1 palavra-chave e 1 estado."
         },
         {
           "when": "08/10 às 19h",
           "title": "Abertura do Essencial",
-          "body": "Saiba quanto pagar para manter sua margem. Acesso antecipado. Experiência exclusiva."
+          "body": "Saiba quanto pagar para manter sua margem. Experiência exclusiva."
         }
       ]
     },
@@ -751,7 +751,7 @@
         "items": [
           {
             "text": "Baterias e pilhas · Campinas/SP",
-            "note": "R$ 48 mil · exclusivo ME/EPP · encerra 30/09"
+            "note": "R$ 48 mil · exclusivo ME/EPP"
           },
           {
             "text": "Materiais hospitalares · Campinas/SP",

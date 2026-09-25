@@ -11,7 +11,7 @@ Oi, {{nome}}! Aqui é a LicitaQui.
 Sua vaga de fundador está garantida: número {{numero_vaga}}.
 
 O que você tem por ser fundador:
-• entra no dia {{data_abertura}}, antes da abertura ao público
+• entra no dia {{data_abertura}}
 • R$ 26 por mês nos 6 primeiros meses, depois R$ 57 por mês
 • sem fidelidade: cancela quando quiser
 

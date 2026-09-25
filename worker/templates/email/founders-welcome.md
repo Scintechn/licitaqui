@@ -21,7 +21,7 @@ A triagem é feita por inteligência artificial e serve para você decidir rápi
 
 O QUE VOCÊ TEM POR SER FUNDADOR
 
-- Entrada no dia {{data_abertura}}, antes da abertura ao público.
+- Entrada no dia {{data_abertura}}.
 - Preço Promocional: R$ 26 por mês nos 6 primeiros meses. A partir do sétimo mês, R$ 57 por mês, que é o preço do plano Essencial. Avisamos com 30 dias de antecedência antes dessa mudança.
 - Sem fidelidade. Você cancela quando quiser, em um clique.
 
