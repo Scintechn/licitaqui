@@ -3,7 +3,7 @@ id: founders-opening
 channel: email
 subject: "A LicitaQui abriu, {{nome}} — seu acesso de fundador está aqui"
 preheader: "Coloque o CNPJ da sua empresa e veja os editais abertos que combinam com ela."
-status: draft
+status: approved
 placeholders: [nome, numero_vaga, link_acesso, email_contato]
 partials: [partial-footer]
 notes: Opening email, 08/10 at 19:00. Pairs with whatsapp/founders-opening.
@@ -19,10 +19,10 @@ POR ONDE COMEÇAR
 
 1. Entre com o Google e coloque o CNPJ da sua empresa.
 2. Veja a lista de editais abertos separada em três grupos: os que combinam com as atividades da sua empresa, os que vale a pena verificar e os que apareceram por palavra-chave.
-3. Abra um edital e peça a leitura. Em alguns instantes você vê o que estão comprando, o prazo para enviar a proposta, se há item exclusivo para MEI ou ME/EPP e os pontos que costumam desclassificar.
+3. Abra um edital e peça a triagem. Em alguns instantes você vê o que estão comprando, o prazo para enviar a proposta, se há item exclusivo para MEI ou ME/EPP e os pontos que costumam desclassificar.
 4. Se quiser, ligue seu Telegram e passe a receber, uma vez por semana, os editais novos da sua área.
 
-A leitura é feita por inteligência artificial e serve para você decidir rápido se vale a pena disputar. Ela cita as páginas do edital em que se baseou, mas a palavra final é a do edital: confira antes de enviar qualquer proposta.
+A triagem é feita por inteligência artificial e serve para você decidir rápido se vale a pena disputar. Ela cita as páginas do edital em que se baseou, mas a palavra final é a do edital: confira antes de enviar qualquer proposta.
 
 SOBRE O PREÇO
 
