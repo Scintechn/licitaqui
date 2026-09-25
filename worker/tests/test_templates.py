@@ -96,17 +96,31 @@ def test_the_optout_confirmation_renders_now_that_its_question_is_answered() -> 
     assert "{{" not in rendered
 
 
-def test_no_whatsapp_template_is_approved_yet() -> None:
-    """A tripwire, not a requirement: E0's copy is draft until Sci signs it off.
+#: WhatsApp copy Sci has signed off, by template id. `founders-opening` was
+#: approved on 2026-09-25 (`63fc27d`), after he rewrote it for the paid 08/10.
+APPROVED_WHATSAPP_COPY = {"founders-opening"}
 
-    When this fails, the copy was approved — update the PR notes rather than
-    the assertion's intent.
+
+def test_only_the_whatsapp_copy_sci_signed_off_is_approved() -> None:
+    """The tripwire that stood here — "no WhatsApp template is approved yet" —
+    fired on 2026-09-25 when Sci approved `founders-opening`. Its instruction
+    was to update the notes rather than the intent, so the intent is kept and
+    made specific: the set of approved ids, not merely its emptiness.
+
+    **This list is the only record of what Sci actually reviewed.** `status`
+    gates nothing in this codebase — `ready_to_send` is `TODO_MARKER not in
+    body` and never reads it — so a template flipped to `approved` by someone
+    who was not asked to sign it off changes no behaviour and would otherwise
+    leave no trace. Both directions fail here: approving another template, and
+    reverting this one.
     """
     statuses = {
         path.stem: templates.load("whatsapp", path.stem).status
         for path in sorted((REAL_TEMPLATES / "whatsapp").glob("*.md"))
     }
-    assert set(statuses.values()) == {"draft"}, statuses
+    approved = {name for name, status in statuses.items() if status == "approved"}
+
+    assert approved == APPROVED_WHATSAPP_COPY, statuses
 
 
 # -- the format ------------------------------------------------------------
