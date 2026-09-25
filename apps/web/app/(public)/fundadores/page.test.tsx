@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
 import { EXAMPLE_AS_OF } from '@/lib/radar/landing-example'
-import FoundersOfferPage, { revalidate } from './page'
+import FoundersOfferPage, { ANCHORS, revalidate } from './page'
 import radarPreviewMobile from './radar-preview-mobile.png'
 import radarFull from './radar-full.png'
 import radarPreview from './radar-preview.png'
@@ -602,6 +602,24 @@ describe('the hero, and the form that is now a dialog', () => {
     expect(open, 'the link is not announced').toContain('aria-hidden="true"')
   })
 
+  it('sends the logo to the Landing, which is what its name says it does', () => {
+    // It was `href="#topo"` with `aria-label={nav.home}` — "LicitaQui, início"
+    // — so the control announced itself as home and scrolled 300px instead.
+    // Sci, 2026-09-25. The mismatch is the defect; the destination is the fix.
+    const header = out.slice(out.indexOf('<header'), out.indexOf('</header>'))
+    const at = header.indexOf(messages.foundersPage.nav.home)
+    expect(at, 'the header carries the home control').toBeGreaterThan(-1)
+
+    const tag = header.slice(header.lastIndexOf('<a ', at), header.indexOf('>', at) + 1)
+    expect(tag).toContain('href="/"')
+    expect(tag).not.toContain('href="#topo"')
+
+    // …and `#topo` is not orphaned by the change: the skip link still targets
+    // it, which is what it was written for.
+    expect(out).toContain('href="#topo"')
+    expect(out).toContain('id="topo"')
+  })
+
   it('renders exactly one picture, one source and one img', () => {
     // The **download** claim is a network fact and is asserted where it can be
     // observed — the journey that counts requests at eight viewports. This one
@@ -1153,10 +1171,16 @@ describe('the header anchors', () => {
 
   it('links nowhere that does not exist', () => {
     const targets = [...header.matchAll(/href="#([^"]+)"/g)].map((m) => m[1])
-    // The logo and the three section anchors. The call to action used to be a
-    // fifth — `href="#vaga"` — and is a dialog trigger now, which is why the
-    // count is four and not five.
-    expect(targets.length).toBeGreaterThanOrEqual(4)
+    // **Three, and exactly which three.** The section anchors, and nothing
+    // else: the call to action was a fourth (`href="#vaga"`) until the form
+    // became a dialog, and the logo was a fifth (`href="#topo"`) until
+    // 2026-09-25, when it started going to the Landing — which is what its
+    // `aria-label` had claimed all along.
+    //
+    // Asserted as a set rather than a count. A count passes when one anchor is
+    // swapped for another, which is the change most likely to happen here by
+    // accident.
+    expect(new Set(targets)).toEqual(new Set(Object.values(ANCHORS)))
     for (const id of targets) expect(out).toContain(`id="${id}"`)
   })
 
