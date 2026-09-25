@@ -197,6 +197,7 @@ function SectionHead({
   children,
   aside,
   wideAside = false,
+  asideAlign = 'start',
   className,
 }: {
   /**
@@ -250,6 +251,25 @@ function SectionHead({
    * longest line is 266px at 38px.
    */
   wideAside?: boolean
+  /**
+   * Bottom-align the aside instead of top-aligning it.
+   *
+   * `items-start` is right when the aside is *content* — `Screening`'s edital
+   * panel is taller than its heading and has to begin where the heading
+   * begins. It is wrong when the aside is a **standfirst**: a three-line
+   * paragraph pinned to the top of a four-line heading leaves a hole under it
+   * and reads as something that failed to load, which is what Sci saw in
+   * `Pain` ("the position on that. We can do better").
+   *
+   * Bottom-aligned, the paragraph's last line sits level with the heading's
+   * last line, so the two blocks share a baseline and the whitespace moves
+   * above the paragraph where it belongs — as air over a short column rather
+   * than a gap under a stranded one.
+   *
+   * Only below 900px is this moot: one column, and the paragraph follows the
+   * heading anyway.
+   */
+  asideAlign?: 'start' | 'end'
   className?: string
 }) {
   const head = (
@@ -284,7 +304,8 @@ function SectionHead({
   return (
     <div
       className={cn(
-        'grid grid-cols-1 items-start gap-x-12 gap-y-6 [&>*]:min-w-0',
+        'grid grid-cols-1 gap-x-12 gap-y-6 [&>*]:min-w-0',
+        asideAlign === 'end' ? 'min-[900px]:items-end' : 'items-start',
         wideAside
           ? 'min-[900px]:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]'
           : 'min-[900px]:grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)]',
@@ -888,6 +909,7 @@ function Pain() {
           title={pain.title}
           className="mb-10"
           aside={<p className="text-base leading-[1.6] text-ink-soft">{pain.standfirst}</p>}
+          asideAlign="end"
         />
 
         {/*

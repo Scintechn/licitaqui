@@ -372,9 +372,9 @@
           "body": "Nome, e-mail e WhatsApp. Nenhum pagamento."
         },
         {
-          "when": "08/10 às 19h",
-          "title": "Abertura para fundadores",
-          "body": "Você recebe o acesso ao Radar: CNPJ, editais compatíveis e triagem por IA."
+          "when": "Essa semana",
+          "title": "Editais compatíveis",
+          "body": "Você experimenta a busca por editais ativos e compatíveis com o seu CNPJ."
         },
         {
           "when": "Semanas seguintes",
@@ -382,9 +382,9 @@
           "body": "Até 3 editais que combinam com você, já triados, no Telegram."
         },
         {
-          "when": "Abertura do Essencial",
-          "title": "Link de assinatura",
-          "body": "R$ 26 por mês nos 6 primeiros meses, depois R$ 57. Pix ou cartão, cancela quando quiser."
+          "when": "08/10 às 19h",
+          "title": "Abertura do Essencial",
+          "body": "Saiba quanto pagar para manter sua margem. Acesso antecipado. Experiência exclusiva."
         }
       ]
     },
@@ -1067,7 +1067,7 @@
         "showing": "Mostrando {shown} de {total} itens",
         "sum": "Soma dos {count, plural, one {# item} other {# itens}} deste edital",
         "sumNote": "Estimativa a partir dos dados do edital: é a soma dos valores totais das linhas acima. Não é o valor total da compra declarado pelo órgão.",
-      "noSum": "Não há soma a mostrar: ao menos um item deste edital está sem valor publicado no PNCP.",
+        "noSum": "Não há soma a mostrar: ao menos um item deste edital está sem valor publicado no PNCP.",
         "emptyTitle": "Sem lista de itens",
         "emptyBody": "O órgão não publicou os itens deste edital no PNCP, ou eles ainda não chegaram até nós. O edital e seus anexos trazem a especificação completa."
       },

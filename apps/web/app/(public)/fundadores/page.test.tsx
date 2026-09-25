@@ -620,6 +620,39 @@ describe('the hero, and the form that is now a dialog', () => {
     expect(out).toContain('id="topo"')
   })
 
+  it('sits the problem standfirst on the heading’s baseline, not above a hole', () => {
+    // Sci, 2026-09-25: "the only thing is not good at this section is the
+    // content ... the position on that. We can do better."
+    //
+    // A three-line paragraph pinned to the top of a four-line heading leaves a
+    // gap beneath it that reads as a failed load. Bottom-aligned, the two
+    // blocks share a baseline and the air moves above the paragraph.
+    //
+    // Asserted where it applies — from 900px, the only width at which there
+    // are two columns to align — and the default is asserted too, so opting
+    // one section in cannot quietly opt every section in.
+    // The grid is the element *containing* the eyebrow, so read backwards from
+    // it to its own opening tag rather than forwards into its children —
+    // slicing forwards picks up every nested `items-start` on the page.
+    const gridOf = (label: string) => {
+      // `lastIndexOf`, not `indexOf`: the section eyebrows are reused as the
+      // header's anchor labels, so the first occurrence of `screening.label`
+      // is in the nav — before any SectionHead exists.
+      const at = out.lastIndexOf(label)
+      expect(at, `${label} renders`).toBeGreaterThan(-1)
+      const open = out.lastIndexOf('<div class="grid', at)
+      expect(open, `${label} sits in a SectionHead grid`).toBeGreaterThan(-1)
+      return out.slice(open, out.indexOf('>', open) + 1)
+    }
+
+    expect(gridOf(messages.foundersPage.pain.label)).toContain('min-[900px]:items-end')
+
+    // `Screening`'s aside is a panel taller than its heading, so it must still
+    // begin where the heading begins — opting one section in must not opt
+    // every section in.
+    expect(gridOf(messages.foundersPage.screening.label)).toContain('items-start')
+  })
+
   it('renders exactly one picture, one source and one img', () => {
     // The **download** claim is a network fact and is asserted where it can be
     // observed — the journey that counts requests at eight viewports. This one
