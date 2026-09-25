@@ -50,12 +50,25 @@ describe('the claims register', () => {
   })
 
   it('keeps every open claim dated, so "due" is answerable', () => {
-    const open = claims.slice(claims.indexOf('## Open'), claims.indexOf('## Closed'))
-    const rows = open.split('\n').filter((l) => l.startsWith('| *') || l.startsWith('| The'))
-    expect(rows.length, 'the Open table has rows').toBeGreaterThan(0)
+    // Everything above `## Closed` is open, however the sections above it are
+    // titled. Pinning a heading name is what broke this on 2026-09-25, when the
+    // single `## Open` table was split into "due before the publicity" and "due
+    // when Essencial goes on sale" — a reorganisation the requirement does not
+    // care about. What it cares about is that every open row carries a Due.
+    const open = claims.slice(0, claims.indexOf('## Closed'))
+    const rows = open
+      .split('\n')
+      .filter((l) => l.startsWith('|') && l.split('|').length >= 6 && !l.includes('---'))
+      .filter((l) => !l.includes('Claim, verbatim'))
+    expect(rows.length, 'the open tables have rows').toBeGreaterThan(0)
 
     for (const row of rows) {
-      const due = row.split('|').at(-2)?.trim() ?? ''
+      // Drop the empty strings either side of the leading and trailing pipes
+      // before taking the last cell. Reading `split('|').at(-2)` blindly reads
+      // the *penultimate* column when a row does not end in a pipe, so a row
+      // with an empty Due was passing — caught by mutation, not by review.
+      const cells = row.split('|').slice(1, -1)
+      const due = cells.at(-1)?.trim() ?? ''
       // A date, or a stated condition. What is not allowed is blank: a claim
       // with no due date is one nobody will check before a launch.
       expect(due.length, `a row has no Due value: ${row.slice(0, 60)}…`).toBeGreaterThan(0)
