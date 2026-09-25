@@ -90,7 +90,7 @@ const HEADERS: Record<string, string> = {
 type Reply = TelegramReply
 
 export async function POST(request: Request): Promise<Response> {
-  const decision = rateLimitRequest('telegram-webhook', request.headers, RATE_LIMIT)
+  const decision = await rateLimitRequest('telegram-webhook', request.headers, RATE_LIMIT)
   if (!decision.ok) {
     return NextResponse.json(
       { ok: false },

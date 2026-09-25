@@ -33,7 +33,7 @@ function fail(error: SignupError, status: number, headers?: HeadersInit) {
 }
 
 export async function POST(request: Request): Promise<NextResponse<SignupOk | SignupError>> {
-  const decision = rateLimitRequest('founders', request.headers, RATE_LIMIT)
+  const decision = await rateLimitRequest('founders', request.headers, RATE_LIMIT)
   if (!decision.ok) {
     return fail({ status: 'error', error: 'rate_limited' }, 429, {
       'retry-after': String(decision.retryAfter),

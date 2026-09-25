@@ -257,8 +257,8 @@ suite('U1 — accounts and quota enforcement (database)', () => {
     await cleanup()
     await seed()
   })
-  beforeEach(() => {
-    resetRateLimits()
+  beforeEach(async () => {
+    await resetRateLimits()
   })
   afterAll(async () => {
     await cleanup()
