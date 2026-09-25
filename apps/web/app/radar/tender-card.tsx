@@ -5,8 +5,6 @@ import { cardHeadline, deadlineLabel } from '@/lib/radar/headline'
 import { mayShowUrgency, statusChipLabel } from '@/lib/radar/tender-status'
 import { format, messages } from '@/lib/messages'
 
-export { deadlineLabel }
-
 /**
  * One tender in the Radar list — canvas 02, `Editais.dc.html`, the card that
  * repeats three times down the screen.
@@ -100,8 +98,9 @@ export function TenderCardView({
    * Radar has now had twice.
    *
    * `null` renders the same card as a plain surface instead of a link — the
-   * Landing's "Exemplo" panel, which shows three real tenders frozen at a past
-   * date (`lib/radar/landing-example.ts`). Linking those would take a visitor
+   * Landing's "Exemplo" panel, whose three tenders are real and transcribed on a
+   * past date (`lib/radar/landing-example.ts`); the clock they are drawn against
+   * is this component's own, not a frozen one. Linking those would take a visitor
    * to whatever the database holds for that id today, or to a 404. A card that
    * leads nowhere must also not be a keyboard stop, so it is not an `<a>` with
    * the href removed: it is not an anchor at all.

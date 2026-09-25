@@ -4,7 +4,7 @@ import type { TenderCard, TenderGroup } from './contract'
  * The three tenders in the Landing's "Exemplo" panel — the only thing on the
  * page that shows what the Radar gives you before you type a CNPJ.
  *
- * ## They are real, and they are frozen
+ * ## The facts are frozen. The clock is not.
  *
  * These are the three tenders the approved landing
  * (`paginas/landing_radar.html`) and the Radar wireframe
@@ -15,11 +15,47 @@ import type { TenderCard, TenderGroup } from './contract'
  * control numbers, the estimated values to the centavo, the item counts, the
  * session times and the ME/EPP regimes.
  *
- * They are **not** a live query, and the page says so. `EXAMPLE_NOW` freezes the
- * clock the countdown is measured against, so the panel reads "13 dias" for as
- * long as it is on the page rather than counting down to a date in the past —
- * and the caption next to it names that date. A panel that silently aged would
- * be claiming, next year, that a tender closed in 2026 is still open.
+ * Those fields are facts about three real editais, and they are right for as
+ * long as the file says nothing else. **A countdown is not one of them.** It is
+ * a statement about *now*, and `EXAMPLE_NOW` used to supply a `now` of
+ * 17/09/2026 — which made every card read "13 dias" and "Proposta até 30/09"
+ * for ever. That was true on the day it was written and false from 01/10/2026:
+ * three tenders whose stated deadline had passed, each under a live-looking
+ * countdown, on the page that introduces the product (card D11). Moving the
+ * dates forward would only have re-dated the same defect.
+ *
+ * So the panel is rendered against the **real** clock — build time and every
+ * ISR revalidation, `America/Sao_Paulo` like every other date the product shows
+ * — and the card's own gate decides what may be said about time:
+ * `mayShowUrgency` (§2.2 rule 6) drops the countdown and relabels the date
+ * *"Data anterior"* once the window has closed. Up to the session hour of each
+ * card — 07:30, 08:30 and 09:00 Brasília on 30/09/2026, not one date for all
+ * three — the panel counts real days down; after it, they are three dated
+ * examples that no longer claim to be open.
+ *
+ * Two honest limits on that, because "true whenever it renders" is the claim
+ * this file would otherwise be making and it is not quite the claim it can keep:
+ *
+ *  - the *transition* is a render behind, not instant. The Landing is static
+ *    with `revalidate = 600` and stale-while-revalidate, so a copy generated
+ *    minutes before a session hour keeps being served after it — ten minutes on
+ *    a busy page, longer on a quiet one, and a promote or rollback serves that
+ *    deployment's build clock. Bounded by the cache, where the frozen clock was
+ *    unbounded and permanent;
+ *  - the *status* is a transcription. `mayShowUrgency` asks two questions and
+ *    only one of them has a live answer here: the hour is real, but "Divulgada
+ *    no PNCP" is what PNCP said on 17/09/2026. If an órgão suspended one of
+ *    these three after that date, nothing in this file can know, and the panel
+ *    would keep counting its days down. That is a limit of any frozen example,
+ *    and it is the reason `example-radar.tsx` is not a substitute for a live
+ *    Radar — the caption says as much.
+ *
+ * What still says "as of 17/09/2026" is `EXAMPLE_AS_OF`, in the caption: the
+ * date these *facts* were checked. That is a citation, not a countdown.
+ *
+ * `example-radar.test.tsx` renders the Landing at five instants — including
+ * 01/10/2026 and 2030 — and fails if any of them puts urgency copy over a
+ * deadline that has passed.
  *
  * ## Why they are not links
  *
@@ -31,15 +67,15 @@ import type { TenderCard, TenderGroup } from './contract'
  */
 
 /**
- * The instant the example is stated as of: 17/09/2026, 09:00 Brasília.
+ * `17/09/2026` — the date the fields below were checked, quoted by the panel's
+ * caption and by the Opportunity section's source line.
  *
- * The wireframes' "13 dias" is counted from this date (`docs/design/README.md`),
- * and `deadlineLabel` counts Brasília calendar days, so every card below reads
- * exactly as the board draws it.
+ * **Not a clock.** There used to be an `EXAMPLE_NOW` beside this string, and the
+ * countdowns were measured from it; see the block above for why there is not
+ * one now. Nothing may render a duration, a countdown or an "open/closed"
+ * judgement from this constant: it dates the transcription, and a reader is told
+ * so ("como estavam em {data}").
  */
-export const EXAMPLE_NOW = new Date('2026-09-17T12:00:00.000Z')
-
-/** `17/09/2026` — what the caption under the panel tells the visitor. */
 export const EXAMPLE_AS_OF = '17/09/2026'
 
 /** The segment the example company sells into, for the panel's header line. */
@@ -70,9 +106,11 @@ const BATTERIES: TenderCard = {
   segments: [],
   matchedSegments: [],
   group: 'compatible',
-  // The landing's frozen examples are deliberately Divulgada: they exist to
-  // show the product working normally, and the gate in `tender-status.ts` is
-  // what would otherwise strip their countdowns.
+  // Divulgada because that is what PNCP said on 17/09/2026 — the órgão never
+  // suspended, revoked or annulled this one. It is the status that lets the
+  // gate in `tender-status.ts` speak about the deadline at all, and after
+  // 30/09/2026 what it says is "Data anterior": the tender closed on time,
+  // which is a different fact from having been stopped.
   status: 'Divulgada no PNCP',
   pncpUpdatedAt: null,
 }

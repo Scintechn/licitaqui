@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { format, messages } from '@/lib/messages'
 import { FOUNDER_SEATS } from '@/lib/founders/seats'
+import { deadlineShort } from '@/lib/radar/format'
 import { EXAMPLE_AS_OF, EXAMPLE_TENDERS, exampleCounts } from '@/lib/radar/landing-example'
 
 // The search card calls `useRouter()` for the client-side hop to the Radar,
@@ -18,7 +19,13 @@ const { default: LandingPage, revalidate } = await import('./page')
  * Rendered with no `DATABASE_URL`, which is also how `next build` runs it: the
  * "Hoje no Brasil" strip is then left out rather than printing zeroes, and
  * every other block still renders.
+ *
+ * `RENDERED_AT` is the instant it was rendered at. The example panel's deadline
+ * line is drawn against the real clock, so the one assertion below that reads it
+ * has to compare against the same clock the render used — not against a
+ * constant, which is the defect card D11 was about.
  */
+const RENDERED_AT = new Date()
 const out = renderToStaticMarkup(await LandingPage())
 const copy = messages.radar.landing
 
@@ -156,16 +163,48 @@ describe('/ · the approved page, section by section', () => {
   })
 
   /**
-   * The example is three tenders from a fixed date, so: it says so, it is dated,
-   * its countdowns are frozen at that date, and none of its cards is a link to a
-   * tender page that would 404 or show something else entirely.
+   * The example is three tenders transcribed on a fixed date, so: it says so,
+   * it is dated, and none of its cards is a link to a tender page that would
+   * 404 or show something else entirely.
+   *
+   * What it no longer does is freeze the countdown at that date. This used to
+   * assert "13 dias" — the board's number, measured from 17/09/2026 — which is
+   * the claim card D11 is about: from 01/10/2026 that is a live-looking
+   * countdown over a deadline that has passed.
+   *
+   * **What is checked here, and what is not.** The deadline line below is
+   * compared against a plain instant comparison, not against `mayShowUrgency`:
+   * asking the same function the component asks would agree with it by
+   * construction, including when it is wrong. Even so, this assertion can only
+   * discriminate once a deadline has passed — before 30/09/2026 a re-frozen
+   * clock and the real one both say "Proposta até 30/09" and it stays green.
+   * The guard that fails *today* on a frozen clock is
+   * `example-radar.test.tsx`, which moves the system clock; this one is a
+   * coherence check on the page as this file rendered it.
    */
   it('keeps the example visibly an example', () => {
     expect(out).toContain(format(copy.example.caption, { data: EXAMPLE_AS_OF }))
     expect(out).toContain(EXAMPLE_AS_OF)
-    // 30/09/2026 minus the frozen 17/09/2026: the board's "13 dias".
-    expect(out).toContain(format(messages.radar.card.daysLeft, { count: 13 }))
     expect(out).not.toContain('/radar/edital/')
+
+    for (const tender of EXAMPLE_TENDERS) {
+      const quando = deadlineShort(tender.proposalsCloseAt) ?? ''
+      // Both example tenders are Divulgada, so on this data "may we call the
+      // window open?" reduces to "is its hour still ahead?" — asked here of the
+      // clock directly, so a gate that stopped asking the hour would be caught
+      // instead of echoed.
+      const open = Date.parse(tender.proposalsCloseAt ?? '') > RENDERED_AT.getTime()
+      expect(out).toContain(
+        format(open ? messages.radar.card.proposalsUntil : messages.radar.card.previousDeadline, {
+          quando,
+        }),
+      )
+      expect(out).not.toContain(
+        format(open ? messages.radar.card.previousDeadline : messages.radar.card.proposalsUntil, {
+          quando,
+        }),
+      )
+    }
   })
 
   it('explains how it works, with the three Radar groups as the legend', () => {
