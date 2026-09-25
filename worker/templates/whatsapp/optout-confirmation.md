@@ -12,4 +12,3 @@ Sua conta e seus dados continuam como estão. Se um dia quiser voltar a receber 
 
 Para pedir a exclusão dos seus dados, escreva para {{email_contato}}.
 
-TODO(Sci): confirmar o endereço de contato e se existe um caminho de reativação na tela de preferências (o texto acima promete que sim).
