@@ -1,9 +1,9 @@
 ---
 id: partial-footer
 channel: email
-status: draft
+status: approved
 placeholders: [email_contato, link_privacidade, link_preferencias]
-notes: Appended to every email. TODO(Sci) items below are gaps G3 (privacy policy / terms) and the support address.
+notes: Appended to every e-mail. Approved by Sci on 2026-09-25, answering the two questions that stood here as pending items. (1) The contact address is contato@licitaquiapp.com.br, the same value as `support.email` in pt-BR.json, so the sender binds `email_contato` from there rather than duplicating it. (2) The footer does carry the company identification, reusing `foundersPage.footer.company` verbatim so the CNPJ and contact details live in one place. Sci also confirmed the terms and privacy policy are validated and published (/termos and /privacidade are generated from docs/legal at build time), which is what the removed item was waiting on. One binding remains for the e-mail sender (E6): `link_preferencias` resolves to the alerts screen for Telegram (telegram_alerts.py:781), and that screen requires a session. A founder has no account, so an unsubscribe link they cannot open would not honour the sentence above it; WhatsApp answers this with 'responda SAIR' and the e-mail channel has no equivalent yet.
 ---
 
 —
@@ -14,5 +14,4 @@ Você recebe este e-mail porque autorizou o contato quando entrou na lista de fu
 Para pedir a correção ou a exclusão dos seus dados, escreva para {{email_contato}}.
 Política de privacidade e termos de uso: {{link_privacidade}}
 
-TODO(Sci): definir o endereço de contato ({{email_contato}}) e publicar a política de privacidade e os termos de uso (gap G3) antes do primeiro envio a usuário real. O texto de LGPD acima é rascunho e precisa da sua revisão jurídica.
-TODO(Sci): decidir se o rodapé leva também o CNPJ e o endereço da empresa remetente (boa prática antispam e exigido por alguns provedores).
+LicitaQui é um produto da Scint Tecnologia Serviços Ltda · CNPJ 36.955.612/0001-85 · contato@licitaquiapp.com.br · WhatsApp (11) 96246-0678

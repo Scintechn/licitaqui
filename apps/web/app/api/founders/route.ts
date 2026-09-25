@@ -10,8 +10,9 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  *
  * Validates with Zod, rate limits per IP, assigns the seat inside the
  * transaction in `lib/founders/signup.ts`, writes the `events` row and enqueues
- * the WhatsApp welcome as a `send_whatsapp` job for task E2. It sends nothing
- * itself: §3's rule is that no web request waits on an external service.
+ * the WhatsApp welcome as a `send_whatsapp` job for task E2 and the e-mail
+ * welcome as a `send_email` job for task E6. It sends nothing itself: §3's
+ * rule is that no web request waits on an external service.
  *
  * Nothing about the person is ever logged (§12): failures log the shape of the
  * problem, never the body.

@@ -36,6 +36,7 @@ from __future__ import annotations
 from . import ai_screening as _ai_screening  # noqa: F401 - registers `ai_screening`
 from . import company as _company  # noqa: F401 - imported for its registration side effect
 from . import documents as _documents  # noqa: F401 - registers `extract_text`
+from . import email as _email  # noqa: F401 - registers `send_email`
 from . import jobs as _jobs  # noqa: F401 - registers `noop`
 from . import sync_awards as _sync_awards  # noqa: F401 - registers the two awards kinds
 from . import sync_files as _sync_files  # noqa: F401 - registers `sync_files`
@@ -44,7 +45,7 @@ from . import sync_tenders as _sync_tenders  # noqa: F401 - registers `sync_open
 from . import telegram_alerts as _telegram_alerts  # noqa: F401 - `send_telegram`, `weekly_digest`
 from . import tender_value as _tender_value  # noqa: F401 - `refresh_tender_value`, the sweep
 from . import title_tender as _title_tender  # noqa: F401 - registers `title_tender`
-from . import whatsapp as _whatsapp  # noqa: F401 - registers `send_whatsapp`, `whatsapp_inbound`
+from . import whatsapp as _whatsapp  # noqa: F401 - `send_whatsapp`, `whatsapp_inbound`, E5's sweep
 
 
 def registered_kinds() -> list[str]:

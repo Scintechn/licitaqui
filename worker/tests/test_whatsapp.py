@@ -212,3 +212,70 @@ def test_the_job_kind_matches_the_one_the_web_enqueues() -> None:
     assert whatsapp.job_key(12) == "founders:12"
     assert "send_whatsapp" in registered_kinds()
     assert "whatsapp_inbound" in registered_kinds()
+
+
+# -- opening broadcast (E5) --------------------------------------------------
+
+
+def test_the_opening_context_carries_the_access_link() -> None:
+    context = whatsapp.build_context(
+        name="Maria Silva", payload={"numero_vaga": 5}, template_id="founders-opening"
+    )
+
+    assert context["numero_vaga"] == 5
+    assert context["link_acesso"] == whatsapp.opening_link()
+
+
+def test_opening_link_defaults_to_the_app_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(whatsapp.OPENING_LINK_VAR, raising=False)
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+
+    assert whatsapp.opening_link() == "https://www.licitaquiapp.com.br"
+
+
+def test_opening_link_is_overridable_without_a_deploy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(whatsapp.OPENING_LINK_VAR, "https://preview.licitaquiapp.com.br/entrar")
+
+    assert whatsapp.opening_link() == "https://preview.licitaquiapp.com.br/entrar"
+
+
+def test_broadcast_at_is_19h_brt_converted_to_utc() -> None:
+    """08/10 19:00 BRT (UTC-3) is 08/10 22:00 UTC — `docs/DEVELOPMENT_PLAN.md` M3."""
+    when = whatsapp.broadcast_at(day=date(2026, 10, 8))
+
+    assert when == datetime(2026, 10, 8, 22, 0, tzinfo=UTC)
+
+
+def test_broadcast_hour_is_overridable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(whatsapp.BROADCAST_HOUR_VAR, "09:30")
+
+    when = whatsapp.broadcast_at(day=date(2026, 10, 8))
+
+    assert when == datetime(2026, 10, 8, 12, 30, tzinfo=UTC)
+
+
+def test_broadcast_at_follows_the_opening_date_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Moving `FOUNDERS_OPENING_DATE` moves the broadcast with it, by default."""
+    monkeypatch.setenv(whatsapp.OPENING_DATE_VAR, "2026-11-01")
+
+    when = whatsapp.broadcast_at()
+
+    assert when == datetime(2026, 11, 1, 22, 0, tzinfo=UTC)
+
+
+def test_broadcast_key_is_fixed_per_opening_day() -> None:
+    assert whatsapp.broadcast_key(date(2026, 10, 8)) == "founders-opening-broadcast:2026-10-08"
+
+
+def test_opening_key_is_distinct_from_the_welcome_key() -> None:
+    """So a retried welcome and a re-queued opening message can never collide
+    in `jobs_dedupe` — see the module's own section docstring."""
+    assert whatsapp.opening_key(12) == "founders-opening:12"
+    assert whatsapp.opening_key(12) != whatsapp.job_key(12)
+
+
+def test_the_broadcast_job_kind_is_registered() -> None:
+    from licitaqui.handlers import registered_kinds
+
+    assert whatsapp.BROADCAST_JOB_KIND == "founders_opening_broadcast"
+    assert "founders_opening_broadcast" in registered_kinds()

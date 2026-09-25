@@ -52,8 +52,10 @@ import type { SignupInput } from './input'
  *    each one holds the lock is the only thing deciding whether 48 people
  *    arriving at once wait a moment or a minute.
  *
- * Nothing here talks to WhatsApp: §3 forbids a slow external call inside a web
- * request, so the message is a `send_whatsapp` job for task E2 to deliver.
+ * Nothing here talks to WhatsApp or Resend: §3 forbids a slow external call
+ * inside a web request, so the message is a `send_whatsapp` job for task E2
+ * to deliver and, since E6, a `send_email` job for the worker's own Resend
+ * transport (`worker/licitaqui/email.py`) to deliver the same way.
  */
 
 /**
@@ -65,7 +67,21 @@ const SEAT_LOCK = { namespace: 19537, key: 48 } as const
 /** The job E2 consumes. One per founder, de-duplicated by the `jobs_dedupe` index. */
 export const WELCOME_JOB_KIND = 'send_whatsapp'
 
-/** Templates in `worker/templates/whatsapp/` (task E0). */
+/**
+ * The job E6 consumes (`worker/licitaqui/email.py`), queued in the same
+ * statement and under the same `founders:<id>` key as `WELCOME_JOB_KIND` —
+ * `jobs_dedupe` is unique on (kind, key), not on key alone, so the two rows
+ * never collide. Gated on nothing further here: `consent.founders` is one
+ * checkbox for "e-mail e WhatsApp" (`z.literal(true)`), not two, so there is
+ * no second consent fact to branch on — E6's `send()` re-checks the same
+ * `contact_consent` column independently before either channel sends
+ * anything, the same defence in depth E2's `send()` already has.
+ */
+export const EMAIL_JOB_KIND = 'send_email'
+
+/** Template ids, shared verbatim between `worker/templates/whatsapp/` and
+ * `worker/templates/email/` (task E0) — one id names the same message on
+ * both channels. */
 export const WELCOME_TEMPLATE = 'founders-welcome'
 export const WAITLIST_TEMPLATE = 'founders-waitlist'
 
@@ -221,6 +237,25 @@ export async function signUpFounder(
           from place p
         -- The jobs_dedupe index already allows one live job per (kind, key);
         -- saying so here means a retried request cannot fail on it either.
+        on conflict do nothing
+      ),
+      queued_email as (
+        -- Same shape as queued above, same founders:<id> key, a different
+        -- kind -- see EMAIL_JOB_KIND's own comment for why this needs no
+        -- extra consent check of its own.
+        insert into jobs (kind, key, priority, payload)
+        select ${EMAIL_JOB_KIND}::text, 'founders:' || p.id, ${WELCOME_JOB_PRIORITY}::int,
+               jsonb_build_object(
+                 'template', case when p.seat is null
+                                  then ${WAITLIST_TEMPLATE}::text
+                                  else ${WELCOME_TEMPLATE}::text end,
+                 -- E6 reads the name and the address from founders_list by
+                 -- id, the same reasoning E2's own payload comment gives.
+                 'founders_list_id', p.id,
+                 'numero_vaga', p.seat,
+                 'posicao_espera', p.position
+               )
+          from place p
         on conflict do nothing
       )
       select id, seat, position, seats_taken from place

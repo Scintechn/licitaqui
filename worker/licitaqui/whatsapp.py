@@ -68,13 +68,15 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from datetime import time as clock_time
 from logging import Logger
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import evolution, queue, templates
+from . import config, evolution, queue, templates
 from .breaker import CircuitOpen
 from .evolution import EvolutionClient, EvolutionError, SendResult
 from .observability import get_logger
@@ -115,6 +117,9 @@ MAX_WAIT_SECONDS = 35.0
 #: slipped date is an env change rather than a deploy. ``{{data_abertura}}``.
 OPENING_DATE_VAR = "FOUNDERS_OPENING_DATE"
 DEFAULT_OPENING_DATE = date(2026, 10, 8)
+
+#: ``{{link_acesso}}``, E5/E6's `founders-opening`. See :func:`opening_link`.
+OPENING_LINK_VAR = "FOUNDERS_OPENING_LINK"
 
 MONTHS_PT = (
     "janeiro",
@@ -237,6 +242,17 @@ def opening_date() -> date:
     return date.fromisoformat(raw) if raw else DEFAULT_OPENING_DATE
 
 
+def opening_link() -> str:
+    """``{{link_acesso}}`` for ``founders-opening``, on both channels (E5/E6).
+
+    Overridable independently of :data:`OPENING_DATE_VAR` so a changed
+    destination (a launch page instead of the bare domain, say) is an env
+    change rather than a deploy — the same reasoning as that variable.
+    """
+    override = (os.environ.get(OPENING_LINK_VAR) or "").strip()
+    return override or config.app_base_url()
+
+
 def format_date_pt(value: date) -> str:
     """``8 de outubro de 2026`` — the format templates README §3 expects."""
     return f"{value.day} de {MONTHS_PT[value.month - 1]} de {value.year}"
@@ -267,6 +283,9 @@ def build_context(*, name: str, payload: dict[str, Any], template_id: str) -> di
         context["data_abertura"] = format_date_pt(opening_date())
     elif template_id == "founders-waitlist":
         context["posicao_espera"] = payload.get("posicao_espera")
+    elif template_id == "founders-opening":
+        context["numero_vaga"] = payload.get("numero_vaga")
+        context["link_acesso"] = opening_link()
     return context
 
 
@@ -368,13 +387,20 @@ def enqueue(
     template: str,
     *,
     priority: int = 3,
+    key: str | None = None,
     **payload: Any,
 ) -> int | None:
-    """Queue a message. F1 does this inline in SQL; this is for O2 and tests."""
+    """Queue a message. F1 does this inline in SQL; this is for O2 and tests.
+
+    ``key`` defaults to :func:`job_key` (one welcome per founder). The opening
+    broadcast (E5, below) passes its own so the two never collide in
+    `jobs_dedupe` and a retried welcome cannot be mistaken for a re-queued
+    opening message, or the reverse.
+    """
     return queue.enqueue(
         conn,
         JOB_KIND,
-        job_key(founders_list_id),
+        key or job_key(founders_list_id),
         priority=priority,
         payload={"template": template, "founders_list_id": founders_list_id, **payload},
     )
@@ -565,6 +591,135 @@ def whatsapp_inbound(ctx: JobContext) -> None:
             "opt-out recorded but not confirmed: the template is not ready",
             extra={"founders_list_id": founders_list_id, "reason": type(exc).__name__},
         )
+
+
+# -- opening broadcast (E5) -------------------------------------------------
+#
+# `founders-opening.md`'s own front matter says it is "fired from the /admin
+# button" — but no `/admin` exists in this repository today, and building one
+# is a scope this card does not ask for. What the card does ask for is a
+# *dated* run at 08/10 19:00 BRT, so this is a sweep enqueued for exactly that
+# instant rather than a button someone has to remember to press.
+#
+# `ScheduleEntry` (`licitaqui/scheduler.py`) cannot express it:
+# `__post_init__` requires exactly one of `every_seconds` or `daily_at`, and
+# 08/10 19:00 is neither a cadence nor a daily time — it happens once. Rather
+# than stretch that dataclass for a shape it was not built for (and touch a
+# file other lanes are also changing), this uses the primitive every job kind
+# already has: `queue.enqueue`'s `run_after` and the `jobs.run_after <= now()`
+# filter every claim already applies (`queue.py`). The row sits `queued` and
+# inert until the moment arrives, a consumer is running, *and*
+# `WHATSAPP_DELIVERY=send` — none of which this module decides.
+#
+# `worker/scripts/schedule_founders_opening.py` is the one place that writes
+# that row, and it is a deliberate command a person runs, not something this
+# PR wires into the scheduler's own startup — writing a future-dated
+# production job is exactly the kind of side effect CLAUDE.md asks to leave to
+# Sci's own timing, not to whoever merges next.
+#
+# The sweep itself sends nothing — it fans out one `send_whatsapp` per
+# **seated** founder, for the three reasons `telegram_alerts.py`'s
+# `weekly_digest` already gives for the identical shape: per-founder retries,
+# per-founder dedupe (`founders-opening:<id>`, distinct from the welcome's own
+# `founders:<id>` key so the two can never collide), and so the fan-out uses
+# every consumer rather than blocking one on a loop.
+#
+# **Waitlisted founders get nothing from this sweep.**
+# `email/founders-waitlist.md` already promises them the access link "neste
+# e-mail" when the doors open, and no template today addresses that promise —
+# a gap this task reports (`docs/CLAIMS.md`, E5) rather than invents a message
+# for.
+
+BROADCAST_JOB_KIND = "founders_opening_broadcast"
+OPENING_TEMPLATE = "founders-opening"
+
+#: 19:00 BRT (`docs/DEVELOPMENT_PLAN.md` M3), the same day :func:`opening_date`
+#: already names. A separate variable rather than folded into
+#: :data:`OPENING_DATE_VAR`: the date is copy (``{{data_abertura}}``, on the
+#: welcome and the waitlist e-mail), and the hour belongs to this sweep alone —
+#: moving one must not silently move the other.
+BROADCAST_HOUR_VAR = "FOUNDERS_OPENING_HOUR"
+DEFAULT_BROADCAST_HOUR = "19:00"
+
+BRT_ZONE = "America/Sao_Paulo"
+
+SEATED_FOUNDERS_SQL = "select id, seat from founders_list where seat is not null order by seat"
+
+
+def broadcast_hour() -> tuple[int, int]:
+    raw = (os.environ.get(BROADCAST_HOUR_VAR) or DEFAULT_BROADCAST_HOUR).strip()
+    hour_str, _, minute_str = raw.partition(":")
+    return int(hour_str), int(minute_str or "0")
+
+
+def broadcast_at(*, day: date | None = None) -> datetime:
+    """08/10 19:00 BRT (or an overridden day/hour), converted to UTC.
+
+    `queue.enqueue`'s `run_after` and `jobs.run_after <= now()` are both
+    compared against the database's own ``now()``, which is UTC (CLAUDE.md's
+    clocks table) — so this returns UTC, and the BRT-to-UTC conversion happens
+    once, here, rather than at every comparison site.
+    """
+    hour, minute = broadcast_hour()
+    when = clock_time(hour, minute)
+    local = datetime.combine(day or opening_date(), when, tzinfo=ZoneInfo(BRT_ZONE))
+    return local.astimezone(UTC)
+
+
+def broadcast_key(day: date | None = None) -> str:
+    """The sweep's own `jobs.key`. Fixed per opening day, so re-running the
+    scheduling script — a redeploy, a restarted container — dedupes to the
+    one row `jobs_dedupe` already allows."""
+    return f"founders-opening-broadcast:{(day or opening_date()).isoformat()}"
+
+
+def opening_key(founders_list_id: int) -> str:
+    """Per-founder key for the broadcast fan-out. See the section docstring."""
+    return f"founders-opening:{founders_list_id}"
+
+
+def enqueue_opening_broadcast(
+    conn: psycopg.Connection, *, run_after: datetime | None = None, key: str | None = None
+) -> int | None:
+    """Queue the sweep itself. Returns the new job id, or ``None`` if already queued.
+
+    ``key`` defaults to :func:`broadcast_key` (one row, fixed per opening
+    *day*) — what `worker/scripts/schedule_founders_opening.py` uses. Tests
+    override it: two concurrent suite runs both scheduling "today's" broadcast
+    would otherwise collide on that same fixed key, which is exactly the
+    per-task-constant mistake CLAUDE.md's testing rule warns about.
+    """
+    return queue.enqueue(
+        conn,
+        BROADCAST_JOB_KIND,
+        key or broadcast_key(),
+        priority=9,
+        run_after=run_after if run_after is not None else broadcast_at(),
+    )
+
+
+@REGISTRY.job(BROADCAST_JOB_KIND)
+def founders_opening_broadcast(ctx: JobContext) -> None:
+    """The sweep: one `send_whatsapp` per seated founder. Sends nothing itself.
+
+    Reads the seat list at the moment it *runs*, not at the moment it was
+    scheduled, so a founder who takes a seat between now and 08/10 is still
+    included — the same reason `weekly_digest` queries eligibility at send
+    time rather than freezing a list when the sweep was enqueued.
+    """
+    with ctx.conn.cursor() as cur:
+        cur.execute(SEATED_FOUNDERS_SQL)
+        seated = [(int(row[0]), int(row[1])) for row in cur.fetchall()]
+    for founders_list_id, seat in seated:
+        enqueue(
+            ctx.conn,
+            founders_list_id,
+            OPENING_TEMPLATE,
+            priority=3,
+            key=opening_key(founders_list_id),
+            numero_vaga=seat,
+        )
+    ctx.log.info("founders opening broadcast queued", extra={"count": len(seated)})
 
 
 # -- delivery log ----------------------------------------------------------
