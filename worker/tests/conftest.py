@@ -463,11 +463,18 @@ def _delete_c1_rows(dsn: str) -> None:
         )
 
 
-# -- E2: WhatsApp (Evolution API) -----------------------------------------
+# -- E2: founders sends (WhatsApp/Evolution, E5's broadcast, e-mail/Resend) --
 #
 # Same shape and the same reasons as every block above: an isolated database so
 # two tasks' suites cannot collide, a `Dsn` wrapper so pytest cannot render the
 # credentials into a traceback, and deletes scoped to rows *this run* created.
+#
+# Originally E2's own (WhatsApp/Evolution). E5 and E6 extend it rather than
+# opening a second `founders_list` database: both are the same recipient table,
+# the same `events` delivery log and the same per-founder key shape, so a
+# second isolated database would only mean two places a test could collide
+# with a fixture instead of one, for no isolation this one does not already
+# give.
 #
 # E2 writes `founders_list`, which has two unique natural keys — `email citext
 # unique` and `seat int unique`, capped at 48 — so run-scoping the rows is not
@@ -480,14 +487,37 @@ def _delete_c1_rows(dsn: str) -> None:
 #     crashed holding seats would leave the next one with fewer. Test founders
 #     are waitlisted (`seat is null`) and the seat number a welcome message
 #     renders comes from the job payload, which is where F1 puts it anyway.
+#     (E5's broadcast sweep is the one exception that *needs* a seated founder
+#     — its own tests seat one under this run's `RUN_ID` scope and release it
+#     in the same teardown, the same as any other row here.)
 E2_TEST_DSN_VAR = "TEST_DATABASE_URL_E2"
 
 #: Every founder an E2 test writes has an e-mail starting with this. Per
 #: **run**, not per task (see RUN_ID): a task constant looks isolated and is not.
 E2_EMAIL_PREFIX = f"e2-test-{RUN_ID}-"
 
-#: The job kinds E2 owns, named here so cleanup cannot drift from the code.
-E2_JOB_KINDS = ("send_whatsapp", "whatsapp_inbound")
+#: The job kinds this database's tests write and clean up **by founders_list
+#: id** (every key here is `<prefix>:<id>`, so `split_part(key, ':', 2)` finds
+#: it). `send_email` (E6) added alongside the original two. E5's
+#: `founders_opening_broadcast` is deliberately **not** here — it is one row
+#: per opening day, not one per founder, and has its own sweep below
+#: (`E2_BROADCAST_KEY_PREFIX`); the `send_whatsapp` jobs it fans out to (keyed
+#: `founders-opening:<id>`) are already covered by `send_whatsapp` above.
+E2_JOB_KINDS = ("send_whatsapp", "whatsapp_inbound", "send_email")
+
+#: Delivery-log prefixes cleanup sweeps by `props ->> 'founders_list_id'`.
+#: `whatsapp.*` was here alone until E6 added `email.*` (`licitaqui/email.py`).
+E2_EVENT_PREFIXES = ("whatsapp.", "email.")
+#: `like` patterns built from the prefixes above, for the one query below.
+E2_EVENT_LIKE_PATTERNS = tuple(f"{prefix}%" for prefix in E2_EVENT_PREFIXES)
+
+#: E5's `founders_opening_broadcast` sweep is not keyed by a `founders_list`
+#: id — it is one global row per opening day, not one per founder — so it
+#: cannot be found by the per-id sweep below the way every other E2 job kind
+#: can. Its own tests give it a key starting with this **run-scoped** prefix
+#: (never the real `whatsapp.broadcast_key()`, which is a fixed per-*day*
+#: string two concurrent runs would collide on) and this sweep removes it.
+E2_BROADCAST_KEY_PREFIX = f"e2-broadcast-test-{RUN_ID}-"
 
 
 def e2_email(label: str) -> str:
@@ -519,6 +549,14 @@ def _whatsapp_delivery_off(monkeypatch: pytest.MonkeyPatch) -> None:
     does.
     """
     monkeypatch.delenv("WHATSAPP_DELIVERY", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _email_delivery_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test can send an e-mail either. Mirrors `_whatsapp_delivery_off`
+    for `EMAIL_DELIVERY` (`licitaqui/resend.py`) — a separate switch, so it
+    needs its own belt and braces."""
+    monkeypatch.delenv("EMAIL_DELIVERY", raising=False)
 
 
 @pytest.fixture(scope="session")
@@ -571,14 +609,20 @@ def _delete_e2_rows(dsn: str) -> None:
         ]
         if ids:
             conn.execute(
-                "delete from events where starts_with(name, 'whatsapp.')"
+                "delete from events where name like any(%s)"
                 "   and props ->> 'founders_list_id' = any(%s)",
-                (ids,),
+                (list(E2_EVENT_LIKE_PATTERNS), ids),
             )
             conn.execute(
                 "delete from jobs where kind = any(%s) and split_part(key, ':', 2) = any(%s)",
                 (list(E2_JOB_KINDS), ids),
             )
+        # The broadcast sweep itself: not scoped to any one founder's id, so
+        # it needs its own key-prefix sweep. See `E2_BROADCAST_KEY_PREFIX`.
+        conn.execute(
+            "delete from jobs where kind = 'founders_opening_broadcast'   and starts_with(key, %s)",
+            (E2_BROADCAST_KEY_PREFIX,),
+        )
         conn.execute(
             "delete from founders_list where starts_with(email::text, %s)", (E2_EMAIL_PREFIX,)
         )

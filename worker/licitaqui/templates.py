@@ -100,6 +100,10 @@ class Template:
     body: str
     placeholders: tuple[str, ...]
     flags: tuple[str, ...]
+    #: Other template ids this one renders inside it (README §5, e.g. every
+    #: e-mail's ``[partial-footer]``). Was declared in front matter and read
+    #: by nobody until E6 (`licitaqui/email.py`) — see :func:`_as_list`.
+    partials: tuple[str, ...]
     subject: str | None
     path: Path
 
@@ -134,6 +138,29 @@ class Template:
             raise TemplateError(f"template '{self.id}': {leftover.group(0)!r} survived rendering")
         return text
 
+    def render_subject(self, context: dict[str, Any] | None = None, **extra: Any) -> str:
+        """Fill the subject line (E6: nothing rendered one before this task).
+
+        Same rules as :meth:`render` — a missing placeholder or an unresolved
+        ``TODO(Sci):`` raises rather than mailing a half-filled subject, which
+        is what a recipient's inbox shows before they open anything else.
+        """
+        if self.subject is None:
+            raise TemplateError(f"template '{self.id}' has no subject to render")
+        values: dict[str, Any] = {**(context or {}), **extra}
+        if not self.ready_to_send:
+            raise TemplateNotApproved(self.id)
+
+        text = self._resolve_conditionals(self.subject, values)
+        text = self._substitute(text, values)
+
+        leftover = ANY_BRACES_RE.search(text) or ANY_BLOCK_RE.search(text)
+        if leftover:
+            raise TemplateError(
+                f"template '{self.id}': {leftover.group(0)!r} survived rendering the subject"
+            )
+        return text
+
     def _resolve_conditionals(self, text: str, values: dict[str, Any]) -> str:
         def replace(match: re.Match[str]) -> str:
             flag = match.group(1)
@@ -165,6 +192,7 @@ def parse(text: str, *, template_id: str, path: Path | None = None) -> Template:
 
     declared = tuple(_as_list(front.get("placeholders")))
     flags = tuple(_as_list(front.get("flags")))
+    partials = tuple(_as_list(front.get("partials")))
     subject = front.get("subject")
     searchable = body if subject is None else f"{subject}\n{body}"
 
@@ -178,6 +206,7 @@ def parse(text: str, *, template_id: str, path: Path | None = None) -> Template:
         body=body,
         placeholders=declared,
         flags=flags,
+        partials=partials,
         subject=subject,
         path=path or Path(template_id),
     )
@@ -235,13 +264,28 @@ def _split_front_matter(text: str, template_id: str) -> tuple[dict[str, str], st
         key, sep, value = line.partition(":")
         if not sep:
             raise TemplateError(f"template '{template_id}': front matter line {line!r} has no ':'")
-        front[key.strip()] = value.strip()
+        front[key.strip()] = _unquote(value.strip())
 
     # "Everything after the closing --- is the body, byte for byte" — minus the
     # one blank line the format puts between them, and any trailing newlines a
     # text editor added. A WhatsApp message must not end in blank lines.
     body = "\n".join(lines[end + 1 :]).strip("\n")
     return front, body
+
+
+def _unquote(value: str) -> str:
+    """Strip one matching pair of ``"`` or ``'`` around a scalar (YAML does).
+
+    E0's approved subjects are written ``subject: "A LicitaQui abriu, …"`` —
+    quoted because the text itself contains a ``:`` a bare scalar cannot carry
+    safely. Nothing rendered a subject before E6, so nothing had ever noticed
+    this parser kept the quote characters as part of the string: every quoted
+    subject in the repository would otherwise have opened a real inbox reading
+    literally ``"A LicitaQui abriu, …"``, quote marks included.
+    """
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
 
 
 def _as_list(value: str | None) -> list[str]:
