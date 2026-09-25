@@ -27,7 +27,7 @@ O QUE VOCÊ TEM POR SER FUNDADOR
 
 O QUE ACONTECE AGORA
 
-Nada da sua parte. No dia {{data_abertura}} você recebe o link de acesso neste mesmo e-mail. É só entrar, colocar o CNPJ da sua empresa e ver a primeira lista.
+Nada da sua parte. Mas a consulta por editais já está ativa. No dia {{data_abertura}} você receberá o link de acesso neste mesmo e-mail, e poderá fazer a adesão ao plano. Depois, é colocar o CNPJ da sua empresa e usar as funcionalidades premiums.
 
 Se tiver qualquer dúvida até lá, é só responder este e-mail ou escrever para {{email_contato}}.
 
