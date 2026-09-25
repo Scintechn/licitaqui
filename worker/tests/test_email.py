@@ -209,6 +209,52 @@ def test_job_key_is_identical_in_shape_to_whatsapps() -> None:
     assert email.job_key(12) == whatsapp.job_key(12) == "founders:12"
 
 
+def test_the_job_kind_is_registered_by_a_clean_import_of_handlers() -> None:
+    """A mutation check during review found this gap: removing `handlers.py`'s
+    `email` import passes the *entire* suite, including `test_handlers.py`'s
+    own registry-completeness sweep, run alone or in full-suite collection
+    order. Two independent reasons, both confirmed:
+
+    1. `test_handlers.py`'s regex only matches an inline string literal after
+       `@REGISTRY.job(` — `email.py`, like most handler modules, registers via
+       the `JOB_KIND` name, which the regex never sees at all (`send_email`
+       is absent from `kinds_declared_in_source()` with or without the import).
+    2. This very file (`test_email.py`) imports `licitaqui.email` at module
+       scope, so *any* in-process assertion — this one included, before this
+       test existed — is contaminated: `send_email` self-registers into the
+       shared `REGISTRY` the moment this file is collected, regardless of
+       whether `handlers.py` ever imported it. pytest collects `test_email.py`
+       before `test_handlers.py` alphabetically, so this masks the mutation
+       in a full-suite run too, not only file-by-file.
+
+    A subprocess with nothing preloaded is the only way to ask the real
+    question: does importing *only* `licitaqui.handlers` register `send_email`?
+    This is scoped to E6 alone; the same gap affects most other handler
+    modules (they also register via a name, not a literal) and is a
+    follow-up for `docs/DEVELOPMENT_PLAN.md`, not this test.
+    """
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from licitaqui.handlers import registered_kinds as k; "
+            "import sys; sys.exit(0 if 'send_email' in k() else 1)",
+        ],
+        cwd=Path(__file__).resolve().parent.parent,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, (
+        "a clean interpreter that imports only licitaqui.handlers does not "
+        f"register 'send_email' — is the import still in handlers.py?\n"
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
 # -- gates, purely (SKIP_NO_EMAIL cannot exist against the real schema:
 # `founders_list.email` is `citext not null`, so there is no row for an
 # integration test to read) --------------------------------------------------
