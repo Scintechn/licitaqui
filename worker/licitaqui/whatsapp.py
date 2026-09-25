@@ -700,18 +700,41 @@ def enqueue_opening_broadcast(
 
 @REGISTRY.job(BROADCAST_JOB_KIND)
 def founders_opening_broadcast(ctx: JobContext) -> None:
-    """The sweep: one `send_whatsapp` per seated founder. Sends nothing itself.
+    """The sweep: one `send_whatsapp` **and** one `send_email` per seated founder.
+    Sends nothing itself.
 
     Reads the seat list at the moment it *runs*, not at the moment it was
     scheduled, so a founder who takes a seat between now and 08/10 is still
     included — the same reason `weekly_digest` queries eligibility at send
     time rather than freezing a list when the sweep was enqueued.
+
+    **Both channels from one sweep** (E12). `email/founders-opening.md`'s front
+    matter said "Pairs with whatsapp/founders-opening" while nothing paired
+    them: this fanned out WhatsApp only, so on 08/10 the WhatsApp message would
+    have shipped and the e-mail carrying the identical promise would not —
+    silently, to people whose consent box named *both* channels.
+
+    Queuing them together here, rather than from a second sweep somebody has to
+    remember to trigger, is the same choice F1's signup transaction already
+    makes: one place decides, so the two cannot drift.
     """
+    # Deferred: `email` imports this module for `build_context`, so importing it
+    # at module scope would be a cycle. The call happens once per opening.
+    from . import email
+
     with ctx.conn.cursor() as cur:
         cur.execute(SEATED_FOUNDERS_SQL)
         seated = [(int(row[0]), int(row[1])) for row in cur.fetchall()]
     for founders_list_id, seat in seated:
         enqueue(
+            ctx.conn,
+            founders_list_id,
+            OPENING_TEMPLATE,
+            priority=3,
+            key=opening_key(founders_list_id),
+            numero_vaga=seat,
+        )
+        email.enqueue(
             ctx.conn,
             founders_list_id,
             OPENING_TEMPLATE,
