@@ -171,7 +171,7 @@ suite('E1 · Telegram linking (database)', () => {
   })
 
   beforeEach(async () => {
-    resetRateLimits()
+    await resetRateLimits()
     await cleanup()
   })
 

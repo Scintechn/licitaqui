@@ -175,8 +175,20 @@ export async function signUpFounder(
                   from generate_series(1, ${FOUNDER_SEATS}::int) as g(seat)
                  where not exists (select 1 from founders_list f where f.seat = g.seat)),
                ${input.contactConsent}
-        -- An e-mail already on the list writes nothing at all: no second seat,
-        -- no second welcome. The duplicate is answered by the query below.
+        -- Nothing is written for a number already on the list, under a
+        -- different throwaway e-mail or not: no second seat, no second
+        -- WhatsApp send. whatsapp has no unique constraint yet (that is a
+        -- schema change, its own PR) so this "where not exists" is the
+        -- guard until it lands; input.whatsapp already arrives normalised
+        -- to +55<DDD><number> by normaliseWhatsapp() in lib/founders/input.ts,
+        -- so an equality check is enough — no two spellings of the same
+        -- number reach here.
+        where not exists (
+          select 1 from founders_list existing_wa where existing_wa.whatsapp = ${input.whatsapp}
+        )
+        -- An e-mail already on the list writes nothing at all either. Either
+        -- guard leaves new_founder empty; the duplicate is answered by the
+        -- query below, which looks up by e-mail first and by number second.
         on conflict (email) do nothing
         returning id, seat
       ),
@@ -264,7 +276,14 @@ export async function signUpFounder(
   })
 }
 
-/** Idempotency: the e-mail is already on the list (§6.3, `email citext unique`). */
+/**
+ * Idempotency: either the e-mail is already on the list (§6.3, `email citext
+ * unique`), or — the abuse case this function now also answers — the WhatsApp
+ * number is, under a different e-mail. Both take the same non-answer: no new
+ * row, no new seat, no new WhatsApp send. An e-mail match wins when a request
+ * somehow matches both (`order by ... desc`), since that is the genuine
+ * repeat-submit case this function was written for.
+ */
 async function duplicate(tx: Executor, input: SignupInput): Promise<SignupOutcome> {
   const found = await tx.execute<DuplicateRow>(sql`
     with existing as (
@@ -274,9 +293,12 @@ async function duplicate(tx: Executor, input: SignupInput): Promise<SignupOutcom
                when l.seat is null
                then (select count(*) from founders_list w
                       where w.seat is null and w.id <= l.id)
-             end as position
+             end as position,
+             (l.email = ${input.email}) as matched_by_email
         from founders_list l
-       where l.email = ${input.email}
+       where l.email = ${input.email} or l.whatsapp = ${input.whatsapp}
+       order by (l.email = ${input.email}) desc, l.id asc
+       limit 1
     ),
     logged as (
       ${eventInsertSelect({
@@ -285,6 +307,7 @@ async function duplicate(tx: Executor, input: SignupInput): Promise<SignupOutcom
           'founders_list_id', e.id,
           'seat', e.seat,
           'waitlist_position', e.position,
+          'matched_by', case when e.matched_by_email then 'email' else 'whatsapp' end,
           'source', ${input.source ?? null}::text
         )`,
       })}
