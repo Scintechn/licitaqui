@@ -26,7 +26,6 @@ from licitaqui import breaker, email, queue, resend, templates
 from licitaqui.consumer import Consumer
 from licitaqui.queue import Job
 from licitaqui.resend import DELIVERY_SEND, DELIVERY_VAR, ResendClient
-from licitaqui.templates import TemplateNotApproved
 from tests.conftest import e2_email, e2_whatsapp
 
 FIXTURES = Path(__file__).parent / "fixtures" / "resend"
@@ -316,20 +315,34 @@ def test_an_unknown_founder_is_skipped_rather_than_crashing(e2_conn: psycopg.Con
     assert delivery.reason == email.SKIP_NO_RECIPIENT
 
 
-# -- what actually blocks a real send today (E6) -----------------------------
+# -- a template fault, and the absence of one --------------------------------
+#
+# These two used to assert that `founders-welcome` **could not render**, which
+# was true while the footer carried its `TODO(Sci):`. Sci answered it on
+# 2026-09-25 and they went red on `main` — correctly: they were pinning a
+# symptom that had been fixed.
+#
+# The property underneath is still worth holding, so the first one induces the
+# fault deliberately instead of borrowing a real template's brokenness. The
+# second is inverted into the positive, which is the case that actually failed
+# in production on 2026-09-26: the footer rendered, and nothing bound two of
+# the three placeholders it declares.
 
 
-def test_the_real_founders_welcome_email_fails_loudly_rather_than_skipping_silently(
+def test_a_template_fault_fails_loudly_rather_than_skipping_silently(
     e2_conn: psycopg.Connection,
 ) -> None:
-    """The E6 tripwire, from the job's own path (mirrors `whatsapp.send()`'s
-    reasoning for a template fault: "it is our bug, not the recipient's, and
-    it should be a visible failed job rather than a silently skipped
-    founder"). No delivery-log row is written — the raise happens before any
-    `_record` call, exactly where `send()`'s docstring says it does.
+    """Mirrors `whatsapp.send()`'s reasoning: a template fault "is our bug, not
+    the recipient's, and it should be a visible failed job rather than a
+    silently skipped founder".
+
+    The fault is induced with a template id that does not exist, rather than
+    with whichever real template happens to be unfinished this week — that is
+    what made the old version of this test expire. No delivery-log row is
+    written, because the raise happens before any `_record` call.
     """
     founder = insert_founder(e2_conn, "blocked")
-    email.enqueue(e2_conn, founder, "founders-welcome", numero_vaga=1)
+    email.enqueue(e2_conn, founder, "no-such-template", numero_vaga=1)
 
     status = run_one(e2_conn, founder)
 
@@ -338,21 +351,34 @@ def test_the_real_founders_welcome_email_fails_loudly_rather_than_skipping_silen
         "select error from jobs where kind = %s and key = %s",
         (email.JOB_KIND, email.job_key(founder)),
     ).fetchone()
-    assert error is not None and "TemplateNotApproved" in error[0]
+    assert error is not None and "TemplateNotFound" in error[0]
     assert log_rows(e2_conn, founder) == []
 
 
-def test_render_email_raises_directly_against_the_real_footer(e2_conn: psycopg.Connection) -> None:
-    """Same fact, asserted without going through the queue at all."""
-    founder = insert_founder(e2_conn, "blocked-direct")
+def test_the_real_founders_welcome_renders_against_the_real_footer(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """**The case that broke in production.**
+
+    On 2026-09-26 every founders e-mail raised `MissingPlaceholder`: the footer
+    declares three placeholders and `build_context` bound one. Nothing caught
+    it, because the tests that touched this path asserted
+    `TemplateNotApproved` — which short-circuits *before* rendering ever reads
+    a placeholder. The blocker was hiding a second, unrelated defect beneath it.
+
+    So this renders the real template, through the real footer, with the real
+    context builder. A missing binding raises here now.
+    """
     context = email.build_context(
         name=FOUNDER_NAME, payload={"numero_vaga": 1}, template_id="founders-welcome"
     )
+    subject, body = email.render_email("founders-welcome", context)
 
-    with pytest.raises(TemplateNotApproved):
-        email.render_email("founders-welcome", context)
-
-    assert log_rows(e2_conn, founder) == []
+    assert subject
+    # `render()` raises on a leftover `{{...}}`, so reaching this line already
+    # means every placeholder resolved. These name the footer specifically.
+    assert email.CONTACT_EMAIL in body
+    assert email.UNSUBSCRIBE_LINK in body
 
 
 # -- LGPD (§12) ---------------------------------------------------------------
