@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import ai_screening as _ai_screening  # noqa: F401 - registers ai_screening
-from . import breaker, config, db
+from . import breaker, config, db, preflight
 from . import handlers as _handlers  # noqa: F401 - imports every handler module
 from .consumer import Consumer, Metrics, WakeSignal
 from .observability import get_logger
@@ -94,6 +94,14 @@ class WorkerService:
 
         if not self.wake_token:
             _log.warning("WORKER_WAKE_TOKEN is unset: POST /wake will refuse every call")
+
+        # Every enabled channel's configuration, checked once and reported in
+        # full — see `preflight`. Deliberately not fatal: one misconfigured
+        # channel must not stop the queue draining for every other kind.
+        problems = preflight.delivery_problems()
+        for problem in problems:
+            _log.error("delivery is switched on but not configured", extra={"problem": problem})
+
         _log.info(
             "worker started",
             extra={
@@ -103,6 +111,10 @@ class WorkerService:
                 "registered_kinds": self.registry.kinds(),
                 "claiming_kinds": list(self.kinds) if self.kinds else "all",
                 "scheduler": self.scheduler_enabled,
+                # Zero is the healthy value, and it is stated rather than
+                # implied: a field that only appears when something is wrong is
+                # a field nobody notices is missing.
+                "config_problems": len(problems),
             },
         )
 

@@ -49,6 +49,36 @@ describe('the claims register', () => {
     expect(missing, `cards cited in CLAIMS.md but absent from the plan: ${missing}`).toEqual([])
   })
 
+  it('gives every card in the plan a unique id', () => {
+    /**
+     * **The hole the test above left open.**
+     *
+     * On 2026-09-25 a lane added a card numbered `E7` for "the opening e-mail
+     * has no enqueuer" while `E7` already meant "the Monday Telegram digest".
+     * Merging produced **two `| E7 |` rows**, and the citation check passed
+     * throughout — it asks whether a cited card *exists*, which two of them
+     * emphatically do.
+     *
+     * Two lanes inserting a card after the same anchor row is not a rare
+     * event here; it is what `.gitattributes` already documents for
+     * `docs/STATUS.md`, and the reason that file has a merge driver and this
+     * one deliberately does not. So the collision has to be caught by an
+     * assertion rather than by whoever reads the diff.
+     */
+    const ids = [...plan.matchAll(/^\| ([A-Z]\d+[a-z]?) \|/gm)].map((m) => m[1])
+    expect(ids.length, 'the plan has cards').toBeGreaterThan(0)
+
+    // Counted rather than filtered through a Set: `Set.prototype.add` returns
+    // the *set*, not a boolean, so the obvious `!seen.add(id)` is always false
+    // and the check silently passes on every input. It was written that way
+    // here first, and the mutation check is the only reason it did not ship.
+    const counts = new Map<string, number>()
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1)
+
+    const duplicates = [...counts].filter(([, times]) => times > 1).map(([id]) => id)
+    expect(duplicates, `card ids used more than once in the plan: ${duplicates}`).toEqual([])
+  })
+
   it('keeps every open claim dated, so "due" is answerable', () => {
     // Everything above `## Closed` is open, however the sections above it are
     // titled. Pinning a heading name is what broke this on 2026-09-25, when the
