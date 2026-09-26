@@ -18,7 +18,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 3 | `faq-cobranca.md` carries an internal note | publishing `/ajuda` | medium |
 | 4 | Drafting note stripped at render, not at source | nothing | low |
 | ~~5~~ | ~~Publication date~~ | — | **closed 21/09** |
-| 6 | Two `subscriptions` columns the brief requires do not exist | F2/F3, M5 | medium |
+| ~~6~~ | ~~Two `subscriptions` columns the brief requires do not exist~~ | — | **closed 26/09** |
 | ~~7~~ | ~~`/conta/criar` and `/conta/alertas` 404~~ | — | **closed 21/09** |
 | 8 | Spec still calls the Telegram bot temporary | nothing | low |
 | 9 | Knowledge base and repo disagree on who owns legal copy | future edits | low |
@@ -111,7 +111,7 @@ went live on **20/09/2026** and both documents say so.
 **To close:** nothing, unless you disagree. If you want the 10-01 date instead, the
 pages have to come down until then, and the form with them.
 
-## 6. Two columns the brief requires do not exist
+## ~~6. Two columns the brief requires do not exist~~ — closed 2026-09-26
 
 Brief §4 lists five things billing needs. Three are there:
 
@@ -128,11 +128,16 @@ model in brief §2 and the answer the FAQ gives to *"Se eu cancelar hoje, perco 
 na hora?"*. `refunded_at` is what makes the 30-day guarantee "once per CNPJ"
 enforceable rather than a promise on the honour system.
 
-Both are needed by **F2/F3**, so before **M5 on 10-29**. Not urgent, but it is a schema
-change, and schema changes are their own PR.
+**Closed by `db/migrations/0004_subscription_refunds.sql`**, which adds `ends_on date`,
+`refunded_at timestamptz` and `refund_reason`, with a constraint tying the last two
+together (`(refunded_at is null) = (refund_reason is null)`) and partial indexes on
+both. Written **before** F2 rather than during it, so the billing lane finds the columns
+instead of discovering them mid-task — which is why this item could be closed without
+waiting for the billing work itself.
 
-**To close:** confirm the two columns and their types, and they go into a migration
-with the billing card.
+Worth separating, because merging a migration is not applying one: confirm `0004` is
+applied to `neondb` before F2/F3 rely on the columns. The same distinction bit us on
+`0007_rate_limits`, which was merged on 25/09 and only confirmed applied on 26/09.
 
 ## ~~7. `/conta/criar` and `/conta/alertas` 404 from live pages~~ — closed 21/09
 
