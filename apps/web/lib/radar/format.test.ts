@@ -322,6 +322,29 @@ describe('displayTitle', () => {
     expect(displayTitle({ shortTitle: '   ', object: OBJECT })).toBe(tenderTitle(OBJECT))
   })
 
+  it('bounds a short title that is not short, whatever the worker wrote', () => {
+    /**
+     * **From the row that proved "short by construction" false.**
+     *
+     * Tender `44937365000112-1-000155/2026` carried the entire 541-character
+     * objeto in `short_title`, because the worker shipped the deterministic
+     * title whenever the model was unreachable or its answer rejected — the
+     * same string `needs_model()` had just judged unfit to show anyone.
+     *
+     * Fixed at source, and bounded here too: this is the last place before a
+     * person reads it, and a card is not the right place to discover that the
+     * pipeline had a bad day.
+     */
+    const wall = `Contratação de empresa especializada para o fornecimento de licença ${'x'.repeat(500)}`
+    const shown = displayTitle({ shortTitle: wall, object: OBJECT })
+
+    expect(shown.length).toBeLessThanOrEqual(121) // 120 plus the ellipsis
+    expect(shown.endsWith('…')).toBe(true)
+    // And the screen's own limit does not shrink it further: `max` is about
+    // how much prose fits here, the ceiling is about what may be stored.
+    expect(displayTitle({ shortTitle: wall, object: OBJECT }, 20)).toBe(shown)
+  })
+
   it('never truncates a short title with the object’s limit', () => {
     // `max` exists to cut a 500-character object. A short title is short by
     // construction and must not be cut mid-word by a limit meant for prose.
