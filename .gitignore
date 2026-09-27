@@ -31,6 +31,12 @@ Thumbs.db
 *.log
 coverage/
 
+# Generated views of committed data, kept out of git on purpose: they are
+# reproducible from one command, and a committed copy would be a second thing
+# to keep in step with the source it is rendered from.
+#   product-values.local.md  <- db/product-table.py, from docs/product.json
+*.local.md
+
 # playwright (journey tests): traces, screenshots, videos and the HTML report.
 # Everything here is an artifact of one run — in CI it is uploaded, never committed.
 test-results/

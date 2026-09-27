@@ -1,0 +1,42 @@
+{
+  "$comment": [
+    "THE PRODUCT'S NUMBERS, IN ONE PLACE.",
+    "",
+    "Every value here is written by hand in several other files: the copy",
+    "catalogue, the worker's message templates, the terms of use, the billing",
+    "FAQ and the legal brief. That duplication is not going away — a price in",
+    "`termos-de-uso.md` has to be prose, not a placeholder, because it is a",
+    "contract clause — so the answer is not to generate those files but to be",
+    "able to prove they still agree. `apps/web/lib/product.test.ts` does that:",
+    "it fails, naming the file, when any of them drifts from this one.",
+    "",
+    "Why it exists: D11b was three hardcoded dates, D7 was one claim in four",
+    "places, D6 survived a guard that keyed on the wrong phrasing. Each was a",
+    "product fact typed by hand in more places than anyone could hold in their",
+    "head, and each was found by a person reading one screen closely.",
+    "",
+    "Changing a number here does NOT change what renders. It changes the test",
+    "from green to red, listing every site still carrying the old value.",
+    "",
+    "Money is in whole BRL. Dates are ISO, in the product's clock",
+    "(America/Sao_Paulo) — see CLAUDE.md on the three clocks."
+  ],
+
+  "founders": {
+    "seats": 48,
+    "opensOn": "2026-10-08",
+    "opensAtBrt": "19:00"
+  },
+
+  "plans": {
+    "basico": { "brl": 0 },
+    "promocional": { "brl": 26, "months": 6, "thenBrl": 57 },
+    "essencial": { "brl": 57 },
+    "pro": { "brl": 98 }
+  },
+
+  "notice": {
+    "priceChangeDays": 30,
+    "chargeReminderDays": 3
+  }
+}
