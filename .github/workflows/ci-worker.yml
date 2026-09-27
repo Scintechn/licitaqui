@@ -1,12 +1,22 @@
-# Worker CI (spec §13): ruff, pytest and a Docker image build.
+# Worker CI (spec §13): ruff, pytest, the Neon integration suite, and a Docker
+# image that is built on every run and published from `main`.
 #
-# Scope note: the image is built but NOT pushed, and Easypanel is NOT notified.
-# Both steps need credentials that do not exist yet (see the TODO in the
-# `image` job). This workflow must pass with zero Actions secrets configured.
+# Scope note, corrected 2026-09-27: the image **is** pushed to GHCR from `main`
+# (`GITHUB_TOKEN` + `packages: write`, no configured secret required), and the
+# Easypanel redeploy is attempted when `EASYPANEL_WORKER_WEBHOOK` is set and
+# skipped with a message when it is not. The note that stood here said neither
+# happened, which stopped being true and then misled a cost investigation into
+# assuming the running worker was current with `main`. It was six days behind.
+#
+# Still true, and worth keeping true: this workflow must pass with **zero**
+# Actions secrets configured beyond the Neon test DSNs.
 name: ci-worker
 
 on:
   pull_request:
+    # `labeled` so adding `run-integration` re-runs the workflow and opts this
+    # PR back into the Neon suite — see the `integration` job's own condition.
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'worker/**'
       - '.github/workflows/ci-worker.yml'
@@ -16,12 +26,20 @@ on:
     paths:
       - 'worker/**'
       - '.github/workflows/ci-worker.yml'
+  # 06:00 UTC = **03:00 BRT**, the product's clock (CLAUDE.md). Nightly cover
+  # for the integration suite now that pull requests no longer run it.
+  schedule:
+    - cron: '0 6 * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-worker-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # `github.event_name` is in the key so the nightly `schedule` run cannot
+  # cancel an in-flight push to `main`. They resolve to the same ref, and with
+  # `cancel-in-progress` a merge landing near 03:00 BRT would otherwise be
+  # killed by the cron — and its image would never publish, silently.
+  group: ci-worker-${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -69,6 +87,23 @@ jobs:
   integration:
     name: integration (Neon)
     runs-on: ubuntu-latest
+
+    # **Not on every pull request any more.** This job is the largest single
+    # line on the Neon bill after the idle poll: 95 runs in the seven days to
+    # 2026-09-27, averaging ~28 minutes each, against test databases that share
+    # the production compute (spec §5.1) — so every run also kept that compute
+    # awake.
+    #
+    # It still runs on every push to `main` and once a night, so nothing merges
+    # without it and nothing sits unverified for more than a day.
+    #
+    # **The trade, stated plainly:** a database-level defect now surfaces at
+    # merge rather than on the pull request. This suite caught two real ones in
+    # the week before this change. When a PR touches SQL, a job handler or a
+    # fixture, put the `run-integration` label on it and this runs there too.
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'run-integration')
     # A STOPGAP, not a fix. This job grows about a minute per PR — 24m16s (#54),
     # 27m24s (#60), then past 30 and cancelled on #67 — because every card adds
     # integration tests and none are ever removed. 45 buys roughly fifteen
@@ -165,7 +200,19 @@ jobs:
     # `:latest` now lands that much later after a merge rather than in
     # parallel. A correct image an hour late beats a broken one immediately —
     # and the queue is durable, so a late redeploy delays work, never loses it.
+    #
+    # **`skipped` has to be allowed, and only `skipped`.** `integration` no
+    # longer runs on an unlabelled pull request, and a bare `needs:` would skip
+    # this job with it — taking the Dockerfile build and, worse,
+    # `licitaqui.selfcheck` down with it. That check is the one that catches an
+    # image which builds perfectly and cannot render a single message, which is
+    # exactly what shipped before 2026-09-23. So it must keep running on every
+    # PR, while a *failed* integration on `main` still stops the publish dead.
     needs: [quality, integration]
+    if: >-
+      always()
+      && needs.quality.result == 'success'
+      && (needs.integration.result == 'success' || needs.integration.result == 'skipped')
 
     # Only the publish steps below need this, and only on `main`. `contents:
     # read` stays the workflow-wide default for every other job.

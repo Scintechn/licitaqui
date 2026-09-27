@@ -17,6 +17,7 @@ import pytest
 
 from licitaqui import consumer as consumer_module
 from licitaqui.consumer import Consumer, WakeSignal
+from tests.test_config import NEON_SUSPEND_SECONDS
 
 
 class TrackingFactory:
@@ -85,11 +86,23 @@ def test_idle_holds_no_connection_and_polls_once_per_interval(empty_queue: Track
     assert empty_queue.open_seconds < elapsed * 0.05
 
 
-def test_the_default_consumer_waits_two_minutes_between_polls(empty_queue: TrackingFactory):
-    """With the production poll interval, one second of idling means one poll."""
+def test_the_default_consumer_polls_far_less_often_than_neon_suspends(
+    empty_queue: TrackingFactory,
+):
+    """With the production poll interval, one second of idling means one poll.
+
+    This used to pin 120 s. That number is what kept the Neon compute awake
+    24/7: its suspend timer needs 300 s with no connections, and reconnecting
+    every 120 s reset it forever (see `config.DEFAULT_POLL_INTERVAL_SECONDS`).
+    The assertion now pins the relationship rather than the number, so raising
+    the interval again does not require editing this test, and *lowering* it
+    below the suspend timer does.
+    """
     consumer = Consumer(empty_queue, stale_after=0)
-    assert consumer.poll_interval == 120.0
+    assert consumer.poll_interval > NEON_SUSPEND_SECONDS
     _run_for(consumer, 1.0)
+    # Exactly one drain: the loop works before it waits, so a long interval
+    # means the second poll is far beyond this test's one second.
     assert empty_queue.opened == 1
     assert empty_queue.open_now == 0
 
