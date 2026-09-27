@@ -855,6 +855,36 @@ MAX_WORDS = 16
 MAX_TITLE_CHARS = 120
 
 
+def fit_for_display(text: str) -> str:
+    """Bound a title to :data:`MAX_TITLE_CHARS`, cutting on a word boundary.
+
+    **Why this exists.** `build` used to ship `deterministic_title()` verbatim
+    whenever the model was unavailable or its answer was rejected — and
+    `needs_model()` had *already decided that string was unfit to show a user*,
+    usually because it was longer than 80 characters. The negative result was
+    thrown away and the string shipped anyway.
+
+    On tender `44937365000112-1-000155/2026` that meant a **541-character**
+    `short_title`: the entire PNCP objeto, written into the column whose whole
+    purpose is to not be the objeto, rendered unclamped as a twelve-line wall
+    on every card it appeared in. The pipeline rejected a 121-character model
+    answer as too long and replaced it with a 541-character one.
+
+    Mirrors `trimObject` in `apps/web/lib/radar/format.ts` deliberately —
+    including the 0.6 rule, which prefers a slightly shorter title to one cut
+    mid-word — so the two sides of the product shorten identically. Truncation
+    rather than a CSS clamp for the reason that file gives: a clamp hides that
+    there is more and leaves the whole string in the accessibility tree.
+    """
+    clean = re.sub(r"\s+", " ", text or "").strip()
+    if len(clean) <= MAX_TITLE_CHARS:
+        return clean
+    cut = clean[:MAX_TITLE_CHARS]
+    space = cut.rfind(" ")
+    kept = cut[:space] if space > MAX_TITLE_CHARS * 0.6 else cut
+    return kept.rstrip(".,;:·- ") + "…"
+
+
 def _tokens(text: str) -> list[str]:
     return [t for t in re.split(r"[^0-9a-z]+", norm(text)) if t]
 
@@ -1018,8 +1048,14 @@ def build(
     if not needs_model(free):
         return Title(free, SOURCE_DETERMINISTIC)
 
+    # Past this line the deterministic title is, by definition, one
+    # `needs_model` judged unfit — too long, boilerplate, or generic. Every
+    # branch below ships it anyway when the model cannot be reached or is not
+    # believed, so it is bounded here rather than at each of the three exits.
+    fallback = fit_for_display(free)
+
     if key is None:
-        return Title(free, SOURCE_AI_FALLBACK, rejected="no_api_key") if free else None
+        return Title(fallback, SOURCE_AI_FALLBACK, rejected="no_api_key") if fallback else None
 
     block = item_lines(items)
     answer = model_title(object_text, block, key, model=model, sleep=sleep)
@@ -1029,7 +1065,7 @@ def build(
     if not answer.title:
         return (
             Title(
-                free,
+                fallback,
                 SOURCE_AI_FALLBACK,
                 prompt_version=PROMPT_VERSION,
                 rejected=answer.error or "no_title",
@@ -1038,7 +1074,7 @@ def build(
                 output_tokens=answer.output_tokens,
                 cost_brl=answer.cost_brl,
             )
-            if free
+            if fallback
             else None
         )
 
@@ -1046,7 +1082,7 @@ def build(
     if reason:
         return (
             Title(
-                free,
+                fallback,
                 SOURCE_AI_FALLBACK,
                 prompt_version=PROMPT_VERSION,
                 rejected=reason,
@@ -1055,7 +1091,7 @@ def build(
                 output_tokens=answer.output_tokens,
                 cost_brl=answer.cost_brl,
             )
-            if free
+            if fallback
             else None
         )
 

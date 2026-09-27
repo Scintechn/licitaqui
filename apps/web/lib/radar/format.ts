@@ -446,13 +446,30 @@ export function tenderTitle(object: string, max = 120): string {
  * hourly, so a tender the PNCP sweep brought in ten minutes ago genuinely has
  * no title yet — 3.8% of production at any moment, and always the newest rows,
  * which are the ones most likely to be on screen. `max` still applies to the
- * fallback and not to the short title, which is already short by construction
- * and must never be cut mid-word by a limit meant for a 500-character object.
+ * fallback and not to the short title, which must not be cut mid-word by a
+ * screen-specific limit meant for a 500-character object.
+ *
+ * ## "Short by construction" was not true
+ *
+ * That sentence used to end "which is already short by construction", and the
+ * worker broke it: when the model was unreachable or its answer rejected, it
+ * wrote the **entire objeto** into `short_title` — 541 characters on tender
+ * `44937365000112-1-000155/2026`, rendered as a twelve-line wall on every card
+ * it appeared in. Fixed at source in `worker/licitaqui/titles.py`, and bounded
+ * here too, because this is the last place before a person reads it.
+ *
+ * The two limits are different things and both are needed. `max` is the
+ * caller's: how much prose *this screen* has room for, 80 on the screening
+ * page, 180 on the detail page. {@link SHORT_TITLE_CEILING} is the contract
+ * with the worker: no stored title exceeds it, whoever wrote it.
  */
+const SHORT_TITLE_CEILING = 120
+
 export function displayTitle(
   tender: { shortTitle: string | null; object: string },
   max = 120,
 ): string {
   const short = tender.shortTitle?.trim()
-  return short ? short : tenderTitle(tender.object, max)
+  if (!short) return tenderTitle(tender.object, max)
+  return short.length <= SHORT_TITLE_CEILING ? short : trimObject(short, SHORT_TITLE_CEILING)
 }

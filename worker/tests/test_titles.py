@@ -451,3 +451,52 @@ def test_the_basis_covers_the_objeto_the_revision_and_the_items() -> None:
 )
 def test_the_instrument_is_not_a_title(objeto: str) -> None:
     assert titles.needs_model(titles.deterministic_title(objeto))
+
+
+# -- no title may exceed the limit the validator enforces --------------------
+
+
+REAL_UNTITLED_OBJETO = (
+    "Contratação de empresa especializada para o fornecimento de licença de USO de "
+    "conjunto integrado de aplicações online, em modelo saas, destinado ao sítio "
+    "eletrônico institucional do município de mirante do paranapanema-sp, contemplando "
+    "implantação, criação de layout exclusivo, conversão e migração de dados e contas "
+    "de e-mail, hospedagem, gerenciamento de contas de e-mail corporativo, diário "
+    "oficial eletrônico, suporte técnico, manutenção, atualizações, treinamento e "
+    "demais funcionalidades previstas no termo de referência SA Nº 018/2026"
+)
+
+
+def test_the_fallback_is_bounded_by_the_limit_the_validator_enforces() -> None:
+    """**The defect, from the real row that showed it.**
+
+    `44937365000112-1-000155/2026` on production carried a 541-character
+    `short_title` — the entire objeto — and rendered as a twelve-line wall on
+    every card. The pipeline rejected a 121-character model answer as
+    `too_long` and then shipped a 541-character one in its place, because
+    `needs_model()` judged the deterministic title unfit and the rejection
+    branch shipped that exact string anyway.
+
+    `MAX_TITLE_CHARS` was chosen to match where the web truncates for display
+    (see its own comment), so honouring it here is the contract, not a new
+    rule.
+    """
+    assert len(REAL_UNTITLED_OBJETO) > titles.MAX_TITLE_CHARS
+
+    result = titles.build(REAL_UNTITLED_OBJETO, [], key=None)
+
+    assert result is not None
+    assert result.source == titles.SOURCE_AI_FALLBACK
+    assert len(result.text) <= titles.MAX_TITLE_CHARS, result.text
+    # Cut on a word boundary, not mid-word, and marked as cut.
+    assert result.text.endswith("…")
+    assert not result.text.endswith(" …")
+
+
+def test_fit_for_display_leaves_a_short_title_alone() -> None:
+    short = "Manutenção de ar condicionado e câmaras frias"
+    assert titles.fit_for_display(short) == short
+
+
+def test_fit_for_display_collapses_whitespace_like_the_web_does() -> None:
+    assert titles.fit_for_display("  dois   espaços  ") == "dois espaços"
