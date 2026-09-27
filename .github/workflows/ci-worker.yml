@@ -150,6 +150,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # **A red commit must not become `:latest`.**
+    #
+    # `integration (Neon)` was failing on `main` for a day on 2026-09-25 while
+    # this job stayed green and published the image on every merge — so the
+    # tag that Easypanel pulls was built from a commit whose own suite said it
+    # was broken. Nothing surfaced that, because the two jobs were independent
+    # and only the aggregate PR status went red.
+    #
+    # `needs:` also stops the build burning twenty minutes of runner time on a
+    # commit that has already failed in thirty seconds.
+    #
+    # The cost is real and accepted: `integration` runs up to 45 minutes, so
+    # `:latest` now lands that much later after a merge rather than in
+    # parallel. A correct image an hour late beats a broken one immediately —
+    # and the queue is durable, so a late redeploy delays work, never loses it.
+    needs: [quality, integration]
+
     # Only the publish steps below need this, and only on `main`. `contents:
     # read` stays the workflow-wide default for every other job.
     permissions:
