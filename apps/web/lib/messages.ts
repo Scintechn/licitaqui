@@ -19,7 +19,16 @@ const PRODUCT_FACTS: Readonly<Record<string, string>> = Object.freeze({
   // The contractual total (terms §6), not how many are open today. How
   // many remain is a live number from `/api/founders/seats`, which reads
   // the cap out of `app_settings`.
+  // **The rule, written where the guard can reach it:** the CONTRACT
+  // declares the ceiling and the mechanism (25 seats, two lots); the PAGE
+  // declares the current state (17 open). They crossed on 2026-09-27 —
+  // the badge said 25 while the counter said 17, so the 18th person would
+  // have read "25 vagas" and been waitlisted without warning.
+  //
+  // `{$vagas}` is the ceiling, for copy describing the offer.
+  // `{$vagasAbertas}` is what is open, for copy describing today.
   vagas: String(FOUNDERS.seatsTotal),
+  vagasAbertas: String(FOUNDERS.seatsOpenDefault),
   precoBasico: brl(PLAN_PRICES.basico),
   precoPromocional: brl(PLAN_PRICES.promocional),
   precoEssencial: brl(PLAN_PRICES.essencial),

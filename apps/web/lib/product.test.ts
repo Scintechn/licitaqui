@@ -195,6 +195,62 @@ describe('the product facts, against every file that quotes them', () => {
     }
   })
 
+  it('keeps the refund rule on the page identical to the one in the terms', () => {
+    /**
+     * **CDC art. 30: the page binds us, whatever the contract says.**
+     *
+     * On 2026-09-27 `/termos` §8 deducted the processing fee from days 8–30
+     * while the founders page still promised the whole first month back.
+     * Anyone who read the page could demand the full amount on day 20 and be
+     * right — the deduction was unenforceable against them.
+     *
+     * Nothing caught it, because **no number changed**: "30 dias" was still
+     * 30. The rule was new and the guard only knew how to look for values.
+     * So this looks for the *clause*.
+     */
+    const page = read(COPY)
+    expect(page, 'the page must state the fee deduction, as the terms do').toContain(
+      'menos a taxa de processamento',
+    )
+    expect(page, 'the page must state that days 1-7 are refunded in full').toContain(
+      'devolução integral',
+    )
+  })
+
+  it('never shows the contractual ceiling where it means what is open', () => {
+    /**
+     * **The rule, made checkable: the contract declares the ceiling and the
+     * mechanism; the page declares the current state.**
+     *
+     * They crossed once — the badge read 25 while the counter read 17, so the
+     * 18th person would have read "25 vagas" and been waitlisted with no
+     * warning. Living only in the head of whoever edited last is exactly why.
+     */
+    const page = read(COPY)
+    const ceiling = String(FOUNDERS.seatsTotal)
+    const open = String(FOUNDERS.seatsOpenDefault)
+
+    // Scoped to the surfaces a buyer acts on — the badge, the closing CTA,
+    // the "what happens after" question and the page's own description.
+    // Those are the ones where reading the ceiling and being handed a
+    // waitlist is a broken promise rather than a wording preference.
+    //
+    // Deliberately NOT a blanket ban on the ceiling appearing at all: some
+    // copy is about the offer ("São só 25 porque…" explains why the number is
+    // small, and 25 is the real answer). Which of those means the ceiling and
+    // which means today is Sci's call, not this test's.
+    const decisive = [
+      messages.foundersPage.hero.badge,
+      messages.foundersPage.final.title,
+      messages.foundersPage.meta.description,
+    ]
+    for (const line of decisive) {
+      expect(line, `"${line}" states the ceiling where a buyer reads availability`)
+        .not.toContain(`${ceiling} vagas`)
+    }
+    expect(page, 'the page states the open lot somewhere').toContain(`${open} vagas`)
+  })
+
   it('does not let the founder price and its successor drift apart', () => {
     // Two ways of saying the same thing, in two files, and they have gone out
     // of step before: `plans.promocional.thenBrl` is what the founder starts

@@ -135,7 +135,7 @@
   "foundersPage": {
     "meta": {
       "title": "LicitaQui Fundadores",
-      "description": "Lista de fundadores da LicitaQui: {$vagas} vagas a {$precoPromocional} por mês nos {$mesesPromocionais} primeiros meses. Ache o edital que a sua empresa consegue atender e saiba até quanto ofertar com lucro."
+      "description": "Lista de fundadores da LicitaQui: {$vagasAbertas} vagas a {$precoPromocional} por mês nos {$mesesPromocionais} primeiros meses. Ache o edital que a sua empresa consegue atender e saiba até quanto ofertar com lucro."
     },
     "nav": {
       "skip": "Ir direto para o conteúdo",
@@ -143,7 +143,7 @@
       "cta": "Garantir minha vaga"
     },
     "hero": {
-      "badge": "Lista de fundadores · {$vagas} vagas · abertura 08/10",
+      "badge": "Lista de fundadores · {$vagasAbertas} vagas · abertura 08/10",
       "title": "Ache o edital que você consegue atender. Saiba até quanto ofertar com lucro",
       "subtitle": "O LicitaQui é uma ferramenta de licitações feita para MEI e pequena empresa. Ela lê os editais abertos, mostra o que combina com o seu CNPJ, explica o que pedem e avisa antes do prazo.",
       "promises": [
@@ -412,8 +412,8 @@
         ],
         [
           {
-            "q": "O que acontece depois das {$vagas} vagas?",
-            "a": "Você entra na lista de espera e ainda recebe o aviso de abertura, mas o Essencial custa {$precoEssencial} por mês."
+            "q": "O que acontece depois das {$vagasAbertas} vagas?",
+            "a": "Você entra na lista de espera, na ordem, e ainda recebe o aviso de abertura. Se o primeiro lote fechar em duas semanas, abrimos mais 8 vagas e chamamos pela ordem. Fora da oferta, o Essencial custa {$precoEssencial} por mês."
           },
           {
             "q": "O que acontece depois dos {$mesesPromocionais} meses?",
@@ -435,7 +435,7 @@
       ]
     },
     "final": {
-      "title": "{$vagas} vagas a {$precoPromocional} por mês, por {$mesesPromocionais} meses."
+      "title": "{$vagasAbertas} vagas a {$precoPromocional} por mês, por {$mesesPromocionais} meses."
     },
     "footer": {
       "company": "LicitaQui é um produto da Scint Tecnologia Serviços Ltda · CNPJ 36.955.612/0001-85 · contato@licitaquiapp.com.br · WhatsApp (11) 96246-0678"
@@ -445,10 +445,11 @@
       "intro": "Em dois casos:",
       "items": [
         "**Nos primeiros 7 dias da primeira assinatura**, você pode desistir e recebe tudo de volta — é o direito de arrependimento do Código de Defesa do Consumidor. Vale na primeira contratação; a renovação automática dos meses seguintes não reabre esse prazo.",
-        "**Nos primeiros 30 dias**, se você achar que não valeu, devolvemos o valor do primeiro mês. Sem justificar. Vale uma vez por CNPJ, sobre a primeira cobrança, nos planos Promocional e Essencial."
+        "**Do 8º ao 30º dia**, se você achar que não valeu, devolvemos o valor do primeiro mês **menos a taxa de processamento do pagamento** — cerca de R$ 1,92 no plano Promocional, o que dá R$ 55,08 de volta. Essa taxa é cobrada pela operadora e não nos é devolvida; o valor exato aparece na tela de pagamento antes de você confirmar. Sem justificar. Vale uma vez por CNPJ, sobre a primeira cobrança, nos planos Promocional e Essencial.",
+        "**Atenção:** nos **7 primeiros dias** vale sempre a devolução integral, sem desconto nenhum. Se o seu pedido chegar nesse prazo, é essa a regra aplicada."
       ],
       "outro": "Fora desses casos não há devolução proporcional, porque o período em curso continua disponível para você até o fim.",
-      "ctaLine": "Garantia de 30 dias: não gostou, devolvemos o primeiro mês."
+      "ctaLine": "Garantia de 30 dias: até o 7º dia devolvemos 100%; do 8º ao 30º, o primeiro mês menos a taxa de processamento."
     }
   },
   "plans": {
@@ -466,7 +467,7 @@
     },
     "promo": {
       "name": "Promocional",
-      "badge": "Só para os {$vagas} fundadores",
+      "badge": "Só para os {$vagasAbertas} fundadores do 1º lote",
       "price": "{$precoPromocional}",
       "summary": "O plano Essencial pelo preço de fundador nos {$mesesPromocionais} primeiros meses.",
       "priceChangeNote": "{$precoPromocional} por mês nos {$mesesPromocionais} primeiros meses. A partir do quarto mês, {$precoEssencial} por mês, o preço do plano Essencial. Avisamos por e-mail 30 dias antes."
@@ -815,7 +816,7 @@
             },
             {
               "q": "O que é o plano Promocional?",
-              "a": "É o Essencial pelo preço de fundador: {$precoPromocional} por mês nos {$mesesPromocionais} primeiros meses, para as {$vagas} primeiras empresas. Do {$mesPosPromo} mês em diante, {$precoEssencial} por mês, com aviso 30 dias antes. Depois das {$vagas} vagas, o Essencial custa {$precoEssencial} desde o início."
+              "a": "É o Essencial pelo preço de fundador: {$precoPromocional} por mês nos {$mesesPromocionais} primeiros meses, para as {$vagasAbertas} empresas do primeiro lote. Do {$mesPosPromo} mês em diante, {$precoEssencial} por mês, com aviso 30 dias antes. Depois das {$vagas} vagas, o Essencial custa {$precoEssencial} desde o início."
             }
           ],
           [
