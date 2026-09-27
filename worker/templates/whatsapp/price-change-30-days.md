@@ -2,13 +2,13 @@
 id: price-change-30-days
 channel: whatsapp
 status: draft
-placeholders: [nome, data_mudanca, link_cancelamento]
+placeholders: [data_mudanca, link_cancelamento, nome, preco_essencial_exato, preco_promocional_exato]
 notes: Courtesy copy only. The email is the official notice and the record of delivery; this goes out on the same day, never instead of it, and only to numbers with WhatsApp consent.
 ---
 
 Oi, {{nome}}. Aviso rápido da LicitaQui, com 30 dias de antecedência.
 
-A partir de {{data_mudanca}}, sua mensalidade passa de R$ 26,00 para R$ 57,00 por mês. Até lá continua R$ 26,00, e nada na sua conta muda.
+A partir de {{data_mudanca}}, sua mensalidade passa de {{preco_promocional_exato}} para {{preco_essencial_exato}} por mês. Até lá continua {{preco_promocional_exato}}, e nada na sua conta muda.
 
 Se não quiser continuar, dá para cancelar até {{data_mudanca}} em um clique, sem multa: {{link_cancelamento}}
 

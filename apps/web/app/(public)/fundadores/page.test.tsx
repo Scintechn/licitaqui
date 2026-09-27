@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
+import { brl, PLAN_PRICES, PROMO } from '@/lib/product'
 import { EXAMPLE_AS_OF } from '@/lib/radar/landing-example'
 import FoundersOfferPage, { ANCHORS, revalidate } from './page'
 import radarPreviewMobile from './radar-preview-mobile.png'
@@ -80,8 +81,10 @@ describe('/fundadores', () => {
     // The founder price and the price it becomes, on the page itself. The
     // form's own copy of them moved into the dialog with the form, and is
     // asserted in `signup-form.test.tsx`.
-    expect(out).toContain('R$ 26')
-    expect(out).toContain('R$ 57')
+    // From the product facts, not typed here: pinning `R$ 26` is what made a
+    // price change look like a test failure instead of a passing rename.
+    expect(out).toContain(brl(PLAN_PRICES.promocional))
+    expect(out).toContain(brl(PROMO.thenBrl))
   })
 
   it('renders no form of its own: the ask is a dialog', () => {

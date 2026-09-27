@@ -4,7 +4,7 @@ channel: email
 subject: "Sua vaga de fundador na LicitaQui é a número {{numero_vaga}}"
 preheader: "Guardamos seu lugar. No dia {{data_abertura}} você recebe o link de acesso."
 status: approved
-placeholders: [nome, numero_vaga, data_abertura, email_contato]
+placeholders: [data_abertura, email_contato, meses_promocionais, nome, numero_vaga, preco_essencial, preco_promocional, vagas]
 partials: [partial-footer]
 notes: Sent by POST /api/founders together with (or instead of) the WhatsApp welcome, depending on what the person consented to.
 ---
@@ -22,7 +22,7 @@ A triagem é feita por inteligência artificial e serve para você decidir rápi
 O QUE VOCÊ TEM POR SER FUNDADOR
 
 - Entrada no dia {{data_abertura}}.
-- Preço Promocional: R$ 26 por mês nos 6 primeiros meses. A partir do sétimo mês, R$ 57 por mês, que é o preço do plano Essencial. Avisamos com 30 dias de antecedência antes dessa mudança.
+- Preço Promocional: {{preco_promocional}} por mês nos {{meses_promocionais}} primeiros meses. A partir do quarto mês, {{preco_essencial}} por mês, que é o preço do plano Essencial. Avisamos com 30 dias de antecedência antes dessa mudança.
 - Sem fidelidade. Você cancela quando quiser, em um clique.
 
 O QUE ACONTECE AGORA
@@ -31,6 +31,6 @@ Nada da sua parte. Mas a consulta por editais já está ativa. No dia {{data_abe
 
 Se tiver qualquer dúvida até lá, é só responder este e-mail ou escrever para {{email_contato}}.
 
-Obrigado por entrar tão cedo. São 48 pessoas, e a opinião de vocês é que vai dizer o que a LicitaQui precisa fazer melhor.
+Obrigado por entrar tão cedo. São {{vagas}} pessoas, e a opinião de vocês é que vai dizer o que a LicitaQui precisa fazer melhor.
 
 Equipe LicitaQui

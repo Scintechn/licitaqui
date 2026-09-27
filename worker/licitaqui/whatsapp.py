@@ -76,7 +76,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import config, evolution, queue, templates
+from . import config, evolution, product, queue, templates
 from .breaker import CircuitOpen
 from .evolution import EvolutionClient, EvolutionError, SendResult
 from .observability import get_logger
@@ -277,7 +277,12 @@ def build_context(*, name: str, payload: dict[str, Any], template_id: str) -> di
     needs and this does not provide makes :meth:`Template.render` raise, which
     is the behaviour templates README §3 requires.
     """
-    context: dict[str, Any] = {"nome": first_name(name)}
+    # Product facts first, so a template that quotes a price declares
+    # `{{preco_promocional}}` and gets it without any sender knowing which of
+    # the nine templates mentions money. `templates.py` requires declared and
+    # used to match exactly, so a template that never mentions a price never
+    # declares these and is unaffected by their presence here.
+    context: dict[str, Any] = {**product.template_context(), "nome": first_name(name)}
     if template_id == "founders-welcome":
         context["numero_vaga"] = payload.get("numero_vaga")
         context["data_abertura"] = format_date_pt(opening_date())

@@ -646,7 +646,7 @@ function Confirmation({
       {seat === null ? (
         <>
           <SectionLabel tone="muted" size="caption">
-            {messages.founders.seats.soldOut}
+            {format(messages.founders.seats.soldOut, { total: FOUNDER_SEATS })}
           </SectionLabel>
           <h2 className="font-display text-subsection font-bold">
             {messages.founders.waitlist.title}

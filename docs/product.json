@@ -23,20 +23,63 @@
   ],
 
   "founders": {
-    "seats": 48,
+    "seatsTotal": 25,
+    "seatsOpenDefault": 17,
     "opensOn": "2026-10-08",
-    "opensAtBrt": "19:00"
+    "opensAtBrt": "19:00",
+    "$seatsComment": [
+      "Two numbers, because the offer opens in two lots and they are not the",
+      "same kind of fact.",
+      "",
+      "`seatsTotal` (25) is CONTRACTUAL — terms §6 says the offer is limited to",
+      "25 subscribers, released in lots of 17 and then 8. Changing it changes a",
+      "clause people have accepted.",
+      "",
+      "`seatsOpenDefault` (17) is only the value a fresh database starts at.",
+      "**The live cap is a row in `app_settings`, not this file.** Opening lot 2",
+      "must be an UPDATE, never a deploy: releasing eight seats should not",
+      "require a CI run, an image build and a redeploy, and on 2026-09-26 that",
+      "chain took six days to complete once.",
+      "",
+      "The invariant the code enforces: the cap may be raised freely, and",
+      "lowered only to a value at or above the highest seat already assigned.",
+      "Lowering it past an assigned seat would push somebody out of an offer",
+      "they had already accepted.",
+      "",
+      "A seat is RESERVED, not bought. Reserving costs nothing and happens now;",
+      "the charge starts on 08/10 when the plan opens. So `seat` on",
+      "`founders_list` records a booking, and a subscription is a separate",
+      "thing that does not exist yet (E8). Sci opens lot 2 only if the 17 are",
+      "still not taken by 08/10 — a decision, never a schedule."
+    ]
   },
 
   "plans": {
     "basico": { "brl": 0 },
-    "promocional": { "brl": 26, "months": 6, "thenBrl": 57 },
-    "essencial": { "brl": 57 },
-    "pro": { "brl": 98 }
+    "promocional": { "brl": 57, "months": 3, "thenBrl": 75 },
+    "essencial": { "brl": 75 },
+    "pro": { "brl": 129 }
   },
 
   "notice": {
     "priceChangeDays": 30,
-    "chargeReminderDays": 3
+    "chargeReminderDays": 3,
+    "$noticeComment": "priceChangeDays is the CONTRACTUAL FLOOR (terms §6.4), not the operating value. Sending earlier is always allowed; later never is."
+  },
+
+  "refund": {
+    "statutoryDays": 7,
+    "guaranteeDays": 30,
+    "processingFeeBrl": 1.92,
+    "$refundComment": [
+      "Terms §8 and faq-cobranca. Days 1-7 are CDC art. 49 — full refund, no",
+      "deduction, and it wins whenever both windows apply. Days 8-30 are our own",
+      "guarantee and return the amount paid minus the acquirer's processing fee.",
+      "",
+      "The net figure quoted in the copy (R$ 55,08) is NOT stored: it is",
+      "promocional - processingFeeBrl, and product.test.ts asserts the prose",
+      "still matches that subtraction. A number written down twice is a number",
+      "that drifts; a number derived once cannot."
+    ]
   }
 }

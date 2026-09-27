@@ -11,12 +11,20 @@ from pathlib import Path
 
 import pytest
 
-from licitaqui import templates
+from licitaqui import product, templates
 from licitaqui.templates import MissingPlaceholder, TemplateError, TemplateNotApproved
 
 REAL_TEMPLATES = templates.TEMPLATES_DIR
 
-WELCOME_CONTEXT = {"nome": "Maria", "numero_vaga": 7, "data_abertura": "8 de outubro de 2026"}
+#: The product facts are part of every real render context — `build_context`
+#: merges them in for every template (see `licitaqui.product`) — so a test
+#: context that omitted them would be testing a call production never makes.
+WELCOME_CONTEXT = {
+    **product.template_context(),
+    "nome": "Maria",
+    "numero_vaga": 7,
+    "data_abertura": "8 de outubro de 2026",
+}
 
 
 def write(tmp_path: Path, channel: str, name: str, text: str) -> Path:

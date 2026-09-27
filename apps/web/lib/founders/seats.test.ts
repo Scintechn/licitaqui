@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { FOUNDERS } from '../product'
 import {
   FOUNDER_SEATS,
   seatGrid,
@@ -10,8 +11,11 @@ import {
 } from './seats'
 
 describe('FOUNDER_SEATS', () => {
-  it('is the 48 of spec §10 — the cap on the Promocional price', () => {
-    expect(FOUNDER_SEATS).toBe(48)
+  it('is the open lot, not the contractual total', () => {
+    // Two different facts. Terms §6 sells 25 in two lots; this is how many are
+    // open. Conflating them would sell 25 seats and hand out 17.
+    expect(FOUNDER_SEATS).toBe(FOUNDERS.seatsOpenDefault)
+    expect(FOUNDER_SEATS).toBeLessThanOrEqual(FOUNDERS.seatsTotal)
   })
 })
 
@@ -19,12 +23,12 @@ describe('seatsTaken', () => {
   it('passes a sane count through', () => {
     expect(seatsTaken(0)).toBe(0)
     expect(seatsTaken(17)).toBe(17)
-    expect(seatsTaken(48)).toBe(48)
+    expect(seatsTaken(FOUNDER_SEATS)).toBe(FOUNDER_SEATS)
   })
 
   it('never reports more seats taken than exist', () => {
-    expect(seatsTaken(49)).toBe(48)
-    expect(seatsTaken(1000)).toBe(48)
+    expect(seatsTaken(FOUNDER_SEATS + 1)).toBe(FOUNDER_SEATS)
+    expect(seatsTaken(1000)).toBe(FOUNDER_SEATS)
   })
 
   it('never reports a negative or fractional count', () => {
@@ -39,19 +43,19 @@ describe('seatsTaken', () => {
 })
 
 describe('seatsLeft', () => {
-  it('counts down from 48 and stops at zero', () => {
-    expect(seatsLeft(0)).toBe(48)
-    expect(seatsLeft(47)).toBe(1)
-    expect(seatsLeft(48)).toBe(0)
+  it('counts down from the cap and stops at zero', () => {
+    expect(seatsLeft(0)).toBe(FOUNDER_SEATS)
+    expect(seatsLeft(FOUNDER_SEATS - 1)).toBe(1)
+    expect(seatsLeft(FOUNDER_SEATS)).toBe(0)
     expect(seatsLeft(60)).toBe(0)
   })
 })
 
 describe('seatsLeftLabel', () => {
   it('uses the plural the catalogue defines', () => {
-    expect(seatsLeftLabel(0)).toBe('Restam 48 vagas')
-    expect(seatsLeftLabel(47)).toBe('Resta 1 vaga')
-    expect(seatsLeftLabel(48)).toBe('Vagas esgotadas')
+    expect(seatsLeftLabel(0)).toBe(`Restam ${FOUNDER_SEATS} vagas`)
+    expect(seatsLeftLabel(FOUNDER_SEATS - 1)).toBe('Resta 1 vaga')
+    expect(seatsLeftLabel(FOUNDER_SEATS)).toBe('Vagas esgotadas')
   })
 
   it('says "esgotadas" rather than a negative number when oversold', () => {
@@ -60,18 +64,20 @@ describe('seatsLeftLabel', () => {
 })
 
 describe('seatsFilledLabel', () => {
-  it('reads "N de 48 vagas preenchidas"', () => {
-    expect(seatsFilledLabel(12)).toBe('12 de 48 vagas preenchidas')
-    expect(seatsFilledLabel(48)).toBe('48 de 48 vagas preenchidas')
+  it('counts against the open cap, not the 25 the terms promise', () => {
+    expect(seatsFilledLabel(12)).toBe(`12 de ${FOUNDER_SEATS} vagas preenchidas`)
+    expect(seatsFilledLabel(FOUNDER_SEATS)).toBe(
+      `${FOUNDER_SEATS} de ${FOUNDER_SEATS} vagas preenchidas`,
+    )
   })
 })
 
 describe('seatGrid', () => {
-  it('always draws exactly 48 cells, numbered 1..48', () => {
+  it('always draws exactly one cell per open seat', () => {
     const grid = seatGrid()
-    expect(grid).toHaveLength(48)
+    expect(grid).toHaveLength(FOUNDER_SEATS)
     expect(grid[0]).toEqual({ seat: 1, filled: false })
-    expect(grid[47]).toEqual({ seat: 48, filled: false })
+    expect(grid[FOUNDER_SEATS - 1]).toEqual({ seat: FOUNDER_SEATS, filled: false })
   })
 
   it('fills the first N cells', () => {
@@ -86,7 +92,7 @@ describe('seatGrid', () => {
 
 describe('showSeatGrid', () => {
   it('draws nothing while no seat has been taken', () => {
-    // Forty-eight visibly empty boxes under "Restam 48 vagas" is a picture of
+    // A grid of visibly empty boxes under "Restam N vagas" is a picture of
     // an empty room. Scarcity framing only works above zero.
     expect(showSeatGrid(0)).toBe(false)
   })
