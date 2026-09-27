@@ -61,9 +61,7 @@ def test_either_resend_key_name_satisfies_it() -> None:
 
 
 def test_two_broken_channels_are_both_reported() -> None:
-    problems = preflight.delivery_problems(
-        {"EMAIL_DELIVERY": "send", "WHATSAPP_DELIVERY": "send"}
-    )
+    problems = preflight.delivery_problems({"EMAIL_DELIVERY": "send", "WHATSAPP_DELIVERY": "send"})
 
     assert len(problems) == 2
     assert any("WhatsApp" in p and "EVOLUTION_INSTANCE" in p for p in problems)
