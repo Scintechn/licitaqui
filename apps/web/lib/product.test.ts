@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { brl, brlExact, FOUNDERS, NOTICE, PLAN_PRICES, PROMO } from './product'
+import { messages } from './messages'
+import { brl, brlExact, FOUNDERS, NOTICE, PLAN_PRICES, PROMO, REFUND } from './product'
 
 /**
  * **Does every file still agree with `docs/product.json`?**
@@ -26,9 +27,20 @@ import { brl, brlExact, FOUNDERS, NOTICE, PLAN_PRICES, PROMO } from './product'
  */
 
 const root = join(import.meta.dirname, '..', '..', '..')
-const read = (rel: string) => readFileSync(join(root, rel), 'utf8')
+const rawFile = (rel: string) => readFileSync(join(root, rel), 'utf8')
 
 const COPY = 'apps/web/messages/pt-BR.json'
+
+/**
+ * The catalogue is read **resolved**, every other file **raw**.
+ *
+ * Since Layer 2 the catalogue no longer contains prices — it contains
+ * `{$precoEssencial}`, substituted at load by `messages.ts`. Reading the file
+ * off disk would therefore find no price at all and pass vacuously, which is
+ * the worst possible failure for a guard whose entire job is noticing absence.
+ * So the assertions run against what actually renders.
+ */
+const read = (rel: string) => (rel === COPY ? JSON.stringify(messages) : rawFile(rel))
 const TERMS = 'docs/legal/termos-de-uso.md'
 const FAQ = 'docs/legal/faq-cobranca.md'
 const BRIEF = 'docs/legal/LEGAL_AND_BILLING_BRIEF.md'
@@ -73,6 +85,15 @@ const NOT_A_PLAN_PRICE = new Map<string, string>([
   ['1,25', 'example tender value, in millions'],
   ['4,3', 'example tender value, in millions'],
   ['4,33', 'example tender value, in millions'],
+  // Refund figures. Not plan prices, and not free-floating either: the fee is
+  // in `docs/product.json` and the net is derived from it — both are asserted
+  // against the prose by "keeps the refund arithmetic in the prose honest".
+  ['1,92', "the acquirer's processing fee, deducted days 8-30 (terms §8)"],
+  ['55,08', 'the net refund — derived as promocional minus the fee, never stored'],
+  ['1,44', "the fee's annual cost at 25 founders and a 3% refund rate — an "
+    + 'estimate in the brief, not a price'],
+  ['82,05', 'the 2026 DAS-MEI (comércio) — what the reader already pays monthly, '
+    + 'quoted for comparison. Not ours, and not derived from anything here'],
 ])
 
 /** Every `R$ …` in a file, normalised to just the digits. */
@@ -111,18 +132,25 @@ describe('the product facts, against every file that quotes them', () => {
     [brl(PLAN_PRICES.essencial), [COPY, TERMS, FAQ, BRIEF], 'the Essencial price'],
     [brl(PLAN_PRICES.pro), [COPY, TERMS, BRIEF], 'the Pro price'],
     [brl(PLAN_PRICES.promocional), [COPY, TERMS, FAQ, BRIEF], 'the founder price'],
+    // Legal files only, deliberately. Since Layers 2 and 3 the catalogue and
+    // the templates carry tokens, so they cannot go stale — a value that no
+    // longer appears there means the binding broke, which the resolution test
+    // below catches far more precisely than a substring search would.
+    [brlExact(PLAN_PRICES.promocional), [TERMS], 'the founder price, exact form'],
+    [brlExact(PROMO.thenBrl), [TERMS], 'the price it becomes, exact form'],
+    [String(FOUNDERS.seatsTotal), [COPY, TERMS, FAQ, BRIEF], 'the number of founder seats'],
+    // **The phrase, not the bare number.** This asserted `"3"` until
+    // 2026-09-27, and passed on `"3 DIAS GRÁTIS"` while every one of these
+    // files still promised six months and a price change in month 7. A digit
+    // is in almost any document; the clause is the fact.
     [
-      brlExact(PLAN_PRICES.promocional),
-      [TERMS, 'worker/templates/email/price-change-30-days.md'],
-      'the founder price, exact form',
+      `${PROMO.months} primeiros meses`,
+      [COPY, TERMS, FAQ],
+      'how many months the founder price lasts',
     ],
-    [
-      brlExact(PROMO.thenBrl),
-      [TERMS, 'worker/templates/email/price-change-30-days.md'],
-      'the price it becomes, exact form',
-    ],
-    [String(FOUNDERS.seats), [COPY, TERMS, FAQ, BRIEF], 'the number of founder seats'],
-    [String(PROMO.months), [COPY, TERMS, FAQ, BRIEF], 'how many months the founder price lasts'],
+    [`${PROMO.months} months`, [BRIEF], 'the promo length, in the English brief'],
+    [`${PROMO.months + 1}º mês`, [COPY, TERMS, FAQ], 'the month the new price starts'],
+    [`month ${PROMO.months + 1}`, [BRIEF], 'the month the new price starts, in the brief'],
     [String(NOTICE.priceChangeDays), [COPY, TERMS, BRIEF], 'the price-change notice period'],
   ]
 
@@ -132,6 +160,39 @@ describe('the product facts, against every file that quotes them', () => {
       missing,
       `${value} is in docs/product.json but no longer appears in: ${missing.join(', ')}`,
     ).toEqual([])
+  })
+
+  it('keeps the refund arithmetic in the prose honest', () => {
+    /**
+     * **The rule Sci flagged: a clause with no number in it is invisible to a
+     * guard that keys on numbers.**
+     *
+     * `R$ 55,08` is not stored anywhere — it is `promocional − processingFee`,
+     * written out in four places as prose. Storing it would be a second copy
+     * of a derived value, which is how two numbers that must agree stop
+     * agreeing. So it is computed here and the prose is checked against it.
+     */
+    const fee = REFUND.processingFeeBrl
+    const net = (PLAN_PRICES.promocional - fee).toFixed(2).replace('.', ',')
+    const feeText = fee.toFixed(2).replace('.', ',')
+
+    for (const file of [TERMS, FAQ]) {
+      expect(read(file), `${file} should quote the net refund R$ ${net}`).toContain(net)
+      expect(read(file), `${file} should quote the processing fee R$ ${feeText}`).toContain(feeText)
+    }
+  })
+
+  it('states both refund windows wherever it states either', () => {
+    // The statutory 7-day window and our 30-day guarantee are different rules
+    // with different amounts, and the statutory one wins when both apply.
+    // A file that mentions one and not the other is the shape of the mistake.
+    for (const file of [TERMS, FAQ]) {
+      const text = read(file)
+      expect(text, `${file} mentions the guarantee window`).toContain(
+        `${REFUND.guaranteeDays} dia`,
+      )
+      expect(text, `${file} mentions the statutory window`).toContain(`${REFUND.statutoryDays} `)
+    }
   })
 
   it('does not let the founder price and its successor drift apart', () => {
@@ -146,6 +207,53 @@ describe('the product facts, against every file that quotes them', () => {
     const [year, month, day] = FOUNDERS.opensOn.split('-')
     expect(read(COPY)).toContain(`${day}/${month}`)
     expect(year).toBe('2026')
+  })
+
+  it('leaves no product fact written by hand in the catalogue', () => {
+    /**
+     * **The Layer 2 ratchet.** Resolving tokens is only half the work; the
+     * other half is making sure nobody types `R$ 57` into a new string next
+     * month and quietly re-creates the problem. The catalogue *source* must
+     * carry tokens, never the numbers.
+     *
+     * Deliberately scoped to plan prices and the seat count. Example figures —
+     * the price ruler, `R$ 48 mil`, the competitor's `R$ 397/mês` — are copy
+     * about the world, not facts about the product, and templating them would
+     * be worse than leaving them alone.
+     */
+    const source = rawFile(COPY)
+
+    const handwritten = Object.entries(PLAN_PRICES)
+      .map(([plan, price]) => ({ plan, literal: brl(price) }))
+      .filter(({ literal }) => new RegExp(`${literal.replace('$', '\\$')}(?![\\d.,])`).test(source))
+      .map(({ plan, literal }) => `${literal} (plans.${plan})`)
+
+    expect(
+      handwritten,
+      'a plan price is typed into pt-BR.json — use the {$preco…} token so one edit ' +
+        'to docs/product.json reaches every string',
+    ).toEqual([])
+
+    // The seat count, in the phrases it actually appears in.
+    const seats = String(FOUNDERS.seatsTotal)
+    const seatPhrases = [`${seats} vagas`, `${seats} fundadores`, `${seats} assinantes`]
+    expect(
+      seatPhrases.filter((phrase) => source.includes(phrase)),
+      'the seat count is typed into pt-BR.json — use {$vagas}',
+    ).toEqual([])
+  })
+
+  it('resolves every token it is given, leaving none on screen', () => {
+    // `substituteFacts` leaves an unknown `{$typo}` in place rather than
+    // dropping it, on the same reasoning `format` gives for `{typo}`: a
+    // mistake should be visible, not invisible. Visible in a *test*, though —
+    // not to a founder reading the offer.
+    const unresolved = [...JSON.stringify(messages).matchAll(/\{\$(\w+)\}/g)].map((m) => m[1])
+
+    expect(
+      [...new Set(unresolved)],
+      'a {$token} in pt-BR.json has no matching fact in PRODUCT_FACTS (messages.ts)',
+    ).toEqual([])
   })
 
   it('formats money the way the catalogue does, without a non-breaking space', () => {

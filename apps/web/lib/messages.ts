@@ -1,4 +1,59 @@
 import ptBR from '@/messages/pt-BR.json'
+import { brl, brlExact, FOUNDERS, NOTICE, PLAN_PRICES, PROMO } from './product'
+
+/**
+ * **Product facts, substituted into the catalogue once at load.**
+ *
+ * `{$vagas}` is not `{count}`. The `$` marks a value resolved *here*, before
+ * any component sees the string, and the distinction is load-bearing: most
+ * copy is rendered straight (`{messages.plans.essential.price}`) with no call
+ * to {@link format} at all, so a price written as an ordinary `{preco}`
+ * argument would reach the screen as the literal text `{preco}`.
+ *
+ * Resolving at load means every existing render site keeps working untouched,
+ * and the catalogue stops repeating a number that lives in
+ * `docs/product.json`. `"48 vagas"` written by hand in ten strings is how
+ * D11b, D7 and D6 each happened.
+ */
+const PRODUCT_FACTS: Readonly<Record<string, string>> = Object.freeze({
+  // The contractual total (terms §6), not how many are open today. How
+  // many remain is a live number from `/api/founders/seats`, which reads
+  // the cap out of `app_settings`.
+  vagas: String(FOUNDERS.seatsTotal),
+  precoBasico: brl(PLAN_PRICES.basico),
+  precoPromocional: brl(PLAN_PRICES.promocional),
+  precoEssencial: brl(PLAN_PRICES.essencial),
+  precoPro: brl(PLAN_PRICES.pro),
+  // The `R$ 26,00` form the billing screens and receipts use. Missed by
+  // the first binding pass, and the guard caught it — which is the only
+  // reason it is not still sitting in the catalogue saying R$ 26,00.
+  precoPromocionalExato: brlExact(PLAN_PRICES.promocional),
+  precoEssencialExato: brlExact(PLAN_PRICES.essencial),
+  mesesPromocionais: String(PROMO.months),
+  // Derived, never stored: the month the new price starts is always the
+  // one after the promo ends, and two numbers that must agree are two
+  // numbers that eventually do not.
+  mesPosPromo: `${PROMO.months + 1}º`,
+  diasAvisoPreco: String(NOTICE.priceChangeDays),
+  /** `2026-10-08` → `08/10`, the form Brazilian copy uses. */
+  aberturaData: FOUNDERS.opensOn.split('-').slice(1).reverse().join('/'),
+})
+
+/** `{$name}` → its value. An unknown name is **left in place**, never dropped. */
+function substituteFacts(text: string): string {
+  return text.replaceAll(/\{\$(\w+)\}/g, (whole, name: string) => PRODUCT_FACTS[name] ?? whole)
+}
+
+function resolveDeep<T>(node: T): T {
+  if (typeof node === 'string') return substituteFacts(node) as T
+  if (Array.isArray(node)) return node.map(resolveDeep) as T
+  if (node !== null && typeof node === 'object') {
+    return Object.fromEntries(
+      Object.entries(node).map(([key, value]) => [key, resolveDeep(value)]),
+    ) as T
+  }
+  return node
+}
 
 /**
  * The single Brazilian Portuguese message catalogue (CLAUDE.md: keys in
@@ -8,7 +63,7 @@ import ptBR from '@/messages/pt-BR.json'
  * There is no i18n runtime yet on purpose — adding `next-intl` before there is
  * a second locale would buy nothing. When one arrives, this module is the seam.
  */
-export const messages = ptBR
+export const messages = resolveDeep(ptBR)
 
 export type Messages = typeof ptBR
 

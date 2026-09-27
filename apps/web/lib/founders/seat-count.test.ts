@@ -10,10 +10,14 @@ import { FOUNDER_SEATS } from './seats'
  */
 describe('founderSeats', () => {
   it('reports what is taken and what is left', async () => {
-    await expect(founderSeats(async () => 17)).resolves.toEqual({
+    // Half the cap, not a literal: `17` was well below 48 and is exactly the
+    // cap now, so the same numbers that once meant "plenty left" came to mean
+    // "sold out" without a word of this test changing.
+    const taken = Math.floor(FOUNDER_SEATS / 2)
+    await expect(founderSeats(async () => taken)).resolves.toEqual({
       total: FOUNDER_SEATS,
-      taken: 17,
-      left: FOUNDER_SEATS - 17,
+      taken,
+      left: FOUNDER_SEATS - taken,
       soldOut: false,
     })
   })

@@ -21,17 +21,18 @@ Não. O cancelamento desliga a renovação automática. Você continua com o pla
 Em dois casos:
 
 - **Nos primeiros 7 dias da primeira assinatura**, você pode desistir e recebe tudo de volta — é o direito de arrependimento do Código de Defesa do Consumidor. Vale na primeira contratação; a renovação automática dos meses seguintes não reabre esse prazo.
-- **Nos primeiros 30 dias**, se você achar que não valeu, devolvemos o valor do primeiro mês. Sem justificar. Vale uma vez por CNPJ, sobre a primeira cobrança, nos planos Promocional e Essencial.
+- **Do 8º ao 30º dia**, se você achar que não valeu, devolvemos o valor do primeiro mês **menos a taxa de processamento do pagamento** — cerca de R$ 1,92 no plano Promocional, o que dá R$ 55,08 de volta. Essa taxa é cobrada pela operadora e não nos é devolvida; o valor exato aparece na tela de pagamento antes de você confirmar. Sem justificar. Vale uma vez por CNPJ, sobre a primeira cobrança, nos planos Promocional e Essencial.
+- **Atenção:** nos **7 primeiros dias** vale sempre a devolução integral, sem desconto nenhum. Se o seu pedido chegar nesse prazo, é essa a regra aplicada.
 
 Fora desses casos não há devolução proporcional, porque o período em curso continua disponível para você até o fim.
 
-**Sou fundador. O que acontece no 7º mês?**
+**Sou fundador. O que acontece no 4º mês?**
 
-Você paga R$ 26/mês nos 6 primeiros meses. A partir do 7º, R$ 57/mês, que é o preço do plano Essencial. **Avisamos por e-mail 30 dias antes da primeira cobrança no novo valor**, com a data e o valor. Se não quiser seguir, cancela em um clique, sem custo.
+Você paga R$ 57/mês nos 3 primeiros meses — o tempo em que o plano Essencial ainda está sendo construído. A partir do 4º, R$ 75/mês, que é o preço do plano Essencial. **Avisamos por e-mail 30 dias antes da primeira cobrança no novo valor**, com a data e o valor. Se não quiser seguir, cancela em um clique, sem custo.
 
 **Se eu cancelar, guardo minha vaga de fundador?**
 
-Não. A vaga volta para a oferta e o preço promocional não é restabelecido em uma nova assinatura. São 48 vagas, e elas são vinculadas ao CNPJ da assinatura.
+Não. A vaga volta para a oferta e o preço promocional não é restabelecido em uma nova assinatura. São 25 vagas, liberadas em dois lotes, e elas são vinculadas ao CNPJ da assinatura.
 
 **Vou ser cobrado de surpresa?**
 
@@ -67,7 +68,7 @@ Sim, conforme as opções disponíveis no checkout. A cobrança é feita pelo As
 
 | Local | Quais perguntas |
 |---|---|
-| Página da Oferta, abaixo do preço | fidelidade · cancelamento · devolução · 7º mês |
+| Página da Oferta, abaixo do preço | fidelidade · cancelamento · as duas janelas de devolução · 4º mês |
 | `/conta/plano`, ao lado do botão de assinar | todas |
 | Página `/ajuda` (ou rodapé) | todas |
 | Respostas prontas do suporte | todas, no mesmo texto |

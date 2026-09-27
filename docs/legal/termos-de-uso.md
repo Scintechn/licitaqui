@@ -49,25 +49,25 @@ O serviço é destinado a **pessoas maiores de 18 anos** que atuem em nome de um
 |---|---|---|
 | **Visitante** (sem conta) | R$ 0 | Uso por até 3 dias, contado por aparelho **e** por CNPJ; busca por CNPJ ou palavra-chave; 2 triagens por IA |
 | **Básico** (com conta) | R$ 0 | Busca, acesso aos arquivos do edital, **5 triagens por IA por mês**, 1 alerta por semana no Telegram (1 palavra-chave, 1 UF) |
-| **Promocional (Fundadores)** | **R$ 26/mês nos 6 primeiros meses; R$ 57/mês a partir do 7º mês** | Tudo do Essencial (ver anexo A) |
-| **Essencial** | R$ 57/mês | Filtros salvos, faixa de preço vencedor, calculadora de margem, alertas por CNAE e até 10 palavras-chave |
-| **Pro** | R$ 98/mês | Tudo do Essencial + análise profunda com citações, checagem de riscos e informações de concorrência |
+| **Promocional (Fundadores)** | **R$ 57/mês nos 3 primeiros meses; R$ 75/mês a partir do 4º mês** | Tudo do Essencial (ver anexo A) |
+| **Essencial** | R$ 75/mês | Filtros salvos, faixa de preço vencedor, calculadora de margem, alertas por CNAE e até 10 palavras-chave |
+| **Pro** | R$ 129/mês | Tudo do Essencial + análise profunda com citações, checagem de riscos e informações de concorrência |
 
 - Todos os planos pagos são **mensais, sem fidelidade e sem multa de cancelamento**.
 - Os limites de uso (triagens, alertas, análises) são os vigentes no app no momento do uso e podem ser ajustados com aviso prévio de 30 dias, exceto para corrigir abuso (seção 9).
 - Recursos marcados como "em breve" não são parte do que você contrata hoje.
 
-## 6. Oferta Fundadores e a mudança de preço no 7º mês
+## 6. Oferta Fundadores e a mudança de preço no 4º mês
 
 Esta é a cláusula mais importante do contrato para quem entra pelo plano Promocional. Ela é repetida na tela de assinatura e no e-mail de confirmação.
 
-1. A **Oferta Fundadores** é limitada a **48 assinantes**, por ordem de contratação, enquanto houver vagas.
-2. O preço promocional é de **R$ 26,00 por mês durante os 6 (seis) primeiros meses**, contados da **primeira cobrança confirmada**.
-3. **A partir do 7º mês**, a assinatura passa automaticamente a custar **R$ 57,00 por mês**, que é o preço do plano Essencial vigente.
-4. **Avisaremos você com pelo menos 30 (trinta) dias de antecedência** da primeira cobrança de R$ 57,00, por e-mail e, se você tiver autorizado, por WhatsApp. O aviso informará a data e o novo valor.
+1. A **Oferta Fundadores** é limitada a **25 assinantes**, liberados em dois lotes (17 e depois 8), por ordem de contratação, enquanto houver vagas. Se todas as vagas abertas estiverem ocupadas, você entra em uma **lista de espera** e é chamado, na ordem, se abrirmos o lote seguinte. Estar na lista de espera não garante vaga nem preço.
+2. O preço promocional é de **R$ 57,00 por mês durante os 3 (três) primeiros meses**, contados da **primeira cobrança confirmada**. Esse é o período em que o plano Essencial ainda está sendo construído.
+3. **A partir do 4º mês**, a assinatura passa automaticamente a custar **R$ 75,00 por mês**, que é o preço do plano Essencial vigente.
+4. **Avisaremos você com pelo menos 30 (trinta) dias de antecedência** da primeira cobrança de R$ 75,00, por e-mail e, se você tiver autorizado, por WhatsApp. O aviso informará a data e o novo valor.
 5. **Você pode cancelar a qualquer momento, sem custo**, inclusive depois do aviso e antes da primeira cobrança no novo valor. O cancelamento feito antes da data de renovação impede a cobrança seguinte.
 6. A vaga de fundador é **pessoal e intransferível**, vinculada ao CNPJ da assinatura. Se você cancelar, a vaga volta para a oferta e o preço promocional não é restabelecido em uma nova assinatura, salvo se ainda houver vagas e nós concordarmos expressamente.
-7. **Se aumentarmos o preço do plano Essencial durante os 6 meses promocionais**, você continua pagando R$ 26,00 até o fim do período; do 7º mês em diante passa a valer o preço vigente, comunicado no mesmo aviso de 30 dias.
+7. **Se aumentarmos o preço do plano Essencial durante os 3 meses promocionais**, você continua pagando R$ 57,00 até o fim do período; do 4º mês em diante passa a valer o preço vigente, comunicado no mesmo aviso de 30 dias.
 8. Nenhuma outra alteração de preço é aplicada sem aviso prévio de 30 dias e sem o seu direito de cancelar sem custo antes que ela produza efeitos.
 
 ## 7. Pagamento e cobrança
@@ -93,11 +93,13 @@ Esta é a cláusula mais importante do contrato para quem entra pelo plano Promo
 - Esse prazo vale para a **primeira contratação**. A renovação automática de uma assinatura já em curso não abre novo prazo de arrependimento, por ser continuação do mesmo contrato.
 - Basta escrever para contato@licitaquiapp.com.br. A devolução é feita pelo mesmo meio de pagamento.
 
-**Garantia de 30 dias**
+**Garantia de 30 dias (nossa, além da lei)**
 
 - Se em até **30 dias corridos da primeira cobrança** você achar que o serviço não valeu, devolvemos o valor do primeiro mês. Basta pedir por e-mail, sem precisar justificar.
+- **Do 8º ao 30º dia**, a devolução é do valor pago **menos a taxa de processamento do pagamento**, que é cobrada pela operadora e não nos é devolvida. No plano Promocional (R$ 57,00) essa taxa é de aproximadamente **R$ 1,92**, e você recebe de volta cerca de **R$ 55,08**. O valor exato é informado na tela de pagamento, antes de você confirmar a compra.
+- **Nos 7 primeiros dias vale sempre a regra do arrependimento acima: devolução integral, sem qualquer desconto.** Se o seu pedido chegar dentro desses 7 dias, é essa a regra aplicada, ainda que você mencione a garantia.
 - A garantia vale **uma vez por CNPJ** e apenas sobre a primeira cobrança.
-- Ela se aplica aos planos **Promocional e Essencial**. No plano **Pro** vale o prazo de arrependimento de 7 dias.
+- Ela se aplica aos planos **Promocional e Essencial**. No plano **Pro** vale o prazo de arrependimento de 7 dias, com devolução integral.
 
 ## 9. Uso aceitável
 
@@ -161,9 +163,9 @@ Antes de qualquer medida judicial, escreva para contato@licitaquiapp.com.br ou c
 
 | Item | Condição |
 |---|---|
-| Vagas | 48, por ordem de contratação |
-| Preço | R$ 26/mês nos 6 primeiros meses |
-| Depois | R$ 57/mês a partir do 7º mês, com aviso 30 dias antes |
+| Vagas | 25, liberadas em dois lotes (17 e depois 8), por ordem de contratação. Vagas esgotadas: lista de espera, sem garantia de vaga nem de preço |
+| Preço | R$ 57/mês nos 3 primeiros meses |
+| Depois | R$ 75/mês a partir do 4º mês, com aviso 30 dias antes |
 | Fidelidade | Nenhuma. Cancelamento em 1 clique, sem multa |
 | Garantia | Devolução do primeiro mês se pedida em até 30 dias |
 | Transferência | Não. Vaga vinculada ao CNPJ da assinatura |
@@ -191,10 +193,12 @@ Estes são os textos que aparecem nas telas. Caixas **não** pré-assinaladas, u
 
 **Checkout do plano Promocional (texto obrigatório na tela, antes do botão)**
 
-> R$ 26/mês nos 6 primeiros meses. **A partir do 7º mês, R$ 57/mês.** Avisamos por e-mail 30 dias antes. Cancele quando quiser, sem multa.
+> R$ 57/mês nos 3 primeiros meses. **A partir do 4º mês, R$ 75/mês.** Avisamos por e-mail 30 dias antes. Cancele quando quiser, sem multa.
 >
-> ☐ Estou ciente de que o valor passa a R$ 57/mês no 7º mês.
+> Garantia: até o 7º dia devolvemos 100%. Do 8º ao 30º dia devolvemos R$ 55,08 — o valor pago menos a taxa de processamento de R$ 1,92, que a operadora não nos devolve.
+>
+> ☐ Estou ciente de que o valor passa a R$ 75/mês no 4º mês.
 
 **E-mail de confirmação da assinatura (trecho obrigatório)**
 
-> Sua assinatura Fundadores começou em [data]. Você paga R$ 26/mês até [data do 6º mês]. Em [data], o valor passa a R$ 57/mês — e avisaremos você 30 dias antes. Para cancelar, é um clique em Conta → Plano.
+> Sua assinatura Fundadores começou em [data]. Você paga R$ 57/mês até [data do 3º mês]. Em [data], o valor passa a R$ 75/mês — e avisaremos você 30 dias antes. Para cancelar, é um clique em Conta → Plano.

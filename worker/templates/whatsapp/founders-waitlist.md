@@ -2,13 +2,13 @@
 id: founders-waitlist
 channel: whatsapp
 status: draft
-placeholders: [nome, posicao_espera]
+placeholders: [nome, posicao_espera, vagas]
 notes: Sent when the 48 seats are already taken (POST /api/founders puts the person on the waitlist).
 ---
 
 Oi, {{nome}}! Aqui é a LicitaQui.
 
-As 48 vagas de fundador acabaram, e você ficou em {{posicao_espera}}º lugar na lista de espera.
+As {{vagas}} vagas de fundador acabaram, e você ficou em {{posicao_espera}}º lugar na lista de espera.
 
 O que isso quer dizer:
 • se alguém desistir, a vaga é sua e eu te aviso por aqui

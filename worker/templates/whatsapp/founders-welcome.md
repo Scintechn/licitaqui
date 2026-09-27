@@ -2,7 +2,7 @@
 id: founders-welcome
 channel: whatsapp
 status: draft
-placeholders: [nome, numero_vaga, data_abertura]
+placeholders: [data_abertura, meses_promocionais, nome, numero_vaga, preco_essencial, preco_promocional]
 notes: First message a founder ever receives. Opt-in only (consent checkbox on /fundadores).
 ---
 
@@ -12,7 +12,7 @@ Sua vaga de fundador está garantida: número {{numero_vaga}}.
 
 O que você tem por ser fundador:
 • entra no dia {{data_abertura}}
-• R$ 26 por mês nos 6 primeiros meses, depois R$ 57 por mês
+• {{preco_promocional}} por mês nos {{meses_promocionais}} primeiros meses, depois {{preco_essencial}} por mês
 • sem fidelidade: cancela quando quiser
 
 Agora você não precisa fazer nada. No dia {{data_abertura}} eu mando aqui o link de acesso e você decide se quer entrar.
