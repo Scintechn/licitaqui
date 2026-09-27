@@ -30,7 +30,22 @@ export const PROMO = Object.freeze({
 })
 
 export const FOUNDERS = Object.freeze({
-  seats: facts.founders.seats,
+  /**
+   * **Contractual.** Terms §6: the offer is limited to 25 subscribers,
+   * released in lots of 17 then 8. This is the number the copy and the legal
+   * documents quote, because it is the promise — not how many are open today.
+   */
+  seatsTotal: facts.founders.seatsTotal,
+  /**
+   * What a fresh database starts its cap at. **Not the live cap.**
+   *
+   * The cap that decides whether a signup gets a seat or a waitlist place is a
+   * row in `app_settings`, so opening lot 2 is an `UPDATE` rather than a
+   * deploy. Reading this constant at signup time would put eight seats behind
+   * a CI run and an image build — a chain that took six days end to end on
+   * 2026-09-26.
+   */
+  seatsOpenDefault: facts.founders.seatsOpenDefault,
   opensOn: facts.founders.opensOn,
   opensAtBrt: facts.founders.opensAtBrt,
 })
@@ -39,6 +54,17 @@ export const FOUNDERS = Object.freeze({
 export const NOTICE = Object.freeze({
   priceChangeDays: facts.notice.priceChangeDays,
   chargeReminderDays: facts.notice.chargeReminderDays,
+})
+
+/**
+ * Terms §8. Days 1–7 are CDC art. 49 and always win; days 8–30 are our own
+ * guarantee and deduct the acquirer's fee. The net amount quoted in the copy
+ * is **derived**, never stored — see `docs/product.json`.
+ */
+export const REFUND = Object.freeze({
+  statutoryDays: facts.refund.statutoryDays,
+  guaranteeDays: facts.refund.guaranteeDays,
+  processingFeeBrl: facts.refund.processingFeeBrl,
 })
 
 /**

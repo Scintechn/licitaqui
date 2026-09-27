@@ -63,7 +63,7 @@ list), so it parses with `yaml.safe_load` or with a ~20-line hand-rolled reader.
   names when it builds the context dict. Flip this if Sci prefers.
 * Rendering is literal substitution. **A missing placeholder must raise**, never render
   an empty string or the raw `{{...}}` — a half-rendered price notice is a legal problem.
-* Money placeholders arrive already formatted (`R$ 26,00`). Dates arrive already
+* Money placeholders arrive already formatted (`R$ 57,00`). Dates arrive already
   formatted in full Portuguese (`8 de outubro de 2026`) unless the template says otherwise.
 
 ### Optional blocks
@@ -135,11 +135,13 @@ whole string as a single placeholder (e.g. `{{lista_editais}}`).
 Everything below comes from `docs/TECHNICAL_SPEC.md` §10 and `docs/DEVELOPMENT_PLAN.md`.
 Nothing else may be promised.
 
-* Plans: **Básico R$ 0** · **Promocional R$ 26/mês nos 6 primeiros meses, depois R$ 57**
-  (fundadores, 48 vagas) · **Essencial R$ 57** · **Pro R$ 98**. Monthly, no lock-in.
+* Plans: **Básico R$ 0** · **Promocional R$ 57/mês nos 3 primeiros meses, depois R$ 75**
+  (fundadores, 25 vagas em dois lotes) · **Essencial R$ 75** · **Pro R$ 129**. Monthly,
+  no lock-in. These numbers live in `docs/product.json`; a template quotes them
+  through `{{preco_*}}`, never by hand.
 * Básico: 5 triagens por mês, 1 alerta por semana no Telegram (1 palavra-chave, 1 estado).
 * Visitor without an account: 2 triagens, editais e anexos bloqueados.
-* The price change R$ 26 → R$ 57 happens on `promo_ends_on` and **only after** the
+* The price change R$ 57 → R$ 75 happens on `promo_ends_on` and **only after** the
   30-day notice was sent.
 * AI output always carries the "confira no edital" disclaimer.
 

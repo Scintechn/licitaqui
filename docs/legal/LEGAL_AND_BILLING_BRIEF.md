@@ -13,7 +13,7 @@ Talk to Sci in Brazilian Portuguese. All customer-facing copy is Brazilian Portu
 1. The knowledge base is the folder that contains `CLAUDE.md`, `TECHNICAL_SPEC.md`, `DEVELOPMENT_PLAN.md`, `design/`, `legal/` and the POC scripts. On Sci's machine it is `~/Documents/POC Licitacao/`; this file lives at `legal/LEGAL_AND_BILLING_BRIEF.md` inside it.
 2. **For anything that is not legal or billing** — repo layout, architecture, the task-card workflow, branches and PRs, UI, the POCs — open **`CLAUDE.md` at the root of that folder** and follow its reading order. It is short and it tells you what else to read and in which order.
 3. **Before starting**, confirm you can actually open `legal/termos-de-uso.md` and `TECHNICAL_SPEC.md`. If you cannot, you were given this text without access to the folder: **stop and ask Sci for the folder path** rather than guessing the rules from memory.
-4. Quick self-check — after reading this file you should be able to answer, without opening anything else: what happens on month 7 of a founder subscription; what a cancellation does to access; who gets a refund and when; how many days before suspension. If any of those is unclear, re-read §2.
+4. Quick self-check — after reading this file you should be able to answer, without opening anything else: what happens on month 4 of a founder subscription; what a cancellation does to access; who gets a refund and when; how many days before suspension. If any of those is unclear, re-read §2.
 
 ---
 
@@ -40,16 +40,16 @@ contato@licitaquiapp.com.br · privacidade@licitaquiapp.com.br · WhatsApp (11) 
 |---|---|---|
 | Visitor (no account) | R$ 0 | 3 days, counted per device **and** per CNPJ · 2 AI screenings |
 | Básico (account) | R$ 0 | 5 AI screenings/month · 1 Telegram alert/week (1 keyword, 1 state) |
-| Promocional (Founders) | **R$ 26/month for the first 6 months, then R$ 57** | Everything in Essencial · 48 seats only |
-| Essencial | R$ 57/month | Unlimited screening · 10 deep analyses/month · saved filters · winning price range · margin calculator |
-| Pro | R$ 98/month | 60 deep analyses/month · competitors by name · WhatsApp alerts |
+| Promocional (Founders) | **R$ 57/month for the first 3 months, then R$ 75** | Everything in Essencial · 25 seats only, released in two lots (17 + 8) |
+| Essencial | R$ 75/month | Unlimited screening · 10 deep analyses/month · saved filters · winning price range · margin calculator |
+| Pro | R$ 129/month | 60 deep analyses/month · competitors by name · WhatsApp alerts |
 
 **Founders price change — the most sensitive rule in the product:**
 
-1. 48 seats, first come first served, seat number assigned in a transaction.
-2. R$ 26/month for 6 months, counted from the **first confirmed charge**.
-3. From month 7: R$ 57/month, automatically.
-4. **Notice at least 30 days before** the first R$ 57 charge, by e-mail (and WhatsApp if consented), stating the date and the new amount.
+1. 25 seats total, released in **two lots**: lot 1 = 17 (opens with the offer), lot 2 = 8 (opened manually by Sci only if lot 1 fills within two weeks). The open cap lives in configuration as `founder_seats_open` (default 17) — opening lot 2 is an `UPDATE`, never a deploy. First come first served, seat number assigned in a transaction; signups beyond the cap become waitlist entries and are promoted in order.
+2. R$ 57/month for 3 months, counted from the **first confirmed charge**. Three months is the window in which the Essencial plan is still being built.
+3. From month 4: R$ 75/month, automatically.
+4. **Notice at least 30 days before** the first R$ 75 charge, by e-mail (and WhatsApp if consented), stating the date and the new amount. **The notice must carry a retention offer** (one extra month at R$ 57, or 60 days of Pro at no cost — Sci picks before F3 ships), because the jump is +32% and is expected to cost up to 25% of the cohort. A notice that only announces is a job half built.
 5. **Never charge the new price if the notice was not sent.** `subscriptions.promo_notice_sent_at` is the evidence; the job must check it before updating the Asaas subscription value.
 6. The seat is tied to the CNPJ and is not transferable; cancelling releases it and does not restore the promo price later.
 
@@ -57,13 +57,16 @@ contato@licitaquiapp.com.br · privacidade@licitaquiapp.com.br · WhatsApp (11) 
 
 - Subscriptions renew monthly until cancelled. Cancelling in Conta → Plano **turns off auto-renewal**; access continues **to the last day of the period already paid** (the Prime model). No proportional refund outside the two cases below.
 - **7-day withdrawal (CDC art. 49):** full refund, **first purchase only**. An automatic renewal does not reopen this window.
-- **30-day guarantee:** first month back, no justification, **once per CNPJ**, on **Promocional and Essencial only**. On **Pro** only the 7-day withdrawal applies (60 deep analyses/month make an unconditional guarantee abusable).
+- **30-day guarantee (ours, on top of the law):** first month back, no justification, **once per CNPJ**, on **Promocional and Essencial only**. On **Pro** only the 7-day withdrawal applies (60 deep analyses/month make an unconditional guarantee abusable).
+  - **Days 8–30 the refund is the amount paid MINUS the payment-processing fee** (~R$ 1,92 at R$ 57 → R$ 55,08 returned). The fee is the acquirer's and is not returned to us. It must be stated **before purchase**, in reais, on the checkout screen and in the terms — a percentage alone is not disclosure.
+  - **Days 1–7 the statutory rule always wins: full refund, no deduction.** CDC art. 49 sole paragraph says amounts paid "a qualquer título" are returned "de imediato, monetariamente atualizados". If a request arrives inside the 7 days, apply the full refund even if the customer invokes the guarantee. Implement the window check in this order, not the other way round.
+  - Open item: confirm with Asaas whether the fee is returned on a refund. If it is, there is nothing to retain and this deduction should be dropped — it is worth ~R$ 1,44 a year at 25 founders and 3% refund rate, so do not defend it at the cost of goodwill.
 - **Failed payment:** retries, then **suspension after 10 calendar days** from the due date; the account drops to Básico. Nothing is deleted at that moment. Asaas dunning must be configured **inside** this 10-day window.
 - **After termination or suspension:** data available for export for **30 days**, then deleted or anonymised.
 - **Reminder before every charge:** we e-mail the customer **3 days before each charge**, with the date and the amount. Asaas customer notifications are **disabled** in the account (Asaas charges per message), so *every* billing message is ours to send: the 3-day reminder, the payment-failed notice and the suspension notice. E-mail is the baseline channel; WhatsApp and Telegram are extra channels for users who opted in. Implemented by `charge_reminder` (task F4), shipping with billing at **M5**, not in v1.
 - **A missed reminder is a breach, so it has its own rule.** Because the reminder lives in terms §7, silence is not a skipped courtesy — a customer can point at the clause. Never block the charge on it (blocking revenue over an e-mail failure is the worse outcome), but:
   - **Amount unchanged:** the charge proceeds. Send the notice immediately as a "sua cobrança sai hoje" message, record `charge_reminder_missed`, and treat a customer complaint about it as grounds for a goodwill refund without argument.
-  - **Amount changed** (the R$ 26 → R$ 57 step): the existing rule wins — never charge the new price without `promo_notice_sent_at`. That one *does* block.
+  - **Amount changed** (the R$ 57 → R$ 75 step): the existing rule wins — never charge the new price without `promo_notice_sent_at`. That one *does* block.
   - Absence must be as loud as error: daily reconciliation, a liveness alarm, `/admin` counter and a Telegram ping to the admin chat. Sentry alone cannot see a job that never ran. Spec §14 has the detail.
   - If Asaas moves `next_charge_on` after a reminder was sent, send an updated one; the unique index is on (subscription, due_on, kind), so a new due date is a new reminder.
 
@@ -78,7 +81,7 @@ A promise only exists if all three columns are filled. If copy claims something 
 | "Cancele em 1 clique, sem multa" | terms §8 | Cancel action + Asaas subscription update | M5 |
 | "Acesso até o fim do período pago" | terms §8 | `subscriptions.ends_on` + downgrade job | M5 |
 | "Aviso 3 dias antes de cada cobrança" | terms §7 · FAQ | `charge_reminder` job (F4) | M5 |
-| "Aviso 30 dias antes do R$ 26 → R$ 57" | terms §6, §13 | `promo_price_change` job (F3), gated on `promo_notice_sent_at` | M5 |
+| "Aviso 30 dias antes do R$ 57 → R$ 75" | terms §6, §13 | `promo_price_change` job (F3), gated on `promo_notice_sent_at` | M5 |
 | "7 dias de arrependimento, 1ª compra" | terms §8 | Manual refund via Asaas + `subscriptions.refunded_at` | M5 |
 | "Garantia de 30 dias, 1× por CNPJ" | terms §8 | Same, with the once-per-CNPJ check | M5 |
 | "Suspensão em 10 dias de atraso" | terms §7 · FAQ | Asaas webhook + downgrade job, dunning configured inside 10 days | M5 |
@@ -130,11 +133,11 @@ Terms §§ referenced below are sections of `legal/termos-de-uso.md`; privacy §
 
 **Database** (spec §6 already has these; do not rename):
 
-- `subscriptions.promo_ends_on` — date the R$ 26 period ends.
+- `subscriptions.promo_ends_on` — date the R$ 57 promo period ends (first charge + 3 months).
 - `subscriptions.promo_notice_sent_at` — when the 30-day notice went out. Gate the price change on this.
 - `subscriptions.ends_on` — paid access runs to this date after cancellation.
 - `subscriptions.refunded_at` + reason — enforces "once per CNPJ".
-- `founders_list.seat` — unique integer, assigned in a transaction, 1..48; beyond 48 the signup is a waitlist entry.
+- `founders_list.seat` — unique integer, assigned in a transaction, 1..`founder_seats_open`; beyond the cap the signup is a waitlist entry, kept in order for lot 2.
 - `subscriptions.ends_on date` — paid access runs to this date after cancellation; null while auto-renew is on.
 - `subscriptions.canceled_at timestamptz` — when the customer cancelled.
 - `subscriptions.next_charge_on date` — synced from the Asaas webhook; the 3-day reminder reads it.
@@ -158,7 +161,7 @@ Terms §§ referenced below are sections of `legal/termos-de-uso.md`; privacy §
 
 **Invariants worth a test:**
 
-1. 60 parallel founder signups → seats 1..48 unique, the rest waitlisted.
+1. 60 parallel founder signups → seats 1..17 unique, the rest waitlisted in order.
 2. Price change never fires without `promo_notice_sent_at`.
 3. Cancellation keeps access until `ends_on`, then downgrades.
 4. Second refund request for the same CNPJ is refused.

@@ -11,7 +11,7 @@ import { DUPLICATE_EVENT, EMAIL_JOB_KIND, SIGNUP_EVENT, WELCOME_JOB_KIND } from 
 /**
  * The F1 acceptance criterion, run against the real database:
  *
- * > Concurrency test: 60 parallel signups → seats 1..48 unique, 12 on waitlist.
+ * > Concurrency test: 60 parallel signups → every open seat unique, the rest on waitlist.
  *
  * It drives the actual route handlers — Zod, rate limit, transaction, events,
  * queue — against `TEST_DATABASE_URL`, which is an isolated Neon database with
@@ -156,7 +156,7 @@ suite('founders signup (database)', () => {
       status: 'seated',
       seat: 1,
       seatsTaken: 1,
-      seatsLeft: 47,
+      seatsLeft: FOUNDER_SEATS - 1,
     })
 
     const { rows } = await pool().query(
@@ -399,7 +399,12 @@ suite('founders signup (database)', () => {
     )
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toContain('s-maxage=60')
-    expect(await response.json()).toEqual({ total: 48, taken: 1, left: 47, soldOut: false })
+    expect(await response.json()).toEqual({
+      total: FOUNDER_SEATS,
+      taken: 1,
+      left: FOUNDER_SEATS - 1,
+      soldOut: false,
+    })
   })
 
   it('rejects an invalid body before it reaches the database', async () => {
@@ -448,7 +453,7 @@ suite('60 parallel signups (F1 acceptance criterion)', () => {
   })
 
   it(
-    'hands out seats 1..48 exactly once and waitlists the other 12 — twice over',
+    'hands out every open seat exactly once and waitlists the overflow — twice over',
     async () => {
       // Two rounds in one run: a race that only shows up on the second attempt
       // is still a race, and a single green run proves very little.
@@ -482,7 +487,7 @@ suite('60 parallel signups (F1 acceptance criterion)', () => {
         // What the API told 60 people...
         expect(seats).toEqual(expected)
         expect(new Set(seats).size).toBe(FOUNDER_SEATS)
-        expect(positions).toEqual(Array.from({ length: 12 }, (_, index) => index + 1))
+        expect(positions).toEqual(Array.from({ length: 60 - FOUNDER_SEATS }, (_, index) => index + 1))
 
         // ...and what the database actually holds.
         expect(await seatsInDatabase()).toEqual(expected)
@@ -493,7 +498,11 @@ suite('60 parallel signups (F1 acceptance criterion)', () => {
              from founders_list where email like $1`,
           [`%@${DOMAIN}`],
         )
-        expect(rows.rows[0]).toEqual({ seats: '48', waiting: '12', total: '60' })
+        expect(rows.rows[0]).toEqual({
+          seats: String(FOUNDER_SEATS),
+          waiting: String(60 - FOUNDER_SEATS),
+          total: '60',
+        })
 
         // One welcome queued per person per channel, one event per person,
         // no duplicates.

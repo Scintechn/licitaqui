@@ -48,7 +48,7 @@ Compared with the public policies of three Brazilian SaaS with our business mode
 
 **What they have and we deliberately did not copy:**
 
-- **Uptime SLA** (Asaas promises 99%). At R$ 26–98/month a numeric SLA is a liability with no upside; terms §11 keeps "as is" plus notice of planned maintenance.
+- **Uptime SLA** (Asaas promises 99%). At R$ 57–129/month a numeric SLA is a liability with no upside; terms §11 keeps "as is" plus notice of planned maintenance.
 - **Separate cookie policy page.** We use essential cookies only; one section is enough and a second page would be noise.
 - **CCTV, biometrics, job-applicant data.** Not applicable.
 

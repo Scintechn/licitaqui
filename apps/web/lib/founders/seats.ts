@@ -1,12 +1,22 @@
 import { format, messages } from '../messages'
+import { FOUNDERS } from '../product'
 
 /**
- * Spec §10: the Promocional price (R$ 26/month for the first 6 months, then
- * R$ 57) is capped at 48 founder seats. The number lives here rather than in
- * the copy so the offer page, the seat grid and — later — task F1's seat
- * assignment all count the same thing.
+ * How many founder seats are **open**, which is not how many the offer
+ * promises.
+ *
+ * Terms §6 sells 25, released in two lots: 17 now, 8 only if the first fills
+ * within two weeks. So the contractual number (`FOUNDERS.seatsTotal`) is what
+ * the copy and the legal documents quote, and this is what decides whether a
+ * signup gets a seat or a waitlist place.
+ *
+ * **This will move out of the bundle.** Releasing lot 2 must be an `UPDATE`,
+ * not a deploy — a compiled constant puts eight seats behind a CI run, an
+ * image build and a redeploy, a chain that took six days end to end on
+ * 2026-09-26. Until the `app_settings` row lands, this is the default and the
+ * value, and that is the whole of the gap.
  */
-export const FOUNDER_SEATS = 48
+export const FOUNDER_SEATS = FOUNDERS.seatsOpenDefault
 
 /** Seats actually taken, clamped into 0..FOUNDER_SEATS. */
 export function seatsTaken(taken: number): number {
@@ -24,9 +34,15 @@ export function seatsLeftLabel(taken: number): string {
   return format(messages.founders.seats.left, { count: seatsLeft(taken) })
 }
 
-/** "36 de 48 vagas preenchidas". */
+/** "36 de 48 vagas preenchidas".
+ *
+ * The denominator is the **open** cap, passed at call time — not the 25 the
+ * terms promise. A counter reading "12 de 25" while seventeen seats exist
+ * would be wrong however generously you read it, and the two numbers only
+ * diverged once the offer gained a second lot.
+ */
 export function seatsFilledLabel(taken: number): string {
-  return format(messages.founders.seats.of, { count: seatsTaken(taken) })
+  return format(messages.founders.seats.of, { count: seatsTaken(taken), total: FOUNDER_SEATS })
 }
 
 /**
