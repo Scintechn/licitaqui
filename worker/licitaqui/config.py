@@ -23,9 +23,36 @@ WORKER_DSN_VARS = ("WORKER_DATABASE_URL", "DATABASE_URL_UNPOOLED")
 WAKE_TOKEN_VAR = "WORKER_WAKE_TOKEN"
 SENTRY_DSN_VAR = "SENTRY_DSN_WORKER"
 
-# Idle poll interval. Two minutes, not two seconds: Neon Free gives 100
-# CU-hours and the compute only suspends while nothing is connected (§5.1).
-DEFAULT_POLL_INTERVAL_SECONDS = 120.0
+# Idle poll interval, and the single largest line on the Neon bill.
+#
+# **Two minutes could never work, and the arithmetic says so.** Neon suspends
+# the compute after **five minutes** with no connections (spec §5.1, "scale to
+# zero after 5 min"). A consumer that reconnects every 120 s resets that timer
+# before it can ever fire, so the endpoint stayed awake 24/7: 0.25 CU × 168 h =
+# **42 CU-hours a week**, against the 48.93 actually observed over the seven
+# days to 2026-09-27. The design budgeted for sleep — "the database must be
+# allowed to sleep" — and its own poll interval prevented it.
+#
+# The compute ran at 0.02 of 0.25 vCPU throughout. We were never paying for
+# queries; we were paying for an endpoint that never slept.
+#
+# **Why 1800 and not 3600 or 7200.** The scheduler enqueues `sync_open_tenders`
+# and `sweep_tender_values` every 30 minutes (`scheduler.py`), opening a
+# connection each time, so 30 minutes is the wake floor whatever this value
+# says. Past it there is nothing left to save and three things to lose: a retry
+# (backoff 120/480/1800) waits for the next poll; a scheduled sync sits
+# unprocessed, so a half-hourly sync silently becomes two-hourly; and a
+# one-off dated job — the 08/10 opening broadcast — fires up to a full interval
+# late against a promise of "19h".
+#
+# **Nobody waiting on screen is affected.** A priority-1 job is picked up
+# immediately because the web route also calls `POST /wake`
+# (`apps/web/lib/cache.ts` → `lib/jobs/wake.ts`, spec §3.1). This interval only
+# bounds background work.
+#
+# Override with `WORKER_POLL_INTERVAL_SECONDS` (read in `service.py`) to tune
+# without a deploy — which is how to shorten it for the evening of 08/10.
+DEFAULT_POLL_INTERVAL_SECONDS = 1800.0
 # Pause before retrying after the database itself failed, so an outage does not
 # turn into a hot reconnect loop.
 DEFAULT_ERROR_PAUSE_SECONDS = 30.0

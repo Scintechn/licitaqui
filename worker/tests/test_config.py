@@ -6,6 +6,12 @@ import pytest
 
 from licitaqui import config
 
+#: How long Neon waits with **no connections** before suspending the compute
+#: (spec §5.1, "scale to zero after 5 min"). Not ours to set from code — it is
+#: a project setting in the Neon console — but the number our idle poll has to
+#: clear, so it is written down where the assertion that depends on it lives.
+NEON_SUSPEND_SECONDS = 300.0
+
 
 def test_environment_wins_over_the_env_file(tmp_path, monkeypatch):
     (tmp_path / ".env.local").write_text("EXAMPLE_VAR=from-file\n")
@@ -50,13 +56,26 @@ def test_redact_removes_the_password_from_a_connection_string():
     assert "postgresql://app:***@ep-x.sa-east-1.aws.neon.tech/licitaqui" in redacted
 
 
-def test_idle_poll_is_two_minutes():
-    """Acceptance criterion 3, part one: the default must not be a hot poll.
+def test_the_idle_poll_is_longer_than_neons_suspend_timer():
+    """Acceptance criterion 3, part one — restated after it failed in practice.
 
-    Neon Free gives 100 CU-hours and only suspends the compute while nothing is
-    connected (spec §5.1).
+    The original assertion pinned 120 s, on the reasoning that the compute
+    "only suspends while nothing is connected". Both halves were true and the
+    conclusion was still wrong: Neon's timer needs **300 s** of no connections
+    (spec §5.1), so reconnecting every 120 s reset it forever and the endpoint
+    never slept. 0.25 CU × 168 h = 42 CU-hours a week, against 48.93 observed.
+
+    So the property worth pinning is not a number, it is the **relationship**:
+    the idle poll must clear the suspend timer with room to spare. A future
+    edit that quietly restores 120 s fails here with the reason attached.
     """
-    assert config.DEFAULT_POLL_INTERVAL_SECONDS == 120.0
+    assert config.DEFAULT_POLL_INTERVAL_SECONDS > NEON_SUSPEND_SECONDS, (
+        "a poll shorter than Neon's suspend timer keeps the compute awake 24/7"
+    )
+    # And not so long that a half-hourly scheduled sync is left unprocessed:
+    # the scheduler is the wake floor, so exceeding it buys nothing and costs
+    # freshness. See DEFAULT_POLL_INTERVAL_SECONDS' own comment.
+    assert config.DEFAULT_POLL_INTERVAL_SECONDS <= 1800.0
 
 
 def test_retry_budget_matches_the_spec():
