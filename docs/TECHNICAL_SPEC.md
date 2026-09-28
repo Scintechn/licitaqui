@@ -218,7 +218,9 @@ create table tenders (
   proposals_open_at     timestamptz,
   proposals_close_at    timestamptz,               -- deadline shown on cards
   estimated_value       numeric(16,2),
-  confidential_budget   boolean default false,     -- "orçamento sigiloso"
+  confidential_budget   boolean,                   -- "orçamento sigiloso"; NULL = not stated
+                                                   -- (0009: the default was `false`, which
+                                                   --  answered silence with a positive claim)
   bidding_system_url    text,
   me_epp_summary        text,                      -- exclusive | quota | mixed | none (derived from items)
   favored_treatment     boolean,                   -- rule: value vs EPP cap (R$ 4.8M), computed in code
