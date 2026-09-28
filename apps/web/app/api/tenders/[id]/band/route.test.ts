@@ -7,6 +7,10 @@ vi.mock('@/lib/radar/comparables', () => ({ comparablesForItem }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimitRequest }))
 vi.mock('@/lib/db', () => ({ db: () => ({}) }))
 
+const readViewer = vi.hoisted(() => vi.fn(async () => null))
+const planOf = vi.hoisted(() => vi.fn(() => 'essencial'))
+vi.mock('@/lib/auth/viewer', () => ({ readViewer, planOf }))
+
 const { GET } = await import('./route')
 
 const ID = '45699626000176-1-000463/2026'
@@ -56,6 +60,38 @@ describe('GET /api/tenders/:id/band', () => {
     expect(response.status).toBe(200)
     expect(body.state).toBe('ready')
     expect(body.band).toBeNull()
+  })
+
+  it('answers locked — not empty — when the plan does not include the band', async () => {
+    // **The distinction is the point.** `band: null` says no number exists for
+    // anybody; `locked` says one does and this plan has not paid for it.
+    // Collapsing them would tell a visitor the data is missing when the truth
+    // is that the feature is sold, which is the inverse of E9's own complaint
+    // that "a paying subscriber sees exactly what an anonymous visitor sees".
+    planOf.mockReturnValueOnce('basico')
+    const response = await call()
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.state).toBe('locked')
+    expect(body.band).toBeUndefined()
+    // And it never pays for the query it is not going to answer.
+    expect(comparablesForItem).not.toHaveBeenCalled()
+  })
+
+  it.each(['visitor', 'basico'])('locks %s', async (plan) => {
+    comparablesForItem.mockClear()
+    planOf.mockReturnValueOnce(plan)
+    expect((await (await call()).json()).state).toBe('locked')
+  })
+
+  it.each(['promocional', 'essencial', 'pro'])('serves %s', async (plan) => {
+    comparablesForItem.mockClear()
+    comparablesForItem.mockResolvedValueOnce(priced(6))
+    planOf.mockReturnValueOnce(plan)
+    // `promocional` is included because 0002 gives founders "same entitlements
+    // as Essencial" — the whole of what they are buying on 08/10.
+    expect((await (await call()).json()).state).toBe('ready')
   })
 
   it('refuses an id that is not a PNCP control number', async () => {

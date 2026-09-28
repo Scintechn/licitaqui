@@ -109,6 +109,7 @@ export function PriceScreen({ id }: { id: string }) {
     id: string
     item: number
     band: PriceBand | null
+    locked: boolean
   } | null>(null)
 
   /**
@@ -134,7 +135,11 @@ export function PriceScreen({ id }: { id: string }) {
     const controller = new AbortController()
     getBand(id, chosen, controller.signal)
       .then((answer) => {
-        if (answer.state === 'ready') setLoaded({ id, item: chosen, band: answer.band })
+        if (answer.state === 'ready') {
+          setLoaded({ id, item: chosen, band: answer.band, locked: false })
+        } else if (answer.state === 'locked') {
+          setLoaded({ id, item: chosen, band: null, locked: true })
+        }
       })
       .catch(() => {
         // Aborted, offline, or a 500. The screen is complete without it.
@@ -145,7 +150,17 @@ export function PriceScreen({ id }: { id: string }) {
   // Keyed on the tender as well as the item: the App Router preserves client
   // state across a same-route navigation, so without `id` a band could render
   // under a different edital until the new response landed.
-  const band = loaded !== null && loaded.id === id && loaded.item === chosen ? loaded.band : null
+  const current = loaded !== null && loaded.id === id && loaded.item === chosen ? loaded : null
+  const band = current?.band ?? null
+  /**
+   * Defaults to **locked**, not to unlocked.
+   *
+   * Before the answer arrives we do not know the plan, and the two wrong
+   * guesses are not equal: showing the locked bar and then revealing a band is
+   * an upgrade the reader watches happen, while showing "ainda sem dados" and
+   * then replacing it with a price tells them something false first.
+   */
+  const bandLocked = current === null || current.locked
 
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
 
@@ -158,6 +173,7 @@ export function PriceScreen({ id }: { id: string }) {
       backHref={backHref}
       search={search}
       band={band}
+      bandLocked={bandLocked}
       onRetry={onRetry}
     />
   )

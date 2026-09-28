@@ -175,6 +175,29 @@ describe('PriceView', () => {
     expect(html).toContain(page.lockedValue)
   })
 
+  describe('when the plan does not include the band', () => {
+    const locked = render({ item: 1, bandLocked: true })
+
+    it('locks it, rather than saying the data is missing', () => {
+      // A visitor told "ainda sem dados de vencedores" would conclude the
+      // product has nothing, when in fact it has something they have not
+      // bought. This is the honest use of a locked value, and the reason the
+      // three states exist.
+      expect(locked).toContain(page.lockedValue)
+      expect(locked).not.toContain(page.noData)
+    })
+
+    it('still leads to the plan', () => {
+      expect(locked).toContain(PLAN_HREF)
+      expect(locked).toContain(page.cta)
+    })
+
+    it('shows no band and no margin control', () => {
+      expect(locked).not.toContain(page.marginLabel)
+      expect(locked).not.toContain(page.ceilingLabel)
+    })
+  })
+
   describe('when the gate allowed a band', () => {
     // The numbers a real gated band carries: five comparables, quartiles
     // inside the spread limit. `price-band.test.ts` owns whether the gate

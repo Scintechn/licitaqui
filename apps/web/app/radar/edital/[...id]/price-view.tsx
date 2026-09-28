@@ -98,6 +98,15 @@ export type PriceViewProps = {
    * "no number exists", and both render the third state.
    */
   band?: PriceBand | null
+  /**
+   * The caller's plan does not include the band.
+   *
+   * A third state, and the one that makes `LockedValue` honest again: *locked*
+   * says a number exists and this plan does not include it; *empty* says no
+   * number exists for anybody. The first version of E9 had only two states and
+   * had to choose between lying to a visitor and hiding the plan.
+   */
+  bandLocked?: boolean
   onRetry?: () => void
 }
 
@@ -126,6 +135,7 @@ export function PriceView({
   backHref,
   search,
   band = null,
+  bandLocked = false,
   onRetry,
 }: PriceViewProps) {
   const bar = (
@@ -230,7 +240,9 @@ export function PriceView({
                 <span>{page.estimated}</span>
                 <strong className="font-display text-[16px]">{estimate ?? page.noEstimate}</strong>
               </div>
-              {band ? (
+              {bandLocked ? (
+                <LockedRow label={page.won} />
+              ) : band ? (
                 <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
                   <span>{page.won}</span>
                   <strong className="font-display text-[16px] tabular-nums">
@@ -241,7 +253,20 @@ export function PriceView({
               <LockedRow label={page.market} last />
             </Card>
 
-            {band ? (
+            {bandLocked ? (
+              /* The honest use of a locked value: a number does exist for this
+                 item and this plan does not include it. */
+              <Card accent className="flex flex-col gap-2.5">
+                <div className="text-body font-medium text-blue">{page.maxTitle}</div>
+                <div className="flex items-center gap-2.5">
+                  <span className="font-display text-[30px] leading-none font-semibold text-muted">
+                    R$
+                  </span>
+                  <LockedValue width={110} height={30} label={page.lockedValue} />
+                </div>
+                <p className="m-0 text-meta leading-relaxed text-muted">{page.maxNote}</p>
+              </Card>
+            ) : band ? (
               /* The only interactive part of this screen, so the only part
                  that is a Client Component. The rest stays server-rendered. */
               <MarginCeiling band={band} />

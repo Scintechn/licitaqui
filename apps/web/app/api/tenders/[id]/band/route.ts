@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
+import { planOf, readViewer } from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { db } from '@/lib/db'
 import { comparablesForItem } from '@/lib/radar/comparables'
 import type { BandResponse } from '@/lib/radar/contract'
 import { priceBand } from '@/lib/radar/price-band'
+import { hasPriceBand } from '@/lib/radar/quota'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
 /**
@@ -26,12 +28,21 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  * The route answers 200 with `band: null`, and the screen says "no winner data
  * yet" rather than drawing a locked bar over a number that does not exist.
  *
- * ## It spends nothing and reveals nothing
+ * ## It is an Essencial feature, and the gate is here
  *
- * Read-only, no viewer, no screening, no account check. The band is computed
- * from `awards`, which is public procurement history — PNCP publishes every
- * winner. Nothing here is gated on a plan, so no identity is read and no
- * cookie is touched.
+ * Sci's decision, 2026-09-28. The first version of this route was deliberately
+ * ungated on the reasoning that `awards` is public procurement history — true,
+ * and beside the point: `plans.essential.feature3` sells the band as what
+ * Essencial is *for*, and E9's own card names the defect as "a paying
+ * subscriber sees exactly what an anonymous visitor sees". Leaving it open
+ * inverted that rather than resolving it.
+ *
+ * A plan that does not include it gets `state: 'locked'` — never a band, and
+ * never `band: null`, which would tell a visitor no number exists when the
+ * truth is that they have not paid for it.
+ *
+ * It still spends nothing: read-only, no screening, no usage row. `readViewer`
+ * never mints an identity on a GET.
  */
 
 export const runtime = 'nodejs'
@@ -71,7 +82,17 @@ export async function GET(
   }
 
   try {
-    const comparables = await comparablesForItem(id, item, db())
+    const executor = db()
+    // Read only: a GET never mints an identity (see `readViewer`).
+    const viewer = await readViewer(request.headers.get('cookie'), executor)
+    if (!hasPriceBand(planOf(viewer))) {
+      return NextResponse.json(
+        { state: 'locked' },
+        { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
+      )
+    }
+
+    const comparables = await comparablesForItem(id, item, executor)
     return NextResponse.json(
       { state: 'ready', band: priceBand(comparables) },
       { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
