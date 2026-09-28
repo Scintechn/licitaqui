@@ -152,7 +152,7 @@
       "promises": [
         "Editais compatíveis com o seu CNAE",
         "Triagem do edital por IA, com a página",
-        "Faixa em que os vencedores fecharam na sua região",
+        "Faixa em que os vencedores fecharam em editais parecidos",
         "Alertas no Telegram antes do prazo"
       ]
     },
@@ -712,7 +712,7 @@
       "opportunity": {
         "label": "Antes de gastar tempo com proposta",
         "title": "Saiba se vale disputar. E até que preço.",
-        "body": "O valor estimado do edital não é o preço que fecha. Em 8 editais de papel A4, quem venceu ofertou cerca de R$ 20 por resma, contra R$ 36 estimados. No Essencial, cada item mostra a faixa em que os vencedores fecharam na sua região e o máximo a pagar ao fornecedor para manter a sua margem.",
+        "body": "O valor estimado do edital não é o preço que fecha. Em 8 editais de papel A4, quem venceu ofertou cerca de R$ 20 por resma, contra R$ 36 estimados. No Essencial, cada item mostra a faixa em que os vencedores fecharam e o máximo a pagar ao fornecedor para manter a sua margem.",
         "cardLabel": "Oportunidade · exemplo",
         "tender": "Baterias e pilhas · Campinas/SP",
         "deadlineLabel": "Proposta até",
@@ -1174,7 +1174,7 @@
       "inputsLabel": "Calculado a partir de",
       "_noDataNote": "Wording drafted for E9's third state and approved by Sci, 2026-09-28.",
       "noData": "Ainda sem dados de vencedores para este item.",
-      "noDataHelp": "Assim que editais parecidos forem encerrados e publicarem o vencedor, a faixa aparece aqui.",
+      "noDataHelp": "A faixa aparece quando editais parecidos o bastante já tiverem sido encerrados e publicado o vencedor.",
       "bandSample": "{count, plural, one {1 edital encerrado} other {# editais encerrados}}",
       "bandEstimate": "estimativa a partir dos dados do edital",
       "marginLabel": "Sua margem"
