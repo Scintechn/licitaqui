@@ -2,8 +2,9 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
+import { getBand, getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
 import type { TenderDetail, TenderResponse } from '@/lib/radar/contract'
+import type { PriceBand } from '@/lib/radar/price-band'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
 import { PriceView, type PriceStatus } from './price-view'
@@ -80,6 +81,47 @@ export function PriceScreen({ id }: { id: string }) {
     return () => controller.abort()
   }, [id, attempt])
 
+  /**
+   * The band, fetched separately and **allowed to fail silently**.
+   *
+   * Its own request because it costs a trigram join the Opportunity screen
+   * never needs, and its own effect because it depends on `item` — changing
+   * the item chip must refetch the band without refetching the tender.
+   *
+   * On any failure the band stays `null`, which renders the same "no winner
+   * data yet" card as a genuinely empty result. That is deliberate: the price
+   * screen's job is the estimated price and the item list, and neither depends
+   * on this. A banner apologising for a missing band would be louder than the
+   * thing it is apologising for.
+   */
+  /**
+   * Stored **with the item it belongs to**, and filtered at render rather than
+   * cleared in the effect.
+   *
+   * Clearing it eagerly was the first version and it was wrong twice: it calls
+   * `setState` synchronously inside an effect, and between the two renders it
+   * left the previous item's band on screen — a real price, attached to the
+   * wrong item, which is precisely the failure this whole card is built to
+   * avoid. Keeping the item alongside the band makes a stale one unrenderable
+   * by construction instead of by timing.
+   */
+  const [loaded, setLoaded] = useState<{ item: number; band: PriceBand | null } | null>(null)
+
+  useEffect(() => {
+    if (item === null) return
+    const controller = new AbortController()
+    getBand(id, item, controller.signal)
+      .then((answer) => {
+        if (answer.state === 'ready') setLoaded({ item, band: answer.band })
+      })
+      .catch(() => {
+        // Aborted, offline, or a 500. The screen is complete without it.
+      })
+    return () => controller.abort()
+  }, [id, item, attempt])
+
+  const band = loaded !== null && loaded.item === item ? loaded.band : null
+
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
 
   return (
@@ -90,6 +132,7 @@ export function PriceScreen({ id }: { id: string }) {
       status={data.status}
       backHref={backHref}
       search={search}
+      band={band}
       onRetry={onRetry}
     />
   )

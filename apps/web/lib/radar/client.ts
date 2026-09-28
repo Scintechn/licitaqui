@@ -1,4 +1,5 @@
 import type {
+  BandResponse,
   CnpjResponse,
   JobResponse,
   ScreeningReadResponse,
@@ -215,6 +216,22 @@ export async function getTenders(
 
 export async function getTender(id: string, signal?: AbortSignal): Promise<TenderResponse> {
   return envelope<TenderResponse>(await fetch(`/api/tenders/${tenderApiPath(id)}`, { signal }))
+}
+
+/**
+ * `GET /api/tenders/:id/band?item=N` (E9) — the price band for one item.
+ *
+ * Separate from `getTender` on purpose: the band costs a trigram join, and the
+ * Opportunity screen reads the tender without ever showing one.
+ */
+export async function getBand(
+  id: string,
+  item: number,
+  signal?: AbortSignal,
+): Promise<BandResponse> {
+  return envelope<BandResponse>(
+    await fetch(`/api/tenders/${tenderApiPath(id)}/band?item=${item}`, { signal }),
+  )
 }
 
 /**
