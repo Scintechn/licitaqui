@@ -42,6 +42,23 @@ describe('canonicalUnit', () => {
     expect(canonicalUnit('PC')).not.toBe(canonicalUnit('PACOTE'))
   })
 
+  it.each([
+    ['LT', 'LITRO'],
+    ['COMP', 'COMPRIMIDO'],
+  ])('refuses %s, which this module once wrongly merged into %s', (spelling, wrongTarget) => {
+    // Checked against the corpus rather than reasoned about: `LT` items are
+    // "Ervilha em conserva, embalagem mínima de 200 g" and "CREME DE LEITE LT
+    // 300GR" — cans, priced per can, in grams. 433 of them were being folded
+    // into litres while `LATA` sat in the same table as its own unit.
+    // `COMP` (753) is comprimido, comprimento and componente in the wild.
+    expect(canonicalUnit(spelling)).toBe(spelling)
+    expect(canonicalUnit(spelling)).not.toBe(canonicalUnit(wrongTarget))
+  })
+
+  it('keeps lata and litro apart', () => {
+    expect(canonicalUnit('LATA')).not.toBe(canonicalUnit('LITRO'))
+  })
+
   it('does not separate units by spacing or case', () => {
     expect(canonicalUnit('  un - unidade  ')).toBe('UN')
     expect(canonicalUnit('UN  -   UNIDADE')).toBe('UN')

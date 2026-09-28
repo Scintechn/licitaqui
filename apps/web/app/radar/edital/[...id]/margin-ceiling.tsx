@@ -35,6 +35,11 @@ export function MarginCeiling({ band }: { band: PriceBand }) {
   const [marginPct, setMarginPct] = useState(DEFAULT_MARGIN_PCT)
   const fieldId = useId()
   const ceiling = targetPurchasePrice(band, marginPct)
+  // `?? ''` rendered the card as a bare "R$" with nothing after it — at a high
+  // margin on a low-value item (median R$ 0,40 at 99%) `moneyExact` returns
+  // null. `noEstimate` says so instead, and it was already two characters away
+  // on the same line.
+  const money = ceiling === null ? null : moneyExact(String(ceiling))
 
   return (
     <Card accent className="flex flex-col gap-2.5">
@@ -43,7 +48,7 @@ export function MarginCeiling({ band }: { band: PriceBand }) {
       <div className="flex items-center gap-2.5">
         <span className="font-display text-[30px] leading-none font-semibold text-muted">R$</span>
         <strong className="font-display text-[30px] leading-none font-semibold tabular-nums">
-          {ceiling === null ? page.noEstimate : (moneyExact(String(ceiling)) ?? '').replace(/^R\$\s*/, '')}
+          {money === null ? page.noEstimate : money.replace(/^R\$\s*/, '')}
         </strong>
       </div>
 

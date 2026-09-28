@@ -110,6 +110,18 @@ export type PriceViewProps = {
   onRetry?: () => void
 }
 
+/**
+ * `"R$ 18,00 – R$ 24,00"`, or `null` when either end cannot be shown as money.
+ *
+ * Both ends or neither: a range with one half missing is worse than no range,
+ * because the reader has no way to tell which half they are looking at.
+ */
+export function bandRange(band: { low: number; high: number }): string | null {
+  const low = moneyExact(String(band.low))
+  const high = moneyExact(String(band.high))
+  return low === null || high === null ? null : `${low} – ${high}`
+}
+
 function LockedRow({ label, last = false }: { label: string; last?: boolean }) {
   return (
     <div
@@ -246,7 +258,13 @@ export function PriceView({
                 <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
                   <span>{page.won}</span>
                   <strong className="font-display text-[16px] tabular-nums">
-                    {`${moneyExact(String(band.low))} – ${moneyExact(String(band.high))}`}
+                    {/* Not a template literal. `moneyExact` returns null for
+                        anything that rounds to zero (`format.ts`), and
+                        interpolating that prints the literal word "null" on a
+                        money figure — TypeScript will not catch it inside a
+                        template. `unit_awarded_value` is numeric(16,4) and the
+                        only filter is `> 0`, so sub-centavo values exist. */}
+                    {bandRange(band) ?? page.noEstimate}
                   </strong>
                 </div>
               ) : null}

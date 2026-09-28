@@ -27,6 +27,26 @@
  * So `PC` is **not** in the table below. It appears 1 779 times and means
  * *peça* in some órgãos and *pacote* in others, and nothing in the payload
  * says which.
+ *
+ * **`LT` and `COMP` were in it, and should not have been.** The first version
+ * of this module wrote the rule above and then broke it twice on the next
+ * screen. Both were removed after checking the corpus rather than reasoning
+ * about the abbreviations:
+ *
+ *   `LT` (433 items) was folded into **litro** while `LATA` sits three lines
+ *   below as its own code — the table simultaneously treating lata as a
+ *   distinct unit and swallowing one of its common spellings. The items
+ *   settle it: *"Ervilha em conserva, embalagem mínima de 200 g"*, *"Milho
+ *   verde em conserva"*, *"CREME DE LEITE LT 300GR"*. Those are cans, priced
+ *   per can, measured in grams. A 3,6 L lata of tinta against a per-litre
+ *   price is a 3,6× error in a band a person bids against.
+ *
+ *   `COMP` (753 items) was folded into **comprimido**, and it also
+ *   abbreviates *comprimento* and *componente*. Merging a length into a
+ *   tablet count is a unit-class error, not a spelling one.
+ *
+ * Both now fail to match anything, which costs recall and costs nothing else
+ * — the trade this module says it makes.
  */
 
 /**
@@ -51,7 +71,7 @@ const SPELLINGS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   ],
   KG: ['QUILOGRAMA', 'KG', 'QUILO', 'QUILOS', 'KILOGRAMA'],
   G: ['GRAMA', 'GRAMAS', 'G'],
-  L: ['LITRO', 'LITROS', 'L', 'LT'],
+  L: ['LITRO', 'LITROS', 'L'],
   ML: ['MILILITRO', 'MILILITROS', 'ML'],
   M: ['METRO', 'METROS', 'M'],
   M2: ['METRO QUADRADO', 'METROS QUADRADOS', 'M2', 'M²'],
@@ -59,7 +79,7 @@ const SPELLINGS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   CX: ['CAIXA', 'CAIXAS', 'CX'],
   PCT: ['PACOTE', 'PACOTES', 'PCT'],
   FRASCO: ['FRASCO', 'FRASCOS', 'FR'],
-  COMPRIMIDO: ['COMPRIMIDO', 'COMPRIMIDOS', 'CP', 'COMP'],
+  COMPRIMIDO: ['COMPRIMIDO', 'COMPRIMIDOS', 'CP'],
   SERVICO: ['SERVICO', 'SERVIÇO', 'SERVICOS', 'SERVIÇOS', 'SERV'],
   PAR: ['PAR', 'PARES'],
   ROLO: ['ROLO', 'ROLOS', 'RL'],
