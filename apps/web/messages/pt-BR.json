@@ -1172,7 +1172,7 @@
       "cta": "Ver plano Essencial",
       "ceilingLabel": "Teto para manter a margem que você informou",
       "inputsLabel": "Calculado a partir de",
-      "_noDataNote": "TODO(Sci): wording below is Claude's, written for E9 option 3 and awaiting approval.",
+      "_noDataNote": "Wording drafted for E9's third state and approved by Sci, 2026-09-28.",
       "noData": "Ainda sem dados de vencedores para este item.",
       "noDataHelp": "Assim que editais parecidos forem encerrados e publicarem o vencedor, a faixa aparece aqui.",
       "bandSample": "{count, plural, one {1 edital encerrado} other {# editais encerrados}}",
