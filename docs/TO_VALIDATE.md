@@ -14,7 +14,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | # | Item | Blocks | Severity |
 |---|---|---|---|
 | ~~1~~ | ~~Offer promises a charge notice that does not exist~~ | — | **resolved 21/09** |
-| 2 | Offer omits refunds, which the FAQ says it must carry | M1, 09-24 | medium |
+| ~~2~~ | ~~Offer omits refunds, which the FAQ says it must carry~~ | — | **closed 28/09** |
 | 3 | `faq-cobranca.md` carries an internal note | publishing `/ajuda` | medium |
 | 4 | Drafting note stripped at render, not at source | nothing | low |
 | ~~5~~ | ~~Publication date~~ | — | **closed 21/09** |
@@ -206,7 +206,20 @@ existed, so nothing had ever been reconciled.
 
 **No copy was changed.** These are findings.
 
-## A. Refunds appear nowhere in the product — 0 strings
+## ~~A. Refunds appear nowhere in the product — 0 strings~~ — closed 2026-09-28
+
+**Both promises are now in the product's copy**, so the table below records what was
+true when the sweep ran and not what is on screen. `foundersPage.refunds.items.0`
+carries the CDC art. 49 sentence — *"Nos primeiros 7 dias da primeira assinatura, você
+pode desistir e recebe tudo de volta"* — and `foundersPage.refunds.ctaLine` carries the
+guarantee: *"Garantia de 30 dias: não gostou, devolvemos o primeiro mês."* Both render
+on `/fundadores`; the same search that returned nothing now returns four strings.
+
+They arrived with the terms §8 rule in #137, alongside the processing-fee deduction the
+page states as a rule rather than a figure — the net amount is derived from
+`docs/product.json`, never stored, so it cannot drift from the price.
+
+### What the sweep found on 2026-09-25
 
 The strongest result of the sweep. Searching the whole catalogue for `devolv`, `reembols`,
 `garantia`, `arrepend`, `estorno` returns **nothing**.
