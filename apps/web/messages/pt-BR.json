@@ -1171,7 +1171,13 @@
       "exampleBody": "o edital pagava R$ 35,87, o vencedor levou a R$ 20,34 e o varejo custava R$ 29,29. Sem calcular o máximo a pagar ao fornecedor, parecia lucro.",
       "cta": "Ver plano Essencial",
       "ceilingLabel": "Teto para manter a margem que você informou",
-      "inputsLabel": "Calculado a partir de"
+      "inputsLabel": "Calculado a partir de",
+      "_noDataNote": "TODO(Sci): wording below is Claude's, written for E9 option 3 and awaiting approval.",
+      "noData": "Ainda sem dados de vencedores para este item.",
+      "noDataHelp": "Assim que editais parecidos forem encerrados e publicarem o vencedor, a faixa aparece aqui.",
+      "bandSample": "{count, plural, one {1 edital encerrado} other {# editais encerrados}}",
+      "bandEstimate": "estimativa a partir dos dados do edital",
+      "marginLabel": "Sua margem"
     },
     "fields": {
       "meEpp": "ME/EPP",

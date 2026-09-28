@@ -132,16 +132,64 @@ describe('PriceView', () => {
     expect(html).toContain('3,74')
   })
 
-  it('masks the two we do not, rather than inventing a band', () => {
-    expect(html).toContain(page.won)
-    expect(html).toContain(page.market)
+  it('says there is no band yet, rather than masking one that does not exist', () => {
+    // **This assertion was inverted by E9, deliberately.** It used to require
+    // a locked bar where the band goes. A locked value tells a person a number
+    // exists and is being withheld from them; for an item with no comparable
+    // awards, no number exists at all, and the honest screen says so.
+    //
+    // What it still guards is the original property, and the more important
+    // one: nothing here invents a figure.
+    expect(html).toContain(page.noData)
+    expect(html).toContain(page.noDataHelp)
     expect(html).not.toContain('20,34</strong>')
-    // Two table bars plus the headline figure.
-    expect(html.split('bg-line-strong').length - 1).toBe(3)
+    // The `won` row is gone with the band it belonged to; `market` stays
+    // locked, because a market price genuinely is an Essencial feature we hold
+    // and do not show, which is what a locked bar is for.
+    expect(html).toContain(page.market)
+    expect(html).not.toContain(page.ceilingLabel)
   })
 
   it('names what is hidden for a screen reader', () => {
+    // Still true of the one bar that remains — see above.
     expect(html).toContain(page.lockedValue)
+  })
+
+  describe('when the gate allowed a band', () => {
+    // The numbers a real gated band carries: five comparables, quartiles
+    // inside the spread limit. `price-band.test.ts` owns whether the gate
+    // would *produce* this; here it has, and the question is what renders.
+    const BAND = { low: 18, median: 20.34, high: 24, sampleSize: 7 }
+    const withBand = render({ band: BAND })
+
+    it('prints the range winners actually closed at', () => {
+      expect(withBand).toContain('18,00')
+      expect(withBand).toContain('24,00')
+      expect(withBand).toContain(page.won)
+    })
+
+    it('stops saying there is no data, and stops locking the ceiling', () => {
+      expect(withBand).not.toContain(page.noData)
+      // The headline ceiling is a real figure now: 20% off the median.
+      expect(withBand).toContain('16,27')
+    })
+
+    it('labels the ceiling and shows what it was calculated from', () => {
+      // Framing rule 3, legal brief §2.2. Both strings were approved copy
+      // that rendered nowhere at all until this card.
+      expect(withBand).toContain(page.ceilingLabel)
+      expect(withBand).toContain(page.inputsLabel)
+      expect(withBand).toContain(page.bandEstimate)
+      expect(withBand).toContain('7 editais encerrados')
+    })
+
+    it('offers the margin as an input, because the copy promises one', () => {
+      // `maxNote` has said "a margem que você escolher" since before there was
+      // a control to choose with.
+      expect(withBand).toContain(page.marginLabel)
+      expect(withBand).toContain('type="number"')
+      expect(withBand).toContain(page.maxNote)
+    })
   })
 
   it('leads to the plan as a real link, never a disabled button', () => {

@@ -16,6 +16,8 @@ import { priceHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { moneyExact, trimObject } from '@/lib/radar/format'
+import type { PriceBand } from '@/lib/radar/price-band'
+import { MarginCeiling } from './margin-ceiling'
 import { TenderStatusBanner } from '../../tender-status-banner'
 
 /**
@@ -83,6 +85,19 @@ export type PriceViewProps = {
   backHref: string
   /** The search that got the user here — the item chips below carry it on. */
   search: RadarSearch
+  /**
+   * The band for the chosen item, or `null` when the gate refused one.
+   *
+   * Computed on the server (`lib/radar/price-band.ts`) because it reads the
+   * `awards` table. **`null` is a first-class answer, not a loading state** —
+   * it means no number exists for this item, and the view must say so rather
+   * than draw a locked bar implying one is being withheld.
+   *
+   * Optional because the loading fallback and the suspended-tender screens
+   * genuinely have none: absent and `null` mean the same thing here, which is
+   * "no number exists", and both render the third state.
+   */
+  band?: PriceBand | null
   onRetry?: () => void
 }
 
@@ -110,6 +125,7 @@ export function PriceView({
   status,
   backHref,
   search,
+  band = null,
   onRetry,
 }: PriceViewProps) {
   const bar = (
@@ -214,20 +230,35 @@ export function PriceView({
                 <span>{page.estimated}</span>
                 <strong className="font-display text-[16px]">{estimate ?? page.noEstimate}</strong>
               </div>
-              <LockedRow label={page.won} />
+              {band ? (
+                <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
+                  <span>{page.won}</span>
+                  <strong className="font-display text-[16px] tabular-nums">
+                    {`${moneyExact(String(band.low))} – ${moneyExact(String(band.high))}`}
+                  </strong>
+                </div>
+              ) : null}
               <LockedRow label={page.market} last />
             </Card>
 
-            <Card accent className="flex flex-col gap-2.5">
-              <div className="text-body font-medium text-blue">{page.maxTitle}</div>
-              <div className="flex items-center gap-2.5">
-                <span className="font-display text-[30px] leading-none font-semibold text-muted">
-                  R$
-                </span>
-                <LockedValue width={110} height={30} label={page.lockedValue} />
-              </div>
-              <p className="m-0 text-meta leading-relaxed text-muted">{page.maxNote}</p>
-            </Card>
+            {band ? (
+              /* The only interactive part of this screen, so the only part
+                 that is a Client Component. The rest stays server-rendered. */
+              <MarginCeiling band={band} />
+            ) : (
+              /* **The third state, and why it is not a locked bar.** A locked
+                 value tells a person a number exists and is being withheld from
+                 them. For these items no number exists: the gate in
+                 `lib/radar/price-band.ts` refused one because the comparable
+                 awards were too few or too scattered to mean anything. Saying
+                 that plainly keeps the Essencial feature visible without
+                 claiming something is being kept back. */
+              <Card className="flex flex-col gap-2.5">
+                <div className="text-body font-medium">{page.maxTitle}</div>
+                <p className="m-0 text-body text-muted">{page.noData}</p>
+                <p className="m-0 text-meta leading-relaxed text-muted">{page.noDataHelp}</p>
+              </Card>
+            )}
 
             <div className="flex items-start gap-2.5 rounded-card bg-blue-soft p-3">
               <Icon name="margin" size={20} className="shrink-0 text-blue" />
