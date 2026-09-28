@@ -139,10 +139,23 @@ export function PriceScreen({ id }: { id: string }) {
           setLoaded({ id, item: chosen, band: answer.band, locked: false })
         } else if (answer.state === 'locked') {
           setLoaded({ id, item: chosen, band: null, locked: true })
+        } else {
+          // `envelope()` does not throw on a non-2xx — it parses the body — so
+          // a 429 or a 500 arrives here as `state: 'error'`. Falling through
+          // left `loaded` null, and `bandLocked` then defaulted to **true**:
+          // an Essencial subscriber whose request failed was shown the locked
+          // bar labelled "valor disponível no plano Essencial" and a "Ver
+          // plano Essencial" button, permanently, with no retry on this path.
+          // A failure must degrade to the honest empty card, never to an
+          // advertisement for the plan they already bought.
+          setLoaded({ id, item: chosen, band: null, locked: false })
         }
       })
       .catch(() => {
-        // Aborted, offline, or a 500. The screen is complete without it.
+        // Aborted, offline, or a network error: same rule as above.
+        if (!controller.signal.aborted) {
+          setLoaded({ id, item: chosen, band: null, locked: false })
+        }
       })
     return () => controller.abort()
   }, [id, chosen, attempt])
@@ -153,12 +166,17 @@ export function PriceScreen({ id }: { id: string }) {
   const current = loaded !== null && loaded.id === id && loaded.item === chosen ? loaded : null
   const band = current?.band ?? null
   /**
-   * Defaults to **locked**, not to unlocked.
+   * Defaults to **locked while the answer is in flight**, and never as the
+   * result of a failure.
    *
-   * Before the answer arrives we do not know the plan, and the two wrong
-   * guesses are not equal: showing the locked bar and then revealing a band is
-   * an upgrade the reader watches happen, while showing "ainda sem dados" and
-   * then replacing it with a price tells them something false first.
+   * Before the answer arrives the two wrong guesses are not equal: showing the
+   * locked bar and then revealing a band is an upgrade the reader watches
+   * happen, while showing "ainda sem dados" and then replacing it with a price
+   * tells them something false first.
+   *
+   * After a failure they are not equal either, in the other direction — see
+   * the error branches above. A request that errored sets `locked: false`, so
+   * the screen falls back to the honest empty card.
    */
   const bandLocked = current === null || current.locked
 

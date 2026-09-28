@@ -85,16 +85,30 @@ export async function GET(
     const executor = db()
     // Read only: a GET never mints an identity (see `readViewer`).
     const viewer = await readViewer(request.headers.get('cookie'), executor)
-    if (!hasPriceBand(planOf(viewer))) {
+    const entitled = hasPriceBand(planOf(viewer))
+
+    // **Computed before the plan is consulted, on purpose** (Sci, 2026-09-28).
+    //
+    // Returning `locked` without computing was cheaper and said something
+    // false: both this contract and the screen define locked as *a number
+    // exists and this plan does not include it*, and roughly 99 of every 100
+    // items have no number at all. A visitor would be shown a paywall over
+    // nothing, pay, and find "ainda sem dados de vencedores" behind it — the
+    // exact sentence-that-is-not-true this card exists to stop.
+    //
+    // The cost is the trigram query for unentitled callers. That is the price
+    // of the claim being true, and it is why the rate limit below the gate
+    // matters more than it did.
+    const band = priceBand(await comparablesForItem(id, item, executor))
+    if (band !== null && !entitled) {
       return NextResponse.json(
         { state: 'locked' },
         { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
       )
     }
 
-    const comparables = await comparablesForItem(id, item, executor)
     return NextResponse.json(
-      { state: 'ready', band: priceBand(comparables) },
+      { state: 'ready', band: entitled ? band : null },
       { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
     )
   } catch (error) {

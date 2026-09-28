@@ -68,6 +68,7 @@ describe('GET /api/tenders/:id/band', () => {
     // Collapsing them would tell a visitor the data is missing when the truth
     // is that the feature is sold, which is the inverse of E9's own complaint
     // that "a paying subscriber sees exactly what an anonymous visitor sees".
+    comparablesForItem.mockResolvedValueOnce(priced(6))
     planOf.mockReturnValueOnce('basico')
     const response = await call()
     const body = await response.json()
@@ -75,12 +76,39 @@ describe('GET /api/tenders/:id/band', () => {
     expect(response.status).toBe(200)
     expect(body.state).toBe('locked')
     expect(body.band).toBeUndefined()
-    // And it never pays for the query it is not going to answer.
-    expect(comparablesForItem).not.toHaveBeenCalled()
   })
 
-  it.each(['visitor', 'basico'])('locks %s', async (plan) => {
+  it('says ready-empty, not locked, when there is no number to lock', () => {
+    // **This assertion replaced one that required the defect.** The first
+    // version returned `locked` before computing anything and the test pinned
+    // that with `expect(comparablesForItem).not.toHaveBeenCalled()` — cheaper,
+    // and false for ~99 of every 100 items, because both this contract and the
+    // screen define locked as "a number exists and this plan does not include
+    // it". A visitor would meet a paywall over nothing, pay, and find "ainda
+    // sem dados de vencedores" behind it.
+    return (async () => {
+      comparablesForItem.mockResolvedValueOnce(priced(2))
+      planOf.mockReturnValueOnce('basico')
+      const body = await (await call()).json()
+
+      expect(body.state).toBe('ready')
+      expect(body.band).toBeNull()
+    })()
+  })
+
+  it('never hands an unentitled caller the band itself', async () => {
+    // Computing first must not leak: the figure is gone from the payload, not
+    // merely hidden by the client.
+    comparablesForItem.mockResolvedValueOnce(priced(6))
+    planOf.mockReturnValueOnce('visitor')
+    const body = await (await call()).json()
+
+    expect(JSON.stringify(body)).not.toContain('100')
+  })
+
+  it.each(['visitor', 'basico'])('locks %s when a band exists', async (plan) => {
     comparablesForItem.mockClear()
+    comparablesForItem.mockResolvedValueOnce(priced(6))
     planOf.mockReturnValueOnce(plan)
     expect((await (await call()).json()).state).toBe('locked')
   })

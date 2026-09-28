@@ -120,12 +120,33 @@ export function priceBand(comparables: readonly Comparable[], now = new Date()):
       c.unitAwardedValue > 0,
   )
 
-  // Counted before the prices are: five rows from one edital is one price
-  // wearing five hats, and the copy beneath the figure says "editais".
-  const editais = new Set(fresh.map((c) => c.tenderId)).size
-  if (editais < MIN_SAMPLE) return null
+  // **One price per edital, not one per row**, and the quartiles are taken over
+  // those. Counting editais for the floor while taking quartiles over rows was
+  // the first version of this fix, and it was worse than the bug it replaced:
+  // row duplication *compresses* the inter-quartile range, so the more one
+  // edital dominated, the more likely the spread check was to pass. The gate
+  // meant to catch an incoherent sample was disarmed by exactly the situation
+  // the floor had just been taught to describe.
+  //
+  // Concretely: a registro de preços split into 40 lots at R$ 1,20, beside four
+  // editais at R$ 2,40–2,60. Five editais clears the floor; p25, median and p75
+  // are all 1,20; spread is zero; and the screen shows "R$ 1,20 – R$ 1,20 ·
+  // 5 editais encerrados" while four of the five paid roughly double.
+  //
+  // The median of each edital's own rows, because one edital's lots are
+  // repeated measurements of one decision — their middle is that decision.
+  const byEdital = new Map<string, number[]>()
+  for (const item of fresh) {
+    const rows = byEdital.get(item.tenderId)
+    if (rows) rows.push(item.unitAwardedValue)
+    else byEdital.set(item.tenderId, [item.unitAwardedValue])
+  }
+  if (byEdital.size < MIN_SAMPLE) return null
 
-  const values = fresh.map((c) => c.unitAwardedValue).sort((a, b) => a - b)
+  const values = [...byEdital.values()]
+    .map((rows) => percentile([...rows].sort((a, b) => a - b), 0.5))
+    .sort((a, b) => a - b)
+  const editais = values.length
 
   const median = percentile(values, 0.5)
   if (median <= 0) return null

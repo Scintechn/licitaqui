@@ -53,6 +53,47 @@ describe('priceBand', () => {
     expect(priceBand(comparables([100, 100, 100, 100, 100]), NOW)?.sampleSize).toBe(5)
   })
 
+  it('does not let one edital with many lots decide the price', () => {
+    // **The scenario that survived the first fix.** A registro de preços split
+    // into 40 lots at R$ 1,20, beside four editais that paid roughly double.
+    //
+    // Counting editais for the floor while taking quartiles over rows made the
+    // spread check *more* likely to pass the more one edital dominated: forty
+    // identical values put p25, median and p75 all at 1,20 and the spread at
+    // zero. The screen would have read "R$ 1,20 – R$ 1,20 · 5 editais
+    // encerrados" — literally true and materially false.
+    const dominated = [
+      ...Array.from({ length: 40 }, () => ({
+        unitAwardedValue: 1.2,
+        awardedOn: new Date('2026-06-01'),
+        tenderId: '88000000000777-1-000001/2026',
+      })),
+      ...comparables([2.4, 2.5, 2.55, 2.6]),
+    ]
+
+    const band = priceBand(dominated, NOW)
+    expect(band).not.toBeNull()
+    // One price per edital: [1.20, 2.40, 2.50, 2.55, 2.60]. The median is a
+    // real edital's price, not the loudest one's.
+    expect(band?.sampleSize).toBe(5)
+    expect(band?.median).toBe(2.5)
+    expect(band?.low).toBeGreaterThan(1.2)
+  })
+
+  it('takes each edital’s own median when its lots disagree', () => {
+    // Lots within one edital are repeated measurements of a single decision,
+    // so their middle is that decision — not their first row, not their mean.
+    const lots = [
+      ...[10, 20, 30].map((unitAwardedValue) => ({
+        unitAwardedValue,
+        awardedOn: new Date('2026-06-01'),
+        tenderId: '88000000000777-1-000001/2026',
+      })),
+      ...comparables([20, 20, 20, 20]),
+    ]
+    expect(priceBand(lots, NOW)?.median).toBe(20)
+  })
+
   it('is null when the middle half of the winners disagree too much', () => {
     // A band four times too wide is not an answer to "what should I bid" — it
     // describes a market with no settled price, which is worth saying by
