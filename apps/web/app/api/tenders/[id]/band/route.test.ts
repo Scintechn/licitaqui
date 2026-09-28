@@ -46,6 +46,7 @@ describe('GET /api/tenders/:id/band', () => {
     expect(body.state).toBe('ready')
     expect(body.band.median).toBe(100)
     expect(body.band.sampleSize).toBe(6)
+    expect(body.entitled).toBe(true)
   })
 
   it('answers ready with null — not an error — when it does not', async () => {
@@ -93,6 +94,12 @@ describe('GET /api/tenders/:id/band', () => {
 
       expect(body.state).toBe('ready')
       expect(body.band).toBeNull()
+      // **The assertion the review found missing.** `entitled` is the whole
+      // point of this branch: without it the screen cannot tell this caller
+      // from a subscriber whose item simply has no band, and the upsell
+      // disappears from exactly the people it is for. Hardcode the field to
+      // `true` and every other assertion here still passes.
+      expect(body.entitled).toBe(false)
     })()
   })
 
@@ -119,7 +126,9 @@ describe('GET /api/tenders/:id/band', () => {
     planOf.mockReturnValueOnce(plan)
     // `promocional` is included because 0002 gives founders "same entitlements
     // as Essencial" — the whole of what they are buying on 08/10.
-    expect((await (await call()).json()).state).toBe('ready')
+    const body = await (await call()).json()
+    expect(body.state).toBe('ready')
+    expect(body.entitled).toBe(true)
   })
 
   it('refuses an id that is not a PNCP control number', async () => {

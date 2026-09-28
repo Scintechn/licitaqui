@@ -3,7 +3,7 @@
 import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { getBand, getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
-import type { TenderDetail, TenderResponse } from '@/lib/radar/contract'
+import type { BandResponse, TenderDetail, TenderResponse } from '@/lib/radar/contract'
 import type { PriceBand } from '@/lib/radar/price-band'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
@@ -24,6 +24,62 @@ const INITIAL: Data = { tender: null, status: { kind: 'analyzing' } }
 
 function aborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
+}
+
+/** What the screen holds after one band answer. Exported for its test. */
+export type BandState = { band: PriceBand | null; locked: boolean; entitled: boolean }
+
+/**
+ * A `BandResponse` as the screen stores it.
+ *
+ * Pulled out of the effect so that it can be tested at all. `vitest.config.mts`
+ * sets `environment: 'node'`, so no `useEffect` in this repo ever runs under
+ * test — and this mapping is where both of E9's worst defects lived.
+ *
+ * `answer.entitled === true` rather than `answer.entitled` is deliberate.
+ * `getBand` is `envelope<BandResponse>(...)`, which **casts** the body rather
+ * than parsing it, so a `ready` payload without the field — a new bundle
+ * against an old server mid-rollout, a cached chunk — would leave `entitled`
+ * as `undefined`, make `!entitled` true, and print "Ver plano Essencial" to a
+ * subscriber beside the band they had just been shown: the exact defect this
+ * code exists to remove, with TypeScript satisfied throughout. Coercing here
+ * fails in the safe direction.
+ */
+export function bandStateFrom(answer: BandResponse): BandState {
+  if (answer.state === 'ready') {
+    return { band: answer.band, locked: false, entitled: answer.entitled === true }
+  }
+  if (answer.state === 'locked') {
+    return { band: null, locked: true, entitled: false }
+  }
+  // `envelope()` does not throw on a non-2xx — it parses the body — so a 429
+  // or a 500 arrives here as `state: 'error'`. Falling through left `loaded`
+  // null, and `bandLocked` then defaulted to **true**: an Essencial subscriber
+  // whose request failed was shown the locked bar labelled "valor disponível
+  // no plano Essencial" and a "Ver plano Essencial" button, permanently, with
+  // no retry on this path. A failure must degrade to the honest empty card,
+  // never to an advertisement for the plan they already bought.
+  //
+  // `entitled: true` here is not a claim about the plan — it is the choice to
+  // sell nothing when we do not know. A wrong "buy this" is worse than a
+  // missing one, in both directions: to a subscriber it is an insult, and to
+  // a visitor it is a promise made on no evidence.
+  return { band: null, locked: false, entitled: true }
+}
+
+/**
+ * Whether to offer the plan. **Not the same question as `bandLocked`.**
+ *
+ * An unentitled visitor on an item with no band gets `ready` with `band: null`
+ * — indistinguishable from a subscriber's empty item unless the route says so.
+ * Hiding the CTA on `!bandLocked` alone removed the upsell from exactly the
+ * people it is for.
+ *
+ * `null` is "in flight, or the tender has no item to ask about", and offers
+ * nothing, by the same rule as the error branch above.
+ */
+export function planOffer(current: BandState | null): boolean {
+  return current === null ? false : current.locked || !current.entitled
 }
 
 export function PriceScreen({ id }: { id: string }) {
@@ -136,29 +192,11 @@ export function PriceScreen({ id }: { id: string }) {
     const controller = new AbortController()
     getBand(id, chosen, controller.signal)
       .then((answer) => {
-        if (answer.state === 'ready') {
-          setLoaded({ id, item: chosen, band: answer.band, locked: false, entitled: answer.entitled })
-        } else if (answer.state === 'locked') {
-          setLoaded({ id, item: chosen, band: null, locked: true, entitled: false })
-        } else {
-          // `envelope()` does not throw on a non-2xx — it parses the body — so
-          // a 429 or a 500 arrives here as `state: 'error'`. Falling through
-          // left `loaded` null, and `bandLocked` then defaulted to **true**:
-          // an Essencial subscriber whose request failed was shown the locked
-          // bar labelled "valor disponível no plano Essencial" and a "Ver
-          // plano Essencial" button, permanently, with no retry on this path.
-          // A failure must degrade to the honest empty card, never to an
-          // advertisement for the plan they already bought.
-          setLoaded({ id, item: chosen, band: null, locked: false, entitled: true })
-        }
+        setLoaded({ id, item: chosen, ...bandStateFrom(answer) })
       })
       .catch(() => {
-        // Aborted, offline, or a network error: same rule as above.
-        //
-        // `entitled: true` on a failure is not a claim about the plan — it is
-        // the choice to sell nothing when we do not know. A wrong "buy this"
-        // is worse than a missing one, in both directions: to a subscriber it
-        // is an insult, and to a visitor it is a promise made on no evidence.
+        // Aborted, offline, or a network error: the same rule as the error
+        // branch of `bandStateFrom`, and spelled the same way on purpose.
         if (!controller.signal.aborted) {
           setLoaded({ id, item: chosen, band: null, locked: false, entitled: true })
         }
@@ -185,16 +223,7 @@ export function PriceScreen({ id }: { id: string }) {
    * the screen falls back to the honest empty card.
    */
   const bandLocked = current === null || current.locked
-  /**
-   * Whether to offer the plan. **Not the same question as `bandLocked`.**
-   *
-   * An unentitled visitor on an item with no band gets `ready` with
-   * `band: null` — indistinguishable from a subscriber's empty item unless the
-   * route says so. Hiding the CTA on `!bandLocked` alone removed the upsell
-   * from exactly the people it is for. Unknown (in flight, or a failure)
-   * offers nothing: a wrong "buy this" is worse than a missing one.
-   */
-  const showPlanCta = current === null ? false : current.locked || !current.entitled
+  const showPlanCta = planOffer(current)
 
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
 

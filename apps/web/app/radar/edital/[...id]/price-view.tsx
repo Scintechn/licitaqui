@@ -15,7 +15,7 @@ import { format, messages } from '@/lib/messages'
 import { priceHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
-import { moneyExact, trimObject } from '@/lib/radar/format'
+import { moneyExact, moneyExactNonZero, trimObject } from '@/lib/radar/format'
 import type { PriceBand } from '@/lib/radar/price-band'
 import { MarginCeiling } from './margin-ceiling'
 import { TenderStatusBanner } from '../../tender-status-banner'
@@ -123,8 +123,8 @@ export type PriceViewProps = {
  * because the reader has no way to tell which half they are looking at.
  */
 export function bandRange(band: { low: number; high: number }): string | null {
-  const low = moneyExact(String(band.low))
-  const high = moneyExact(String(band.high))
+  const low = moneyExactNonZero(String(band.low))
+  const high = moneyExactNonZero(String(band.high))
   return low === null || high === null ? null : `${low} – ${high}`
 }
 
@@ -265,12 +265,21 @@ export function PriceView({
                 <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
                   <span>{page.won}</span>
                   <strong className="font-display text-[16px] tabular-nums">
-                    {/* Not a template literal. `moneyExact` returns null for
-                        anything that rounds to zero (`format.ts`), and
-                        interpolating that prints the literal word "null" on a
-                        money figure — TypeScript will not catch it inside a
-                        template. `unit_awarded_value` is numeric(16,4) and the
-                        only filter is `> 0`, so sub-centavo values exist. */}
+                    {/* Not a template literal: `bandRange` can answer null,
+                        and interpolating that prints the literal word "null"
+                        beside a money figure — TypeScript will not catch it
+                        inside a template. That half was right.
+
+                        The reason given was not. It said `moneyExact` refuses
+                        "anything that rounds to zero"; it refuses `=== 0`
+                        only. And it claimed sub-centavo awards exist because
+                        the column is numeric(16,4) filtered on `> 0` — an
+                        argument from the schema, never measured. Measured
+                        2026-09-28: the minimum over 5 349 OK awards is
+                        R$ 0,0300, so no band end reaches zero today. The
+                        guard stays because "both ends or neither" only means
+                        something if an end can be refused, and
+                        `moneyExactNonZero` is what actually refuses one. */}
                     {bandRange(band) ?? page.noEstimate}
                   </strong>
                 </div>

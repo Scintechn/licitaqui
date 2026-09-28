@@ -3,7 +3,7 @@
 import { useId, useState } from 'react'
 import { Card } from '@/components'
 import { format, messages } from '@/lib/messages'
-import { moneyExact } from '@/lib/radar/format'
+import { moneyExactNonZero } from '@/lib/radar/format'
 import { targetPurchasePrice, type PriceBand } from '@/lib/radar/price-band'
 
 const page = messages.radar.price
@@ -63,11 +63,14 @@ export function MarginCeiling({ band }: { band: PriceBand }) {
   /** `null` while the field is empty or unparseable — never silently zero. */
   const marginPct = parseMargin(marginText)
   const ceiling = marginPct === null ? null : targetPurchasePrice(band, marginPct)
-  // `?? ''` rendered the card as a bare "R$" with nothing after it — at a high
-  // margin on a low-value item (median R$ 0,40 at 99%) `moneyExact` returns
-  // null. `noEstimate` says so instead, and it was already two characters away
-  // on the same line.
-  const money = ceiling === null ? null : moneyExact(String(ceiling))
+  // **This comment used to be wrong, and the code with it.** It claimed
+  // `moneyExact` "returns null" at a high margin on a low-value item. It does
+  // not: `notAPrice` guards `=== 0` exactly, so median R$ 0,40 at 99% gives
+  // R$ 0,004 and renders as **`R$ 0,00`** — a fabricated price at 30px, under
+  // a label promising the reader's own margin. 376 awards sit under R$ 1,00
+  // and the margin is the reader's, so this is reachable, not theoretical.
+  // `moneyExactNonZero` is the function the old comment described.
+  const money = ceiling === null ? null : moneyExactNonZero(String(ceiling))
 
   return (
     <Card accent className="flex flex-col gap-2.5">

@@ -235,6 +235,44 @@ export function moneyExact(value: string | null | undefined): string | null {
 }
 
 /**
+ * `moneyExact`, refusing a figure that *formats* as `R$ 0,00`.
+ *
+ * ## Why this exists rather than a change to `notAPrice`
+ *
+ * `notAPrice` guards `amount === 0` exactly, and the docstring above says so
+ * deliberately: a sub-centavo value is "the same untruth in principle, but no
+ * such row exists in the corpus". **Measured 2026-09-28, that is still true of
+ * the corpus** — across 5 349 `quality = 'OK'` awards with a positive unit
+ * value, none is below R$ 0,005 and the minimum is R$ 0,0300. So the Itens
+ * tab keeps the formatter it was written for and its rationale stands.
+ *
+ * E9 introduced two call sites where the number is **not** a figure PNCP
+ * declared, and the corpus therefore says nothing about it:
+ *
+ *   `targetPurchasePrice(band, margin)` is `median * (1 - margin/100)`, and
+ *   the margin is **the reader's**. 376 awards sit under R$ 1,00, and
+ *   `parseMargin` accepts anything up to 99 — so a median of R$ 0,40 at 99%
+ *   is R$ 0,004, which `moneyExact` happily renders as **`R$ 0,00`** at 30px
+ *   under "Seu preço máximo de compra". A fabricated price, which is the exact
+ *   thing `notAPrice` was written to stop one tab away.
+ *
+ *   The band's own ends are medians of awarded values, so today they cannot
+ *   reach here. They use this anyway, because "both ends or neither" is only
+ *   meaningful if either end can actually be refused.
+ *
+ * Two comments in E9 claimed `moneyExact` already did this. It does not, and
+ * both were wrong; this is the function they described.
+ */
+export function moneyExactNonZero(value: string | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  const amount = Number(value)
+  // Rounds to zero at the two decimals `CURRENCY` prints — not `=== 0`, which
+  // is the whole difference from `notAPrice`.
+  if (!Number.isFinite(amount) || Math.round(amount * 100) === 0) return null
+  return moneyExact(value)
+}
+
+/**
  * `400`, `1,5`, `12.000` — a quantity as the agency declared it.
  *
  * `numeric(…)` comes off the wire as `400.0`, and "400,0 Hora" is noise. Up to

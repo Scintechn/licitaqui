@@ -12,6 +12,7 @@ import {
   meEppSummary,
   money,
   moneyExact,
+  moneyExactNonZero,
   shortDate,
   tenderTitle,
   trimObject,
@@ -356,5 +357,44 @@ describe('displayTitle', () => {
     const trimmed = displayTitle({ shortTitle: null, object: OBJECT }, 20)
     expect(trimmed.length).toBeLessThan(tenderTitle(OBJECT).length)
     expect(trimmed).toMatch(/…$/)
+  })
+})
+
+describe('moneyExactNonZero', () => {
+  /**
+   * The guard E9 twice claimed `moneyExact` already was.
+   *
+   * Two comments — one on the purchase ceiling, one on the band range — said
+   * `moneyExact` returns null for "anything that rounds to zero". It returns
+   * null for `=== 0` only, which is deliberate for the figures PNCP declares
+   * (see `notAPrice`) and wrong for a number the reader's own margin produces.
+   */
+  it('refuses a value that would print as R$ 0,00', () => {
+    // median R$ 0,40 at a 99% margin — both ends of that are reachable: 376
+    // awards sit under R$ 1,00, and `parseMargin` accepts up to 99.
+    expect(moneyExactNonZero(String(0.4 * (1 - 99 / 100)))).toBeNull()
+    expect(moneyExactNonZero('0.004')).toBeNull()
+    expect(moneyExactNonZero('0.0049')).toBeNull()
+    expect(moneyExactNonZero('0')).toBeNull()
+  })
+
+  it('keeps the smallest figure that is still a price', () => {
+    expect(moneyExactNonZero('0.005')).toBe('R$ 0,01')
+    expect(moneyExactNonZero('0.03')).toBe('R$ 0,03')
+    expect(moneyExactNonZero('16.272000000000002')).toBe('R$ 16,27')
+  })
+
+  it('agrees with moneyExact everywhere above a centavo', () => {
+    for (const value of ['0.01', '1', '816.67', '326668.00']) {
+      expect(moneyExactNonZero(value)).toBe(moneyExact(value))
+    }
+  })
+
+  it('leaves moneyExact alone, because the Itens tab is a different rule', () => {
+    // `notAPrice` deliberately does not guard sub-centavo values: they are
+    // figures PNCP published and "no such row exists in the corpus". Measured
+    // 2026-09-28 the minimum over 5 349 OK awards is R$ 0,0300, so that still
+    // holds. This test fails the day someone "fixes" `notAPrice` instead.
+    expect(moneyExact('0.004')).toBe('R$ 0,00')
   })
 })
