@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { Button, Card, CardRow, Icon, Logo, SectionLabel, Status, TagList } from '@/components'
 import type { IconName } from '@/components'
 import { cn } from '@/lib/cn'
+import { FOUNDER_SEATS, firstLotLabel } from '@/lib/founders'
 import { messages } from '@/lib/messages'
 import radarPreviewMobile from './radar-preview-mobile.png'
 import radarFull from './radar-full.png'
@@ -26,6 +27,18 @@ import { SignupButton, SignupSheet, SignupTextButton } from './signup-sheet'
  */
 
 const page = messages.foundersPage
+
+/**
+ * "Primeiro lote 17 vagas", or `null` once every seat is open.
+ *
+ * Read from {@link FOUNDER_SEATS} rather than fetched, because this page is
+ * statically rendered (spec §3.3) and holds no seat data — only
+ * `signup-form.tsx` asks `/api/founders/seats`. The cap is a compiled constant
+ * today, so the two agree by construction; when it moves to `app_settings`
+ * this becomes the one place that needs a live read, and the sentences that
+ * quote it do not change.
+ */
+const firstLot = firstLotLabel(FOUNDER_SEATS)
 
 /**
  * The three sections the sticky header links to.
@@ -1343,7 +1356,17 @@ function FounderValue() {
                 it is kept because it is the comparison column that grows when
                 a row is added to the table, and then the offer would end above
                 the panel's floor. */}
-            <SignupButton variant="onBrand" className="mt-auto w-full" label={founderValue.cta} />
+            {/* The lot sits under the control, not inside its label: a
+                `SignupButton`'s label is also the sheet's heading — deliberately,
+                so the dialog is named by the words that were pressed — and
+                "Garantir uma das 25 vagas · Primeiro lote 17 vagas" is a
+                sentence, not a title. Both numbers still read together. */}
+            <div className="mt-auto flex flex-col gap-1.5">
+              <SignupButton variant="onBrand" className="w-full" label={founderValue.cta} />
+              {firstLot ? (
+                <p className="text-center text-caption text-on-brand-faint">{firstLot}</p>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -1643,7 +1666,7 @@ function ClosingOffer() {
           aside={
             <div className="flex flex-col gap-4 rounded-feature border border-line bg-surface p-5 shadow-[0_1px_0_var(--color-line),0_18px_40px_-28px_rgba(23,23,23,0.35)] min-[560px]:p-6">
               <SectionLabel tone="accent" size="caption">
-                {signup.seatsGroup}
+                {firstLot ? `${signup.seatsGroup} · ${firstLot}` : signup.seatsGroup}
               </SectionLabel>
 
               <div className="flex flex-wrap items-baseline gap-2.5">

@@ -34,6 +34,45 @@ export function seatsLeftLabel(taken: number): string {
   return format(messages.founders.seats.left, { count: seatsLeft(taken) })
 }
 
+/**
+ * "Primeiro lote 17 vagas" — or **nothing**, once every seat is open.
+ *
+ * Sci, 2026-09-28: *"The founders seat are 25 in total, but we will open in 2
+ * lost 17+8."* Two numbers on the page is the point, not the bug: the copy
+ * quotes the 25 the terms sell, and this says which slice of them you can take
+ * today. Before this the page showed 25 in prose beside a counter reading 17
+ * and explained neither.
+ *
+ * **It returns `null` when `open >= total`, and that is what makes lot 2 a
+ * database change rather than a deploy.** Raise the cap to 25 and the phrase
+ * disappears on its own — nobody has to remember that three strings still say
+ * "primeiro lote" on the evening the second lot opens.
+ *
+ * `open` is passed rather than read from {@link FOUNDER_SEATS} so the call
+ * sites that *do* have the live number use it. Today every source resolves to
+ * the same constant, because the cap is still compiled in; when it moves to
+ * `app_settings` this needs no change.
+ */
+export function firstLotLabel(open: number, total: number = FOUNDERS.seatsTotal): string | null {
+  if (!Number.isFinite(open) || open <= 0) return null
+  if (open >= total) return null
+  return format(messages.founders.seats.firstLot, { count: Math.floor(open) })
+}
+
+/**
+ * What the sold-out state says — which is not the same sentence in both cases.
+ *
+ * With a lot still unopened, "As 25 vagas acabaram" would be false: 17 are
+ * gone and 8 have not been offered yet. The page said exactly that until now,
+ * in two voices at once — `seats.soldOut` filled with 17 beside
+ * `waitlist.body`'s hardcoded 25.
+ */
+export function soldOutLabel(open: number, total: number = FOUNDERS.seatsTotal): string {
+  const message =
+    open < total ? messages.founders.seats.soldOutFirstLot : messages.founders.seats.soldOut
+  return format(message, { total: open })
+}
+
 /** "36 de 48 vagas preenchidas".
  *
  * The denominator is the **open** cap, passed at call time — not the 25 the

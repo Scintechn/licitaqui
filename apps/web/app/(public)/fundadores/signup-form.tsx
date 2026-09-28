@@ -2,10 +2,18 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type Ref } from 'react'
 import { Button, Field, Icon, SectionLabel, StateCard } from '@/components'
-import { FOUNDER_SEATS, seatGrid, seatsLeftLabel, showSeatGrid } from '@/lib/founders'
+import {
+  FOUNDER_SEATS,
+  firstLotLabel,
+  seatGrid,
+  seatsLeftLabel,
+  showSeatGrid,
+  soldOutLabel,
+} from '@/lib/founders'
 import type { SeatsResponse, SignupOk, SignupResponse } from '@/lib/founders/contract'
 import { pushFoundersLead } from '@/lib/founders/lead-event'
 import { format, messages } from '@/lib/messages'
+import { FOUNDERS } from '@/lib/product'
 import { ShareSeat } from './share-seat'
 
 const copy = messages.foundersPage.signup
@@ -457,10 +465,18 @@ export function SignupForm({
  * the part that only helps once it has something to show.
  */
 function SeatGauge({ taken }: { taken: number | null }) {
+  // "Primeiro lote 17 vagas", or nothing once all 25 are open. Without it the
+  // gauge counted down from 17 while the prose beside it sold 25, and said
+  // nothing about why the two differ.
+  const firstLot = firstLotLabel(FOUNDER_SEATS)
   return (
-    <div role="group" aria-label={copy.seatsGroup} className="flex flex-col gap-2">
+    <div
+      role="group"
+      aria-label={firstLot ? `${copy.seatsGroup} · ${firstLot}` : copy.seatsGroup}
+      className="flex flex-col gap-2"
+    >
       <div className="flex justify-between text-meta text-muted">
-        <span>{copy.seatsLabel}</span>
+        <span>{firstLot ? `${copy.seatsLabel} · ${firstLot}` : copy.seatsLabel}</span>
         <b className="font-mono font-medium text-ink tabular-nums">
           {taken === null ? FOUNDER_SEATS : FOUNDER_SEATS - taken}
         </b>
@@ -646,7 +662,7 @@ function Confirmation({
       {seat === null ? (
         <>
           <SectionLabel tone="muted" size="caption">
-            {format(messages.founders.seats.soldOut, { total: FOUNDER_SEATS })}
+            {soldOutLabel(FOUNDER_SEATS)}
           </SectionLabel>
           <h2 className="font-display text-subsection font-bold">
             {messages.founders.waitlist.title}
@@ -657,7 +673,14 @@ function Confirmation({
             </p>
           )}
           <p className="text-body leading-[1.55] text-ink-soft">
-            {messages.founders.waitlist.body}
+            {/* `body` opens by saying all 25 are gone, which is false while a
+                lot is still unopened — and the label above has just said so
+                correctly. `bodyFirstLot` is that same sentence minus its first
+                clause, so the queue is still explained without contradicting
+                the line above it. */}
+            {FOUNDER_SEATS < FOUNDERS.seatsTotal
+              ? messages.founders.waitlist.bodyFirstLot
+              : messages.founders.waitlist.body}
           </p>
           <p className="text-meta leading-[1.5] text-muted">
             {messages.founders.waitlist.basicNote}

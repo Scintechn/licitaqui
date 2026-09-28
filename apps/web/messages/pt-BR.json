@@ -87,7 +87,9 @@
     "seats": {
       "left": "{count, plural, =0 {Vagas esgotadas} one {Resta 1 vaga} other {Restam # vagas}}",
       "of": "{count} de {total} vagas preenchidas",
+      "firstLot": "Primeiro lote {count, plural, one {# vaga} other {# vagas}}",
       "soldOut": "As {total} vagas acabaram. Você pode entrar na lista de espera.",
+      "soldOutFirstLot": "As {total} vagas do primeiro lote acabaram. Você pode entrar na lista de espera.",
       "unknown": "Não conseguimos conferir as vagas agora. Tente de novo em instantes."
     },
     "form": {
@@ -120,6 +122,7 @@
       "title": "Você está na lista de espera",
       "position": "Você é o {posicao}º da fila.",
       "body": "As {$vagas} vagas de fundador acabaram. Se alguém desistir, a vaga passa para quem está na frente da fila e a gente te avisa.",
+      "bodyFirstLot": "Se alguém desistir, a vaga passa para quem está na frente da fila e a gente te avisa.",
       "basicNote": "De qualquer forma, quando a LicitaQui abrir você vai poder usar o plano Básico, que é gratuito: busca pelo CNPJ da sua empresa, 5 triagens de edital por mês e um aviso por semana no Telegram."
     },
     "errors": {
