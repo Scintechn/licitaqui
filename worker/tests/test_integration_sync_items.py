@@ -276,10 +276,17 @@ def test_every_writer_of_search_uses_the_one_definition() -> None:
     seed = (Path(__file__).resolve().parents[2] / "db" / "seed.py").read_text(encoding="utf-8")
     assert "UPDATE_SEARCH_SQL" in seed
 
-    # And **nobody** writes the expression by hand — not even the module that
-    # owns it, which assembles it from `SEARCH_CONFIG`. So the literal appears
-    # in no source file at all, and a pasted fourth copy is the only thing that
-    # can make this list non-empty.
+    # And no module **in the worker package** writes the expression by hand —
+    # not even the one that owns it, which assembles it from `SEARCH_CONFIG`.
+    #
+    # Scope, stated honestly: this checks `licitaqui/*.py` and nothing else.
+    # Narrowed, object-only spellings still live in test fixtures outside it —
+    # `apps/web/lib/radar/fixtures.ts`, `apps/web/lib/radar/pagination.db.test.ts`,
+    # `worker/tests/test_integration_telegram.py`. They are fixtures, not
+    # writers, so they cannot narrow a production vector; but "one definition"
+    # is true of the worker package, not of the repository, and a test that
+    # claimed otherwise would be the kind of sentence this project keeps
+    # finding.
     root = Path(__file__).resolve().parents[1] / "licitaqui"
     spellers = sorted(
         path.name

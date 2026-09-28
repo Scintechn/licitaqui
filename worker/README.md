@@ -98,6 +98,38 @@ Payload (all optional; the scheduled job carries none of them):
 | `window_start`, `window_end` | from the watermark | `YYYY-MM-DD`. Re-run a window by hand; does not move the watermark |
 | `lookback_days` | `1` | How far a first run reaches when there is no watermark |
 
+
+## `reconcile_open_tenders` (B17)
+
+The **inventory** sweep, beside the change feed above. They answer different
+questions and neither replaces the other.
+
+`/v1/contratacoes/atualizacao` windows on `dataAtualizacaoGlobal`, so an edital
+published once and never touched again never re-enters the window. Measured
+2026-09-27 for `q=saas, status=recebendo_proposta`: PNCP returned 137 and the
+Radar returned 57, and **54 of the 72 in-scope misses had never been updated
+after publication**. None was past due; 37 closed within three days.
+
+So this asks `status=recebendo_proposta` instead, daily at 04:00 BRT, with
+**no `stop_at`** — an inventory that stops early is a smaller wrong answer.
+
+- **Partitioned by UF**, which provably loses nothing: measured 2026-09-28 the
+  27 UF totals sum to 26,036 and the unpartitioned national total is also
+  26,036. A UF past 60% of PNCP's 10,000-record window is swept one modality at
+  a time; a slice still over that raises `PartitionTooLarge` rather than paging
+  into the wall, because past the window PNCP does not error — it stops
+  answering, and a sweep that finds the limit by reaching it has already
+  returned an incomplete set.
+- **Its own `events.name`**, never `sync_open_tenders.cycle`, so it cannot move
+  the change feed's watermark — `read_watermark` filters on that name.
+- **`complete` means the country was swept**, not that nothing raised: it
+  requires coverage within 2% of the `total` PNCP reported at plan time.
+- It also drains the `search` backlog (`backfill_missing_search`). `UPSERT_SQL`
+  writes the vector, but its `ON CONFLICT` branch is governed by the guard that
+  makes a rerun a no-op, so a stored row whose PNCP timestamp has not moved is
+  never rewritten. Measured 2026-09-28: 8,905 of 29,089 rows had no vector, and
+  every one had zero items.
+
 ## Adding a job kind
 
 ```python
@@ -532,7 +564,6 @@ usable. Two modules and two job kinds:
 |---|---|---|
 | `sync_awards` | daily 03:00 BRT (§7.1 "overnight") | No HTTP. Picks tenders with pending awarded items in the segments of interest and enqueues one follow-up each — the shape B2's sweep established. |
 | `sync_tender_awards` | per tender, priority 9 | One request per pending awarded item, upserted as each arrives. |
-| `reconcile_open_tenders` | daily 04:00 BRT (B17) | The **inventory** sweep, beside `sync_open_tenders`' change feed. `/v1/contratacoes/atualizacao` windows on `dataAtualizacaoGlobal`, so an edital published once and never touched again never re-enters it — measured 2026-09-27, the Radar held 44% of what PNCP called open and 54 of the 72 in-scope misses had never been updated after publication. This asks `status=recebendo_proposta` instead, partitioned by UF (their totals sum to exactly the national figure, so the partition loses nothing), with **no `stop_at`**. It reads each partition's `total` before walking it and raises rather than paging into PNCP's 10 000-record wall. Writes its own `events.name`, never `sync_open_tenders.cycle`, so it cannot move the change feed's watermark. |
 
 ### CPF is masked on write, and `raw` is the column people forget
 

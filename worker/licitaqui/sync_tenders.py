@@ -416,18 +416,22 @@ def _enqueue_followups(ctx: JobContext, tender_ids: tuple[str, ...]) -> int:
     if not kinds or not tender_ids:
         return 0
     created = 0
-    for tender_id in tender_ids:
-        for kind in kinds:
-            # One live job per (kind, key): a tender that changes twice between
-            # two runs of the consumer produces one follow-up, not two.
-            if queue.enqueue(
-                ctx.conn,
-                kind,
-                tender_id,
-                priority=FOLLOWUP_PRIORITY,
-                payload={"tender_id": tender_id},
-            ):
-                created += 1
+    for kind in kinds:
+        # One statement per kind, not one per tender per kind. The dedupe index
+        # still decides — a tender that changes twice between two runs of the
+        # consumer produces one follow-up, not two — but B17's first cycle
+        # queues ~13,000 tenders × 3 kinds, and at a measured 212 ms per
+        # single enqueue that loop took **138 minutes** against a one-hour
+        # `STALE_RUNNING_SECONDS`: the queue would requeue the job underneath
+        # itself, and with `WORKER_CONCURRENCY > 1` start a second national
+        # sweep beside the first. Batched it is 0.77 ms per job.
+        created += queue.enqueue_many(
+            ctx.conn,
+            kind,
+            tender_ids,
+            priority=FOLLOWUP_PRIORITY,
+            payload_for=lambda tender_id: {"tender_id": tender_id},
+        )
     return created
 
 
@@ -518,8 +522,15 @@ UFS: tuple[str, ...] = (
 #: and the headroom is real rather than theoretical.
 PARTITION_SPLIT_RATIO = 0.6
 
-#: Rows per cycle for the `search` backfill below. 9,000 is the whole backlog
-#: today, so this drains in one night and then matches nothing.
+#: Rows per cycle for the `search` backfill below, set **above** today's
+#: backlog on purpose so it drains in one night rather than over nine.
+#:
+#: Measured 2026-09-28 on production, through the worker's own connection
+#: (`statement_timeout` 30 s): the whole 8,905-row backlog is **2.79 s**, 0.31
+#: ms/row. A first draft of this comment claimed the cap existed to stop the
+#: first run becoming "one statement over nine thousand rows" while the number
+#: beside it permitted exactly that — the sentence and the constant disagreed,
+#: and only one of them had been measured.
 SEARCH_BACKFILL_LIMIT = 10_000
 
 #: Fill `search` where it was never written. `ctid` because the rows have no
@@ -559,6 +570,7 @@ class ReconcileStats:
     upgrades: int = 0
     largest_partition: int = 0
     search_backfilled: int = 0
+    backfill_failed: str | None = None
     #: A deliberate one-UF rerun. Never recorded as a complete cycle: the
     #: coverage figure the card is measured against is national.
     partial: bool = False
@@ -614,6 +626,8 @@ class ReconcileStats:
             "upgrades": self.upgrades,
             "largest_partition": self.largest_partition,
             "search_backfilled": self.search_backfilled,
+            "backfill_failed": self.backfill_failed,
+            "coverage_tolerance": self.coverage_tolerance,
             "coverage": round(self.coverage, 4),
             "partial": self.partial,
             "plan_failed": self.plan_failed,
@@ -705,6 +719,11 @@ def reconcile_open_tenders(ctx: JobContext) -> None:
     """
     modalities = tuple(ctx.payload.get("modalities") or DEFAULT_MODALITIES)
     only = tuple(str(u).upper() for u in (ctx.payload.get("ufs") or ()))
+    unknown = sorted(set(only) - set(UFS))
+    if unknown:
+        # Otherwise `{"ufs": ["São Paulo"]}` plans nothing, sweeps nothing and
+        # returns `done` — a hand rerun that did nothing, reported as success.
+        raise ValueError(f"unknown uf(s) in payload: {unknown}; expected any of {list(UFS)}")
     ufs = tuple(uf for uf in UFS if uf in only) if only else UFS
     stats = ReconcileStats()
     stats.partial = bool(only)
@@ -724,6 +743,10 @@ def reconcile_open_tenders(ctx: JobContext) -> None:
             # partition was swept **and wrote no event at all**, so nothing
             # recorded that the day's reconcile had not happened.
             stats.plan_failed = f"{type(exc).__name__}: {exc}"[:300]
+            # The backfill is pure SQL. A night PNCP is unreachable is still a
+            # night the vector backlog can drain, and skipping it here meant
+            # the one job that needed no network did nothing.
+            _safe_backfill(ctx, stats)
             _record_reconcile(ctx, stats)
             ctx.log.warning("reconcile could not plan", extra={"error": stats.plan_failed})
             return
@@ -761,9 +784,26 @@ def _run_reconcile(ctx, client, stats, partitions, expected, largest) -> None:
             )
     stats.partitions_failed = tuple(failed)
 
-    stats.search_backfilled = backfill_missing_search(ctx.conn)
+    _safe_backfill(ctx, stats)
     _record_reconcile(ctx, stats)
     ctx.log.info("reconcile finished", extra=stats.as_props())
+
+
+def _safe_backfill(ctx: JobContext, stats: ReconcileStats) -> None:
+    """Drain the `search` backlog without letting it take the cycle down.
+
+    It used to be called bare, immediately before the event row was written. A
+    database error there — a lock wait, a dropped connection, a statement
+    timeout — discarded the only record of a cycle that had just swept 26,000
+    editais successfully, and sent all four retries back through the full
+    national sweep. A repair job must not be able to erase the report of the
+    work it was repairing alongside.
+    """
+    try:
+        stats.search_backfilled = backfill_missing_search(ctx.conn)
+    except psycopg.Error as exc:
+        stats.backfill_failed = f"{type(exc).__name__}: {exc}"[:300]
+        ctx.log.warning("search backfill failed", extra={"error": stats.backfill_failed})
 
 
 def _record_reconcile(ctx: JobContext, stats: ReconcileStats) -> None:
@@ -791,9 +831,13 @@ def backfill_missing_search(conn: psycopg.Connection, *, limit: int = SEARCH_BAC
     PNCP lists no items for is invisible to `t.search @@ websearch_to_tsquery`
     — the Radar's only text filter — no matter what its objeto says.
 
-    Capped per cycle so the first run cannot become one statement over nine
-    thousand rows, and self-extinguishing: once none are null this matches
-    nothing and costs an index probe.
+    Capped per cycle, and the cap is deliberately above today's backlog:
+    measured on production through a worker connection, all 8,905 rows take
+    **2.79 s** against a 30 s `statement_timeout`. Self-extinguishing, because
+    `to_tsvector(coalesce(...))` is never null — a row it touches never matches
+    `search is null` again. There is no index on that predicate, so the cost
+    once the backlog is gone is a sequential scan of ~29k rows, not an index
+    probe: cheap, and worth knowing rather than assuming.
     """
     with conn.cursor() as cur:
         cur.execute(BACKFILL_SEARCH_SQL, {"limit": limit})
