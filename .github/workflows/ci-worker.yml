@@ -20,12 +20,20 @@ on:
     paths:
       - 'worker/**'
       - '.github/workflows/ci-worker.yml'
+      # An input to this build, not documentation. The worker cannot read
+      # `docs/product.json` at runtime (it is outside the Docker context), so
+      # `licitaqui/product.py` repeats the numbers and `tests/test_product.py`
+      # proves the two still agree. That test is the only thing standing between
+      # a price change and a worker that quotes the old one in every template —
+      # and until now the edit that breaks it triggered nothing.
+      - 'docs/product.json'
   push:
     branches:
       - main
     paths:
       - 'worker/**'
       - '.github/workflows/ci-worker.yml'
+      - 'docs/product.json'
   # 06:00 UTC = **03:00 BRT**, the product's clock (CLAUDE.md). Nightly cover
   # for the integration suite now that pull requests no longer run it.
   schedule:

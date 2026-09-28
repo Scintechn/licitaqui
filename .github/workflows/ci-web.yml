@@ -4,6 +4,17 @@
 # a fork PR and on a repository with zero Actions secrets configured.
 name: ci-web
 
+# The `docs/` entries are not documentation triggers — they are **inputs to
+# this build**. `lib/product.ts` imports `docs/product.json` into the bundle,
+# `lib/legal/document.ts` reads `docs/legal/` at build time to generate
+# `/termos` and `/privacidade`, and `lib/claims.test.ts` reads `docs/CLAIMS.md`,
+# `docs/DEVELOPMENT_PLAN.md` and `CLAUDE.md`. Without them a change to
+# `docs/product.json` — the one file a price is supposed to change in — ran no
+# workflow at all, so the guard written to prove every other file still agreed
+# could not be reached by the only edit that can break it. Listed one by one
+# rather than as `docs/**` because `docs/STATUS.md` is appended to on every
+# task and must not rebuild the web app. `lib/ci-triggers.test.ts` fails when
+# the web app grows a dependency on a `docs/` path that is not listed here.
 on:
   pull_request:
     paths:
@@ -12,6 +23,11 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/ci-web.yml'
+      - 'docs/product.json'
+      - 'docs/legal/**'
+      - 'docs/CLAIMS.md'
+      - 'docs/DEVELOPMENT_PLAN.md'
+      - 'CLAUDE.md'
   push:
     branches:
       - main
@@ -21,6 +37,11 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/ci-web.yml'
+      - 'docs/product.json'
+      - 'docs/legal/**'
+      - 'docs/CLAIMS.md'
+      - 'docs/DEVELOPMENT_PLAN.md'
+      - 'CLAUDE.md'
 
 permissions:
   contents: read
