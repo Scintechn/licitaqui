@@ -1,3 +1,5 @@
+import type { PriceBand } from './price-band'
+
 /**
  * The wire contract of the Radar routes (spec §8).
  *
@@ -218,6 +220,29 @@ export type TenderFileView = {
   /** A scanned PDF: there is no text to screen (§7.2). */
   noText: boolean
 }
+
+/**
+ * `GET /api/tenders/:id/band?item=N` (E9).
+ *
+ * `band: null` on a `ready` response is the **normal** answer, not a failure:
+ * roughly 1% of open items have enough comparable awards to clear the gate in
+ * `price-band.ts`. Modelled as ready-with-null rather than as an error so the
+ * client does not retry an ordinary outcome.
+ */
+export type BandResponse =
+  | { state: 'ready'; band: PriceBand | null }
+  /**
+   * The caller's plan does not include the band (E9, `hasPriceBand`).
+   *
+   * Distinct from `ready` with `band: null`, and the distinction is the whole
+   * point: *locked* means a number exists and this plan does not include it,
+   * which is what `LockedValue` is honestly for. *Empty* means no number
+   * exists for anybody. Collapsing them would either promise a subscriber
+   * something that is not there, or tell a visitor nothing is there when the
+   * truth is that they have not paid for it.
+   */
+  | { state: 'locked' }
+  | { state: 'error'; error: ErrorCode; fields?: Record<string, string> }
 
 export type TenderDetail = TenderCard & {
   agencyCnpj: string

@@ -49,6 +49,32 @@ export const FEATURES = {
 
 export type Feature = (typeof FEATURES)[keyof typeof FEATURES]
 
+/**
+ * Plans the price band is included in (E9).
+ *
+ * A **capability, not a quota** — a band is not metered, so it has no
+ * `plan_limits` row and asking `readLimit` for one would invent a number to
+ * compare against. `promocional` is here because 0002 gives it "same
+ * entitlements as Essencial", which is the founders' whole offer.
+ *
+ * **This belongs in `plan_limits` and is not there yet.** Entitlements live in
+ * the database precisely so a plan change is one row rather than a deploy, and
+ * this constant is the exception — a schema change is its own PR (CLAUDE.md),
+ * and 08/10 is ten days out. Carded as **F5**; until it lands, changing who
+ * gets a band means changing this line.
+ */
+export const PRICE_BAND_PLANS: readonly string[] = Object.freeze([
+  'promocional',
+  'essencial',
+  'pro',
+])
+
+/** Whether this plan includes the price band. */
+export function hasPriceBand(plan: string): boolean {
+  return PRICE_BAND_PLANS.includes(plan)
+}
+
+
 /** Who is spending. Exactly one of the two is set. */
 export type Spender = { userId: number; visitorId?: undefined } | { visitorId: string; userId?: undefined }
 

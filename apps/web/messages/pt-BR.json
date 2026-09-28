@@ -152,7 +152,7 @@
       "promises": [
         "Editais compatíveis com o seu CNAE",
         "Triagem do edital por IA, com a página",
-        "Faixa em que os vencedores fecharam na sua região",
+        "Faixa em que os vencedores fecharam em editais parecidos",
         "Alertas no Telegram antes do prazo"
       ]
     },
@@ -387,7 +387,7 @@
         {
           "when": "08/10 às 19h",
           "title": "Abertura do Essencial",
-          "body": "Saiba quanto pagar para manter sua margem. Experiência exclusiva."
+          "body": "Saiba quanto pagar para manter sua margem, nos editais em que já temos dados de vencedores. Experiência exclusiva."
         }
       ]
     },
@@ -480,7 +480,7 @@
       "summary": "Para quem já disputa e quer decidir mais rápido.",
       "feature1": "Triagens de edital sem limite",
       "feature2": "Avisos diários no Telegram, com 10 palavras-chave e as atividades do seu CNPJ",
-      "feature3": "Faixa em que os vencedores fecharam e preço-alvo de compra: o máximo a pagar ao fornecedor para manter a sua margem",
+      "feature3": "Faixa em que os vencedores fecharam, nos editais em que já temos esses dados, e o preço-alvo de compra: o máximo a pagar ao fornecedor para manter a sua margem",
       "feature4": "10 análises completas por mês, com trechos citados do edital"
     },
     "pro": {
@@ -712,7 +712,7 @@
       "opportunity": {
         "label": "Antes de gastar tempo com proposta",
         "title": "Saiba se vale disputar. E até que preço.",
-        "body": "O valor estimado do edital não é o preço que fecha. Em 8 editais de papel A4, quem venceu ofertou cerca de R$ 20 por resma, contra R$ 36 estimados. No Essencial, cada item mostra a faixa em que os vencedores fecharam na sua região e o máximo a pagar ao fornecedor para manter a sua margem.",
+        "body": "O valor estimado do edital não é o preço que fecha. Em 8 editais de papel A4, quem venceu ofertou cerca de R$ 20 por resma, contra R$ 36 estimados. No Essencial, cada item mostra a faixa em que os vencedores fecharam e o máximo a pagar ao fornecedor para manter a sua margem.",
         "cardLabel": "Oportunidade · exemplo",
         "tender": "Baterias e pilhas · Campinas/SP",
         "deadlineLabel": "Proposta até",
@@ -1164,14 +1164,20 @@
       "won": "Venceu em editais parecidos",
       "market": "Preço de mercado + frete",
       "maxTitle": "Seu preço máximo de compra",
-      "maxNote": "Calculado com imposto, frete e a margem que você escolher.",
+      "maxNote": "Calculado com a margem que você escolher. Não inclui imposto nem frete.",
       "lockedValue": "valor disponível no plano Essencial",
       "example": "Exemplo real (papel A4): o edital pagava R$ 35,87, o vencedor levou a R$ 20,34 e o varejo custava R$ 29,29. Sem calcular o máximo a pagar ao fornecedor, parecia lucro.",
       "exampleLead": "Exemplo real (papel A4):",
       "exampleBody": "o edital pagava R$ 35,87, o vencedor levou a R$ 20,34 e o varejo custava R$ 29,29. Sem calcular o máximo a pagar ao fornecedor, parecia lucro.",
       "cta": "Ver plano Essencial",
       "ceilingLabel": "Teto para manter a margem que você informou",
-      "inputsLabel": "Calculado a partir de"
+      "inputsLabel": "Calculado a partir de",
+      "_noDataNote": "Wording drafted for E9's third state and approved by Sci, 2026-09-28.",
+      "noData": "Ainda sem dados de vencedores para este item.",
+      "noDataHelp": "A faixa aparece quando editais parecidos o bastante já tiverem sido encerrados e publicado o vencedor.",
+      "bandSample": "{count, plural, one {1 edital encerrado} other {# editais encerrados}}",
+      "bandEstimate": "estimativa a partir dos dados do edital",
+      "marginLabel": "Sua margem"
     },
     "fields": {
       "meEpp": "ME/EPP",

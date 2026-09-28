@@ -16,6 +16,8 @@ import { priceHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { moneyExact, trimObject } from '@/lib/radar/format'
+import type { PriceBand } from '@/lib/radar/price-band'
+import { MarginCeiling } from './margin-ceiling'
 import { TenderStatusBanner } from '../../tender-status-banner'
 
 /**
@@ -83,7 +85,41 @@ export type PriceViewProps = {
   backHref: string
   /** The search that got the user here — the item chips below carry it on. */
   search: RadarSearch
+  /**
+   * The band for the chosen item, or `null` when the gate refused one.
+   *
+   * Computed on the server (`lib/radar/price-band.ts`) because it reads the
+   * `awards` table. **`null` is a first-class answer, not a loading state** —
+   * it means no number exists for this item, and the view must say so rather
+   * than draw a locked bar implying one is being withheld.
+   *
+   * Optional because the loading fallback and the suspended-tender screens
+   * genuinely have none: absent and `null` mean the same thing here, which is
+   * "no number exists", and both render the third state.
+   */
+  band?: PriceBand | null
+  /**
+   * The caller's plan does not include the band.
+   *
+   * A third state, and the one that makes `LockedValue` honest again: *locked*
+   * says a number exists and this plan does not include it; *empty* says no
+   * number exists for anybody. The first version of E9 had only two states and
+   * had to choose between lying to a visitor and hiding the plan.
+   */
+  bandLocked?: boolean
   onRetry?: () => void
+}
+
+/**
+ * `"R$ 18,00 – R$ 24,00"`, or `null` when either end cannot be shown as money.
+ *
+ * Both ends or neither: a range with one half missing is worse than no range,
+ * because the reader has no way to tell which half they are looking at.
+ */
+export function bandRange(band: { low: number; high: number }): string | null {
+  const low = moneyExact(String(band.low))
+  const high = moneyExact(String(band.high))
+  return low === null || high === null ? null : `${low} – ${high}`
 }
 
 function LockedRow({ label, last = false }: { label: string; last?: boolean }) {
@@ -110,6 +146,8 @@ export function PriceView({
   status,
   backHref,
   search,
+  band = null,
+  bandLocked = false,
   onRetry,
 }: PriceViewProps) {
   const bar = (
@@ -214,20 +252,56 @@ export function PriceView({
                 <span>{page.estimated}</span>
                 <strong className="font-display text-[16px]">{estimate ?? page.noEstimate}</strong>
               </div>
-              <LockedRow label={page.won} />
+              {bandLocked ? (
+                <LockedRow label={page.won} />
+              ) : band ? (
+                <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
+                  <span>{page.won}</span>
+                  <strong className="font-display text-[16px] tabular-nums">
+                    {/* Not a template literal. `moneyExact` returns null for
+                        anything that rounds to zero (`format.ts`), and
+                        interpolating that prints the literal word "null" on a
+                        money figure — TypeScript will not catch it inside a
+                        template. `unit_awarded_value` is numeric(16,4) and the
+                        only filter is `> 0`, so sub-centavo values exist. */}
+                    {bandRange(band) ?? page.noEstimate}
+                  </strong>
+                </div>
+              ) : null}
               <LockedRow label={page.market} last />
             </Card>
 
-            <Card accent className="flex flex-col gap-2.5">
-              <div className="text-body font-medium text-blue">{page.maxTitle}</div>
-              <div className="flex items-center gap-2.5">
-                <span className="font-display text-[30px] leading-none font-semibold text-muted">
-                  R$
-                </span>
-                <LockedValue width={110} height={30} label={page.lockedValue} />
-              </div>
-              <p className="m-0 text-meta leading-relaxed text-muted">{page.maxNote}</p>
-            </Card>
+            {bandLocked ? (
+              /* The honest use of a locked value: a number does exist for this
+                 item and this plan does not include it. */
+              <Card accent className="flex flex-col gap-2.5">
+                <div className="text-body font-medium text-blue">{page.maxTitle}</div>
+                <div className="flex items-center gap-2.5">
+                  <span className="font-display text-[30px] leading-none font-semibold text-muted">
+                    R$
+                  </span>
+                  <LockedValue width={110} height={30} label={page.lockedValue} />
+                </div>
+                <p className="m-0 text-meta leading-relaxed text-muted">{page.maxNote}</p>
+              </Card>
+            ) : band ? (
+              /* The only interactive part of this screen, so the only part
+                 that is a Client Component. The rest stays server-rendered. */
+              <MarginCeiling band={band} />
+            ) : (
+              /* **The third state, and why it is not a locked bar.** A locked
+                 value tells a person a number exists and is being withheld from
+                 them. For these items no number exists: the gate in
+                 `lib/radar/price-band.ts` refused one because the comparable
+                 awards were too few or too scattered to mean anything. Saying
+                 that plainly keeps the Essencial feature visible without
+                 claiming something is being kept back. */
+              <Card className="flex flex-col gap-2.5">
+                <div className="text-body font-medium">{page.maxTitle}</div>
+                <p className="m-0 text-body text-muted">{page.noData}</p>
+                <p className="m-0 text-meta leading-relaxed text-muted">{page.noDataHelp}</p>
+              </Card>
+            )}
 
             <div className="flex items-start gap-2.5 rounded-card bg-blue-soft p-3">
               <Icon name="margin" size={20} className="shrink-0 text-blue" />

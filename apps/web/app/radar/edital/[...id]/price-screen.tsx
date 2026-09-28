@@ -2,11 +2,12 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
+import { getBand, getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
 import type { TenderDetail, TenderResponse } from '@/lib/radar/contract'
+import type { PriceBand } from '@/lib/radar/price-band'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
-import { PriceView, type PriceStatus } from './price-view'
+import { chooseItem, PriceView, type PriceStatus } from './price-view'
 
 /**
  * Canvas 05 needs one thing the browser does not already have: the tender's
@@ -80,6 +81,105 @@ export function PriceScreen({ id }: { id: string }) {
     return () => controller.abort()
   }, [id, attempt])
 
+  /**
+   * The band, fetched separately and **allowed to fail silently**.
+   *
+   * Its own request because it costs a trigram join the Opportunity screen
+   * never needs, and its own effect because it depends on `item` — changing
+   * the item chip must refetch the band without refetching the tender.
+   *
+   * On any failure the band stays `null`, which renders the same "no winner
+   * data yet" card as a genuinely empty result. That is deliberate: the price
+   * screen's job is the estimated price and the item list, and neither depends
+   * on this. A banner apologising for a missing band would be louder than the
+   * thing it is apologising for.
+   */
+  /**
+   * Stored **with the item it belongs to**, and filtered at render rather than
+   * cleared in the effect.
+   *
+   * Clearing it eagerly was the first version and it was wrong twice: it calls
+   * `setState` synchronously inside an effect, and between the two renders it
+   * left the previous item's band on screen — a real price, attached to the
+   * wrong item, which is precisely the failure this whole card is built to
+   * avoid. Keeping the item alongside the band makes a stale one unrenderable
+   * by construction instead of by timing.
+   */
+  const [loaded, setLoaded] = useState<{
+    id: string
+    item: number
+    band: PriceBand | null
+    locked: boolean
+  } | null>(null)
+
+  /**
+   * **The item actually on screen, which is not the one in the URL.**
+   *
+   * `screening-view.tsx` links here with `priceHref(tenderId, search)` and no
+   * item, so `?item=` is absent on every entry into this screen; `PriceView`
+   * then falls back to the first item. The first version of this effect
+   * returned early on `item === null`, so it asked for nothing, and the screen
+   * showed "ainda sem dados de vencedores" for an item that may well have a
+   * band. On a single-item tender there is no chip to set `?item=` at all, so
+   * the band was unreachable **forever** — and a large share of pregões are
+   * single-item.
+   *
+   * The tests missed it because they passed a band alongside `item: null`, a
+   * combination the client cannot produce. Resolving the same item the view
+   * resolves is what makes the request match the screen.
+   */
+  const chosen = data.tender ? chooseItem(data.tender.items, item)?.number ?? null : null
+
+  useEffect(() => {
+    if (chosen === null) return
+    const controller = new AbortController()
+    getBand(id, chosen, controller.signal)
+      .then((answer) => {
+        if (answer.state === 'ready') {
+          setLoaded({ id, item: chosen, band: answer.band, locked: false })
+        } else if (answer.state === 'locked') {
+          setLoaded({ id, item: chosen, band: null, locked: true })
+        } else {
+          // `envelope()` does not throw on a non-2xx — it parses the body — so
+          // a 429 or a 500 arrives here as `state: 'error'`. Falling through
+          // left `loaded` null, and `bandLocked` then defaulted to **true**:
+          // an Essencial subscriber whose request failed was shown the locked
+          // bar labelled "valor disponível no plano Essencial" and a "Ver
+          // plano Essencial" button, permanently, with no retry on this path.
+          // A failure must degrade to the honest empty card, never to an
+          // advertisement for the plan they already bought.
+          setLoaded({ id, item: chosen, band: null, locked: false })
+        }
+      })
+      .catch(() => {
+        // Aborted, offline, or a network error: same rule as above.
+        if (!controller.signal.aborted) {
+          setLoaded({ id, item: chosen, band: null, locked: false })
+        }
+      })
+    return () => controller.abort()
+  }, [id, chosen, attempt])
+
+  // Keyed on the tender as well as the item: the App Router preserves client
+  // state across a same-route navigation, so without `id` a band could render
+  // under a different edital until the new response landed.
+  const current = loaded !== null && loaded.id === id && loaded.item === chosen ? loaded : null
+  const band = current?.band ?? null
+  /**
+   * Defaults to **locked while the answer is in flight**, and never as the
+   * result of a failure.
+   *
+   * Before the answer arrives the two wrong guesses are not equal: showing the
+   * locked bar and then revealing a band is an upgrade the reader watches
+   * happen, while showing "ainda sem dados" and then replacing it with a price
+   * tells them something false first.
+   *
+   * After a failure they are not equal either, in the other direction — see
+   * the error branches above. A request that errored sets `locked: false`, so
+   * the screen falls back to the honest empty card.
+   */
+  const bandLocked = current === null || current.locked
+
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
 
   return (
@@ -90,6 +190,8 @@ export function PriceScreen({ id }: { id: string }) {
       status={data.status}
       backHref={backHref}
       search={search}
+      band={band}
+      bandLocked={bandLocked}
       onRetry={onRetry}
     />
   )
