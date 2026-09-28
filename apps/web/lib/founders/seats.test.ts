@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { FOUNDERS } from '../product'
 import {
   FOUNDER_SEATS,
+  firstLotLabel,
   seatGrid,
   seatsFilledLabel,
   seatsLeft,
   seatsLeftLabel,
   seatsTaken,
   showSeatGrid,
+  soldOutLabel,
 } from './seats'
 
 describe('FOUNDER_SEATS', () => {
@@ -116,5 +118,56 @@ describe('showSeatGrid', () => {
   it('treats a nonsense count as nothing to show', () => {
     expect(showSeatGrid(-3)).toBe(false)
     expect(showSeatGrid(Number.NaN)).toBe(false)
+  })
+})
+
+describe('firstLotLabel', () => {
+  it('names the lot while one is still unopened', () => {
+    // Sci, 2026-09-28: 25 in total, opened in two lots of 17 and 8. The page
+    // quotes 25 in prose and counts down from 17; this is the sentence that
+    // says why those are different numbers rather than a contradiction.
+    expect(firstLotLabel(17, 25)).toBe('Primeiro lote 17 vagas')
+  })
+
+  it('says nothing once every seat is open', () => {
+    // **The reason lot 2 is a database change and not a deploy.** Raise the
+    // cap to 25 and the phrase removes itself; nobody has to remember that
+    // three strings still say "primeiro lote" on the evening it opens.
+    expect(firstLotLabel(25, 25)).toBeNull()
+    expect(firstLotLabel(26, 25)).toBeNull()
+  })
+
+  it('agrees in pt-BR when a lot holds one seat', () => {
+    expect(firstLotLabel(1, 25)).toBe('Primeiro lote 1 vaga')
+  })
+
+  it('says nothing rather than something absurd when the cap is unusable', () => {
+    // A marketing counter must never invent a number — `seat-count.ts` makes
+    // the same argument for `null` over a fabricated remainder.
+    expect(firstLotLabel(0, 25)).toBeNull()
+    expect(firstLotLabel(-3, 25)).toBeNull()
+    expect(firstLotLabel(Number.NaN, 25)).toBeNull()
+  })
+
+  it('defaults its total to the contractual figure', () => {
+    expect(firstLotLabel(FOUNDER_SEATS)).toBe(firstLotLabel(FOUNDER_SEATS, FOUNDERS.seatsTotal))
+  })
+})
+
+describe('soldOutLabel', () => {
+  it('does not claim all 25 are gone when only the first lot is', () => {
+    // The defect this closes: the page said "As 17 vagas acabaram" beside
+    // "As 25 vagas de fundador acabaram", two figures for one state, and the
+    // second was false — eight seats had not been offered to anybody yet.
+    const label = soldOutLabel(17, 25)
+    expect(label).toContain('primeiro lote')
+    expect(label).toContain('17')
+    expect(label).not.toContain('25')
+  })
+
+  it('claims exactly that once every seat has been offered', () => {
+    const label = soldOutLabel(25, 25)
+    expect(label).toContain('25')
+    expect(label).not.toContain('primeiro lote')
   })
 })
