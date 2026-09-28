@@ -38,6 +38,7 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
+from .search_vector import UPDATE_SEARCH_SQL
 from .segments import OTHER, Classification, classify, key_for_label, label, segment_for_text
 
 #: What an unclassified item stores. `tender_items.segment` and
@@ -366,16 +367,14 @@ delete from tender_items
    and not (number = any(%(numbers)s))
 """
 
-#: Exactly the expression `db/seed.py` writes, so the seeded fixtures and the
-#: synced rows produce the same vector: object plus every item description, in
-#: the accent-insensitive Portuguese configuration from migration 0001.
-SEARCH_SQL = """
-update tenders t set search = to_tsvector('pt_unaccent',
-  coalesce(t.object,'') || ' ' ||
-  coalesce((select string_agg(i.description, ' ')
-              from tender_items i where i.tender_id = t.id), ''))
-where t.id = %s
-"""
+#: Object plus every item description, in the accent-insensitive Portuguese
+#: configuration from migration 0001.
+#:
+#: The expression used to be written out here and again in `db/seed.py`, each
+#: with a comment asking the next person to keep the two identical. It is now
+#: one definition in :mod:`licitaqui.search_vector`, which `tenders.UPSERT_SQL`
+#: also uses — B17 would have made it a third copy.
+SEARCH_SQL = UPDATE_SEARCH_SQL
 
 #: The roll-up already computed the tender's value to decide
 #: `favored_treatment`; until now it threw the number away and left

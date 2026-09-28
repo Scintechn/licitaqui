@@ -27,6 +27,8 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.types.json import Jsonb
 
+from .search_vector import search_vector_sql
+
 #: PNCP publishes wall-clock Brasília time with no offset. See
 #: :func:`parse_timestamp` for why that has to be fixed at this boundary.
 BRT = ZoneInfo("America/Sao_Paulo")
@@ -282,18 +284,32 @@ def from_search(item: dict[str, Any]) -> Tender:
 # it is 0 for a freshly inserted tuple and non-zero for an updated one. That is
 # how the caller tells "new tender" from "changed tender" without a second
 # query, and how the rerun-creates-no-duplicates measurement is taken.
-UPSERT_SQL = """
+#: The `tenders.search` vector, built by the one definition in
+#: :mod:`licitaqui.search_vector` rather than written out here. Writing it out
+#: was the first version of this change and it made the module's own docstring
+#: false the moment it shipped: three sentences claimed one definition while
+#: the file held copies three and four, with `pt_unaccent` hard-coded twice.
+#:
+#: The two forms differ only in which row they read. On insert the objeto is a
+#: parameter and the tender has no items yet; on conflict the objeto comes
+#: from `excluded` and the items come from the row already stored, so a vector
+#: `sync_items` has filled is never narrowed back to the objeto alone.
+_INSERT_SEARCH = search_vector_sql("%(object)s", "%(id)s")
+_UPDATE_SEARCH = search_vector_sql("excluded.object", "tenders.id")
+
+UPSERT_SQL = f"""
 insert into tenders (
     id, agency_cnpj, year, sequence, object, agency_name, unit_name, city, state,
     sphere, modality_id, modality_name, status, price_registration,
     proposals_open_at, proposals_close_at, estimated_value, confidential_budget,
-    bidding_system_url, pncp_updated_at, raw, updated_at
+    bidding_system_url, pncp_updated_at, raw, updated_at, search
 ) values (
     %(id)s, %(agency_cnpj)s, %(year)s, %(sequence)s, %(object)s, %(agency_name)s,
     %(unit_name)s, %(city)s, %(state)s, %(sphere)s, %(modality_id)s, %(modality_name)s,
     %(status)s, %(price_registration)s, %(proposals_open_at)s, %(proposals_close_at)s,
     %(estimated_value)s, %(confidential_budget)s, %(bidding_system_url)s,
-    %(pncp_updated_at)s, %(raw)s, now()
+    %(pncp_updated_at)s, %(raw)s, now(),
+    {_INSERT_SEARCH}
 )
 on conflict (id) do update set
     agency_cnpj         = excluded.agency_cnpj,
@@ -323,7 +339,13 @@ on conflict (id) do update set
     -- sweep adds what the index knows without deleting the richer consulta
     -- payload a healthy cycle stored: the same reasoning as the COALESCEs
     -- above, applied to the whole document.
-    raw                 = coalesce(tenders.raw, '{}'::jsonb) || excluded.raw,
+    raw                 = coalesce(tenders.raw, '{{}}'::jsonb) || excluded.raw,
+    -- Recomputed from the incoming objeto **and the items this row already
+    -- has**, never from the objeto alone: a tender whose items were synced
+    -- earlier would otherwise have those words silently removed by the next
+    -- sweep. Whichever of this and `sync_items` runs last, the vector is
+    -- complete — see `licitaqui.search_vector`.
+    search              = {_UPDATE_SEARCH},
     updated_at          = now()
   where tenders.pncp_updated_at is distinct from excluded.pncp_updated_at
     and (tenders.pncp_updated_at is null

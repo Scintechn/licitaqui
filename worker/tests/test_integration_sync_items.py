@@ -251,14 +251,54 @@ def test_the_search_vector_spans_the_object_and_every_item(
     assert not matches(b3_conn, tid, "notebook")
 
 
-def test_the_search_expression_is_the_one_in_db_seed() -> None:
-    """Keep them consistent: the seeded fixtures and the synced rows must agree."""
-    from licitaqui.items import SEARCH_SQL
+def test_every_writer_of_search_uses_the_one_definition() -> None:
+    """The seeded fixtures, the synced rows and the upsert must agree.
 
+    This used to grep a hard-coded expression out of `db/seed.py`, because the
+    expression genuinely was written out in two places and the only thing that
+    could be checked was that the two spellings matched. B17 needed it in a
+    third (`tenders.UPSERT_SQL`), so it became one definition in
+    `licitaqui.search_vector` — and the grep started failing, correctly: the
+    literal it looked for is gone.
+
+    So this now asserts the property the refactor bought, which is stronger
+    than the one it replaced: **no call site spells the expression itself.** A
+    fourth copy pasted in anywhere fails here rather than drifting quietly, and
+    that is the failure mode the old test could never have caught — it only
+    compared the two copies it already knew about.
+    """
+    from licitaqui.items import SEARCH_SQL
+    from licitaqui.search_vector import SEARCH_CONFIG, UPDATE_SEARCH_SQL
+    from licitaqui.tenders import UPSERT_SQL
+
+    # The shared definition is what `items` and the seed execute.
+    assert SEARCH_SQL is UPDATE_SEARCH_SQL
     seed = (Path(__file__).resolve().parents[2] / "db" / "seed.py").read_text(encoding="utf-8")
-    expression = "to_tsvector('pt_unaccent',\n          coalesce(t.object,'') || ' ' ||"
-    assert expression in seed
-    assert " ".join(expression.split()) in " ".join(SEARCH_SQL.split())
+    assert "UPDATE_SEARCH_SQL" in seed
+
+    # And no module **in the worker package** writes the expression by hand —
+    # not even the one that owns it, which assembles it from `SEARCH_CONFIG`.
+    #
+    # Scope, stated honestly: this checks `licitaqui/*.py` and nothing else.
+    # Narrowed, object-only spellings still live in test fixtures outside it —
+    # `apps/web/lib/radar/fixtures.ts`, `apps/web/lib/radar/pagination.db.test.ts`,
+    # `worker/tests/test_integration_telegram.py`. They are fixtures, not
+    # writers, so they cannot narrow a production vector; but "one definition"
+    # is true of the worker package, not of the repository, and a test that
+    # claimed otherwise would be the kind of sentence this project keeps
+    # finding.
+    root = Path(__file__).resolve().parents[1] / "licitaqui"
+    spellers = sorted(
+        path.name
+        for path in root.glob("*.py")
+        if f"to_tsvector('{SEARCH_CONFIG}'" in path.read_text(encoding="utf-8")
+    )
+    assert spellers == [], (
+        f"{spellers} spell the search expression by hand; import it from"
+        " licitaqui.search_vector instead — a fourth copy is how one of them"
+        " silently narrows and a tender stops matching a word on its own card"
+    )
+    assert f"to_tsvector('{SEARCH_CONFIG}'" in UPSERT_SQL, "the upsert must still write it"
     assert "string_agg(i.description, ' ')" in SEARCH_SQL
 
 

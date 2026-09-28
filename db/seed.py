@@ -31,6 +31,7 @@ from psycopg.types.json import Jsonb
 # change.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "worker"))
 from licitaqui.items import classify_all, roll_up, upsert_items
+from licitaqui.search_vector import UPDATE_SEARCH_SQL
 
 FIXTURES = Path(__file__).resolve().parent / "seed" / "fixtures" / "pncp"
 
@@ -158,16 +159,13 @@ def load_one(cur: psycopg.Cursor, payload: dict) -> int:
 
     # Portuguese, accent-insensitive search over the object plus every item
     # description — the index the Radar query in §8 relies on.
-    cur.execute(
-        """
-        update tenders t set search = to_tsvector('pt_unaccent',
-          coalesce(t.object,'') || ' ' ||
-          coalesce((select string_agg(i.description, ' ')
-                      from tender_items i where i.tender_id = t.id), ''))
-        where t.id = %s
-        """,
-        (tender_id,),
-    )
+    #
+    # Shared with the worker rather than repeated here. This file and
+    # `licitaqui/items.py` each held their own copy of the expression, with a
+    # comment in each asking the next person to keep them identical; B17 needed
+    # a third. `licitaqui/__init__.py` is a docstring and `search_vector`
+    # imports nothing, so this costs no dependency.
+    cur.execute(UPDATE_SEARCH_SQL, (tender_id,))
     return len(items)
 
 

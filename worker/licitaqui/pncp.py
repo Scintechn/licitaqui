@@ -555,6 +555,52 @@ class PncpClient:
 
     # -- the search API (ADR-0001, the fallback) --------------------------
 
+    @staticmethod
+    def _search_params(
+        *,
+        uf: str | None,
+        modalities: tuple[int, ...],
+        status: str,
+        page_size: int,
+    ) -> dict[str, Any]:
+        """One place that spells the search query, so a count and the walk it
+        sizes cannot disagree about which set they are talking about."""
+        params: dict[str, Any] = {
+            "tipos_documento": "edital",
+            "ordenacao": "-data",
+            "tam_pagina": page_size,
+        }
+        if status:
+            params["status"] = status
+        if uf:
+            params["ufs"] = uf
+        if modalities:
+            params["modalidades"] = "|".join(str(m) for m in modalities)
+        return params
+
+    def search_page(
+        self,
+        *,
+        uf: str | None = None,
+        modalities: tuple[int, ...] = (),
+        status: str = "recebendo_proposta",
+        page: int = 1,
+        page_size: int = SEARCH_PAGE_SIZE,
+    ) -> dict[str, Any]:
+        """One raw page, including the `total` the endpoint reports.
+
+        `iter_search` yields items and throws the envelope away, which is the
+        right shape for a walk and useless for deciding whether the walk can
+        finish. B17 has to know the size of a partition **before** sweeping it:
+        past 10,000 records PNCP simply stops answering, so a sweep that
+        discovers the limit by reaching it has already returned an incomplete
+        set and has no way to say so.
+        """
+        params = self._search_params(
+            uf=uf, modalities=modalities, status=status, page_size=page_size
+        )
+        return self._get(SEARCH_PATH, {**params, "pagina": page}, self.search_breaker) or {}
+
     def iter_search(
         self,
         *,
@@ -571,17 +617,9 @@ class PncpClient:
         already older than the last cycle. There is no server-side date filter:
         `dataInicial` and `dataFinal` are silently ignored by this endpoint.
         """
-        params: dict[str, Any] = {
-            "tipos_documento": "edital",
-            "ordenacao": "-data",
-            "tam_pagina": page_size,
-        }
-        if status:
-            params["status"] = status
-        if uf:
-            params["ufs"] = uf
-        if modalities:
-            params["modalidades"] = "|".join(str(m) for m in modalities)
+        params = self._search_params(
+            uf=uf, modalities=modalities, status=status, page_size=page_size
+        )
         for page in range(1, MAX_PAGES + 1):
             if page * page_size > SEARCH_WINDOW_CAP:
                 _log.warning(

@@ -63,6 +63,13 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
     assert [entry.kind for entry in DEFAULT_SCHEDULE] == [
         "sync_open_tenders",
         "sync_awards",
+        # B17's inventory sweep. It sits beside `sync_open_tenders` rather than
+        # replacing it because the two ask different questions: that one reads
+        # a change feed and is the only thing that can see an amendment or a
+        # suspension; this one asks what is open and is the only thing that can
+        # see an edital published once and never touched again — 54 of the 72
+        # misses B17 measured were exactly that.
+        "reconcile_open_tenders",
         "sweep_titles",
         "weekly_digest",
         # `sweep_tender_values` is on the clock for the same reason

@@ -684,14 +684,24 @@ def sweep_tender_values(ctx: JobContext) -> None:
 def enqueue_refreshes(
     conn: psycopg.Connection, tender_ids: list[str] | tuple[str, ...], *, items_only: bool = False
 ) -> int:
-    """Queue one refresh per tender, deduped on `(kind, key)` like every sweep."""
-    created = 0
-    for tender_id in tender_ids:
+    """Queue one refresh per tender, deduped on `(kind, key)` like every sweep.
+
+    One statement, not one per tender. The dedupe index still decides which
+    rows survive; what changes is the round trips, and B17's first cycle hands
+    this ~13,000 ids at once — measured 212 ms per single enqueue against Neon
+    in sa-east-1 against 0.77 ms batched.
+    """
+
+    def payload_for(tender_id: str) -> dict[str, Any]:
         payload: dict[str, Any] = {"tender_id": tender_id}
         if items_only:
             payload["items_only"] = True
-        if queue.enqueue(
-            conn, "refresh_tender_value", tender_id, priority=REFRESH_PRIORITY, payload=payload
-        ):
-            created += 1
-    return created
+        return payload
+
+    return queue.enqueue_many(
+        conn,
+        "refresh_tender_value",
+        list(tender_ids),
+        priority=REFRESH_PRIORITY,
+        payload_for=payload_for,
+    )

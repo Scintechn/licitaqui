@@ -116,6 +116,23 @@ class ScheduleEntry:
 DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     ScheduleEntry(kind="sync_open_tenders", every_seconds=30 * 60, priority=5),
     ScheduleEntry(kind="sync_awards", daily_at="03:00", priority=9),
+    # B17, and the reason it is daily rather than half-hourly like the change
+    # feed above: this is an **inventory**, not a feed. It asks PNCP what is
+    # open, partition by partition, and walks each one to its end with no
+    # `stop_at` — roughly 26,000 records over ~80 requests. Running it every 30
+    # minutes would spend that to discover almost nothing had changed. (The
+    # endpoint itself is not the constraint: ADR-0001 measured `/api/search/`
+    # at 0% failure across 52 requests, healthy through two consulta outages.)
+    #
+    # 04:00 BRT is §7.2's off-peak slot for heavy jobs, an hour after
+    # `sync_awards` so the two do not contend. The cost of the cadence is
+    # bounded staleness: an edital published today and never updated is
+    # invisible to `/atualizacao` and appears here within 24 hours. That is
+    # inside the deadline for the misses B17 measured — 37 of the 72 closed
+    # within three days, none was already past due — but it **is** the number
+    # to revisit once the coverage figure is being measured rather than
+    # estimated.
+    ScheduleEntry(kind="reconcile_open_tenders", daily_at="04:00", priority=9),
     # Hourly, and off the collectors' priority. A missing title degrades a
     # card; a missing tender loses it, so this never competes with B2/B3. An
     # hour is well inside `sync_open_tenders`' own 30 min cycle, so a tender
