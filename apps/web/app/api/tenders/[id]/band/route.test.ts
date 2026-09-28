@@ -17,11 +17,20 @@ function call(id = ID, query = '?item=1') {
   })
 }
 
-/** Five identical prices: enough to clear the gate, tight enough to pass it. */
+/**
+ * Identical prices from *different* editais: enough to clear the gate, tight
+ * enough to pass it.
+ *
+ * The distinct `tenderId` matters. The first version of this helper gave every
+ * comparable the same (absent) one, and once the gate started counting editais
+ * rather than rows it correctly read six rows as a single procurement and
+ * refused the band — the fixture, not the code, was wrong.
+ */
 function priced(count: number, value = 100) {
-  return Array.from({ length: count }, () => ({
+  return Array.from({ length: count }, (_unused, index) => ({
     unitAwardedValue: value,
     awardedOn: new Date(),
+    tenderId: `9900000000000${index}-1-000001/2026`,
   }))
 }
 

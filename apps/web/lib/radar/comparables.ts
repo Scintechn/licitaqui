@@ -60,7 +60,11 @@ export const SIMILARITY_FLOOR = 0.3
  */
 export const MAX_COMPARABLES = 200
 
-type Row = { unit_awarded_value: string | null; awarded_on: Date | string | null }
+type Row = {
+  unit_awarded_value: string | null
+  awarded_on: Date | string | null
+  tender_id: string
+}
 
 /**
  * @param tenderId The tender whose item is being priced. **Excluded from its
@@ -83,7 +87,7 @@ export async function comparablesForItem(
         from tender_items
        where tender_id = ${tenderId} and number = ${itemNumber}
     )
-    select a.unit_awarded_value, a.awarded_on
+    select a.unit_awarded_value, a.awarded_on, j.tender_id
       from subject s
       join tender_items j
         on j.segment = s.segment
@@ -92,6 +96,15 @@ export async function comparablesForItem(
       join awards a
         on a.tender_id = j.tender_id and a.item_number = j.number
      where a.unit_awarded_value > 0
+       -- The project's own rule, and this query ignored it.
+       -- worker/licitaqui/awards.py: "Only OK rows belong in a price band --
+       -- that is POC 3's rule and it is why the column exists rather than the
+       -- rows being dropped." Measured 2026-09-28: 745 of 6094 awards (12.2%)
+       -- are not OK -- 655 out_of_range (unit or value errors, exactly the
+       -- order-of-magnitude outliers a median must not see), 60 confidential,
+       -- and 30 cancelled, which awards.py calls "not a price at any
+       -- discount". Including them moved bands in both directions, silently.
+       and a.quality = 'OK'
        and s.description is not null
        and j.description is not null
        and similarity(j.description, s.description) >= ${SIMILARITY_FLOOR}
@@ -102,5 +115,6 @@ export async function comparablesForItem(
   return found.rows.map((row) => ({
     unitAwardedValue: Number(row.unit_awarded_value),
     awardedOn: row.awarded_on === null ? null : new Date(row.awarded_on),
+    tenderId: row.tender_id,
   }))
 }

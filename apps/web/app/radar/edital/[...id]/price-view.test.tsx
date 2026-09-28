@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { PLAN_HREF } from '@/lib/routes'
+import { priceHref } from '@/lib/radar/client'
 import { messages } from '@/lib/messages'
 import type { TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { PriceView, chooseItem, unitPrice, type PriceViewProps } from './price-view'
@@ -124,6 +125,25 @@ describe('chooseItem', () => {
   })
 })
 
+describe('the contract between the entry link and the screen', () => {
+  // **This is the defect this branch shipped and had to fix**, pinned as two
+  // facts rather than as a screen test: `environment: 'node'` means effects do
+  // not run, so the fetch itself cannot be exercised here.
+  //
+  // What can be pinned is *why* the screen must resolve its own item. If both
+  // of these hold and `price-screen.tsx` returns early on a null item, the
+  // band is never requested — and on a single-item tender there is no chip to
+  // set `?item=`, so it is unreachable forever.
+
+  it('the only link into this screen carries no item', () => {
+    expect(priceHref(TENDER.id, SEARCH)).not.toContain('item=')
+  })
+
+  it('so the item on screen is the first one, and that is what must be priced', () => {
+    expect(chooseItem(TENDER.items, null)?.number).toBe(TENDER.items[0].number)
+  })
+})
+
 describe('PriceView', () => {
   const html = render()
 
@@ -160,7 +180,13 @@ describe('PriceView', () => {
     // inside the spread limit. `price-band.test.ts` owns whether the gate
     // would *produce* this; here it has, and the question is what renders.
     const BAND = { low: 18, median: 20.34, high: 24, sampleSize: 7 }
-    const withBand = render({ band: BAND })
+    // `item: 1`, not the default `item: null`. The first version of this block
+    // rendered a band on top of `item: null` — a combination the client cannot
+    // produce, because `price-screen.tsx` only asks for a band once it has
+    // resolved an item. It passed *because* of the defect it should have
+    // caught: the screen was asking for nothing, and the test was asserting a
+    // state production could never reach.
+    const withBand = render({ item: 1, band: BAND })
 
     it('prints the range winners actually closed at', () => {
       expect(withBand).toContain('18,00')

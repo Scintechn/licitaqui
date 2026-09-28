@@ -10,8 +10,22 @@ import {
 
 const NOW = new Date('2026-09-28T12:00:00Z')
 
+/** One award each, from a *different* edital — the ordinary case. */
 function comparables(values: number[], awardedOn: Date | null = new Date('2026-06-01')): Comparable[] {
-  return values.map((unitAwardedValue) => ({ unitAwardedValue, awardedOn }))
+  return values.map((unitAwardedValue, index) => ({
+    unitAwardedValue,
+    awardedOn,
+    tenderId: `9900000000000${index}-1-000001/2026`,
+  }))
+}
+
+/** Several awards from the **same** edital — lot splits, quotas, re-homologation. */
+function fromOneEdital(values: number[]): Comparable[] {
+  return values.map((unitAwardedValue) => ({
+    unitAwardedValue,
+    awardedOn: new Date('2026-06-01'),
+    tenderId: '99000000000001-1-000001/2026',
+  }))
 }
 
 describe('priceBand', () => {
@@ -22,6 +36,21 @@ describe('priceBand', () => {
     expect(priceBand(comparables([100, 100, 100, 100]), NOW)).toBeNull()
     expect(priceBand(comparables([100, 100, 100, 100, 100]), NOW)).not.toBeNull()
     expect(MIN_SAMPLE).toBe(5)
+  })
+
+  it('counts editais, not award rows', () => {
+    // `awards` is keyed (tender_id, item_number, sequence) and one item
+    // routinely carries several rows — lot splits, the ME/EPP quota, a
+    // re-homologation. 126 items in the corpus have more than one.
+    //
+    // Five rows from one procurement is **one price wearing five hats**: one
+    // órgão, one day, one decision. Counting rows would let it clear a floor
+    // whose docstring claims five independent prices, and the copy beneath the
+    // figure says "N editais encerrados" — so the number has to be editais.
+    expect(priceBand(fromOneEdital([100, 100, 100, 100, 100]), NOW)).toBeNull()
+
+    // The same five prices from five editais do pass, and report five.
+    expect(priceBand(comparables([100, 100, 100, 100, 100]), NOW)?.sampleSize).toBe(5)
   })
 
   it('is null when the middle half of the winners disagree too much', () => {

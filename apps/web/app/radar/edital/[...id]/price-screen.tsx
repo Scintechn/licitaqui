@@ -7,7 +7,7 @@ import type { TenderDetail, TenderResponse } from '@/lib/radar/contract'
 import type { PriceBand } from '@/lib/radar/price-band'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
-import { PriceView, type PriceStatus } from './price-view'
+import { chooseItem, PriceView, type PriceStatus } from './price-view'
 
 /**
  * Canvas 05 needs one thing the browser does not already have: the tender's
@@ -105,22 +105,47 @@ export function PriceScreen({ id }: { id: string }) {
    * avoid. Keeping the item alongside the band makes a stale one unrenderable
    * by construction instead of by timing.
    */
-  const [loaded, setLoaded] = useState<{ item: number; band: PriceBand | null } | null>(null)
+  const [loaded, setLoaded] = useState<{
+    id: string
+    item: number
+    band: PriceBand | null
+  } | null>(null)
+
+  /**
+   * **The item actually on screen, which is not the one in the URL.**
+   *
+   * `screening-view.tsx` links here with `priceHref(tenderId, search)` and no
+   * item, so `?item=` is absent on every entry into this screen; `PriceView`
+   * then falls back to the first item. The first version of this effect
+   * returned early on `item === null`, so it asked for nothing, and the screen
+   * showed "ainda sem dados de vencedores" for an item that may well have a
+   * band. On a single-item tender there is no chip to set `?item=` at all, so
+   * the band was unreachable **forever** — and a large share of pregões are
+   * single-item.
+   *
+   * The tests missed it because they passed a band alongside `item: null`, a
+   * combination the client cannot produce. Resolving the same item the view
+   * resolves is what makes the request match the screen.
+   */
+  const chosen = data.tender ? chooseItem(data.tender.items, item)?.number ?? null : null
 
   useEffect(() => {
-    if (item === null) return
+    if (chosen === null) return
     const controller = new AbortController()
-    getBand(id, item, controller.signal)
+    getBand(id, chosen, controller.signal)
       .then((answer) => {
-        if (answer.state === 'ready') setLoaded({ item, band: answer.band })
+        if (answer.state === 'ready') setLoaded({ id, item: chosen, band: answer.band })
       })
       .catch(() => {
         // Aborted, offline, or a 500. The screen is complete without it.
       })
     return () => controller.abort()
-  }, [id, item, attempt])
+  }, [id, chosen, attempt])
 
-  const band = loaded !== null && loaded.item === item ? loaded.band : null
+  // Keyed on the tender as well as the item: the App Router preserves client
+  // state across a same-route navigation, so without `id` a band could render
+  // under a different edital until the new response landed.
+  const band = loaded !== null && loaded.id === id && loaded.item === chosen ? loaded.band : null
 
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
 

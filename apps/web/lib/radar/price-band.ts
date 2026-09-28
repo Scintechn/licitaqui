@@ -36,6 +36,11 @@ export type Comparable = {
   unitAwardedValue: number
   /** When it was awarded, for the recency bound. */
   awardedOn: Date | null
+  /**
+   * Which edital it came from. Carried so the sample floor can count
+   * **editais**, not rows — see {@link MIN_SAMPLE}.
+   */
+  tenderId: string
 }
 
 export type PriceBand = {
@@ -45,7 +50,16 @@ export type PriceBand = {
   median: number
   /** 75th percentile. */
   high: number
-  /** How many awarded items the band rests on. */
+  /**
+   * How many **distinct editais** the band rests on — not how many rows.
+   *
+   * The copy renders this as *"N editais encerrados"*, so it has to be that.
+   * `awards` is keyed `(tender_id, item_number, sequence)` and one item
+   * routinely carries several rows — lot splits, the ME/EPP quota, a
+   * re-homologation — so 126 items in the corpus have more than one. Counting
+   * rows would let a single procurement, on a single day, from a single órgão
+   * clear a floor whose docstring claims it means five independent prices.
+   */
   sampleSize: number
 }
 
@@ -99,13 +113,19 @@ export function priceBand(comparables: readonly Comparable[], now = new Date()):
   const cutoff = new Date(now)
   cutoff.setMonth(cutoff.getMonth() - MAX_AGE_MONTHS)
 
-  const values = comparables
-    .filter((c) => c.awardedOn === null || c.awardedOn >= cutoff)
-    .map((c) => c.unitAwardedValue)
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .sort((a, b) => a - b)
+  const fresh = comparables.filter(
+    (c) =>
+      (c.awardedOn === null || c.awardedOn >= cutoff) &&
+      Number.isFinite(c.unitAwardedValue) &&
+      c.unitAwardedValue > 0,
+  )
 
-  if (values.length < MIN_SAMPLE) return null
+  // Counted before the prices are: five rows from one edital is one price
+  // wearing five hats, and the copy beneath the figure says "editais".
+  const editais = new Set(fresh.map((c) => c.tenderId)).size
+  if (editais < MIN_SAMPLE) return null
+
+  const values = fresh.map((c) => c.unitAwardedValue).sort((a, b) => a - b)
 
   const median = percentile(values, 0.5)
   if (median <= 0) return null
@@ -114,7 +134,7 @@ export function priceBand(comparables: readonly Comparable[], now = new Date()):
   const high = percentile(values, 0.75)
   if ((high - low) / median > MAX_SPREAD) return null
 
-  return { low, median, high, sampleSize: values.length }
+  return { low, median, high, sampleSize: editais }
 }
 
 /**
