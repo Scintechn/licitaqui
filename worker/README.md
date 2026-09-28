@@ -528,6 +528,7 @@ usable. Two modules and two job kinds:
 |---|---|---|
 | `sync_awards` | daily 03:00 BRT (§7.1 "overnight") | No HTTP. Picks tenders with pending awarded items in the segments of interest and enqueues one follow-up each — the shape B2's sweep established. |
 | `sync_tender_awards` | per tender, priority 9 | One request per pending awarded item, upserted as each arrives. |
+| `reconcile_open_tenders` | daily 04:00 BRT (B17) | The **inventory** sweep, beside `sync_open_tenders`' change feed. `/v1/contratacoes/atualizacao` windows on `dataAtualizacaoGlobal`, so an edital published once and never touched again never re-enters it — measured 2026-09-27, the Radar held 44% of what PNCP called open and 54 of the 72 in-scope misses had never been updated after publication. This asks `status=recebendo_proposta` instead, partitioned by UF (their totals sum to exactly the national figure, so the partition loses nothing), with **no `stop_at`**. It reads each partition's `total` before walking it and raises rather than paging into PNCP's 10 000-record wall. Writes its own `events.name`, never `sync_open_tenders.cycle`, so it cannot move the change feed's watermark. |
 
 ### CPF is masked on write, and `raw` is the column people forget
 
