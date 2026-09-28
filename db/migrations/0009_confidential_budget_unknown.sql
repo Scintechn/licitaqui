@@ -1,0 +1,82 @@
+-- 0009_confidential_budget_unknown — "we do not know" must survive an insert
+-- that forgets to say it (card B13).
+--
+-- `tenders.confidential_budget` is `boolean default false`. The column is
+-- already **nullable**, and `tenders._confidential()` already returns `None`
+-- when PNCP sent neither `orcamentoSigilosoCodigo` nor `orcamentoSigiloso` —
+-- its comment reads *"absence of evidence is not 'public'"*. Both production
+-- writers name the column explicitly (`licitaqui/tenders.py:289` and
+-- `db/seed.py:68`), so a `None` reaches the row as NULL and the three states
+-- are genuinely distinguishable today.
+--
+-- ## So what does this fix, and what did the card get wrong
+--
+-- The card was written on 2026-09-23 and says the schema "collapses unknown
+-- into not-confidential before anything reads it", evidenced by *"108 tenders
+-- hold `estimated_value = 0` and **0** of them have `confidential_budget =
+-- true`"*. Measured again on 2026-09-28, against production:
+--
+--     NULL   21 031      (510 of them with estimated_value = 0)
+--     false   7 417      (172)
+--     true      514      (118)
+--
+-- Unknown is the majority value and `true` is being written 514 times, so the
+-- collapse the card describes is not happening. #65's consulta upgrade closed
+-- it; nobody re-measured, and the card kept asserting a number that had
+-- stopped being true — the same shape `CLAIMS.md` exists to catch, in the
+-- document that catches it.
+--
+-- **What is still wrong is the default, and only the default.** It applies
+-- exactly when a writer omits the column, and it answers that omission with
+-- `false` — a positive claim that the budget is public, made on no evidence.
+-- Today no production path omits it. **Seven tests do** — four in the worker
+-- (`test_integration_title_tender.py:56` and three others) and three in the
+-- web (`lib/auth/u1.db.test.ts:113`, `lib/radar/pagination.db.test.ts:79`,
+-- `lib/radar/screening.db.test.ts:46`), which is how a fixture quietly
+-- acquires "orçamento público". None of them asserts on the column, so all
+-- seven simply start storing NULL.
+--
+-- It matters now because **B17 adds an ingest path**: a reconcile sweep keyed
+-- on open tenders, writing rows sourced from the search index, which does not
+-- carry the sigiloso fields at all. Roughly 12 600 rows would arrive with the
+-- question unanswered. If that writer ever omits the column — or a later one
+-- does — the default turns every one of them into a published claim that the
+-- budget is public. Dropping it makes the truthful answer the automatic one.
+--
+-- ## No backfill, and the reason is not the obvious one
+--
+-- The first draft of this comment said the `false` rows "were written
+-- explicitly by a path that read PNCP and was told `false`". **That was not
+-- verified and it is not true of how they were created.** ADR-0001 records the
+-- opposite: `confidential_budget` was `false` on all 5 965 rows it measured
+-- *"because the search payload has no code to read"*, written by a dataclass
+-- default (`confidential_budget: bool = False`) that #65 later changed to
+-- `None` — the same omission-shaped bug as this one, a layer up in Python.
+--
+-- So the rows had to be measured rather than reasoned about. Of the 7 418
+-- `false` rows on 2026-09-28:
+--
+--     5 508   search-shaped `raw`, **but carrying a `tender_value:` marker**
+--         3   search-shaped `raw`, no marker — never resolved
+--     1 907   consulta-shaped `raw`
+--
+-- `raw ? 'valorTotalEstimado'` looks like the discriminator and is not one:
+-- `tender_value.py:85-95` deliberately "writes the four columns it came for and
+-- leaves `raw` alone", so `raw` says which sweep **ingested** a row, never
+-- whether consulta later answered about it. Keying a backfill on it would have
+-- nulled 5 508 rows a consulta read had already resolved — destroying real
+-- information in the name of removing a false claim.
+--
+-- 7 415 of 7 418 have been read from consulta. Three have not. A backfill of
+-- three rows is not worth a data migration, and a blanket one is actively
+-- wrong, so nothing is rewritten here.
+--
+-- **What is left open, and is a card rather than a sentence in this file
+-- (B19):** `tender_value.py:295` merges with
+-- `coalesce(%(confidential_budget)s, confidential_budget)`, so a consulta read
+-- that returned *no* sigiloso field leaves the legacy `false` standing. The
+-- marker proves consulta was read; it does not prove consulta answered this
+-- question. How many of the 5 508 are in that position is unmeasured, and
+-- measuring it needs the marker payloads rather than the column.
+
+alter table tenders alter column confidential_budget drop default;
