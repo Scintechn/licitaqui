@@ -31,10 +31,38 @@ const DEFAULT_MARGIN_PCT = 20
  * It renders no locked value and no placeholder. If there were no band, the
  * parent renders the "no data yet" card instead and this never mounts.
  */
+/**
+ * The margin the field is expressing, or `null` when it is expressing none.
+ *
+ * `null` for empty, for whitespace, for "abc", and for anything outside 0–99
+ * — a 100% margin implies a supplier cost of zero and a negative one is not a
+ * question this screen answers. The caller renders the figure as unavailable
+ * rather than computing one from a number the person did not type.
+ */
+export function parseMargin(text: string): number | null {
+  const trimmed = text.trim()
+  if (trimmed === '') return null
+  const value = Number(trimmed)
+  if (!Number.isFinite(value) || value < 0 || value >= 100) return null
+  return value
+}
+
 export function MarginCeiling({ band }: { band: PriceBand }) {
-  const [marginPct, setMarginPct] = useState(DEFAULT_MARGIN_PCT)
+  /**
+   * The **raw field text**, not a number.
+   *
+   * `Number('')` is `0` and finite, so holding a number meant that clearing the
+   * field snapped the margin to zero — the headline figure jumped to the full
+   * median under a label reading *"Teto para manter a margem que você
+   * informou"*, and you could not backspace-then-retype. A wrong figure
+   * substituted for a blank one, on the one control this screen has.
+   */
+  const [marginText, setMarginText] = useState(String(DEFAULT_MARGIN_PCT))
   const fieldId = useId()
-  const ceiling = targetPurchasePrice(band, marginPct)
+
+  /** `null` while the field is empty or unparseable — never silently zero. */
+  const marginPct = parseMargin(marginText)
+  const ceiling = marginPct === null ? null : targetPurchasePrice(band, marginPct)
   // `?? ''` rendered the card as a bare "R$" with nothing after it — at a high
   // margin on a low-value item (median R$ 0,40 at 99%) `moneyExact` returns
   // null. `noEstimate` says so instead, and it was already two characters away
@@ -63,14 +91,13 @@ export function MarginCeiling({ band }: { band: PriceBand }) {
           min={0}
           max={99}
           step={1}
-          value={marginPct}
-          onChange={(event) => {
-            const next = Number(event.target.value)
-            // Clamped here rather than trusted: `targetPurchasePrice` returns
-            // null outside 0–99, which would blank the figure mid-typing and
-            // read as a bug. The input's own min/max are not enforced by every
-            // browser on every path.
-            setMarginPct(Number.isFinite(next) ? Math.min(99, Math.max(0, next)) : 0)
+          value={marginText}
+          onChange={(event) => setMarginText(event.target.value)}
+          onBlur={() => {
+            // Committed on blur, not on every keystroke: clamping as you type
+            // fights the typist, and an empty field mid-edit is a normal state
+            // rather than a margin of zero.
+            if (marginPct === null) setMarginText(String(DEFAULT_MARGIN_PCT))
           }}
           className="w-16 rounded-card border border-line bg-surface px-2 py-1 text-body tabular-nums"
           aria-describedby={`${fieldId}-inputs`}

@@ -28,12 +28,18 @@ import { canonicalUnitSql } from './unit'
  * ## Cost
  *
  * One query per item on the detail page, bounded by {@link MAX_COMPARABLES}.
- * The `%` operator uses `pg_trgm`'s index when one exists; **there is no
- * `gin (description gin_trgm_ops)` index on `tender_items` yet**, so today
- * this is a sequential scan over the segment+unit slice. That is acceptable
- * at the current award volume and will not stay acceptable — the index is a
- * schema change and therefore its own PR (CLAUDE.md), and belongs with C3,
- * which is what makes the join worth indexing.
+ * **Measured, not estimated.** There is no `gin (description gin_trgm_ops)`
+ * index on `tender_items`, so `similarity()` is evaluated twice per candidate
+ * row — once in the predicate, once in the ORDER BY — across the segment+unit
+ * slice of 421 202 items. On production, 2026-09-28, over 8 random open
+ * items: **median 412 ms, worst 2 715 ms**.
+ *
+ * An earlier version of this comment called that "acceptable at the current
+ * award volume". It was not measured when that was written, and it is not
+ * acceptable: the band is computed **before** the plan is consulted, so every
+ * anonymous item view pays it, and the route is `force-dynamic` with
+ * `PRIVATE_NO_STORE`, so nothing is reused. **B21** carries the index and the
+ * caching decision.
  */
 
 /**

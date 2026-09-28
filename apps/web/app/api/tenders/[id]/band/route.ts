@@ -108,7 +108,7 @@ export async function GET(
     }
 
     return NextResponse.json(
-      { state: 'ready', band: entitled ? band : null },
+      { state: 'ready', band: entitled ? band : null, entitled },
       { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
     )
   } catch (error) {

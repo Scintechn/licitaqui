@@ -110,6 +110,7 @@ export function PriceScreen({ id }: { id: string }) {
     item: number
     band: PriceBand | null
     locked: boolean
+    entitled: boolean
   } | null>(null)
 
   /**
@@ -136,9 +137,9 @@ export function PriceScreen({ id }: { id: string }) {
     getBand(id, chosen, controller.signal)
       .then((answer) => {
         if (answer.state === 'ready') {
-          setLoaded({ id, item: chosen, band: answer.band, locked: false })
+          setLoaded({ id, item: chosen, band: answer.band, locked: false, entitled: answer.entitled })
         } else if (answer.state === 'locked') {
-          setLoaded({ id, item: chosen, band: null, locked: true })
+          setLoaded({ id, item: chosen, band: null, locked: true, entitled: false })
         } else {
           // `envelope()` does not throw on a non-2xx — it parses the body — so
           // a 429 or a 500 arrives here as `state: 'error'`. Falling through
@@ -148,13 +149,18 @@ export function PriceScreen({ id }: { id: string }) {
           // plano Essencial" button, permanently, with no retry on this path.
           // A failure must degrade to the honest empty card, never to an
           // advertisement for the plan they already bought.
-          setLoaded({ id, item: chosen, band: null, locked: false })
+          setLoaded({ id, item: chosen, band: null, locked: false, entitled: true })
         }
       })
       .catch(() => {
         // Aborted, offline, or a network error: same rule as above.
+        //
+        // `entitled: true` on a failure is not a claim about the plan — it is
+        // the choice to sell nothing when we do not know. A wrong "buy this"
+        // is worse than a missing one, in both directions: to a subscriber it
+        // is an insult, and to a visitor it is a promise made on no evidence.
         if (!controller.signal.aborted) {
-          setLoaded({ id, item: chosen, band: null, locked: false })
+          setLoaded({ id, item: chosen, band: null, locked: false, entitled: true })
         }
       })
     return () => controller.abort()
@@ -179,6 +185,16 @@ export function PriceScreen({ id }: { id: string }) {
    * the screen falls back to the honest empty card.
    */
   const bandLocked = current === null || current.locked
+  /**
+   * Whether to offer the plan. **Not the same question as `bandLocked`.**
+   *
+   * An unentitled visitor on an item with no band gets `ready` with
+   * `band: null` — indistinguishable from a subscriber's empty item unless the
+   * route says so. Hiding the CTA on `!bandLocked` alone removed the upsell
+   * from exactly the people it is for. Unknown (in flight, or a failure)
+   * offers nothing: a wrong "buy this" is worse than a missing one.
+   */
+  const showPlanCta = current === null ? false : current.locked || !current.entitled
 
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
 
@@ -192,6 +208,7 @@ export function PriceScreen({ id }: { id: string }) {
       search={search}
       band={band}
       bandLocked={bandLocked}
+      showPlanCta={showPlanCta}
       onRetry={onRetry}
     />
   )

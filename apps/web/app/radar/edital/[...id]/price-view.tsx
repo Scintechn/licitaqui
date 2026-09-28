@@ -107,6 +107,12 @@ export type PriceViewProps = {
    * had to choose between lying to a visitor and hiding the plan.
    */
   bandLocked?: boolean
+  /**
+   * Whether to offer the Essencial plan. Defaults to **true** so every render
+   * that does not know — the loading fallback, the suspended screen, a test —
+   * keeps the behaviour this screen had before the band existed.
+   */
+  showPlanCta?: boolean
   onRetry?: () => void
 }
 
@@ -148,6 +154,7 @@ export function PriceView({
   search,
   band = null,
   bandLocked = false,
+  showPlanCta = true,
   onRetry,
 }: PriceViewProps) {
   const bar = (
@@ -268,6 +275,14 @@ export function PriceView({
                   </strong>
                 </div>
               ) : null}
+              {/* Locked for everyone, and its label is wrong for everyone:
+                  `page.lockedValue` reads "valor disponível no plano
+                  Essencial" while `0002_plan_limits.sql` grants `market_price`
+                  to **`pro` alone**. Pre-existing, but gating the band put it
+                  beside a feature that now really does unlock, so an Essencial
+                  subscriber reads that they need Essencial. Left as it is
+                  rather than guessed at: the string is Sci's and the
+                  entitlement question is F5's. Recorded in `docs/CLAIMS.md`. */}
               <LockedRow label={page.market} last />
             </Card>
 
@@ -320,11 +335,21 @@ export function PriceView({
           </>
         )}
 
-        <div className="mt-auto pt-2">
-          <Button href={PLAN_HREF} fullWidth iconEnd="arrowRight">
-            {page.cta}
-          </Button>
-        </div>
+        {/* **Not shown to someone who already has the plan.** Gating the band
+            made this visible: the button reads "Ver plano Essencial" and the
+            screen was rendering it unconditionally, including to Essencial and
+            Pro subscribers, and including beside a band they had just been
+            shown. `bandLocked` is the closest thing this component has to
+            "does not have the plan" — when the band is not locked, either the
+            caller is entitled or no number exists for anybody — but those are
+            not the same thing, so the server says which: see `showPlanCta`. */}
+        {showPlanCta ? (
+          <div className="mt-auto pt-2">
+            <Button href={PLAN_HREF} fullWidth iconEnd="arrowRight">
+              {page.cta}
+            </Button>
+          </div>
+        ) : null}
       </main>
     </div>
   )
