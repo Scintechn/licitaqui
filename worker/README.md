@@ -163,8 +163,11 @@ ruff check . && ruff format --check .
 ```
 
 The database tests need an isolated, already-migrated Neon database and skip
-without one. Each task has its own, so two suites running at once cannot
-collide:
+without one. Most tasks have their own, so two suites running at once cannot
+collide. Where two share a database — `TEST_DATABASE_URL` carries B1's, the
+title tests' and B13's — they are kept apart by a **different leading CNPJ
+pair** (`98`, `97`) rather than by the DSN, so neither one's cross-run sweep
+can reach the other's rows:
 
 | Variable | Used by | Rows it touches |
 |---|---|---|
@@ -173,6 +176,7 @@ collide:
 | `TEST_DATABASE_URL_B5` | B5's company-lookup tests (`test_integration_company.py`) | `companies` rows for synthetic `999…` CNPJs and their job rows |
 | `TEST_DATABASE_URL_B3` | B3's items tests (`test_integration_sync_items.py`) | `tenders` (and their items, by cascade) for the fictitious agency `99` + this **run's** id — see "B3" below |
 | `TEST_DATABASE_URL_FH` | FH's `files_hash` wiring tests (`test_integration_files_hash.py`) | `tenders` (and their files and analyses, by cascade) for the fictitious agency `99` + this **run's** id, and their `sync_files:` markers — see "FH's test database" below |
+| `TEST_DATABASE_URL` | **also** B13's schema tests (`test_integration_confidential_budget.py`) | `tenders` rows for the fictitious agency `97…` (per-run id). Swept by the suite's own `cb_dsn` fixture, exact-match **and** a 24-hour crashed-run sweep on `^97[0-9]{12}$` — `clean_dsn` deletes jobs only. `97` rather than `99` so it stays outside the other blocks' `like '99%'` sweeps, the same reason `TITLE_CNPJ` chose `98` |
 
 All are resolved the way `db/migrate.py` resolves its own connection string, and
 all are wrapped in a redacting `Dsn` type before they can reach a fixture repr:
