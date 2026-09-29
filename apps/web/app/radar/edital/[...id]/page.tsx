@@ -61,6 +61,24 @@ export const metadata: Metadata = {
  * fuse. So the page reads the search too, out of `searchParams` rather than
  * `useSearchParams`, and every fallback is built from it.
  */
+/**
+ * The price screen plus the one thing the server has to look up for it.
+ *
+ * **Inside the Suspense boundary, deliberately.** Awaiting
+ * `readPriceBandEntitlement()` in `TenderPage` itself was correct and slow:
+ * the fallback exists to paint immediately, and it could not be emitted until
+ * a session query — and for an anonymous reader a second `visitors` query —
+ * had come back from Neon in `sa-east-1`, a database that autosuspends after
+ * 300 s and whose first query is measured at 5–8 s (`vitest.config.mts`).
+ *
+ * That would have traded a late CTA for a late *page*, which is a worse deal
+ * and the opposite of what moving this read off the band response was for.
+ * Here the shell streams first and this resolves behind it.
+ */
+async function PricePane({ id }: { id: string }) {
+  return <PriceScreen id={id} entitled={await readPriceBandEntitlement()} />
+}
+
 export default async function TenderPage({
   params,
   searchParams,
@@ -108,11 +126,6 @@ export default async function TenderPage({
   }
 
   if (route.view === 'price') {
-    // Read here rather than inside the screen: it does not depend on the item
-    // or the band, so it is known before the first byte and the plan CTA is
-    // correct on first paint. See `entitlement.ts` for the three defects that
-    // reading it from the band response caused.
-    const entitled = await readPriceBandEntitlement()
     return (
       <Suspense
         fallback={
@@ -123,11 +136,16 @@ export default async function TenderPage({
             status={{ kind: 'analyzing' }}
             backHref={screeningHref(route.tenderId, search)}
             search={search}
-            showPlanCta={!entitled}
+            // The skeleton offers nothing: it does not know who is reading
+            // yet, and `PriceView` defaults this to `true`, which would flash
+            // "Ver plano Essencial" at a subscriber for as long as the shell
+            // takes to stream — the defect the prop removes, back in the
+            // fallback.
+            showPlanCta={false}
           />
         }
       >
-        <PriceScreen id={route.tenderId} entitled={entitled} />
+        <PricePane id={route.tenderId} />
       </Suspense>
     )
   }

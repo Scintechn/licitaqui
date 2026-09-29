@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers'
+import { headers } from 'next/headers'
 import { planOf, readViewer } from '@/lib/auth/viewer'
 import { db } from '@/lib/db'
 import { hasPriceBand } from '@/lib/radar/quota'
@@ -33,25 +33,45 @@ import { hasPriceBand } from '@/lib/radar/quota'
  * correct on first paint in every one of those cases, and removes the second
  * source of truth that made them possible.
  *
+ * ## The raw header, not a rebuilt one
+ *
+ * `headers().get('cookie')` and **not** `cookies()`. The first version rebuilt
+ * the header out of `cookies().getAll()`, which is lossy in two ways that both
+ * end in the same wrong answer:
+ *
+ *   `cookies()` returns values **already percent-decoded**, and
+ *   `sessionTokenFromCookies` calls `decodeURIComponent` on every value it
+ *   walks past *before* it checks the name. So a cookie whose real value held
+ *   `%25` came back as `%`, was decoded a second time, and threw `URIError:
+ *   URI malformed` — on an unrelated cookie, before the session token was ever
+ *   reached.
+ *
+ *   A decoded value containing `;` split the rebuilt header into bogus pairs,
+ *   so the session cookie could be lost without any error at all.
+ *
+ * In both cases the `catch` below turned a parsing bug into `false`, and a
+ * paying subscriber was shown "Ver plano Essencial" on every request for as
+ * long as that cookie was set. The raw header has neither problem and is what
+ * `readViewer` is documented to take.
+ *
  * ## A failed read offers the plan
  *
  * `readViewer` answers `null` for anybody not signed in, which is the ordinary
- * case on this screen and already means "not entitled". A thrown read — no
- * database, a bad cookie — is therefore indistinguishable from the common path
- * at this layer, and is treated the same way. The cost of being wrong is
- * showing "Ver plano Essencial" to a subscriber during an outage; the cost of
- * the opposite default is hiding the offer from every visitor during one.
+ * case on this screen and already means "not entitled". A read that throws —
+ * no database — is treated the same way: the cost of being wrong is showing
+ * the offer to a subscriber during an outage, against hiding it from every
+ * visitor during one.
+ *
+ * That trade is only defensible because the *parsing* bug above is gone. While
+ * it was there, this `catch` was not absorbing an outage, it was absorbing a
+ * defect and making it permanent.
  *
  * Nothing here spends a screening or mints an identity: `readViewer` never
  * creates a visitor row, by design.
  */
 export async function readPriceBandEntitlement(): Promise<boolean> {
   try {
-    const jar = await cookies()
-    const header = jar
-      .getAll()
-      .map((cookie) => `${cookie.name}=${cookie.value}`)
-      .join('; ')
+    const header = (await headers()).get('cookie')
     return hasPriceBand(planOf(await readViewer(header, db())))
   } catch {
     return false

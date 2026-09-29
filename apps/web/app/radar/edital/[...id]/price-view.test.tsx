@@ -193,7 +193,8 @@ describe('PriceView', () => {
       // the CTA off `bandLocked` alone hid the upsell from exactly the people
       // it is for: an unentitled visitor on an item with no band gets `ready`
       // with `band: null`, indistinguishable from a subscriber's empty item
-      // unless the route says which — so it now carries `entitled`.
+      // unless somebody says which. The server does, before this renders:
+      // `readPriceBandEntitlement` in the page, passed down as `showPlanCta`.
       const out = render({ item: 1, bandLocked: false, showPlanCta: true })
       expect(out).toContain(page.noData)
       expect(out).toContain(page.cta)

@@ -50,11 +50,35 @@ concurrency:
   group: ci-web-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+# **Repo-wide, and queued rather than cancelled.** Separate from the group
+# above, which is per-branch so a second push to one branch still cancels the
+# first.
+#
+# Five of the twelve database suites have no per-task secret and fall back to
+# the shared `TEST_DATABASE_URL`. Two of those do not scope their rows by a
+# per-run id: `rate-limit.db.test.ts` deletes `bucket like 'rl-db-test:%'` in
+# `beforeEach` — a per-task constant, which is the shape CLAUDE.md names
+# verbatim — and `founders/signup.db.test.ts` asserts a **global**
+# `count(*) from founders_list` is 0. Two runs on one database delete each
+# other's rows mid-test, and the failure names the wrong cause.
+#
+# That was harmless while these suites only ever ran on one laptop, one at a
+# time. Turning them on in CI is what makes two runs concurrent, so this job
+# serialises across every branch until each suite owns its data (**B24**).
+# Queueing costs wall-clock; a suite that fails on somebody else's pull
+# request costs trust, and a pipeline nobody trusts gets ignored.
+
 jobs:
   quality:
     name: lint · typecheck · test · build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The repo-wide serialisation the block above the `jobs:` key explains.
+    # Job level, so it is independent of the per-branch workflow group, and
+    # `cancel-in-progress: false` so a waiting run queues instead of losing.
+    concurrency:
+      group: ci-web-shared-database
+      cancel-in-progress: false
 
     steps:
       - name: Checkout
@@ -101,7 +125,20 @@ jobs:
       - name: Test
         run: pnpm test
         env:
-          REQUIRE_TEST_DATABASE: ${{ secrets.TEST_DATABASE_URL != '' && '1' || '0' }}
+          # Keyed on **any** of the seven, not on `TEST_DATABASE_URL` alone.
+          # Hanging it on one variable meant that rotating or renaming that one
+          # secret, with the other six still in place, would send all twelve
+          # suites back to skipping silently — and the guard written to catch
+          # exactly that would have reported green. One secret away from the
+          # failure this job exists to close.
+          REQUIRE_TEST_DATABASE: >-
+            ${{ (secrets.TEST_DATABASE_URL != ''
+              || secrets.TEST_DATABASE_URL_B2 != ''
+              || secrets.TEST_DATABASE_URL_D3 != ''
+              || secrets.TEST_DATABASE_URL_E1 != ''
+              || secrets.TEST_DATABASE_URL_FH != ''
+              || secrets.TEST_DATABASE_URL_O1 != ''
+              || secrets.TEST_DATABASE_URL_R1 != '') && '1' || '0' }}
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
           TEST_DATABASE_URL_B2: ${{ secrets.TEST_DATABASE_URL_B2 }}
           TEST_DATABASE_URL_D3: ${{ secrets.TEST_DATABASE_URL_D3 }}

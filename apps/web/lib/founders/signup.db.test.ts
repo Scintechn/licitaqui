@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { POST } from '@/app/api/founders/route'
 import { GET } from '@/app/api/founders/seats/route'
+import { Client } from 'pg'
 import { closeDb, pool } from '@/lib/db'
 import { testDatabaseUrl } from '@/lib/db/test-url'
 import { resetRateLimits } from '@/lib/rate-limit'
@@ -127,12 +128,103 @@ async function seatsInDatabase(): Promise<number[]> {
  * the Neon in sa-east-1) the same 60 signups are a fraction of a second, which
  * is why the defaults in `lib/db` stay at the §7.2 budget of 15 s / 30 s.
  */
+/**
+ * **One run of this suite at a time, anywhere in the world.**
+ *
+ * `expectEmptyList()` asserts a *global* `count(*) from founders_list` is 0,
+ * seven times, because the seat assertions below only mean anything on an
+ * empty list — seat 1 has to be free for the first signup to take it. Seats
+ * are globally sequential, so that is a property of the **database**, not of
+ * the run, and no amount of per-run prefixing can give it back.
+ *
+ * This suite has no per-task secret, so it falls through to the shared
+ * `TEST_DATABASE_URL`. That was harmless while it only ever ran on one laptop.
+ * **B22 turned it on in CI**, and on 2026-09-29 `main` went red with "expected
+ * 1 to be +0" — a row written by a second run of the same suite, on a laptop,
+ * at the same moment. `ci-web.yml` serialises the job across branches; it
+ * cannot serialise against a developer's machine.
+ *
+ * A session-scoped advisory lock can. Every run takes it before touching the
+ * table and holds it to the end, so a second run waits rather than interleaves
+ * — whether it is another CI job, another branch, or `pnpm test` here.
+ * Postgres releases session locks when the connection drops, so a crashed run
+ * does not wedge the next one.
+ *
+ * ## Why the lock is held inside an open transaction
+ *
+ * **`pg_advisory_lock` — the session-scoped one — does not work here**, and
+ * `lib/db/index.ts` says why in its own docstring: `DATABASE_URL` is the
+ * *pooled* Neon endpoint, PgBouncer in transaction mode, where "nothing relies
+ * on session state surviving between statements, which PgBouncer would not
+ * preserve". A session advisory lock is precisely that state. Measured: two
+ * runs of this file both "acquired" the lock ten seconds apart and handed out
+ * seat 1 twice.
+ *
+ * `pg_advisory_xact_lock` inside a transaction that stays open does work,
+ * because transaction-mode pooling pins one backend for the life of a
+ * transaction. The transaction does nothing else and is rolled back at the
+ * end — it exists only to give the lock something to live in.
+ *
+ * A dedicated `Client`, not a `Pool`: the transaction must stay on one
+ * connection, and a pool may hand its connection to somebody else.
+ * `signup.ts` uses `pg_advisory_xact_lock` with namespace 19537 for the seat
+ * itself — a different key here, because this guards the *suite*, not a seat.
+ */
+const SUITE_LOCK = { namespace: 19537, key: 9101 } as const
+let locker: Client | null = null
+
+async function takeSuiteLock() {
+  const client = new Client({ connectionString: url })
+  await client.connect()
+  // Fail loudly rather than hang the job if another run never lets go.
+  await client.query("set lock_timeout = '300s'")
+  await client.query('begin')
+  await client.query('select pg_advisory_xact_lock($1::int, $2::int)', [
+    SUITE_LOCK.namespace,
+    SUITE_LOCK.key,
+  ])
+  locker = client
+}
+
+async function releaseSuiteLock() {
+  if (!locker) return
+  const client = locker
+  locker = null
+  // The rollback ends the transaction, which is what drops the lock.
+  await client.query('rollback').catch(() => {})
+  await client.end().catch(() => {})
+}
+
 function configurePool() {
   process.env.DATABASE_URL = url
   process.env.DATABASE_POOL_MAX = '60'
   process.env.DATABASE_CONNECT_TIMEOUT_MS = '120000'
   process.env.DATABASE_QUERY_TIMEOUT_MS = '120000'
 }
+
+/**
+ * **File level, so the lock spans both suites.**
+ *
+ * The first version took it in each suite's `beforeAll` and released it in
+ * each `afterAll`, which left the gap between this file's two suites wide
+ * open — and a concurrent run walked straight into it. Proved by running the
+ * file against itself twice at once: seat 1 was handed out twice. Vitest runs
+ * a top-level `beforeAll` once per file, around every suite in it.
+ */
+beforeAll(async () => {
+  if (!url) return
+  await takeSuiteLock()
+  // 330 s, deliberately longer than the `lock_timeout` of 300 s the lock sets
+  // for itself. The two are ordered so that a run which waits too long fails
+  // with Postgres's "canceling statement due to lock timeout" — which names
+  // the lock — rather than with vitest's "Hook timed out", which names this
+  // file and explains nothing. A full pass of this suite takes ~3 minutes, so
+  // a second run has to be able to wait out a first one.
+}, 330_000)
+
+afterAll(async () => {
+  await releaseSuiteLock()
+})
 
 suite('founders signup (database)', () => {
   beforeAll(configurePool)
@@ -428,7 +520,39 @@ suite('founders signup (database)', () => {
     expect(Number(rows[0].count)).toBe(0)
   })
 
+/**
+ * Waits for a rate-limit window with room left in it.
+ *
+ * **The burst test was flaky by construction, and the odds were measurable.**
+ * `lib/rate-limit.ts` uses a fixed tumbling window aligned to the wall clock —
+ * `windowStart(now, windowMs) = Math.floor(now / windowMs) * windowMs` — and
+ * the route allows 6 per 60 s. The test fires eight sequential requests and
+ * asserts the last two are refused. If the loop straddles a minute boundary
+ * the counter resets and requests 7 and 8 are allowed, so the assertion reads
+ * `expected [201, 201] to deeply equal [429, 429]` and blames rate limiting
+ * for what is really a clock.
+ *
+ * The failure probability is simply `burst duration / 60 s`. Measured against
+ * Neon in `sa-east-1`: the burst takes 11–16 s, so roughly one run in four.
+ * It went unnoticed because this suite had never run in CI (B22) and a laptop
+ * run that fails once in four is read as bad luck.
+ *
+ * Starting only when at least `needMs` of the window remains makes it
+ * deterministic for any burst shorter than that — 25 s, against a slowest
+ * observed burst of 16 s.
+ *
+ * The wait is bounded by `needMs`, and the caller's timeout has to cover
+ * **wait plus burst**: 25 s + 16 s does not fit in the 60 s this test used to
+ * declare once the database is slow, which is why it now asks for 120 s.
+ */
+async function freshRateLimitWindow(needMs = 25_000) {
+  const remaining = 60_000 - (Date.now() % 60_000)
+  if (remaining >= needMs) return
+  await new Promise((resolve) => setTimeout(resolve, remaining + 100))
+}
+
   it('rate limits a burst from one address', async () => {
+    await freshRateLimitWindow()
     const address = ip(200)
     const statuses: number[] = []
     for (let i = 0; i < 8; i += 1) {
@@ -441,7 +565,10 @@ suite('founders signup (database)', () => {
     expect(last.headers.get('retry-after')).toBeTruthy()
     // Somebody else is unaffected.
     expect((await POST(request(body(201), ip(201)))).status).toBe(201)
-  }, 60_000)
+    // 120 s, not 60 s: `freshRateLimitWindow` may wait up to 25 s for a window
+    // with room in it, and the burst itself takes 11–16 s against a remote
+    // database. The old budget covered the burst but not the wait.
+  }, 120_000)
 })
 
 suite('60 parallel signups (F1 acceptance criterion)', () => {

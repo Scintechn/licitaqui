@@ -351,7 +351,9 @@ export function PriceView({
             shown. `bandLocked` is the closest thing this component has to
             "does not have the plan" — when the band is not locked, either the
             caller is entitled or no number exists for anybody — but those are
-            not the same thing, so the server says which: see `showPlanCta`. */}
+            not the same thing, so the server says which — read once in the
+            page (`entitlement.ts`) and passed in as `showPlanCta`, never off
+            the band response. */}
         {showPlanCta ? (
           <div className="mt-auto pt-2">
             <Button href={PLAN_HREF} fullWidth iconEnd="arrowRight">
