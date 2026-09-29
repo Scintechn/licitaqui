@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import {
   AppBar,
   AppBarBack,
-  AppBarActionLink,
   Button,
   Card,
   Icon,
@@ -47,6 +46,7 @@ import {
 import { TenderTags } from '../../tender-card'
 import { TenderStatusBanner } from '../../tender-status-banner'
 import { CopyId } from './copy-id'
+import { FavouriteButton } from './favourite-button'
 import { ITEMS_PAGE, TenderItems } from './tender-items'
 
 /**
@@ -571,7 +571,21 @@ export function OpportunityView({
   const bar = (
     <AppBar
       leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>}
-      actions={<AppBarActionLink icon="alert" label={page.follow} href={ALERTS_HREF} />}
+      actions={
+        /*
+          **This replaced a link that could not do what its label said.** The
+          slot held `AppBarActionLink icon="alert" label={page.follow}` —
+          *"Seguir edital"* — pointing at `ALERTS_HREF`, the alerts
+          *preferences* screen. Alerts are weekly, keyword- and CNAE-based, and
+          know nothing about the tender you are looking at, so the control
+          could not follow this edital and never did. D23 gave the promise
+          something that keeps it.
+
+          `radar.opportunity.follow` stays in the catalogue for whoever decides
+          what, if anything, should link to the alerts screen from here.
+        */
+        tender ? <FavouriteButton tenderId={tender.id} /> : null
+      }
     />
   )
 

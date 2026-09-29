@@ -1,7 +1,5 @@
-import Link from 'next/link'
 import { Button, SectionLabel } from '@/components'
 import { AccountChrome } from './account-chrome'
-import { MenuTrigger } from '@/components/menu-trigger'
 import { format, messages } from '@/lib/messages'
 import type { QuotaView } from '@/lib/radar/contract'
 import { ALERTS_HREF, COMPANY_PATH, PLAN_PATH } from '@/lib/routes'
