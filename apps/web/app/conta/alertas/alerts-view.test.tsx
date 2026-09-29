@@ -33,7 +33,7 @@ const BASE: AlertsViewProps = {
   cnpj: '36955612000185',
   companyName: 'Scint Tecnologia',
   botHandle: BOT,
-  keyword: null,
+  keywords: [],
   states: [],
   notice: null,
   connectAction: () => {},
@@ -172,7 +172,7 @@ describe('the filters', () => {
       phase: { phase: 'linked' },
       active: true,
       states: ['RJ'],
-      keyword: 'papel',
+      keywords: ['papel'],
     })
     expect(html).toContain('value="RJ" selected')
     expect(html).toContain('value="papel"')

@@ -143,7 +143,9 @@ export async function savePreferences(formData: FormData): Promise<void> {
   const preferences = clampPreferences(
     {
       states: formData.getAll('uf').map((value) => String(value)),
-      keyword: String(formData.get('palavra') ?? ''),
+      // `getAll`, because the form renders one field per keyword the plan
+      // grants. `get` returned only the first, which is how ten became one.
+      keywords: formData.getAll('palavra').map((value) => String(value)),
     },
     limits,
   )

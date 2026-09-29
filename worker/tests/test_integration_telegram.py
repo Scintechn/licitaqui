@@ -93,16 +93,27 @@ def make_alert(
     user_id: int,
     *,
     states: list[str] | None = None,
-    keyword: str | None = None,
+    keywords: list[str] | None = None,
     active: bool = True,
 ) -> int:
+    # ``value`` is written alongside ``keywords`` because migration 0010 keeps
+    # it until nothing reads it; the first keyword is the best single answer
+    # for a reader that can only take one.
+    words = list(keywords or [])
     row = conn.execute(
         """
-        insert into alerts (user_id, kind, value, states, channel, frequency, active)
-        values (%s, %s, %s, %s, 'telegram', 'weekly', %s)
+        insert into alerts (user_id, kind, value, keywords, states, channel, frequency, active)
+        values (%s, %s, %s, %s, %s, 'telegram', 'weekly', %s)
         returning id
         """,
-        (user_id, "keyword" if keyword else "cnae", keyword, states, active),
+        (
+            user_id,
+            "keyword" if words else "cnae",
+            words[0] if words else None,
+            words,
+            states,
+            active,
+        ),
     ).fetchone()
     assert row
     return int(row[0])
@@ -377,7 +388,7 @@ def test_the_one_keyword_widens_the_digest_beyond_the_cnae(
     cnpj = make_company(e1_conn, "kw", cnae)
     user_id = make_user(e1_conn, "kw", cnpj=cnpj)
     link_telegram(e1_conn, user_id, e1_chat_id(9))
-    make_alert(e1_conn, user_id, states=["SP"], keyword="guardanapo")
+    make_alert(e1_conn, user_id, states=["SP"], keywords=["guardanapo"])
 
     make_tender(
         e1_conn, 1, segment="Segmento Inexistente", object_text="Compra de guardanapos de papel"
@@ -393,6 +404,83 @@ def test_the_one_keyword_widens_the_digest_beyond_the_cnae(
 
     assert delivery.tender_count == 1
     assert "guardanapos" in client.sent[0][1]
+
+
+def test_the_digest_matches_any_of_the_keywords_not_only_the_first(
+    e1_conn: psycopg.Connection,
+) -> None:
+    """E18: ``plan_limits`` grants essencial ten keywords, and the digest
+    delivered one.
+
+    ``RECIPIENT_SQL`` selected ``a.value as keyword`` -- a single column -- and
+    ``SELECT_TENDERS_SQL`` matched a single ``%(keyword)s``. So an Essencial
+    subscriber's digest was indistinguishable from a Básico one, on a row they
+    pay for, and the plans card promising "10 palavras-chave" described
+    something the product could not do. Sci found it on his own account, not
+    from a test, because nothing compared the configurable count to the table.
+
+    The second keyword is the whole assertion: before E18 it could not match.
+    """
+    cnae, segment = a_compatible_cnae(e1_conn)
+    cnpj = make_company(e1_conn, "kws", cnae)
+    user_id = make_user(e1_conn, "kws", cnpj=cnpj)
+    link_telegram(e1_conn, user_id, e1_chat_id(21))
+    make_alert(e1_conn, user_id, states=["SP"], keywords=["guardanapo", "seringa"])
+
+    # Neither tender is in a segment this CNAE reaches, so only the keywords
+    # can find them -- and one of them is the *second* keyword.
+    make_tender(
+        e1_conn, 1, segment="Segmento Inexistente", object_text="Compra de guardanapos de papel"
+    )
+    make_tender(
+        e1_conn, 2, segment="Segmento Inexistente", object_text="Aquisicao de seringas descartaveis"
+    )
+
+    client = Recorder()
+    delivery = telegram_alerts.send(
+        e1_conn,
+        template="weekly-digest",
+        user_id=user_id,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert delivery.tender_count == 2
+    text = client.sent[0][1]
+    assert "guardanapos" in text
+    assert "seringas" in text
+
+
+def test_no_keywords_is_a_cnae_only_digest_rather_than_everything(
+    e1_conn: psycopg.Connection,
+) -> None:
+    """An empty array must match nothing, not everything.
+
+    ``unnest('{}')`` yields no rows so the ``exists`` arm is false, which is
+    the CNAE-only digest. The failure mode worth guarding is the opposite: an
+    empty *string* reaches ``websearch_to_tsquery`` happily and would match
+    every open tender in Brazil -- the portal this product exists to replace.
+    """
+    cnae, segment = a_compatible_cnae(e1_conn)
+    cnpj = make_company(e1_conn, "nokw", cnae)
+    user_id = make_user(e1_conn, "nokw", cnpj=cnpj)
+    link_telegram(e1_conn, user_id, e1_chat_id(22))
+    make_alert(e1_conn, user_id, states=["SP"], keywords=[])
+
+    make_tender(e1_conn, 1, segment=segment, object_text="Compra dentro do segmento")
+    make_tender(
+        e1_conn, 2, segment="Segmento Inexistente", object_text="Compra fora de qualquer segmento"
+    )
+
+    client = Recorder()
+    delivery = telegram_alerts.send(
+        e1_conn,
+        template="weekly-digest",
+        user_id=user_id,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert delivery.tender_count == 1
+    assert "fora de qualquer segmento" not in client.sent[0][1]
 
 
 # -- the quota --------------------------------------------------------------
