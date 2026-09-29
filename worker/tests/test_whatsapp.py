@@ -287,3 +287,67 @@ def test_the_broadcast_job_kind_is_registered() -> None:
 
     assert whatsapp.BROADCAST_JOB_KIND == "founders_opening_broadcast"
     assert "founders_opening_broadcast" in registered_kinds()
+
+
+# -- the dry run of the whole send (E5) --------------------------------------
+#
+# The parts with a database behind them — and the one that matters, that the
+# preview and the send agree — are in `test_integration_whatsapp.py`.
+
+
+def test_a_refused_gate_carries_the_reason_and_no_personal_data() -> None:
+    """§12. Only the caller allowed to send has any use for a name or a
+    number, so a refusal must not carry one out of `check_gates` — least of
+    all the opted-out and no-consent refusals, which are the two people whose
+    details have the least business travelling anywhere."""
+    assert whatsapp.Gate(whatsapp.SKIP_OPTED_OUT).name == ""
+    assert whatsapp.Gate(whatsapp.SKIP_OPTED_OUT).number == ""
+    assert whatsapp.Gate(None, "Maria", "+5511999999999").number == "+5511999999999"
+
+
+def test_a_render_error_outranks_the_gate_in_the_one_word_summary() -> None:
+    """The summary word is what an operator reads on 07/10. A founder who
+    passes every gate and whose message cannot be rendered must not be counted
+    as `would_send`, which is exactly the shape of the 2026-09-26 footer
+    defect: gates fine, body unrenderable, nothing delivered."""
+    broken = whatsapp.ChannelPreview("whatsapp", render_error="MissingPlaceholder: nome")
+
+    assert broken.would_send is False
+    assert broken.outcome == "render_error"
+    assert whatsapp.ChannelPreview("whatsapp", reason="no_consent").outcome == "no_consent"
+    assert whatsapp.ChannelPreview("whatsapp", body="oi").outcome == "would_send"
+
+
+def test_a_founder_reached_on_either_channel_counts_as_reached() -> None:
+    """Either message carries the access link, so one channel keeps the
+    promise — which is the question E5 asks, and why this is `any`."""
+    only_email = whatsapp.OpeningPreview(
+        founders_list_id=1,
+        seat=1,
+        channels=(
+            whatsapp.ChannelPreview("whatsapp", reason=whatsapp.SKIP_OPTED_OUT),
+            whatsapp.ChannelPreview("email", body="..."),
+        ),
+    )
+    neither = whatsapp.OpeningPreview(
+        founders_list_id=2,
+        seat=2,
+        channels=(
+            whatsapp.ChannelPreview("whatsapp", reason=whatsapp.SKIP_NO_CONSENT),
+            whatsapp.ChannelPreview("email", reason="no_consent"),
+        ),
+    )
+
+    assert only_email.reached is True
+    assert neither.reached is False
+
+
+def test_the_pacing_estimate_counts_gaps_and_not_messages() -> None:
+    """The first message does not wait, so 48 founders are 47 intervals —
+    16 to 24 minutes. 19:00 BRT is when the first one goes, not the last."""
+    assert whatsapp.pacing_estimate_seconds(0) == (0.0, 0.0)
+    assert whatsapp.pacing_estimate_seconds(1) == (0.0, 0.0)
+    best, worst = whatsapp.pacing_estimate_seconds(48)
+    assert (best, worst) == (47 * whatsapp.MIN_INTERVAL_SECONDS, 47 * whatsapp.MAX_INTERVAL_SECONDS)
+    assert round(best / 60) == 16
+    assert round(worst / 60) == 24

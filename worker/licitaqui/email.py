@@ -106,6 +106,9 @@ SKIP_NO_CONSENT = "no_consent"
 SKIP_NO_EMAIL = "no_email"
 SKIP_ALREADY_SENT = "already_sent"
 
+#: How loudly :func:`send` reports each refusal, mirroring `whatsapp.SKIP_LEVELS`.
+SKIP_LEVELS = {SKIP_NO_CONSENT: "warning", SKIP_NO_EMAIL: "warning"}
+
 #: `docs/legal/LEGAL_AND_BILLING_BRIEF.md` §1's published support address —
 #: the same constant `telegram_alerts.py` already sends in its own templates.
 #: Not a decision this task made.
@@ -178,6 +181,43 @@ class Delivery:
     @property
     def delivered(self) -> bool:
         return self.outcome == "sent"
+
+
+@dataclass(frozen=True, slots=True)
+class Gate:
+    """May this founder be sent this template, and if not, why not.
+
+    Filled only on an open gate, and never reaches a log or `events` (§12).
+    See `whatsapp.Gate` for the full reasoning.
+    """
+
+    reason: str | None
+    name: str = ""
+    address: str = ""
+
+
+def check_gates(conn: psycopg.Connection, *, founders_list_id: int, template: str) -> Gate:
+    """The three gates and the already-sent check — **and nothing else**.
+
+    Read-only, and the same code :func:`send` runs, so the 08/10 preview
+    (`whatsapp.preview_opening`) cannot drift from the send it previews. The
+    mirror of `whatsapp.check_gates`, minus the opt-out gate this channel does
+    not have: a `SAIR` is a WhatsApp reply, and the e-mail revocation route is
+    the footer's own (see :data:`UNSUBSCRIBE_LINK`, and **E13** for the page
+    that would replace it).
+    """
+    row = _recipient(conn, founders_list_id)
+    if row is None:
+        return Gate(SKIP_NO_RECIPIENT)
+    name, address, consent = row
+    # LGPD (§12): consent is mandatory before any contact.
+    if not consent:
+        return Gate(SKIP_NO_CONSENT)
+    if not address:
+        return Gate(SKIP_NO_EMAIL)
+    if _already_sent(conn, founders_list_id, template):
+        return Gate(SKIP_ALREADY_SENT)
+    return Gate(None, name or "", address)
 
 
 # -- enqueueing ----------------------------------------------------------------
@@ -283,19 +323,20 @@ def send(
     client = client or default_client()
     common = {"founders_list_id": founders_list_id, "template": template}
 
-    row = _recipient(conn, founders_list_id)
-    if row is None:
-        return _skip(conn, log, common, SKIP_NO_RECIPIENT, job_id, attempt)
-    name, address, consent = row
-
-    # LGPD (§12): consent is mandatory before any contact. Nothing below this
-    # line runs without it.
-    if not consent:
-        return _skip(conn, log, common, SKIP_NO_CONSENT, job_id, attempt, level="warning")
-    if not address:
-        return _skip(conn, log, common, SKIP_NO_EMAIL, job_id, attempt, level="warning")
-    if _already_sent(conn, founders_list_id, template):
-        return _skip(conn, log, common, SKIP_ALREADY_SENT, job_id, attempt)
+    # The gates themselves are in `check_gates`, read-only, so the 08/10
+    # preview can run exactly these checks without writing a delivery row.
+    gate = check_gates(conn, founders_list_id=founders_list_id, template=template)
+    if gate.reason is not None:
+        return _skip(
+            conn,
+            log,
+            common,
+            gate.reason,
+            job_id,
+            attempt,
+            level=SKIP_LEVELS.get(gate.reason, "info"),
+        )
+    name, address = gate.name, gate.address
 
     # A template fault (a missing placeholder, an unresolved TODO(Sci)) raises
     # out of here on purpose: it is our bug, not the recipient's, and it should

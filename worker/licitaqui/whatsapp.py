@@ -105,6 +105,12 @@ SKIP_NO_NUMBER = "no_number"
 SKIP_INVALID_NUMBER = "invalid_number"
 SKIP_ALREADY_SENT = "already_sent"
 
+#: How loudly :func:`send` reports each refusal. Anything not named here is
+#: `info`: a founder who never consented, or who has already been sent this
+#: template, is the system working. A row that says it wants messages and
+#: carries no number is a data fault somebody should see, so it is a warning.
+SKIP_LEVELS = {SKIP_NO_CONSENT: "warning", SKIP_NO_NUMBER: "warning"}
+
 #: Spec §9: ≈ 1 message every 20–30 s. Jittered so a burst of signups does not
 #: produce a metronome, which is exactly what a spam heuristic looks for.
 MIN_INTERVAL_SECONDS = 20.0
@@ -238,6 +244,60 @@ class Delivery:
     @property
     def delivered(self) -> bool:
         return self.outcome == "sent"
+
+
+@dataclass(frozen=True, slots=True)
+class Gate:
+    """May this founder be sent this template, and if not, why not.
+
+    ``name`` and ``number`` are filled **only on an open gate**, because only
+    the caller that is allowed to send has any use for them. A refusal carries
+    the reason and nothing else, so a phone number never travels out of here
+    for somebody who must not be contacted (§12). Even on the open path a
+    ``Gate`` is never logged and never put in `events`; :class:`Delivery` is
+    the type that leaves this module.
+    """
+
+    reason: str | None
+    name: str = ""
+    number: str = ""
+
+
+def check_gates(
+    conn: psycopg.Connection,
+    *,
+    founders_list_id: int,
+    template: str,
+    after_optout: bool = False,
+) -> Gate:
+    """The four consent gates and the already-sent check — **and nothing else**.
+
+    Read-only by construction: it writes no delivery row, opens no socket and
+    sleeps for no pacing slot. That is what lets the opening preview
+    (:func:`preview_opening`) ask *who would receive this on 08/10* without
+    answering it, from the **same** code the real send runs — so the two
+    cannot drift, which is the whole reason this is a function and not a
+    second copy of the checks in a script.
+
+    The order matters and is the order the module docstring gives: a founder
+    who never consented is never looked up further, and `already_sent` is last
+    because it is an outcome rather than a refusal.
+    """
+    row = _recipient(conn, founders_list_id)
+    if row is None:
+        return Gate(SKIP_NO_RECIPIENT)
+    name, number, consent = row
+    # LGPD (§12): consent is mandatory before any contact. Nothing below this
+    # line runs without it.
+    if not consent:
+        return Gate(SKIP_NO_CONSENT)
+    if not after_optout and has_opted_out(conn, founders_list_id):
+        return Gate(SKIP_OPTED_OUT)
+    if not number:
+        return Gate(SKIP_NO_NUMBER)
+    if _already_sent(conn, founders_list_id, template):
+        return Gate(SKIP_ALREADY_SENT)
+    return Gate(None, name or "", number)
 
 
 # -- context ---------------------------------------------------------------
@@ -480,21 +540,24 @@ def send(
     client = client or default_client()
     common = {"founders_list_id": founders_list_id, "template": template}
 
-    row = _recipient(conn, founders_list_id)
-    if row is None:
-        return _skip(conn, log, common, SKIP_NO_RECIPIENT, job_id, attempt)
-    name, number, consent = row
-
-    # LGPD (§12): consent is mandatory before any contact. Nothing below this
-    # line runs without it, and the reason is logged without naming the person.
-    if not consent:
-        return _skip(conn, log, common, SKIP_NO_CONSENT, job_id, attempt, level="warning")
-    if not after_optout and has_opted_out(conn, founders_list_id):
-        return _skip(conn, log, common, SKIP_OPTED_OUT, job_id, attempt)
-    if not number:
-        return _skip(conn, log, common, SKIP_NO_NUMBER, job_id, attempt, level="warning")
-    if _already_sent(conn, founders_list_id, template):
-        return _skip(conn, log, common, SKIP_ALREADY_SENT, job_id, attempt)
+    # The gates themselves are in `check_gates`, read-only, so the 08/10
+    # preview can run exactly these checks without writing a delivery row.
+    # Only the *recording* of a refusal lives here, because only a real send
+    # has a job and an attempt to record it against.
+    gate = check_gates(
+        conn, founders_list_id=founders_list_id, template=template, after_optout=after_optout
+    )
+    if gate.reason is not None:
+        return _skip(
+            conn,
+            log,
+            common,
+            gate.reason,
+            job_id,
+            attempt,
+            level=SKIP_LEVELS.get(gate.reason, "info"),
+        )
+    name, number = gate.name, gate.number
 
     # A template fault (a missing placeholder, an unresolved TODO(Sci)) raises
     # out of here on purpose: it is our bug, not the recipient's, and it should
@@ -656,6 +719,32 @@ BRT_ZONE = "America/Sao_Paulo"
 
 SEATED_FOUNDERS_SQL = "select id, seat from founders_list where seat is not null order by seat"
 
+#: The other half of the seat list, and the one no template covers. Counted
+#: rather than listed: the preview reports how many people the 08/10 send does
+#: **not** reach, which is the open decision this card names.
+WAITLISTED_FOUNDERS_SQL = "select count(*) from founders_list where seat is null"
+
+#: The broadcast row itself, for the preview's first line. `run_after` comes
+#: back as the database stores it — **UTC** (CLAUDE.md's clocks table); the
+#: preview converts to BRT for display and says which is which.
+#:
+#: **A live row wins over a dead one, and the newest live row wins.** `jobs_dedupe`
+#: is unique on (kind, key) only `where status in ('queued','running')`
+#: (`0001_initial.sql`), so once a row is `done` or `failed` a second one with
+#: the same key is allowed — which is exactly what happens when the sweep fails
+#: and somebody re-runs `schedule_founders_opening.py --commit`. Without this
+#: ordering the rehearsal's first line would print whichever row Postgres
+#: happened to return, and "status failed" beside a healthy queued row is the
+#: one wrong answer this report must not give.
+BROADCAST_ROW_SQL = """
+select id, status, run_after
+  from jobs
+ where kind = %(kind)s
+   and key = %(key)s
+ order by (status in ('queued', 'running')) desc, id desc
+ limit 1
+"""
+
 
 def broadcast_hour() -> tuple[int, int]:
     raw = (os.environ.get(BROADCAST_HOUR_VAR) or DEFAULT_BROADCAST_HOUR).strip()
@@ -754,6 +843,202 @@ def founders_opening_broadcast(ctx: JobContext) -> None:
             numero_vaga=seat,
         )
     ctx.log.info("founders opening broadcast queued", extra={"count": len(seated)})
+
+
+# -- the dry run (E5's second acceptance criterion) -------------------------
+#
+# "A dry run of the whole send is possible before the date." Two things that
+# sound like one already existed and are neither:
+#
+#   * `scripts/schedule_founders_opening.py` without `--commit` dry-runs the
+#     **scheduling** — whether the row is there and when it will fire. It says
+#     nothing about who would receive a message.
+#   * `WHATSAPP_DELIVERY` unset makes a *send* a dry run. But that switch is
+#     global and is now **on** in production (`docs/STATUS.md`, 2026-09-26), so
+#     running the broadcast early to see what it would do would send every
+#     seated founder a real message a month before the date. The safe rehearsal
+#     cannot be the send.
+#
+# So this is the rehearsal: for every seated founder, run the same
+# `check_gates` the send runs and render the same body, **reading only**. It
+# answers the question that matters on 07/10 — *who does 08/10 actually
+# reach, and who is silently skipped and why* — from the code that will
+# answer it for real, rather than from a second copy of the rules.
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelPreview:
+    """What one channel would do for one founder on 08/10.
+
+    ``body`` is the **rendered message**, which contains the person's first
+    name — so, like the send itself, it is never logged and never written to
+    `events` (§12). `scripts/preview_founders_opening.py` prints it to a
+    terminal and nowhere else, and only when asked.
+    """
+
+    channel: str
+    reason: str | None = None
+    render_error: str | None = None
+    body: str | None = None
+
+    @property
+    def would_send(self) -> bool:
+        return self.reason is None and self.render_error is None
+
+    @property
+    def outcome(self) -> str:
+        """One word for a summary line. Never contains personal data."""
+        if self.render_error is not None:
+            return "render_error"
+        return self.reason or "would_send"
+
+
+@dataclass(frozen=True, slots=True)
+class OpeningPreview:
+    """One seated founder's 08/10, decided before the day.
+
+    Holds :class:`ChannelPreview` objects, so it carries rendered bodies: same
+    rule, terminal only.
+    """
+
+    founders_list_id: int
+    seat: int
+    channels: tuple[ChannelPreview, ...]
+
+    @property
+    def reached(self) -> bool:
+        """Whether **any** channel would reach this founder.
+
+        Either one carries the access link, so a founder who gets the e-mail
+        and not the WhatsApp has still been kept the promise — which is the
+        question the card asks, and why this is `any` rather than `all`.
+        """
+        return any(channel.would_send for channel in self.channels)
+
+
+def _preview_whatsapp(conn: psycopg.Connection, founders_list_id: int, seat: int) -> ChannelPreview:
+    gate = check_gates(conn, founders_list_id=founders_list_id, template=OPENING_TEMPLATE)
+    if gate.reason is not None:
+        return ChannelPreview(CHANNEL, reason=gate.reason)
+
+    # The fifth refusal, and the one `check_gates` cannot make: the number's
+    # *shape* is checked by the transport (`evolution.normalise_number`), which
+    # the rehearsal must not call. So it is re-checked here — a pure function
+    # of the string, no I/O — because without it a founder whose row holds an
+    # undialable number reads `would_send` before the day and receives nothing
+    # on it. `send()` reaches the same verdict one step later and records the
+    # same reason string, as `whatsapp.failed` rather than `whatsapp.skipped`:
+    # by then it has tried, which is the distinction the delivery log keeps.
+    try:
+        evolution.normalise_number(gate.number)
+    except ValueError:
+        return ChannelPreview(CHANNEL, reason=SKIP_INVALID_NUMBER)
+
+    try:
+        body = templates.load(CHANNEL, OPENING_TEMPLATE).render(
+            build_context(
+                name=gate.name, payload={"numero_vaga": seat}, template_id=OPENING_TEMPLATE
+            )
+        )
+    except Exception as exc:
+        # Deliberately broad: one founder whose body will not build must not
+        # end the survey of the other 47. The outcome word is `render_error`
+        # and the type name is printed, so nothing is swallowed quietly.
+        return ChannelPreview(CHANNEL, render_error=f"{type(exc).__name__}: {exc}")
+    return ChannelPreview(CHANNEL, body=body)
+
+
+def _preview_email(conn: psycopg.Connection, founders_list_id: int, seat: int) -> ChannelPreview:
+    # Deferred for the same reason the broadcast handler defers it: `email`
+    # imports this module for `build_context`, so a module-scope import cycles.
+    from . import email
+
+    gate = email.check_gates(conn, founders_list_id=founders_list_id, template=OPENING_TEMPLATE)
+    if gate.reason is not None:
+        return ChannelPreview(email.CHANNEL, reason=gate.reason)
+    try:
+        subject, body = email.render_email(
+            OPENING_TEMPLATE,
+            email.build_context(
+                name=gate.name, payload={"numero_vaga": seat}, template_id=OPENING_TEMPLATE
+            ),
+        )
+    except Exception as exc:  # broad on purpose; see `_preview_whatsapp`
+        return ChannelPreview(email.CHANNEL, render_error=f"{type(exc).__name__}: {exc}")
+    return ChannelPreview(email.CHANNEL, body=f"{subject}\n\n{body}")
+
+
+def preview_opening(conn: psycopg.Connection) -> list[OpeningPreview]:
+    """What the 08/10 broadcast would do, for every seated founder. Writes nothing.
+
+    Runs both channels because the sweep queues both (E12): previewing half of
+    a two-channel send is how the e-mail came to be missing in the first place.
+    """
+    with conn.cursor() as cur:
+        cur.execute(SEATED_FOUNDERS_SQL)
+        seated = [(int(row[0]), int(row[1])) for row in cur.fetchall()]
+    return [
+        OpeningPreview(
+            founders_list_id=founders_list_id,
+            seat=seat,
+            channels=(
+                _preview_whatsapp(conn, founders_list_id, seat),
+                _preview_email(conn, founders_list_id, seat),
+            ),
+        )
+        for founders_list_id, seat in seated
+    ]
+
+
+def waitlisted_count(conn: psycopg.Connection) -> int:
+    """How many people the opening broadcast does **not** reach.
+
+    Not a detail: `email/founders-waitlist.md` promises these people the access
+    link when the doors open and no template covers what they receive on the
+    day. The preview prints this number so the gap is a figure somebody sees
+    before 08/10 rather than a sentence in a docstring (card E5).
+    """
+    with conn.cursor() as cur:
+        cur.execute(WAITLISTED_FOUNDERS_SQL)
+        row = cur.fetchone()
+    return int(row[0]) if row else 0
+
+
+def scheduled_broadcast(
+    conn: psycopg.Connection, *, key: str | None = None
+) -> tuple[int, str, datetime] | None:
+    """The sweep row that will actually fire: ``(id, status, run_after)``, or ``None``.
+
+    A `queued` or `running` row wins over a `done` or `failed` one under the
+    same key, and the newest wins among equals — see :data:`BROADCAST_ROW_SQL`
+    for why more than one can exist.
+
+    ``run_after`` is returned **aware and in UTC**. `jobs.run_after` is
+    `timestamptz`, so psycopg already hands back an aware value in the session
+    timezone; it is converted here rather than labelled, because a naive one
+    formatted by a caller would be read against Sci's laptop clock (WEST) and
+    that is CLAUDE.md's exact trap.
+    """
+    with conn.cursor() as cur:
+        cur.execute(BROADCAST_ROW_SQL, {"kind": BROADCAST_JOB_KIND, "key": key or broadcast_key()})
+        row = cur.fetchone()
+    if row is None:
+        return None
+    run_after = row[2]
+    if run_after.tzinfo is None:  # pragma: no cover - Neon returns timestamptz
+        run_after = run_after.replace(tzinfo=UTC)
+    return int(row[0]), str(row[1]), run_after.astimezone(UTC)
+
+
+def pacing_estimate_seconds(count: int) -> tuple[float, float]:
+    """How long ``count`` paced WhatsApp messages take, best and worst (§9).
+
+    The first message does not wait, so it is ``count - 1`` intervals. At the
+    schema's 48-seat ceiling that is 16–24 minutes, which is the number that
+    decides whether 19:00 BRT means the last founder reads it at 19:24.
+    """
+    gaps = max(0, count - 1)
+    return gaps * MIN_INTERVAL_SECONDS, gaps * MAX_INTERVAL_SECONDS
 
 
 # -- delivery log ----------------------------------------------------------

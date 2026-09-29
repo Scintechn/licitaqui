@@ -423,6 +423,32 @@ delivery row, neither records an error. Verify against `whatsapp.sent` in
 | `EVOLUTION_API_KEY` | to send | — | Sent as the `apikey` header |
 | `EVOLUTION_INSTANCE` | to send | — | Instance name in the `POST /message/sendText/{instance}` path |
 | `FOUNDERS_OPENING_DATE` | no | `2026-10-17` (`product.OPENING_DATE`) | Fills `{{data_abertura}}`, so a slipped opening is an env change |
+| `FOUNDERS_OPENING_HOUR` | no | `12:00` (`product.OPENING_HOUR_BRT`) | **BRT**, the hour the opening broadcast fires. The row it writes is UTC (CLAUDE.md's clocks). Separate from the date on purpose: the date is copy, the hour belongs to the sweep |
+| `FOUNDERS_OPENING_LINK` | no | `APP_BASE_URL` | `{{link_acesso}}` in `founders-opening` on **both** channels. Wrong here means every seated founder receives a link that goes nowhere, so `preview_founders_opening.py` prints the rendered body it produces |
+
+### Rehearsing the 17/10 opening, and verifying it afterwards (E5)
+
+```bash
+python worker/scripts/preview_founders_opening.py            # who 17/10 reaches, and who it does not
+python worker/scripts/preview_founders_opening.py --render   # and the message bodies
+```
+
+Read-only — it sets `default_transaction_read_only` and constructs no transport
+— so it is safe against production, which is the only place the answer is true.
+It is **not** the same thing as either of the two dry runs that already existed:
+`schedule_founders_opening.py` without `--commit` rehearses the *scheduling*,
+and `WHATSAPP_DELIVERY` unset would rehearse a send that is now switched on in
+production, i.e. would send every seated founder a real message early.
+
+It runs the same `whatsapp.check_gates` / `email.check_gates` the send runs, so
+the rehearsal cannot drift from the performance —
+`test_the_preview_says_exactly_what_the_send_then_does` asserts the reason it
+predicts is the reason the delivery log then records.
+
+Run it **again after the broadcast** and it is the per-recipient verification
+the paragraph above asks for: the already-sent gate matches `whatsapp.sent` /
+`email.sent` alone, never `dry_run`, so `already_sent` is a founder the message
+reached and `would_send` is one it did not — whatever the `jobs` row says.
 
 ### Cloudflare blocks default HTTP clients
 
