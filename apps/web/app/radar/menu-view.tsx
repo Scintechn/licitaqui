@@ -46,13 +46,26 @@ const account = messages.account.screen
 /** Plans that already include everything the upgrade link would sell. */
 const PAID_PLANS = new Set(['promocional', 'essencial', 'pro'])
 
-type Item = { href: string; icon: IconName; label: string }
+/**
+ * `id` exists because **three of these share one `href`**.
+ *
+ * "Minha empresa", "Plano e pagamento" and "Perfil" all point at `/conta`,
+ * because those sections have no routes of their own yet. Marking the current
+ * page by `href` therefore lit **all three at once** the moment a page under
+ * `/conta` rendered this menu — which nobody saw while it was mounted only
+ * inside `radar-screen.tsx` and always passed `/radar`. Sci found it within
+ * minutes of D20 putting the menu on `/conta`.
+ *
+ * Three labels for one page is the real gap, and it is carded (**D22**). Until
+ * those destinations exist, the id is what lets exactly one of them be marked.
+ */
+type Item = { id: string; href: string; icon: IconName; label: string }
 
 const MAIN: Item[] = [
-  { href: '/radar', icon: 'search', label: copy.radar },
-  { href: '/conta/alertas', icon: 'alert', label: copy.alerts },
-  { href: '/conta', icon: 'company', label: copy.company },
-  { href: '/conta', icon: 'money', label: copy.billing },
+  { id: 'radar', href: '/radar', icon: 'search', label: copy.radar },
+  { id: 'alerts', href: '/conta/alertas', icon: 'alert', label: copy.alerts },
+  { id: 'company', href: '/conta', icon: 'company', label: copy.company },
+  { id: 'billing', href: '/conta', icon: 'money', label: copy.billing },
 ]
 
 /**
@@ -66,7 +79,9 @@ const MAIN: Item[] = [
  * (`/conta/criar`). The strip above it only renders for a signed-in viewer,
  * so the sign-up screen is the one page that item can never mean.
  */
-const ACCOUNT: Item[] = [{ href: ACCOUNT_PATH, icon: 'account', label: copy.profile }]
+const ACCOUNT: Item[] = [
+  { id: 'profile', href: ACCOUNT_PATH, icon: 'account', label: copy.profile },
+]
 
 /**
  * `plan_limits` and `users.plan` spell the plans in Portuguese ids; the
@@ -101,7 +116,8 @@ export function MenuView({
 }: {
   /** `null` while the strip is still loading — the links work regardless. */
   summary: AccountSummary | null
-  /** Which item to mark as the page you are on. */
+  /** Which item to mark as the page you are on — an `Item['id']`, not an
+   *  href, because three items share one href. See {@link Item}. */
   current?: string
   /**
    * **Present means drawer, absent means rail** — one component, two
@@ -168,10 +184,10 @@ function Section({ label, items, current }: { label: string; items: Item[]; curr
         <SectionLabel tone="muted">{label}</SectionLabel>
       </div>
       {items.map((item) => {
-        const here = current === item.href
+        const here = current === item.id
         return (
           <Link
-            key={`${item.href}-${item.label}`}
+            key={item.id}
             href={item.href}
             aria-current={here ? 'page' : undefined}
             className={cn(
