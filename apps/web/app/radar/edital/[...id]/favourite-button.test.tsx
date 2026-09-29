@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
+import { tenderApiPath } from '@/lib/radar/client'
 import { OpportunityView } from './opportunity-view'
 import { FavouriteButton } from './favourite-button'
 
@@ -61,5 +64,46 @@ describe('what the edital screen no longer promises', () => {
       />,
     )
     expect(html).not.toContain(messages.radar.opportunity.follow)
+  })
+})
+
+describe('the URL it actually calls', () => {
+  /**
+   * **The assertion that was missing, and would have caught this on the day.**
+   *
+   * A `numeroControlePNCP` contains a slash — `51327708000192-1-000084/2026`.
+   * The button first built its request with `encodeURI`, which does not encode
+   * `/`, so every call went to `/api/tenders/…-000084/2026/favorito`: two path
+   * segments where `app/api/tenders/[id]/favorito` declares one. Every request
+   * 404'd and the button stayed absent for ever.
+   *
+   * The test above — "renders nothing until it knows" — **passed the whole
+   * time**, because a permanent 404 and a request still in flight produce
+   * exactly the same empty render. It asserted the unit and not the path,
+   * which is the shape CLAUDE.md §4b names.
+   *
+   * `client.ts` had `tenderApiPath` all along, added when the band route hit
+   * this same wall, carrying the comment "The single-segment spelling
+   * /api/tenders/[id] matches".
+   */
+  it('encodes the slash, so the single-segment route matches', () => {
+    const id = '51327708000192-1-000084/2026'
+    const url = `/api/tenders/${tenderApiPath(id)}/favorito`
+
+    expect(url).not.toContain('000084/2026')
+    expect(url).toBe('/api/tenders/51327708000192-1-000084%2F2026/favorito')
+    // One segment between `tenders` and `favorito`, which is what the route
+    // file declares. Two is a 404.
+    expect(url.split('/').filter(Boolean)).toHaveLength(4)
+  })
+
+  it('is what the button uses, not a hand-rolled encoding', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./favourite-button.tsx', import.meta.url)),
+      'utf8',
+    )
+    expect(source).toContain('tenderApiPath(tenderId)')
+    // `encodeURI` is the one that let the slash through.
+    expect(source).not.toMatch(/encodeURI\(tenderId\)/)
   })
 })
