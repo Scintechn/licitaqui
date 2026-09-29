@@ -107,8 +107,13 @@ export async function GET(
       )
     }
 
+    // No `entitled` on the wire: the screen reads entitlement on the server
+    // before it renders (`readPriceBandEntitlement`), so carrying it here
+    // would be a second source of truth for the same question — and the slower
+    // of the two, since this answer is 412 ms behind a trigram join. The gate
+    // below still applies: an unentitled caller never receives a band.
     return NextResponse.json(
-      { state: 'ready', band: entitled ? band : null, entitled },
+      { state: 'ready', band: entitled ? band : null },
       { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
     )
   } catch (error) {

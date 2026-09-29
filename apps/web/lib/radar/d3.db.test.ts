@@ -45,7 +45,16 @@ const ROLLBACK = new Error('rollback')
  */
 const WITH_ITEMS = loadFixtures().filter((fixture) => fixture.items > 0)
 const LIST_FIXTURES = WITH_ITEMS.slice(0, 3)
-const STATS_FIXTURES = WITH_ITEMS.slice(3, 5)
+/**
+ * Three, not two: the first is the **baseline** this suite used to inherit.
+ *
+ * `openTenderStats` answers `null` when `open` is 0 — deliberately, so the
+ * landing page omits the strip rather than print "0 editais abertos". The
+ * test read that `null` as a fault, which made it depend on the database
+ * already holding an open tender that nothing here put there. On 2026-09-28
+ * it did not, and the suite failed for a reason it could not report.
+ */
+const STATS_FIXTURES = WITH_ITEMS.slice(3, 6)
 
 afterAll(async () => {
   if (!url) return
@@ -81,13 +90,24 @@ suite('the Radar list carries an item count', () => {
 
 suite('openTenderStats', () => {
   it('counts an open ME/EPP tender once in each figure, and a closed one in neither', async () => {
-    const [openOne, closedOne] = STATS_FIXTURES
+    const [baseline, openOne, closedOne] = STATS_FIXTURES
 
     await expect(
       db().transaction(
         async (tx) => {
+          // Establish the precondition instead of inheriting it: one open
+          // tender, so `openTenderStats` has something to count and its
+          // `null`-at-zero contract is not mistaken for a failure.
+          await insertFixture(tx, baseline, { segments: [SEGMENT] })
+          await tx.execute(sql`
+            update tenders
+               set proposals_close_at = now() + interval '30 days',
+                   status = 'Divulgada no PNCP'
+             where id = ${baseline.id}
+          `)
+
           const before = await openTenderStats(tx)
-          expect(before).not.toBeNull()
+          expect(before, 'the baseline tender must be counted').not.toBeNull()
 
           await insertFixture(tx, openOne, { segments: [SEGMENT] })
           await insertFixture(tx, closedOne, { segments: [SEGMENT] })

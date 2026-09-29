@@ -46,7 +46,6 @@ describe('GET /api/tenders/:id/band', () => {
     expect(body.state).toBe('ready')
     expect(body.band.median).toBe(100)
     expect(body.band.sampleSize).toBe(6)
-    expect(body.entitled).toBe(true)
   })
 
   it('answers ready with null — not an error — when it does not', async () => {
@@ -94,12 +93,12 @@ describe('GET /api/tenders/:id/band', () => {
 
       expect(body.state).toBe('ready')
       expect(body.band).toBeNull()
-      // **The assertion the review found missing.** `entitled` is the whole
-      // point of this branch: without it the screen cannot tell this caller
-      // from a subscriber whose item simply has no band, and the upsell
-      // disappears from exactly the people it is for. Hardcode the field to
-      // `true` and every other assertion here still passes.
-      expect(body.entitled).toBe(false)
+      // **No `entitled` on the wire.** It rode here briefly, and the screen
+      // drove its plan CTA off it — which put entitlement 412 ms behind a
+      // trigram join and made the CTA flicker on every item chip and never
+      // appear on a tender with no items. The screen now reads it on the
+      // server before rendering, so this answer must not carry a second copy.
+      expect(body).not.toHaveProperty('entitled')
     })()
   })
 
@@ -128,7 +127,7 @@ describe('GET /api/tenders/:id/band', () => {
     // as Essencial" — the whole of what they are buying on 08/10.
     const body = await (await call()).json()
     expect(body.state).toBe('ready')
-    expect(body.entitled).toBe(true)
+    expect(body).not.toHaveProperty('entitled')
   })
 
   it('refuses an id that is not a PNCP control number', async () => {

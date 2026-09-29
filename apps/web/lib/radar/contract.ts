@@ -234,16 +234,21 @@ export type BandResponse =
       state: 'ready'
       band: PriceBand | null
       /**
-       * Whether this caller's plan includes the band.
+       * **There is deliberately no `entitled` here.**
        *
-       * Carried on `ready` as well as implied by `locked`, because the two
-       * questions are independent: an unentitled caller looking at an item
-       * with no band gets `ready` with `band: null`, exactly like a
-       * subscriber does. Without this the screen cannot tell them apart, and
-       * the first version of the plan CTA hid the upsell from the very people
-       * it exists for.
+       * There was, briefly. An unentitled caller on an item with no band gets
+       * `ready` with `band: null`, exactly like a subscriber does, so the
+       * screen could not tell them apart and the first plan CTA hid the
+       * upsell from the very people it exists for. Carrying `entitled` on
+       * `ready` fixed that and created a second problem: entitlement then had
+       * two sources, one of them 412 ms away behind a trigram join, which is
+       * why the CTA appeared late and vanished on every item chip.
+       *
+       * Entitlement is now read **once, on the server**, in the page that
+       * renders the screen, and passed down as a prop — correct on first
+       * paint, correct on a tender with no items to ask about, and never
+       * waiting on this request. See `readPriceBandEntitlement`.
        */
-      entitled: boolean
     }
   /**
    * The caller's plan does not include the band (E9, `hasPriceBand`).

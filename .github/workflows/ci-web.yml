@@ -85,8 +85,30 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # A missing secret makes a `*.db.test.ts` suite skip rather than fail,
+      # and a skip reports success. This job ran `pnpm test` with none of these
+      # set from the day it was written, so twelve database suites had never
+      # run in CI — `founders/signup` among them, which is why CLAUDE.md §4b's
+      # "a 500 on the founders signup" shipped with a green suite.
+      #
+      # `REQUIRE_TEST_DATABASE=1` turns a skip into a failure, and
+      # `lib/db/database-suites.test.ts` derives the list of variables from the
+      # suites themselves rather than from this file — so a new suite whose
+      # secret nobody added fails here, by name, instead of silently skipping.
+      #
+      # A fork's pull request has no secrets, does not get the flag set to a
+      # meaningful value, and keeps skipping: that is the case the skip is for.
       - name: Test
         run: pnpm test
+        env:
+          REQUIRE_TEST_DATABASE: ${{ secrets.TEST_DATABASE_URL != '' && '1' || '0' }}
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_DATABASE_URL_B2: ${{ secrets.TEST_DATABASE_URL_B2 }}
+          TEST_DATABASE_URL_D3: ${{ secrets.TEST_DATABASE_URL_D3 }}
+          TEST_DATABASE_URL_E1: ${{ secrets.TEST_DATABASE_URL_E1 }}
+          TEST_DATABASE_URL_FH: ${{ secrets.TEST_DATABASE_URL_FH }}
+          TEST_DATABASE_URL_O1: ${{ secrets.TEST_DATABASE_URL_O1 }}
+          TEST_DATABASE_URL_R1: ${{ secrets.TEST_DATABASE_URL_R1 }}
 
       - name: Build
         run: pnpm build

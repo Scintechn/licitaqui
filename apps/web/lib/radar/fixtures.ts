@@ -14,7 +14,8 @@ import type { Executor } from '@/lib/db'
  * ## Why these payloads and not hand-built rows
  *
  * `db/seed/fixtures/pncp/` holds 20 real PNCP responses captured by the POCs —
- * 940 items, five of the tenders still open, the rest closed, one with no
+ * 940 items, seven of the tenders open and the rest closed **at capture** and
+ * so for ever after (see `CAPTURED_AT`), one with no
  * proposal dates at all, agencies in eleven states. Rows invented for a test
  * agree with whatever the test expects; these disagree, the way PNCP does, and
  * that is the point: the contract tests below run against the shapes the
@@ -102,7 +103,62 @@ export type SeedFixture = {
 
 const FIXTURES = fileURLToPath(new URL('../../../../db/seed/fixtures/pncp', import.meta.url))
 
-/** The 20 captured PNCP payloads, re-keyed onto this run's agency. */
+/**
+ * When the 20 payloads were captured from PNCP.
+ *
+ * **Why the fixtures are re-dated at all.** Each payload carries an absolute
+ * `dataEncerramentoProposta`, and the suites split them on `> now()`. That made
+ * "is this fixture open?" a property of **the day the tests are run**, so the
+ * open set shrank with the calendar: 7 of 20 were open at capture, and by
+ * 2026-09-28 three were, four of them having expired that morning — which is
+ * the morning `main` went red, on `radar.db.test.ts:613` reading past the end
+ * of `openTenders` and on `d3.db.test.ts` finding no open tender to count.
+ * Two more were due to expire on 30/09 and 01/10, before the 08/10 opening.
+ *
+ * So every deadline is shifted by the same interval — `now() - CAPTURED_AT` —
+ * which preserves each fixture's open/closed character and the ordering
+ * between them, permanently. A fixture captured as open is open forever; one
+ * captured as closed stays closed; the four with no deadline keep none.
+ *
+ * `dataAberturaProposta` is shifted by the same amount so a tender cannot end
+ * up closing before it opened.
+ */
+const CAPTURED_AT = Date.parse('2026-09-17T00:00:00-03:00')
+
+/** Fixed at import so every row in one run is re-dated against one instant. */
+const RUN_AT = Date.now()
+
+/**
+ * `"2026-09-28T08:30:00"` — naive Brasília local time, which is what PNCP
+ * sends and what `insertFixture` casts with
+ * `::timestamp at time zone 'America/Sao_Paulo'`. Formatting through `sv-SE`
+ * gives `YYYY-MM-DD HH:mm:ss` directly, and asking for the São Paulo zone
+ * keeps the value naive-in-Brasília the way the cast expects.
+ */
+function brasiliaNaive(instant: number): string {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+    .format(new Date(instant))
+    .replace(' ', 'T')
+}
+
+/** One captured PNCP timestamp, moved forward by `now() - CAPTURED_AT`. */
+export function rebase(naive: unknown): string | null {
+  if (typeof naive !== 'string' || naive === '') return null
+  const captured = Date.parse(`${naive}-03:00`)
+  if (Number.isNaN(captured)) return null
+  return brasiliaNaive(captured + (RUN_AT - CAPTURED_AT))
+}
+
+/** The 20 captured PNCP payloads, re-keyed onto this run's agency and re-dated. */
 export function loadFixtures(): SeedFixture[] {
   return readdirSync(FIXTURES)
     .filter((name) => name.endsWith('.json'))
@@ -113,6 +169,10 @@ export function loadFixtures(): SeedFixture[] {
         itens: Record<string, unknown>[]
       }
       const det = payload.det
+      // Re-dated in place, so `raw` and the columns agree: a test that reads
+      // the payload back cannot disagree with `proposals_close_at`.
+      det.dataEncerramentoProposta = rebase(det.dataEncerramentoProposta)
+      det.dataAberturaProposta = rebase(det.dataAberturaProposta)
       const seedId = String(det.numeroControlePNCP)
       const unit = (det.unidadeOrgao ?? {}) as Record<string, unknown>
       return {

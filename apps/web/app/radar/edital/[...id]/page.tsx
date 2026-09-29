@@ -5,6 +5,7 @@ import { messages } from '@/lib/messages'
 import { radarHref, readSearch, screeningHref, tenderHref } from '@/lib/radar/client'
 import { OpportunityScreen } from './opportunity-screen'
 import { OpportunityView } from './opportunity-view'
+import { readPriceBandEntitlement } from './entitlement'
 import { PriceScreen } from './price-screen'
 import { PriceView } from './price-view'
 import { ScreeningScreen } from './screening-screen'
@@ -107,6 +108,11 @@ export default async function TenderPage({
   }
 
   if (route.view === 'price') {
+    // Read here rather than inside the screen: it does not depend on the item
+    // or the band, so it is known before the first byte and the plan CTA is
+    // correct on first paint. See `entitlement.ts` for the three defects that
+    // reading it from the band response caused.
+    const entitled = await readPriceBandEntitlement()
     return (
       <Suspense
         fallback={
@@ -117,10 +123,11 @@ export default async function TenderPage({
             status={{ kind: 'analyzing' }}
             backHref={screeningHref(route.tenderId, search)}
             search={search}
+            showPlanCta={!entitled}
           />
         }
       >
-        <PriceScreen id={route.tenderId} />
+        <PriceScreen id={route.tenderId} entitled={entitled} />
       </Suspense>
     )
   }
