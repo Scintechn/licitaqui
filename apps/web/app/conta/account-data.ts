@@ -30,6 +30,8 @@ import type { QuotaView } from '@/lib/radar/contract'
 type Row = { plan: string; cnpj: string | null; founder_seat: number | null }
 
 export type AccountData = {
+  /** The signed-in account. `readAccountData` has already redirected if none. */
+  userId: number
   plan: string
   /** The display name, or the raw key when the map has no entry. */
   planName: string
@@ -75,6 +77,7 @@ export async function readAccountData(): Promise<AccountData> {
     : null
 
   return {
+    userId: Number(id),
     plan: user.plan,
     planName: PLAN_NAMES[user.plan] ?? user.plan,
     quota: quotaView(limit, used),

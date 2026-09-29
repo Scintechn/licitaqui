@@ -153,3 +153,45 @@ describe('the menu (canvas 09)', () => {
     expect(out).toMatch(/class="sr-only"[^>]*>Menu</)
   })
 })
+
+describe('the favourites badge (D23)', () => {
+  /**
+   * Sci's card asks for the count and the list to come from **one query**, and
+   * this is the half of that rule the markup can assert.
+   *
+   * The other half is in `lib/account/server-summary.ts`: `readShell` calls
+   * `listFavourites` and takes `.length`, which is why
+   * `lib/favourites/store.ts` deliberately has no `countFavourites`. A second
+   * query is a second answer, free to disagree — a badge saying 4 above a list
+   * showing 3 is the exact shape this repo keeps finding, where two readers of
+   * one fact reach different conclusions.
+   */
+  function withCount(count: number | null) {
+    return renderToStaticMarkup(
+      <MenuView summary={summary()} current="radar" favouriteCount={count} onDismiss={() => {}} titleId="t" />,
+    )
+  }
+
+  it('shows the number when there is one', () => {
+    expect(withCount(4)).toContain('>4<')
+  })
+
+  it('shows nothing at zero, rather than a "0"', () => {
+    // A badge that is usually 0 trains people to stop reading it, and nothing
+    // marked is not a quantity worth showing.
+    const out = withCount(0)
+    expect(out).toContain(copy.favourites)
+    expect(out).not.toContain('>0<')
+  })
+
+  it('shows nothing when the count is unknown', () => {
+    // `null` is a visitor, or a screen that did not read them — not zero.
+    expect(withCount(null)).not.toMatch(/>\d+</)
+  })
+
+  it('still draws the entry either way, so the section is reachable', () => {
+    for (const count of [null, 0, 9]) {
+      expect(withCount(count)).toContain(copy.favourites)
+    }
+  })
+})

@@ -634,6 +634,7 @@
       "sectionAccount": "Conta",
       "radar": "Radar",
       "alerts": "Alertas",
+      "favourites": "Favoritos",
       "company": "Minha empresa",
       "billing": "Plano e pagamento",
       "profile": "Perfil",
@@ -1232,6 +1233,15 @@
       "days": "{count, plural, one {1 dia} other {# dias}}",
       "months": "{count, plural, one {1 mês} other {# meses}}",
       "percent": "{valor}%"
+    },
+    "favourites": {
+      "add": "Favoritar",
+      "added": "Favoritado",
+      "title": "Seus favoritos",
+      "intro": "Os editais que você marcou. Ficam aqui até você tirar ou o edital sair do PNCP.",
+      "emptyTitle": "Você ainda não marcou nenhum edital",
+      "emptyBody": "No Radar, toque em Favoritar para guardar um edital e voltar nele depois.",
+      "signedOut": "Crie a conta grátis para guardar editais."
     }
   },
   "account": {

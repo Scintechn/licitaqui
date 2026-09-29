@@ -24,6 +24,15 @@ const PATHS = {
   /** "Copiar" — two sheets. Added for the PNCP id on canvas 03. */
   copy: ['M10 8h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z', 'M5 16V6a1 1 0 0 1 1-1h9'],
   account: ['M16 8a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z', 'M4 21a8 8 0 0 1 16 0'],
+  /**
+   * "Favoritar" — a five-point star on the same 24 grid, card **D23**.
+   *
+   * A star rather than a bookmark because the board has no bookmark and the
+   * gesture Sci described is "marked as Favorite", not "read later". Stroked
+   * like everything else here; the *filled* state is the button's job, not a
+   * second path, so one icon serves both and they cannot drift apart.
+   */
+  star: ['M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z'],
   filters: ['M4 6h16M7 12h10M10 18h4'],
   /** The app bar's hamburger on canvas 01 (`Main.dc.html`). Added by task D3. */
   menu: ['M4 7h16M4 12h16M4 17h16'],

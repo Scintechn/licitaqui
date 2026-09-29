@@ -62,6 +62,17 @@ export const ALERTS_HREF: string = ALERTS_PATH
 export const COMPANY_PATH = '/conta/empresa'
 
 /**
+ * The favourites section — the tenders a person marked (card D23).
+ *
+ * *Favoritos*, not *acompanhando*: the design already spends *acompanhar* on
+ * following a competitor company (`Concorrentes.dc.html`), and
+ * `Alertas.dc.html` promises "quando quem você acompanha ganha", which reads
+ * correctly only while that stays true. Sci chose the two words apart on
+ * 2026-09-29.
+ */
+export const FAVOURITES_PATH = '/conta/favoritos'
+
+/**
  * The plan screen. **F2's address for checkout, and now the plan summary.**
  *
  * It has named this path since U1 and was unbuilt until D22 split `/conta`.

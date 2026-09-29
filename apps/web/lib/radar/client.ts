@@ -86,8 +86,14 @@ function withParams(base: string, params: URLSearchParams): string {
   return query ? `${base}?${query}` : base
 }
 
-/** The Radar's own path for a tender. A catch-all route, so the slash survives. */
-function editalPath(id: string): string {
+/**
+ * The Radar's own path for a tender. A catch-all route, so the slash survives.
+ *
+ * Exported for `/conta/favoritos` (D23), which links to a tender **without** a
+ * search: that list is not a search result, so carrying a query string would
+ * send "Voltar" back to a list the reader never ran.
+ */
+export function editalPath(id: string): string {
   return `/radar/edital/${tenderPath(id)}`
 }
 

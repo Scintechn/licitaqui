@@ -1,5 +1,5 @@
 import { AppShell } from '@/components/app-shell'
-import { readShellSummary } from '@/lib/account/server-summary'
+import { readShell } from '@/lib/account/server-summary'
 
 /**
  * The shell for `/conta` and `/conta/alertas` — card D20.
@@ -32,11 +32,11 @@ import { readShellSummary } from '@/lib/account/server-summary'
 export const dynamic = 'force-dynamic'
 
 export default async function AccountLayout({ children }: { children: React.ReactNode }) {
-  const summary = await readShellSummary()
-  if (!summary?.signedIn) return <>{children}</>
+  const shell = await readShell()
+  if (!shell.summary?.signedIn) return <>{children}</>
 
   return (
-    <AppShell summary={summary}>
+    <AppShell summary={shell.summary} favouriteCount={shell.favouriteCount}>
       {children}
     </AppShell>
   )
