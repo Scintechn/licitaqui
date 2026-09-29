@@ -4,7 +4,7 @@ import { format, messages } from '@/lib/messages'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
 import { ALERTS_PATH } from '@/lib/routes'
 import { HANDOFF_MINUTES, type LinkPhase } from '@/lib/telegram/handoff'
-import { type AlertLimits, MAX_KEYWORD_CHARS } from '@/lib/telegram/quota'
+import { type AlertLimits, keywordFields, MAX_KEYWORD_CHARS } from '@/lib/telegram/quota'
 import { CompanyForm } from '../company-form'
 
 /**
@@ -76,7 +76,7 @@ export type AlertsViewProps = {
   companyName: string | null
   /** `@LicitaQuiBot`. Named in the copy so people know which chat to open. */
   botHandle: string
-  keyword: string | null
+  keywords: string[]
   states: string[]
   /** `?estado=…` after a Server Function redirected back here. */
   notice: AlertNotice
@@ -130,7 +130,7 @@ export function AlertsView({
   cnpj,
   companyName,
   botHandle,
-  keyword,
+  keywords,
   states,
   notice,
   connectAction,
@@ -293,16 +293,30 @@ export function AlertsView({
             options={UF_OPTIONS}
             defaultValue={states[0] ?? ''}
           />
-          {limits.keywords === 0 ? null : (
+          {/* **One field per keyword the plan grants**, not one field.
+              `plan_limits` gives Básico 1 and Essencial 10, and this rendered
+              a single input on every plan — so the alert a founder paid for
+              was identical to the free one (E18). `keywordFields` is exported
+              and tested against `plan_limits` so the two cannot drift again.
+
+              All of them are `name="palavra"`, and the action reads them with
+              `getAll`. `get` returning only the first is the other half of how
+              ten became one. */}
+          {keywordFields(limits.keywords).map((index) => (
             <Field
-              id="alerta-palavra"
+              key={index}
+              id={index === 0 ? 'alerta-palavra' : `alerta-palavra-${index}`}
               name="palavra"
-              label={messages.radar.landing.keywordLabel}
+              label={
+                index === 0
+                  ? messages.radar.landing.keywordLabel
+                  : format(copy.keywordMore, { n: index + 1 })
+              }
               placeholder={messages.radar.landing.keywordPlaceholder}
               maxLength={MAX_KEYWORD_CHARS}
-              defaultValue={keyword ?? ''}
+              defaultValue={keywords[index] ?? ''}
             />
-          )}
+          ))}
 
           <Button type="submit" variant="secondary">
             {messages.common.save}

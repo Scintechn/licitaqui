@@ -42,7 +42,8 @@ reply on; see :func:`recipient` for what that costs and why it is bounded.
 
 ## Quotas are §10's, read from `plan_limits`
 
-Básico: **one alert per week, one keyword, one state.** All three come out of
+Básico: **one alert per week, one keyword, one state** -- and Essencial ten
+keywords, which the product did not deliver until E18. All three come out of
 `plan_limits`, never out of this file — that is what "configurable without a
 deploy" in §6.2 means. :func:`alert_limit` reads the cap and
 :func:`digests_sent_this_week` counts against it.
@@ -374,7 +375,7 @@ select u.name,
        c.trade_name,
        c.legal_name,
        a.id       as alert_id,
-       a.value    as keyword,
+       a.keywords as keywords,
        a.states   as states,
        a.active   as alert_active
   from users u
@@ -420,7 +421,8 @@ select count(*)
 #: `compatible` group and nothing else: "Verificar" is a maybe, and a maybe is
 #: not worth a push notification once a week.
 #:
-#: The keyword arm is §10's "1 palavra-chave" on Básico. It uses the same
+#: The keyword arm is §10's "1 palavra-chave" on Básico and ten on Essencial.
+#: It uses the same
 #: `pt_unaccent` tsvector and `websearch_to_tsquery` the Radar searches with,
 #: so what the digest finds and what the site finds cannot diverge.
 SELECT_TENDERS_SQL = """
@@ -436,8 +438,19 @@ select t.id, t.object, t.agency_name, t.state, t.modality_name,
  where t.proposals_close_at > now()
    and (
          t.segments && segs.labels
-         or (%(keyword)s::text is not null
-             and t.search @@ websearch_to_tsquery('pt_unaccent', %(keyword)s))
+         -- **Any** of the keywords, not the one. plan_limits grants
+         -- essencial and promocional ten and this matched a single scalar
+         -- keyword parameter, so a paid digest was identical to the free one
+         -- (E18). `exists` over the unnested array rather than an OR chain:
+         -- the count is per plan and the SQL must not depend on it.
+         --
+         -- Do not write a psycopg placeholder in this comment. psycopg scans
+         -- the whole query string for them, comments included, so naming the
+         -- old parameter here made it required again and every digest raised
+         -- "query parameter missing".
+         or exists (select 1
+                      from unnest(%(keywords)s::text[]) as k
+                     where t.search @@ websearch_to_tsquery('pt_unaccent', k))
        )
    and (%(states)s::text[] is null or t.state = any(%(states)s))
    and (%(alert_id)s::bigint is null
@@ -490,7 +503,10 @@ class Recipient:
     plan: str
     company_name: str | None
     alert_id: int | None
-    keyword: str | None
+    #: As many as the plan grants -- one on basico, ten on essencial and
+    #: promocional. Read from ``alerts.keywords`` (migration 0010); the old
+    #: ``alerts.value`` holds only the first and is kept until nothing reads it.
+    keywords: tuple[str, ...]
     states: tuple[str, ...]
     alert_active: bool
 
@@ -555,7 +571,7 @@ def recipient(conn: psycopg.Connection, user_id: int) -> Recipient | None:
         row = cur.fetchone()
     if row is None:
         return None
-    name, cnpj, plan, chat_id, trade, legal, alert_id, keyword, states, active = row
+    name, cnpj, plan, chat_id, trade, legal, alert_id, keywords, states, active = row
     return Recipient(
         user_id=user_id,
         chat_id=None if chat_id is None else int(chat_id),
@@ -564,7 +580,7 @@ def recipient(conn: psycopg.Connection, user_id: int) -> Recipient | None:
         plan=plan or "basico",
         company_name=(trade or legal or None),
         alert_id=None if alert_id is None else int(alert_id),
-        keyword=(keyword or None),
+        keywords=tuple(keywords or ()),
         states=tuple(states or ()),
         alert_active=bool(active) if active is not None else False,
     )
@@ -636,7 +652,7 @@ def select_tenders(
     conn: psycopg.Connection,
     *,
     cnpj: str,
-    keyword: str | None = None,
+    keywords: tuple[str, ...] = (),
     states: tuple[str, ...] = (),
     alert_id: int | None = None,
     limit: int = MAX_TENDERS,
@@ -647,7 +663,9 @@ def select_tenders(
             SELECT_TENDERS_SQL,
             {
                 "cnpj": cnpj,
-                "keyword": keyword,
+                # A list, always -- `unnest` of an empty array matches nothing,
+                # which is the CNAE-only digest and is correct.
+                "keywords": list(keywords),
                 "states": list(states) or None,
                 "alert_id": alert_id,
                 "limit": limit,
@@ -911,7 +929,7 @@ def _digest(
     tenders = select_tenders(
         conn,
         cnpj=who.cnpj,
-        keyword=who.keyword,
+        keywords=who.keywords,
         states=states,
         alert_id=who.alert_id,
     )

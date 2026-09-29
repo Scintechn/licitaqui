@@ -106,7 +106,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Searc
       cnpj={user.cnpj}
       companyName={company?.rows[0]?.name ?? null}
       botHandle={botHandle()}
-      keyword={status.keyword}
+      keywords={status.keywords}
       states={status.states}
       notice={noticeFrom(one((await searchParams).estado))}
       connectAction={connectTelegram}

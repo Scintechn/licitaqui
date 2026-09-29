@@ -63,8 +63,15 @@ export type LinkStatus = {
   pending: boolean
   /** The weekly digest is switched on. False when `/pausar` has been used. */
   active: boolean
-  /** §10: one keyword on Básico. `null` when the digest is CNAE-only. */
-  keyword: string | null
+  /**
+   * The keywords this digest matches, as many as the plan grants — one on
+   * Básico, ten on Essencial and Promocional (`plan_limits`). Empty when the
+   * digest is CNAE-only.
+   *
+   * Read from `alerts.keywords`, not from `alerts.value`: `value` holds only
+   * the first and is kept for the worker until its half of E18 deploys.
+   */
+  keywords: string[]
   /** §10: one state on Básico. */
   states: string[]
 }
@@ -73,7 +80,7 @@ export const UNLINKED: LinkStatus = {
   linked: false,
   pending: false,
   active: false,
-  keyword: null,
+  keywords: [],
   states: [],
 }
 
@@ -226,12 +233,12 @@ export async function readLinkStatus(
     linked: boolean
     pending: boolean
     active: boolean | null
-    keyword: string | null
+    keywords: string[] | null
     states: string[] | null
   }>(sql`
     select tl.chat_id is not null and tl.linked_at is not null as linked,
            tl.start_token is not null and tl.chat_id is null as pending,
-           a.active, a.value as keyword, a.states
+           a.active, a.keywords, a.states
       from telegram_links tl
       left join alerts a
              on a.user_id = tl.user_id
@@ -247,7 +254,7 @@ export async function readLinkStatus(
     linked: Boolean(row.linked),
     pending: Boolean(row.pending),
     active: Boolean(row.active),
-    keyword: row.keyword ?? null,
+    keywords: row.keywords ?? [],
     states: row.states ?? [],
   }
 }
@@ -262,18 +269,31 @@ export async function readLinkStatus(
  */
 export async function saveAlert(
   userId: number,
-  preferences: { states: string[]; keyword: string | null },
+  preferences: { states: string[]; keywords: string[] },
   database: Executor = db(),
 ): Promise<void> {
-  const { states, keyword } = preferences
+  const { states, keywords } = preferences
+  /**
+   * `value` is written alongside `keywords` and is **not** the source of
+   * truth any more.
+   *
+   * `0010_alert_keywords` deliberately kept the column: the worker reads it
+   * until its half of E18 deploys, and a write that stopped filling it would
+   * silence every digest in the window between the two deploys. The first
+   * keyword is the best single answer for a reader that can only take one.
+   *
+   * Dropping `value` is a later card, once nothing reads it.
+   */
+  const first = keywords[0] ?? null
   // `active` is deliberately untouched. Saving a keyword is not the same
   // gesture as resuming a paused digest, and silently un-pausing somebody who
   // typed `/pausar` an hour ago is the kind of "helpful" that loses trust.
   const updated = await database.execute<{ id: string | number }>(sql`
     update alerts
        set states = ${textArray(states)},
-           value = ${keyword}::text,
-           kind = ${keyword ? 'keyword' : 'cnae'}::text
+           keywords = ${textArray(keywords)},
+           value = ${first}::text,
+           kind = ${first ? 'keyword' : 'cnae'}::text
      where user_id = ${userId}::bigint
        and channel = 'telegram'
        and frequency = 'weekly'
@@ -282,9 +302,9 @@ export async function saveAlert(
   if (updated.rows.length > 0) return
 
   await database.execute(sql`
-    insert into alerts (user_id, kind, value, states, channel, frequency, active)
-    values (${userId}::bigint, ${keyword ? 'keyword' : 'cnae'}::text, ${keyword}::text,
-            ${textArray(states)}, 'telegram', 'weekly', true)
+    insert into alerts (user_id, kind, value, keywords, states, channel, frequency, active)
+    values (${userId}::bigint, ${first ? 'keyword' : 'cnae'}::text, ${first}::text,
+            ${textArray(keywords)}, ${textArray(states)}, 'telegram', 'weekly', true)
   `)
 }
 

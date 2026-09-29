@@ -592,7 +592,8 @@
       "failedBody": "O link anterior venceu ou não chegou até o robô. Nada foi perdido: gere outro link e toque em Iniciar na conversa.",
       "newLink": "Gerar outro link",
       "stillWaiting": "Ainda não chegou nada do Telegram. Se você acabou de tocar em Iniciar, espere alguns segundos e verifique de novo."
-    }
+    },
+    "keywordMore": "Palavra-chave {n}"
   },
   "notifications": {
     "title": "Avisos e preferências",
@@ -680,7 +681,8 @@
         "howItWorks": "Como funciona",
         "plans": "Planos",
         "faq": "Perguntas",
-        "signIn": "Entrar"
+        "signIn": "Entrar",
+        "toRadar": "Ir para o Radar"
       },
       "example": {
         "label": "Exemplo",

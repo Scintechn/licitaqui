@@ -88,7 +88,7 @@ def recipient(**overrides) -> Recipient:
         "plan": "basico",
         "company_name": "Scint Tecnologia",
         "alert_id": 3,
-        "keyword": None,
+        "keywords": (),
         "states": ("SP",),
         "alert_active": True,
     }

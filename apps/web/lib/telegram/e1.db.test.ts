@@ -381,11 +381,13 @@ suite('E1 · Telegram linking (database)', () => {
     await post(startUpdate(CHAT(14), token))
 
     await post(command(CHAT(14), '/pausar'))
-    await saveAlert(userId, { states: ['RJ'], keyword: 'material hospitalar' })
+    await saveAlert(userId, { states: ['RJ'], keywords: ['material hospitalar', 'seringa'] })
 
     const status = await readLinkStatus(userId)
     expect(status.states).toEqual(['RJ'])
-    expect(status.keyword).toBe('material hospitalar')
+    // Both, round-tripped through `alerts.keywords` — the column added in
+    // `0010`. Before E18 this could only ever have held one (E18).
+    expect(status.keywords).toEqual(['material hospitalar', 'seringa'])
     // Saving a filter is not the same gesture as resuming.
     expect(status.active).toBe(false)
   }, 60_000)
