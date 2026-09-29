@@ -9,6 +9,7 @@ import {
   StateCard,
   Tag,
 } from '@/components'
+import { MenuTrigger } from '@/components/menu-trigger'
 import { cn } from '@/lib/cn'
 import { PLAN_HREF } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
@@ -161,7 +162,13 @@ export function PriceView({
     <AppBar
       leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>}
       title={page.title}
-      actions={<Tag tone="blue">{page.plan}</Tag>}
+      actions={
+        <>
+          <Tag tone="blue">{page.plan}</Tag>
+          {/* D24 half 2 — see the note in `opportunity-view.tsx`. */}
+          <MenuTrigger />
+        </>
+      }
     />
   )
 

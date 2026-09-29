@@ -14,6 +14,7 @@ import {
   type StatusKind,
   type TabItem,
 } from '@/components'
+import { MenuTrigger } from '@/components/menu-trigger'
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
@@ -584,7 +585,17 @@ export function OpportunityView({
           `radar.opportunity.follow` stays in the catalogue for whoever decides
           what, if anything, should link to the alerts screen from here.
         */
-        tender ? <FavouriteButton tenderId={tender.id} /> : null
+        <>
+          {tender ? <FavouriteButton tenderId={tender.id} /> : null}
+          {/* **D24 half 2.** The three tender screens drew their own bars and
+              none of them drew this, so below `lg` — where the rail is
+              `hidden` — opening an edital took the menu away and left
+              "Voltar" as the only way out. D20 shipped with *"reachable from
+              every signed-in route"* in its acceptance and was asked about
+              two routes of five. Renders nothing outside a shell, which is
+              what keeps the Landing's example panel inert. */}
+          <MenuTrigger />
+        </>
       }
     />
   )
