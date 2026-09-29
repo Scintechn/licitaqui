@@ -2,9 +2,9 @@ import { sql } from 'drizzle-orm'
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
-import { MAX_SEAT } from '@/lib/auth/founder-seat'
 import { db } from '@/lib/db'
 import { messages } from '@/lib/messages'
+import { FOUNDERS } from '@/lib/product'
 import { countUsage, FEATURES, quotaView, readLimit } from '@/lib/radar/quota'
 import { ACCOUNT_CREATE_PATH } from '@/lib/routes'
 import { AccountView, type AccountNotice } from './account-view'
@@ -67,6 +67,13 @@ export default async function AccountPage({ searchParams }: { searchParams: Sear
       `)
     : null
 
+  // `seatTotal` is **not** `MAX_SEAT`. That constant is 48 because spec §6.2
+  // gives `founder_seat` a `between 1 and 48` database CHECK: a validity bound
+  // for the column, not a number of seats on sale. Rendering it told a founder
+  // "Vaga 1 de 48" while the landing banner beside it said "restam 16 de 17
+  // vagas" and the terms sold 25 — three numbers for one offer, on one
+  // product. The offer's size lives in `docs/product.json`, like every other
+  // number a reader is allowed to believe.
   return (
     <AccountView
       plan={user.plan}
@@ -74,7 +81,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Sear
       cnpj={user.cnpj}
       companyName={company?.rows[0]?.name ?? null}
       founderSeat={user.founder_seat === null ? null : Number(user.founder_seat)}
-      seatTotal={MAX_SEAT}
+      seatTotal={FOUNDERS.seatsTotal}
       signOutAction={signOutEverywhere}
       companyAction={saveCompany}
       notice={noticeFrom((await searchParams).estado)}

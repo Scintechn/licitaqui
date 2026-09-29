@@ -31,10 +31,13 @@ import { ACCOUNT_PATH, accountHref, PLAN_HREF } from '@/lib/routes'
  *
  * ## The numbers come from `plan_limits`, never from a literal
  *
- * Including the uncomfortable one: `plan_limits` holds an `alert` row for
- * `basico` alone, so a paid plan answers zero alerts here. That is true, it is
- * what `/fundadores` contradicts, and card D6 is where it gets fixed. This
- * screen's job is to report it.
+ * That used to include an uncomfortable one: `plan_limits` held an `alert`
+ * row for `basico` alone, so a paid plan answered zero alerts here and
+ * contradicted `/fundadores`. **D6 fixed it** — verified 2026-09-29, all four
+ * plans now carry `alert / week / 1` — and this comment is corrected rather
+ * than deleted because reading the table is still the rule. The day a plan's
+ * entitlement changes, it changes in `plan_limits` and this screen follows
+ * without a deploy. That is the whole reason it never held a literal.
  */
 
 const copy = messages.radar.menu
