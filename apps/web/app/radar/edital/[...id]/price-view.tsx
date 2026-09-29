@@ -15,7 +15,7 @@ import { format, messages } from '@/lib/messages'
 import { priceHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
-import { moneyExact, trimObject } from '@/lib/radar/format'
+import { moneyExact, moneyExactNonZero, trimObject } from '@/lib/radar/format'
 import type { PriceBand } from '@/lib/radar/price-band'
 import { MarginCeiling } from './margin-ceiling'
 import { TenderStatusBanner } from '../../tender-status-banner'
@@ -107,6 +107,12 @@ export type PriceViewProps = {
    * had to choose between lying to a visitor and hiding the plan.
    */
   bandLocked?: boolean
+  /**
+   * Whether to offer the Essencial plan. Defaults to **true** so every render
+   * that does not know — the loading fallback, the suspended screen, a test —
+   * keeps the behaviour this screen had before the band existed.
+   */
+  showPlanCta?: boolean
   onRetry?: () => void
 }
 
@@ -117,8 +123,8 @@ export type PriceViewProps = {
  * because the reader has no way to tell which half they are looking at.
  */
 export function bandRange(band: { low: number; high: number }): string | null {
-  const low = moneyExact(String(band.low))
-  const high = moneyExact(String(band.high))
+  const low = moneyExactNonZero(String(band.low))
+  const high = moneyExactNonZero(String(band.high))
   return low === null || high === null ? null : `${low} – ${high}`
 }
 
@@ -148,6 +154,7 @@ export function PriceView({
   search,
   band = null,
   bandLocked = false,
+  showPlanCta = true,
   onRetry,
 }: PriceViewProps) {
   const bar = (
@@ -258,16 +265,33 @@ export function PriceView({
                 <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
                   <span>{page.won}</span>
                   <strong className="font-display text-[16px] tabular-nums">
-                    {/* Not a template literal. `moneyExact` returns null for
-                        anything that rounds to zero (`format.ts`), and
-                        interpolating that prints the literal word "null" on a
-                        money figure — TypeScript will not catch it inside a
-                        template. `unit_awarded_value` is numeric(16,4) and the
-                        only filter is `> 0`, so sub-centavo values exist. */}
+                    {/* Not a template literal: `bandRange` can answer null,
+                        and interpolating that prints the literal word "null"
+                        beside a money figure — TypeScript will not catch it
+                        inside a template. That half was right.
+
+                        The reason given was not. It said `moneyExact` refuses
+                        "anything that rounds to zero"; it refuses `=== 0`
+                        only. And it claimed sub-centavo awards exist because
+                        the column is numeric(16,4) filtered on `> 0` — an
+                        argument from the schema, never measured. Measured
+                        2026-09-28: the minimum over 5 349 OK awards is
+                        R$ 0,0300, so no band end reaches zero today. The
+                        guard stays because "both ends or neither" only means
+                        something if an end can be refused, and
+                        `moneyExactNonZero` is what actually refuses one. */}
                     {bandRange(band) ?? page.noEstimate}
                   </strong>
                 </div>
               ) : null}
+              {/* Locked for everyone, and its label is wrong for everyone:
+                  `page.lockedValue` reads "valor disponível no plano
+                  Essencial" while `0002_plan_limits.sql` grants `market_price`
+                  to **`pro` alone**. Pre-existing, but gating the band put it
+                  beside a feature that now really does unlock, so an Essencial
+                  subscriber reads that they need Essencial. Left as it is
+                  rather than guessed at: the string is Sci's and the
+                  entitlement question is F5's. Recorded in `docs/CLAIMS.md`. */}
               <LockedRow label={page.market} last />
             </Card>
 
@@ -320,11 +344,21 @@ export function PriceView({
           </>
         )}
 
-        <div className="mt-auto pt-2">
-          <Button href={PLAN_HREF} fullWidth iconEnd="arrowRight">
-            {page.cta}
-          </Button>
-        </div>
+        {/* **Not shown to someone who already has the plan.** Gating the band
+            made this visible: the button reads "Ver plano Essencial" and the
+            screen was rendering it unconditionally, including to Essencial and
+            Pro subscribers, and including beside a band they had just been
+            shown. `bandLocked` is the closest thing this component has to
+            "does not have the plan" — when the band is not locked, either the
+            caller is entitled or no number exists for anybody — but those are
+            not the same thing, so the server says which: see `showPlanCta`. */}
+        {showPlanCta ? (
+          <div className="mt-auto pt-2">
+            <Button href={PLAN_HREF} fullWidth iconEnd="arrowRight">
+              {page.cta}
+            </Button>
+          </div>
+        ) : null}
       </main>
     </div>
   )

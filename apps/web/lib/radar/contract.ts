@@ -230,7 +230,21 @@ export type TenderFileView = {
  * client does not retry an ordinary outcome.
  */
 export type BandResponse =
-  | { state: 'ready'; band: PriceBand | null }
+  | {
+      state: 'ready'
+      band: PriceBand | null
+      /**
+       * Whether this caller's plan includes the band.
+       *
+       * Carried on `ready` as well as implied by `locked`, because the two
+       * questions are independent: an unentitled caller looking at an item
+       * with no band gets `ready` with `band: null`, exactly like a
+       * subscriber does. Without this the screen cannot tell them apart, and
+       * the first version of the plan CTA hid the upsell from the very people
+       * it exists for.
+       */
+      entitled: boolean
+    }
   /**
    * The caller's plan does not include the band (E9, `hasPriceBand`).
    *

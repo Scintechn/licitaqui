@@ -175,6 +175,31 @@ describe('PriceView', () => {
     expect(html).toContain(page.lockedValue)
   })
 
+  describe('the plan offer', () => {
+    it('is shown to someone who does not have the plan', () => {
+      expect(render({ item: 1, showPlanCta: true })).toContain(page.cta)
+    })
+
+    it('is not shown to someone who already has it', () => {
+      // Gating the band made this visible: the button reads "Ver plano
+      // Essencial" and rendered unconditionally, including beside a band the
+      // subscriber had just been shown.
+      const band = { low: 18, median: 20.34, high: 24, sampleSize: 7 }
+      expect(render({ item: 1, band, showPlanCta: false })).not.toContain(page.cta)
+    })
+
+    it('is shown to an unentitled visitor even when the item has no band', () => {
+      // **The regression the first version of this fix introduced.** Driving
+      // the CTA off `bandLocked` alone hid the upsell from exactly the people
+      // it is for: an unentitled visitor on an item with no band gets `ready`
+      // with `band: null`, indistinguishable from a subscriber's empty item
+      // unless the route says which — so it now carries `entitled`.
+      const out = render({ item: 1, bandLocked: false, showPlanCta: true })
+      expect(out).toContain(page.noData)
+      expect(out).toContain(page.cta)
+    })
+  })
+
   describe('when the plan does not include the band', () => {
     const locked = render({ item: 1, bandLocked: true })
 
