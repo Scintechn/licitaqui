@@ -628,6 +628,8 @@
     },
     "menu": {
       "title": "Menu",
+      "collapseRail": "Recolher o menu",
+      "expandRail": "Expandir o menu",
       "sectionMain": "Principal",
       "sectionAccount": "Conta",
       "radar": "Radar",

@@ -1,7 +1,7 @@
 ---
 id: founders-waitlist
 channel: email
-subject: "As 48 vagas acabaram, mas você está na lista de espera da LicitaQui"
+subject: "As {{vagas}} vagas acabaram, mas você está na lista de espera da LicitaQui"
 preheader: "Você é o {{posicao_espera}}º da fila. E o plano Básico é gratuito para todo mundo."
 status: approved
 placeholders: [email_contato, nome, posicao_espera, vagas]

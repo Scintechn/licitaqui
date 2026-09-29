@@ -24,11 +24,16 @@ function summary(over: Partial<AccountSummary> = {}): AccountSummary {
   }
 }
 
+/**
+ * `current` is an `Item['id']`, **not an href**. Three items share `/conta`,
+ * so marking by href lit all three at once — see `currentItem` in
+ * `components/app-shell.tsx` for the defect and the fix.
+ */
 function render(over: Partial<AccountSummary> | null = {}): string {
   return renderToStaticMarkup(
     <MenuView
       summary={over === null ? null : summary(over)}
-      current="/radar"
+      current="radar"
       onDismiss={() => {}}
       titleId="menu-title"
     />,

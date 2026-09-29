@@ -1,6 +1,5 @@
 import { AppShell } from '@/components/app-shell'
 import { readShellSummary } from '@/lib/account/server-summary'
-import { ACCOUNT_PATH } from '@/lib/routes'
 
 /**
  * The shell for `/conta` and `/conta/alertas` — card D20.
@@ -37,7 +36,7 @@ export default async function AccountLayout({ children }: { children: React.Reac
   if (!summary?.signedIn) return <>{children}</>
 
   return (
-    <AppShell summary={summary} current={ACCOUNT_PATH}>
+    <AppShell summary={summary}>
       {children}
     </AppShell>
   )
