@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Icon, Logo, SectionLabel } from '@/components'
+import { readShellSummary } from '@/lib/account/server-summary'
 import { founderSeats, type FounderSeatsView } from '@/lib/founders/seat-count'
 import { FOUNDER_SEATS } from '@/lib/founders/seats'
 import { format, messages } from '@/lib/messages'
@@ -129,7 +130,20 @@ const NAV_LINK =
  * by scrolling, and a row of five tap targets across a 390px bar would push the
  * wordmark off the screen.
  */
-function Header() {
+/**
+ * @param signedIn Whether the request carried a live session (**D21**).
+ *
+ * Signed in, this header still said *"Entrar"* — so a person with an account
+ * was invited to create one, and had, in Sci's words, *"no clue if I still
+ * logged"*. D20 deliberately left the marketing chrome alone: a rail offering
+ * "Ver planos" on the page whose job is selling plans would be absurd. But the
+ * button is a different question from the rail, and this one was simply wrong.
+ *
+ * Read on the **server**, from the request, so the label is right in the first
+ * byte rather than corrected after hydration — which on a marketing page is
+ * the difference between a considered header and a flicker.
+ */
+export function Header({ signedIn }: { signedIn: boolean }) {
   const { nav } = copy
   return (
     <header>
@@ -148,13 +162,15 @@ function Header() {
           <a href="#perguntas" className={`hidden min-[900px]:inline-flex ${NAV_LINK}`}>
             {nav.faq}
           </a>
-          {/* `/conta/criar` is U1's and does not exist yet, so this — like
-              every other account control — goes through `lib/routes.ts`. */}
+          {/* `/conta/criar` is U1's, so this — like every other account
+              control — goes through `lib/routes.ts`. `ACCOUNT_HREF` already
+              sends a signed-in visitor to `/conta`; what was missing was
+              saying so on the button before they clicked it. */}
           <Link
-            href={ACCOUNT_HREF}
+            href={signedIn ? '/radar' : ACCOUNT_HREF}
             className={`inline-flex ${NAV_LINK} ml-1.5 rounded-control border border-line-strong bg-surface`}
           >
-            {nav.signIn}
+            {signedIn ? nav.toRadar : nav.signIn}
           </Link>
         </nav>
       </Wrap>
@@ -165,7 +181,16 @@ function Header() {
 /* -------------------------------------------------------------------- page */
 
 export default async function LandingPage() {
-  const [stats, seats] = await Promise.all([openTenderStats(), founderSeats()])
+  // `readShellSummary()` is the same server read the app shell uses (D20), so
+  // the Landing and the Radar cannot disagree about whether somebody is signed
+  // in. It answers `null` when the read throws, which reads as signed out —
+  // the safe direction here, because offering "Entrar" to someone who is
+  // already in is a smaller wrong than sending a stranger to the Radar.
+  const [stats, seats, summary] = await Promise.all([
+    openTenderStats(),
+    founderSeats(),
+    readShellSummary(),
+  ])
 
   return (
     <div className="flex min-h-dvh flex-col bg-ivory text-base leading-[1.55] text-ink">
@@ -177,7 +202,7 @@ export default async function LandingPage() {
       </a>
 
       <FoundersStrip seats={seats} />
-      <Header />
+      <Header signedIn={summary?.signedIn === true} />
 
       <main id="inicio" className="grow">
         {/*
