@@ -1177,7 +1177,8 @@
       "noDataHelp": "A faixa aparece quando editais parecidos o bastante já tiverem sido encerrados e publicado o vencedor.",
       "bandSample": "{count, plural, one {1 edital encerrado} other {# editais encerrados}}",
       "bandEstimate": "estimativa a partir dos dados do edital",
-      "marginLabel": "Sua margem"
+      "marginLabel": "Sua margem",
+      "marginBlank": "Informe a margem"
     },
     "fields": {
       "meEpp": "ME/EPP",

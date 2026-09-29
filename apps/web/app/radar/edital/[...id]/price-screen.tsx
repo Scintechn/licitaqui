@@ -27,7 +27,7 @@ function aborted(error: unknown): boolean {
 }
 
 /** What the screen holds after one band answer. Exported for its test. */
-export type BandState = { band: PriceBand | null; locked: boolean; entitled: boolean }
+export type BandState = { band: PriceBand | null; locked: boolean }
 
 /**
  * A `BandResponse` as the screen stores it.
@@ -36,21 +36,20 @@ export type BandState = { band: PriceBand | null; locked: boolean; entitled: boo
  * sets `environment: 'node'`, so no `useEffect` in this repo ever runs under
  * test — and this mapping is where both of E9's worst defects lived.
  *
- * `answer.entitled === true` rather than `answer.entitled` is deliberate.
- * `getBand` is `envelope<BandResponse>(...)`, which **casts** the body rather
- * than parsing it, so a `ready` payload without the field — a new bundle
- * against an old server mid-rollout, a cached chunk — would leave `entitled`
- * as `undefined`, make `!entitled` true, and print "Ver plano Essencial" to a
- * subscriber beside the band they had just been shown: the exact defect this
- * code exists to remove, with TypeScript satisfied throughout. Coercing here
- * fails in the safe direction.
+ * It answers only what the *band display* needs — the band, and whether a
+ * number exists that this plan may not see. It deliberately says nothing
+ * about entitlement: that arrives as a prop from the server, so it cannot be
+ * missing, stale, or 412 ms late. An earlier version read `entitled` off this
+ * response, which meant `getBand`'s `envelope<BandResponse>(...)` **cast**
+ * decided whether a paying subscriber was shown an advertisement for their own
+ * plan — a body without the field type-checked and read as "not entitled".
  */
 export function bandStateFrom(answer: BandResponse): BandState {
   if (answer.state === 'ready') {
-    return { band: answer.band, locked: false, entitled: answer.entitled === true }
+    return { band: answer.band, locked: false }
   }
   if (answer.state === 'locked') {
-    return { band: null, locked: true, entitled: false }
+    return { band: null, locked: true }
   }
   // `envelope()` does not throw on a non-2xx — it parses the body — so a 429
   // or a 500 arrives here as `state: 'error'`. Falling through left `loaded`
@@ -60,29 +59,10 @@ export function bandStateFrom(answer: BandResponse): BandState {
   // no retry on this path. A failure must degrade to the honest empty card,
   // never to an advertisement for the plan they already bought.
   //
-  // `entitled: true` here is not a claim about the plan — it is the choice to
-  // sell nothing when we do not know. A wrong "buy this" is worse than a
-  // missing one, in both directions: to a subscriber it is an insult, and to
-  // a visitor it is a promise made on no evidence.
-  return { band: null, locked: false, entitled: true }
+  return { band: null, locked: false }
 }
 
-/**
- * Whether to offer the plan. **Not the same question as `bandLocked`.**
- *
- * An unentitled visitor on an item with no band gets `ready` with `band: null`
- * — indistinguishable from a subscriber's empty item unless the route says so.
- * Hiding the CTA on `!bandLocked` alone removed the upsell from exactly the
- * people it is for.
- *
- * `null` is "in flight, or the tender has no item to ask about", and offers
- * nothing, by the same rule as the error branch above.
- */
-export function planOffer(current: BandState | null): boolean {
-  return current === null ? false : current.locked || !current.entitled
-}
-
-export function PriceScreen({ id }: { id: string }) {
+export function PriceScreen({ id, entitled }: { id: string; entitled: boolean }) {
   const params = useSearchParams()
   const [attempt, setAttempt] = useState(0)
   const [data, setData] = useState<Data>(INITIAL)
@@ -166,7 +146,6 @@ export function PriceScreen({ id }: { id: string }) {
     item: number
     band: PriceBand | null
     locked: boolean
-    entitled: boolean
   } | null>(null)
 
   /**
@@ -198,7 +177,7 @@ export function PriceScreen({ id }: { id: string }) {
         // Aborted, offline, or a network error: the same rule as the error
         // branch of `bandStateFrom`, and spelled the same way on purpose.
         if (!controller.signal.aborted) {
-          setLoaded({ id, item: chosen, band: null, locked: false, entitled: true })
+          setLoaded({ id, item: chosen, band: null, locked: false })
         }
       })
     return () => controller.abort()
@@ -223,7 +202,14 @@ export function PriceScreen({ id }: { id: string }) {
    * the screen falls back to the honest empty card.
    */
   const bandLocked = current === null || current.locked
-  const showPlanCta = planOffer(current)
+  /**
+   * **One question, one source.** Entitlement does not depend on the item, the
+   * band or the tender, so it is read on the server before anything renders
+   * and arrives as a prop. Driving this off the band answer instead is what
+   * made the CTA appear a second late, flicker on every item chip, and never
+   * appear at all on a tender with no items — see `entitlement.ts`.
+   */
+  const showPlanCta = !entitled
 
   const onRetry = useCallback(() => setAttempt((value) => value + 1), [])
 

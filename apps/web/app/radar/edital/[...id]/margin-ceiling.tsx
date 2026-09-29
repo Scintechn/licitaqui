@@ -76,11 +76,27 @@ export function MarginCeiling({ band }: { band: PriceBand }) {
     <Card accent className="flex flex-col gap-2.5">
       <div className="text-body font-medium text-blue">{page.maxTitle}</div>
 
+      {/* **The `R$` belongs to the figure, so it goes when the figure goes.**
+          Rendering it unconditionally put "R$ não informado" at 30px under
+          "Seu preço máximo de compra" — and `noEstimate` is the string for
+          *the agency published no figure*, so it blamed PNCP for a blank the
+          reader had just made by clearing the field. `marginBlank` says what
+          to do instead, and says it in the reader's own terms. */}
       <div className="flex items-center gap-2.5">
-        <span className="font-display text-[30px] leading-none font-semibold text-muted">R$</span>
-        <strong className="font-display text-[30px] leading-none font-semibold tabular-nums">
-          {money === null ? page.noEstimate : money.replace(/^R\$\s*/, '')}
-        </strong>
+        {money === null ? (
+          <strong className="font-display text-[30px] leading-none font-semibold text-muted">
+            {page.marginBlank}
+          </strong>
+        ) : (
+          <>
+            <span className="font-display text-[30px] leading-none font-semibold text-muted">
+              R$
+            </span>
+            <strong className="font-display text-[30px] leading-none font-semibold tabular-nums">
+              {money.replace(/^R\$\s*/, '')}
+            </strong>
+          </>
+        )}
       </div>
 
       <div className="flex items-center gap-2">

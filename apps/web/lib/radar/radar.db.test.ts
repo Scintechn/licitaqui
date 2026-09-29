@@ -186,16 +186,28 @@ suite('Radar read APIs (database)', () => {
     })
 
     it('keeps PNCP’s naive Brasília time in Brasília', async () => {
-      // 2026-09-28T08:30:00 in São Paulo (UTC-3) is 11:30 UTC. Cast straight to
-      // timestamptz it would be stored as 08:30 UTC — every deadline three
+      // A naive `08:30` in São Paulo (UTC−3) is `11:30Z`. Cast straight to
+      // timestamptz it would be stored as `08:30Z` — every deadline three
       // hours early, on a product that sells "before the deadline".
-      const fixture = fixtures.find((f) => f.closeAt === '2026-09-28T08:30:00')
-      expect(fixture, 'the 08:30 fixture must still be in db/seed/fixtures').toBeTruthy()
+      //
+      // **Stated as the rule, not as a date.** This used to pin the literal
+      // `2026-09-28T08:30:00` against `2026-09-28T11:30:00.000Z`, which was
+      // exact and also made the test a hostage of the fixture's calendar: the
+      // fixtures are now re-dated at load (see `CAPTURED_AT`), so a hardcoded
+      // instant would fail for a reason that has nothing to do with time
+      // zones. The assertion below is the same rule and cannot drift.
+      const fixture = fixtures.find((f) => f.closeAt !== null)
+      expect(fixture, 'a fixture with a deadline must exist').toBeTruthy()
+      const naive = fixture?.closeAt as string
       const found = await pool().query<{ at: Date }>(
         'select proposals_close_at at from tenders where id = $1',
         [fixture?.id],
       )
-      expect(found.rows[0]?.at.toISOString()).toBe('2026-09-28T11:30:00.000Z')
+      const stored = found.rows[0]?.at.toISOString()
+      // Read as Brasília, which is what PNCP means.
+      expect(stored).toBe(new Date(`${naive}-03:00`).toISOString())
+      // And explicitly *not* read as UTC, which is the bug this guards.
+      expect(stored).not.toBe(new Date(`${naive}Z`).toISOString())
     })
 
     it('builds an accent-insensitive search vector over object and items', async () => {
@@ -348,7 +360,10 @@ suite('Radar read APIs (database)', () => {
     let otherTender: SeedFixture
 
     beforeAll(async () => {
-      expect(openTenders.length, 'the fixtures must still contain open tenders').toBeGreaterThan(2)
+      expect(
+        openTenders.length,
+        'the fixtures must still contain open tenders (see CAPTURED_AT in fixtures.ts)',
+      ).toBeGreaterThan(2)
       compatibleTender = openTenders[0] as SeedFixture
       checkTender = openTenders[1] as SeedFixture
       otherTender = openTenders[2] as SeedFixture
@@ -614,6 +629,13 @@ suite('Radar read APIs (database)', () => {
       const visitor = await newVisitor()
       // Tenders no earlier test has cached an analysis for: a cache hit answers
       // 200, and this test is about the 202 path running out.
+      // Asserted, not assumed. Indexing blindly into `openTenders` is how
+      // this suite broke: it read past the end and threw a TypeError whose
+      // message said nothing about fixtures expiring.
+      expect(
+        openTenders.length,
+        'this test needs five open fixtures; re-dating keeps seven',
+      ).toBeGreaterThan(4)
       const [first, second, third] = openTenders.slice(2)
 
       expect((await postScreening(request(visitor), params((first as SeedFixture).id))).status).toBe(202)

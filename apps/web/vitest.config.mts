@@ -72,6 +72,28 @@ export default defineConfig({
     // Components are rendered with `react-dom/server`, which needs no DOM: the
     // markup assertions below run in plain Node, so we keep jsdom out of the tree.
     environment: 'node',
+    /**
+     * Vitest's default is 5 s, which is fine for the unit suite and **not**
+     * fine for `*.db.test.ts`: those talk to a Neon database in `sa-east-1`
+     * that autosuspends after 300 s, so a first query pays a cold start and
+     * an ordinary one pays the round trip.
+     *
+     * Measured 2026-09-29 against the D3 database: the three tests in
+     * `d3.db.test.ts` take 5.8 s, 5.0 s and 8.7 s. Two of them were therefore
+     * *already* within a few hundred milliseconds of the default, passing on
+     * timing rather than on correctness; adding one row to a fixture pushed
+     * them over and they failed with "Test timed out", which says nothing
+     * about what was actually slow.
+     *
+     * This matters more from now on, because B22 makes CI run these suites
+     * for the first time. A timeout that a normal round trip can reach is a
+     * flaky pipeline, and a flaky pipeline gets ignored.
+     *
+     * A genuinely hung test still fails — it just takes 30 s to say so.
+     */
+    testTimeout: 30_000,
+    /** Bulk fixture inserts live in `beforeAll`; the default there is 10 s. */
+    hookTimeout: 60_000,
     include: ['**/*.test.ts', '**/*.test.tsx'],
     // `e2e/` is Playwright's: it needs a browser and a running server, and
     // `pnpm test` has to stay a fast, browserless run that CI's existing job
