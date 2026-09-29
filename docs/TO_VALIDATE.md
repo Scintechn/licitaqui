@@ -22,6 +22,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | ~~7~~ | ~~`/conta/criar` and `/conta/alertas` 404~~ | — | **closed 21/09** |
 | 8 | Spec still calls the Telegram bot temporary | nothing | low |
 | 9 | Knowledge base and repo disagree on who owns legal copy | future edits | low |
+| 10 | What separates a triagem from an análise completa — depth or breadth | **C2**, and a live sentence on `/` | **high** |
 
 ---
 
@@ -175,6 +176,58 @@ The knowledge base's own `CLAUDE.md` still says the opposite: its `legal/` folde
 
 **To close:** one line in the knowledge base pointing at the repo, next time you are in
 that file. Left alone, an agent reading it will eventually edit the wrong copy.
+
+## 10. What separates a triagem from an análise completa — found 2026-09-29
+
+The product sells **two** AI readings and the copy already names them apart:
+`radar.screening.title` *"Triagem por IA"*, and `plans.essential.feature4` — *"10
+análises completas por mês, com trechos citados do edital"*, rendered by
+`<Plans>` on `/`. `0002_plan_limits` meters them separately: screening is 2 for a
+visitor, 5/month on Básico and **unlimited** on Essencial and Pro, while
+`deep_analysis` is 10/month on essencial **and promocional** and 60 on pro.
+Sci confirmed exactly this on 2026-09-29, so none of it is in doubt.
+
+**What is in doubt is what the second one does**, and the two candidate answers
+are different products with different copy.
+
+Measured 2026-09-29 against a real tender (Dispensa 017/2026, máquinas de lavar),
+using the worker's own `documents.is_wanted` and `ai_tender.select_pages`:
+
+| | |
+|---|---|
+| Documents published | 3 — `01 EDITAL DE DISPENSA 017.2026`, `AVISO DE CONTRATACAO DIRETA 17.2026`, `005 - Autorizacao de Contratacao` |
+| Documents the triagem reads | **1.** `WANTED_TERMS = ("edital", "termo de referencia")`, so the aviso and the autorização are skipped |
+| Pages in that document | 36, 83 429 characters |
+| Pages the triagem reads | **24.** The 60 000-character budget drops 12 |
+| Pages the deep budget reads | **36.** 320 000 characters fits the whole file |
+
+The twelve dropped pages include **p. 24, `ANEXO VI – MODELO DE PROPOSTA
+COMERCIAL (uso obrigatório por todas participantes)`** and **p. 34, `DECRETO Nº
+167/2025 … Regulamenta o tratamento favorecido, diferenciado`** — the decree
+behind the "Tratamento favorecido ME/EPP" tick the triagem prints.
+
+**(A) Depth.** Same documents, the whole of them, and every claim carrying a
+verbatim excerpt (`check_excerpt_citations`) rather than a page number
+(`check_citations`). This is what the code does today, and what the approved
+sentence already promises: *"com trechos citados do edital"*, singular.
+
+**(B) Breadth.** The annexes as well — Sci's own description on 2026-09-29,
+*"validate the tenders and all files that come with them"*. **The code does not
+do this and C2 as carded would not add it:** `documents.wanted_files` takes no
+mode, so both readings resolve the same list, capped at `MAX_DOCUMENTS = 8`.
+B means widening `WANTED_TERMS` and the cap, and it means editing
+`plans.essential.feature4`, which is live on `/`.
+
+Nothing is re-keyed either way: `files_hash` digests the file **list**, not the
+selection, and `ai_analyses` is unique on `(tender_id, mode, …)`, so the two
+modes cannot overwrite each other.
+
+**To close:** answer A or B. Under A, C2 ships as carded and the sentence stands.
+Under B, C2 grows and the sentence changes — and per `CLAIMS.md` the new wording
+needs its row in the same PR. Either way the two features must stop sharing
+strings: `deep_analysis` has **no** CTA, cost line or quota label today, and
+reusing the triagem's is how `screeningCost` came to tell founders on an
+unlimited plan that every reading spent an allowance.
 
 ---
 
