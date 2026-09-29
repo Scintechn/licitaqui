@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { planOf, readViewer } from '@/lib/auth/viewer'
 import { db } from '@/lib/db'
+import { listFavourites } from '@/lib/favourites/store'
 import { readAccountSummary, type AccountSummary } from './summary'
 
 /**
@@ -39,6 +40,20 @@ import { readAccountSummary, type AccountSummary } from './summary'
  *
  * Nothing here mints an identity: `readViewer` never creates a visitor row.
  */
+/** What the shell draws: the plan strip, and the favourites badge (D23). */
+export type ShellSummary = {
+  summary: AccountSummary | null
+  /**
+   * How many tenders are marked, **from the same read the section uses**.
+   *
+   * `null` for a visitor, who has no favourites and no account to key them
+   * on. Sci's D23 card asks for the count and the list to come from one
+   * query, which is why this calls `listFavourites` and takes `.length`
+   * rather than asking the database a second, separately-wrong question.
+   */
+  favouriteCount: number | null
+}
+
 export async function readShellSummary(): Promise<AccountSummary | null> {
   try {
     const executor = db()
@@ -54,5 +69,35 @@ export async function readShellSummary(): Promise<AccountSummary | null> {
     )
   } catch {
     return null
+  }
+}
+
+/**
+ * The shell's whole read: the summary and the favourites badge.
+ *
+ * Two awaits rather than one because they answer different questions of
+ * different tables, and `Promise.all` is what keeps that from costing two
+ * round trips in series.
+ */
+export async function readShell(): Promise<ShellSummary> {
+  try {
+    const executor = db()
+    const viewer = await readViewer((await headers()).get('cookie'), executor)
+    const [summary, favourites] = await Promise.all([
+      readAccountSummary(
+        viewer === null
+          ? null
+          : viewer.kind === 'user'
+            ? { userId: viewer.user.userId }
+            : { visitorId: viewer.visitor.id },
+        planOf(viewer),
+        executor,
+      ),
+      viewer?.kind === 'user' ? listFavourites(viewer.user.userId, executor) : null,
+    ])
+    return { summary, favouriteCount: favourites === null ? null : favourites.length }
+  } catch {
+    // The shell must render. See the note above `readShellSummary`.
+    return { summary: null, favouriteCount: null }
   }
 }

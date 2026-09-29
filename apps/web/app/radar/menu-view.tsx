@@ -3,7 +3,14 @@ import { Button, Icon, Logo, SectionLabel, type IconName } from '@/components'
 import type { AccountSummary } from '@/lib/account/summary'
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
-import { ACCOUNT_PATH, accountHref, COMPANY_PATH, PLAN_HREF, PLAN_PATH } from '@/lib/routes'
+import {
+  ACCOUNT_PATH,
+  accountHref,
+  COMPANY_PATH,
+  FAVOURITES_PATH,
+  PLAN_HREF,
+  PLAN_PATH,
+} from '@/lib/routes'
 
 /**
  * Canvas 09 — `docs/design/wireframes/Menu.dc.html` — finally rendered.
@@ -66,6 +73,7 @@ type Item = { id: string; href: string; icon: IconName; label: string }
 const MAIN: Item[] = [
   { id: 'radar', href: '/radar', icon: 'search', label: copy.radar },
   { id: 'alerts', href: '/conta/alertas', icon: 'alert', label: copy.alerts },
+  { id: 'favourites', href: FAVOURITES_PATH, icon: 'star', label: copy.favourites },
   { id: 'company', href: COMPANY_PATH, icon: 'company', label: copy.company },
   { id: 'billing', href: PLAN_PATH, icon: 'money', label: copy.billing },
 ]
@@ -113,11 +121,24 @@ function screeningsLine(summary: AccountSummary): string {
 export function MenuView({
   summary,
   current,
+  favouriteCount,
   onDismiss,
   titleId,
 }: {
   /** `null` while the strip is still loading — the links work regardless. */
   summary: AccountSummary | null
+  /**
+   * How many tenders this account has marked (**D23**), or `null` when it is
+   * not known — a visitor, or a screen that did not read them.
+   *
+   * **It comes from the same read as the list.** Sci's card is explicit about
+   * this, and it is why `lib/favourites/store.ts` has no `countFavourites`: a
+   * second query is a second answer, free to disagree, and a badge saying 4
+   * above a list showing 3 is the exact shape this repo keeps finding, where
+   * two readers of one fact reach different conclusions. Zero renders no
+   * badge rather than a "0" — nothing marked is not a quantity worth showing.
+   */
+  favouriteCount?: number | null
   /** Which item to mark as the page you are on — an `Item['id']`, not an
    *  href, because three items share one href. See {@link Item}. */
   current?: string
@@ -168,7 +189,12 @@ export function MenuView({
       ) : null}
 
       <nav className="flex grow flex-col gap-1 px-3 py-2">
-        <Section label={copy.sectionMain} items={MAIN} current={current} />
+        <Section
+          label={copy.sectionMain}
+          items={MAIN}
+          current={current}
+          counts={{ favourites: favouriteCount ?? null }}
+        />
         <Section label={copy.sectionAccount} items={ACCOUNT} current={current} />
       </nav>
 
@@ -179,7 +205,18 @@ export function MenuView({
   )
 }
 
-function Section({ label, items, current }: { label: string; items: Item[]; current?: string }) {
+function Section({
+  label,
+  items,
+  current,
+  counts,
+}: {
+  label: string
+  items: Item[]
+  current?: string
+  /** Per-item badges, keyed by `Item['id']`. Absent or zero draws nothing. */
+  counts?: Record<string, number | null>
+}) {
   return (
     <>
       <div className="px-3 pt-3 pb-1">
@@ -199,7 +236,12 @@ function Section({ label, items, current }: { label: string; items: Item[]; curr
             )}
           >
             <Icon name={item.icon} size={20} className="shrink-0 text-muted" />
-            {item.label}
+            <span className="grow">{item.label}</span>
+            {/* Zero draws nothing. "Favoritos 0" is not information, and a
+                badge that is usually 0 trains people to stop reading it. */}
+            {counts?.[item.id] ? (
+              <span className="text-meta tabular-nums text-muted">{counts[item.id]}</span>
+            ) : null}
           </Link>
         )
       })}

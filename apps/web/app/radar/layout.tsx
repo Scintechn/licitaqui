@@ -1,5 +1,5 @@
 import { AppShell } from '@/components/app-shell'
-import { readShellSummary } from '@/lib/account/server-summary'
+import { readShell } from '@/lib/account/server-summary'
 
 /**
  * The shell for `/radar` and every screen under it — the edital tabs, the
@@ -18,8 +18,9 @@ import { readShellSummary } from '@/lib/account/server-summary'
 export const dynamic = 'force-dynamic'
 
 export default async function RadarLayout({ children }: { children: React.ReactNode }) {
+  const shell = await readShell()
   return (
-    <AppShell summary={await readShellSummary()}>
+    <AppShell summary={shell.summary} favouriteCount={shell.favouriteCount}>
       {children}
     </AppShell>
   )

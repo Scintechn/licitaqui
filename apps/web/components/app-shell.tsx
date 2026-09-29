@@ -176,9 +176,12 @@ function writeCollapsed(next: boolean): void {
 
 export function AppShell({
   summary,
+  favouriteCount,
   children,
 }: {
   summary: AccountSummary | null
+  /** D23's badge, read from the same query as the section. */
+  favouriteCount?: number | null
   children: React.ReactNode
 }) {
   const current = currentItem(usePathname())
@@ -246,7 +249,13 @@ export function AppShell({
             onDismiss={close}
             dismissLabel={messages.common.close}
           >
-            <MenuView summary={summary} current={current} onDismiss={close} titleId={titleId} />
+            <MenuView
+              summary={summary}
+              current={current}
+              favouriteCount={favouriteCount}
+              onDismiss={close}
+              titleId={titleId}
+            />
           </Sheet>
         </div>
       </div>
