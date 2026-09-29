@@ -69,7 +69,7 @@ Exported from the approved "Wireframes LicitaQui" canvas on 2026-09-17. Claude C
 **Access**
 - Visitor (no account, up to 3 days, counted per device **and** per CNPJ): search by CNPJ or keyword, 2 AI screenings; tender files and alerts locked.
 - Básico (R$ 0, with account): search, tender files, **5 AI screenings/month**, 1 Telegram alert per week (1 keyword, 1 state).
-- Locked price block → Promocional R$ 26 for 6 months (48 founder seats, then R$ 57) or Essencial R$ 57 → Asaas checkout.
+- Locked price block → Promocional (25 founder seats) — see `docs/product.json` for the price and the months or Essencial R$ 57 → Asaas checkout.
 - Login: Google + email magic link (email link enabled when a sending domain is verified).
 - No customer invoice (NF) promise anywhere in the UI for now.
 

@@ -109,7 +109,7 @@ whole string as a single placeholder (e.g. `{{lista_editais}}`).
 |---|---|---|---|
 | `whatsapp/founders-welcome.md` | WhatsApp | right after a founder signs up and gets a seat | M1 |
 | `email/founders-welcome.md` | email | idem, for founders who gave an email | M1 |
-| `whatsapp/founders-waitlist.md` | WhatsApp | signup after seat 48 is gone | M1 |
+| `whatsapp/founders-waitlist.md` | WhatsApp | signup after the last seat is gone | M1 |
 | `email/founders-waitlist.md` | email | idem | M1 |
 | `whatsapp/founders-opening.md` | WhatsApp | opening broadcast, 08/10 at 19:00 | M3 |
 | `email/founders-opening.md` | email | idem | M3 |

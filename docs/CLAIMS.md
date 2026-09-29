@@ -70,7 +70,7 @@ Sci, 2026-09-25, **superseding the note that stood here earlier the same day**:
 the opening and the payment both start on 08/10. A founder receives the
 subscription link, subscribes to Essencial at the promotional price and pays
 for it, and the features that plan advertises are what they are paying for.
-The promotional price applies only while seats remain; once all 48 are taken, a
+The promotional price applies only while seats remain; once all 25 are taken, a
 new subscriber pays the standard Essencial price.
 
 These four were deferred that morning on the premise that Essencial was weeks
