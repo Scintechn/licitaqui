@@ -114,7 +114,7 @@ suite('favourites (database)', () => {
     await addFavourite(mine, FIXTURES[0].id)
     await addFavourite(theirs, FIXTURES[1].id)
 
-    expect((await listFavourites(mine)).map((f) => f.tenderId)).toEqual([FIXTURES[0].id])
+    expect((await listFavourites(mine)).map((f) => f.card.id)).toEqual([FIXTURES[0].id])
     expect(await isFavourite(mine, FIXTURES[1].id)).toBe(false)
   })
 
@@ -123,11 +123,19 @@ suite('favourites (database)', () => {
     await addFavourite(user, FIXTURES[0].id)
 
     const [one] = await listFavourites(user)
-    expect(one.tenderId).toBe(FIXTURES[0].id)
-    expect(one.object.length).toBeGreaterThan(0)
-    // `closeAt` may legitimately be null — four of the twenty fixtures have no
-    // deadline — so the assertion is about the *type*, not about a value.
-    expect(one.closeAt === null || one.closeAt instanceof Date).toBe(true)
+    expect(one.card.id).toBe(FIXTURES[0].id)
+    expect(one.card.object.length).toBeGreaterThan(0)
+    // The fields the Radar card draws, which the first version did not carry
+    // and which is why the section "told nothing worthy".
+    expect(one.card).toHaveProperty('shortTitle')
+    expect(one.card).toHaveProperty('estimatedValue')
+    expect(one.card).toHaveProperty('itemCount')
+    expect(one.card).toHaveProperty('meEppSummary')
+    // `proposalsCloseAt` may legitimately be null — four of the twenty
+    // fixtures have no deadline — so this is about the type, not a value.
+    expect(one.card.proposalsCloseAt === null || typeof one.card.proposalsCloseAt === 'string').toBe(
+      true,
+    )
   })
 
   it('loses the favourite when the tender goes, rather than rendering a ghost', async () => {

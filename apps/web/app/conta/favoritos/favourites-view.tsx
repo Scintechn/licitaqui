@@ -1,29 +1,34 @@
-import Link from 'next/link'
-import { Card, StateCard } from '@/components'
+import { StateCard } from '@/components'
 import type { Favourite } from '@/lib/favourites/store'
 import { messages } from '@/lib/messages'
-import { deadlineShort } from '@/lib/radar/format'
+import { TenderCardView } from '@/app/radar/tender-card'
 import { editalPath } from '@/lib/radar/client'
 import { AccountChrome } from '../account-chrome'
 
 /**
  * `/conta/favoritos` — the tenders this account marked (card **D23**).
  *
- * Sci, 2026-09-29: *"when the user marked a tenders as Favorite and we have
- * this section with all followers Tenders"*.
+ * ## It draws the Radar's card, not a card of its own
  *
- * **Newest first**, which is what `favourites_user_recent_idx` is for and what
- * the card asks for. Marking something is a "come back to this" gesture, so
- * the thing you marked last is the thing you were thinking about last.
+ * The first version rendered the raw `object`, the agency and a date. Sci,
+ * 2026-09-29: *"even closed of a good UX… tells nothing worthy"* — and he was
+ * right. `tenders.object` is a paragraph; `short_title` is the two-to-eight
+ * word title every other screen shows, and the card that draws it also draws
+ * the value, the deadline countdown, the item count and the ME/EPP tags.
+ *
+ * Reusing `TenderCardView` means none of that can drift from how the Radar
+ * shows the same tender — which is the whole reason the component is shared
+ * rather than the markup copied.
+ *
+ * **Newest first**, which is what `favourites_user_recent_idx` is for: marking
+ * is a "come back to this" gesture, so the last thing you marked is the thing
+ * you were thinking about last.
  *
  * ## The empty state is an instruction, not an apology
  *
- * A person reaching an empty Favoritos has not failed at anything — they have
+ * Somebody reaching an empty Favoritos has not failed at anything — they have
  * not used a control they may not have noticed. So it names the control and
- * where to find it, rather than saying "nothing here".
- *
- * Pure and prop-driven, so it renders under `renderToStaticMarkup` with no
- * session and no database.
+ * where to find it.
  */
 
 const copy = messages.radar.favourites
@@ -32,10 +37,13 @@ export function FavouritesView({
   plan,
   planName,
   favourites,
+  now,
 }: {
   plan: string
   planName: string
   favourites: Favourite[]
+  /** Injected so the countdown is testable against a fixed clock. */
+  now?: Date
 }) {
   return (
     <AccountChrome plan={plan} planName={planName} title={copy.title}>
@@ -46,30 +54,12 @@ export function FavouritesView({
           <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             {favourites.map((one) => (
-              <li key={one.tenderId}>
+              <li key={one.card.id}>
                 {/* No search to carry: this list is not a search result, so
-                    "Voltar" from the tender goes to a bare Radar. That is the
-                    honest link — inventing a query string here would take the
-                    reader back to a list they never ran. */}
-                <Link href={editalPath(one.tenderId)} className="block no-underline">
-                  <Card>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-body font-medium text-ink">{one.object}</span>
-                      <span className="text-meta text-muted">
-                        {[one.agencyName, one.state].filter(Boolean).join(' · ')}
-                      </span>
-                      {/* `closeAt` is null for a tender PNCP published no
-                          deadline for — four of the twenty seed fixtures are
-                          like that — and a card must not render that as a
-                          date, least of all as today. */}
-                      {one.closeAt ? (
-                        <span className="text-meta text-muted">
-                          {deadlineShort(one.closeAt.toISOString())}
-                        </span>
-                      ) : null}
-                    </div>
-                  </Card>
-                </Link>
+                    "Voltar" from the tender goes to a bare Radar. Inventing a
+                    query string here would take the reader back to a list
+                    they never ran. */}
+                <TenderCardView tender={one.card} now={now} href={editalPath(one.card.id)} />
               </li>
             ))}
           </ul>

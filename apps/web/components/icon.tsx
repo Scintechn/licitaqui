@@ -67,15 +67,42 @@ export type IconProps = Omit<SVGProps<SVGSVGElement>, 'name'> & {
   size?: number
   /** Accessible name. Omit it (the default) to hide the icon from assistive tech. */
   title?: string
+  /**
+   * Fill the shape instead of outlining it — for a toggle that is **on**.
+   *
+   * The set is stroked, which says nothing about state. The *Favoritar* star
+   * (D23) shipped without this and changed `aria-pressed` and nothing else a
+   * person could see.
+   */
+  filled?: boolean
 }
 
-export function Icon({ name, size = 22, title, className, strokeWidth = 1.8, ...props }: IconProps) {
+export function Icon({
+  name,
+  size = 22,
+  title,
+  className,
+  strokeWidth = 1.8,
+  filled = false,
+  ...props
+}: IconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
+      /*
+        **`filled` is how a toggle shows it is on.** The set is stroked at
+        1.8 on a 24 grid, which is right for navigation and says nothing about
+        state — so the *Favoritar* star changed `aria-pressed` and nothing a
+        person could see (D23). A filled shape is the difference between a
+        button that reports its state and one that only claims to.
+
+        One path, filled or not, rather than a second "star-filled" entry:
+        two paths drift, and the outline would eventually stop being the same
+        star as the fill.
+      */
+      fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
       strokeWidth={strokeWidth}
       strokeLinecap="round"

@@ -51,8 +51,13 @@ export function AppBarAction({
   icon,
   label,
   className,
+  /** Draw the glyph filled — a toggle that is on (D23's Favoritar star). */
+  filled = false,
   ...button
-}: AppBarActionProps & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className' | 'children'>) {
+}: AppBarActionProps & { filled?: boolean } & Omit<
+    ButtonHTMLAttributes<HTMLButtonElement>,
+    'className' | 'children'
+  >) {
   return (
     <button
       {...button}
@@ -60,7 +65,7 @@ export function AppBarAction({
       aria-label={label}
       className={cn(ACTION, className)}
     >
-      <Icon name={icon} size={22} />
+      <Icon name={icon} size={22} filled={filled} />
     </button>
   )
 }

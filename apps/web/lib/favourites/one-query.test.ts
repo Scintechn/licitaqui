@@ -25,6 +25,25 @@ import * as store from './store'
 
 const SHELL = fileURLToPath(new URL('../account/server-summary.ts', import.meta.url))
 
+/**
+ * A file's code with comments and line breaks removed.
+ *
+ * Both were load-bearing in earlier versions of this guard and should not
+ * have been. It first pinned the call on a single line and broke when the
+ * argument list wrapped; then it excluded `:` to bound the match, and broke
+ * again on a comment containing one. A guard that fails because code was
+ * *formatted* or *explained* teaches the next person to delete it.
+ *
+ * The same trick `lib/db/database-suites.test.ts` uses, for the same reason:
+ * prose cannot call a function, so prose does not get a vote.
+ */
+function code(path: string): string {
+  return readFileSync(path, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+    .replace(/\s+/g, ' ')
+}
+
 describe('the favourites count comes from the favourites list', () => {
   it('offers no way to count them separately', () => {
     // If somebody adds `countFavourites`, this fails and they have to read the
@@ -34,7 +53,7 @@ describe('the favourites count comes from the favourites list', () => {
   })
 
   it('derives the badge from the list, in the shell', () => {
-    const source = readFileSync(SHELL, 'utf8')
+    const source = code(SHELL)
     expect(source).toContain('listFavourites')
     // `.length` of the list, not a number from anywhere else.
     expect(source).toMatch(/favouriteCount:\s*favourites === null \? null : favourites\.length/)
@@ -43,7 +62,13 @@ describe('the favourites count comes from the favourites list', () => {
   it('reads nothing for a viewer with no account', () => {
     // A visitor has no favourites and no account to key them on, so the badge
     // is `null` — unknown — rather than 0, which would be a claim.
-    const source = readFileSync(SHELL, 'utf8')
+    //
+    // **Whitespace-collapsed before matching.** The first version pinned the
+    // call on one line and broke the moment the argument list wrapped across
+    // three — a guard failing because code was *formatted* teaches the next
+    // person to delete it. The rule is "only read for a user"; the line
+    // breaks are not the rule.
+    const source = code(SHELL)
     expect(source).toMatch(/viewer\?\.kind === 'user' \? listFavourites\(/)
   })
 })
