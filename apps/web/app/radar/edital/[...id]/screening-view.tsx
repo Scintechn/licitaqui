@@ -86,6 +86,16 @@ export type ScreeningViewProps = {
   model: ScreeningModel | null
   quota: QuotaView | null
   visitor: VisitorView | null
+  /**
+   * Whether this request carries an account (**§8: files only with an
+   * account**), read on the server by `readHasAccount`.
+   *
+   * **Not derived from `visitor`.** That field is `null` for an account *and*
+   * for a caller with no viewer at all, because `visitorWindow()` returns null
+   * whenever the caller is not a visitor — reading the absence as "signed in"
+   * is the same move as reading a missing `plan_limits` row as zero.
+   */
+  signedIn: boolean
   status: ScreeningStatus
   tab?: ScreeningTab
   onSelectTab?: (tab: ScreeningTab) => void
@@ -279,19 +289,35 @@ function ScreeningTabs({
   onSelect,
   tenderId,
   search,
+  signedIn,
 }: {
   active: ScreeningTab
   onSelect?: (tab: ScreeningTab) => void
   tenderId: string
   search: RadarSearch
+  signedIn: boolean
 }) {
+  /**
+   * **The lock is for a visitor, not for everybody.**
+   *
+   * This was an unconditional `accountHref(...)` with a padlock, written to
+   * §8's rule — *"files only with an account"* — and applied to people who
+   * have one. A paying Essencial subscriber met a padlock and a bounce to
+   * `/conta` for documents they could open one screen back, on the tender
+   * page, with no lock at all. Sci found it on his own account, 2026-09-29.
+   *
+   * Signed in, the tab is an ordinary link to the tender's own **Documentos**
+   * tab, which is where the files live — this screen never held them.
+   */
   const items: TabItem<ScreeningTab | 'files'>[] = [
     { id: 'summary', label: page.tabs.summary },
     {
       id: 'files',
       label: page.tabs.files,
-      href: accountHref(tenderHref(tenderId, search)),
-      icon: 'locked',
+      href: signedIn
+        ? tenderHref(tenderId, search, 'files')
+        : accountHref(tenderHref(tenderId, search)),
+      ...(signedIn ? {} : { icon: 'locked' as const }),
     },
     { id: 'requirements', label: page.tabs.requirements },
   ]
@@ -413,6 +439,7 @@ export function ScreeningView({
   model,
   quota,
   visitor,
+  signedIn,
   status,
   tab = 'summary',
   onSelectTab,
@@ -462,7 +489,13 @@ export function ScreeningView({
         </div>
 
         {ready ? (
-          <ScreeningTabs active={tab} onSelect={onSelectTab} tenderId={tenderId} search={search} />
+          <ScreeningTabs
+            active={tab}
+            onSelect={onSelectTab}
+            tenderId={tenderId}
+            search={search}
+            signedIn={signedIn}
+          />
         ) : null}
 
         {ready && model ? (

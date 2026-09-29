@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { getJobStatus, getTender, radarHref, readSearch } from '@/lib/radar/client'
+import { getJobStatus, getTender, radarHref, readSearch, TAB_PARAM } from '@/lib/radar/client'
 import type {
   Freshness,
   ScreeningAvailability,
@@ -51,7 +51,21 @@ export function OpportunityScreen({ id }: { id: string }) {
   // The record's tab and how far the Itens list has been unrolled live here,
   // the way the screening screen's tab does, so `opportunity-view.tsx` stays a
   // pure function of props and every page of the table renders in a test.
-  const [tab, setTab] = useState<OpportunityTab>('items')
+  /**
+   * `?tab=files` opens on Documentos.
+   *
+   * The screening screen's own "Documentos" tab links here, because the files
+   * live on this screen and never lived on that one. Without this the reader
+   * clicked Documentos and arrived at **Itens** — which is barely better than
+   * the padlock that link used to carry.
+   *
+   * Read once, as the initial value, rather than kept in sync with the URL:
+   * changing tabs afterwards is a local gesture and pushing history entries
+   * for it would make Back mean "previous tab" instead of "previous page".
+   */
+  const [tab, setTab] = useState<OpportunityTab>(
+    params.get(TAB_PARAM) === 'files' ? 'files' : 'items',
+  )
   const [itemsVisible, setItemsVisible] = useState(ITEMS_PAGE)
 
   /**
