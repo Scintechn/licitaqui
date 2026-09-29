@@ -28,14 +28,10 @@ import {
 } from '@/lib/radar/list-cache'
 import { appendTenders } from '@/lib/radar/pagination'
 import { waitForData } from '@/lib/radar/poll'
-import { Sheet } from '@/components'
-import { messages } from '@/lib/messages'
-import type { AccountSummary } from '@/lib/account/summary'
-import { MenuView } from './menu-view'
+import { useAppMenu } from '@/components/app-shell'
 import { RadarView, type RadarQuery, type RadarStatus } from './radar-view'
 
 /** The drawer's accessible name lives on the menu's own hidden heading. */
-const MENU_TITLE_ID = 'menu-title'
 import { normaliseUf } from '@/lib/radar/ufs'
 
 /**
@@ -594,21 +590,21 @@ export function RadarScreen() {
     [router, key],
   )
 
-  /** Retry means "ask again", so the snapshot must not answer for the route. */
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [summary, setSummary] = useState<AccountSummary | null>(null)
-  const closeMenu = useCallback(() => setMenuOpen(false), [])
-  const openMenu = useCallback(() => {
-    setMenuOpen(true)
-    // Re-read every time it opens: a triagem spent since the last look must
-    // not be shown as unspent, and a stale strip is worse than a slow one.
-    fetch('/api/conta/resumo')
-      .then((answer) => (answer.ok ? (answer.json() as Promise<AccountSummary>) : null))
-      .then((value) => setSummary(value))
-      .catch(() => {
-        // The strip is the only thing that needs it; every link still works.
-      })
-  }, [])
+  /**
+   * The drawer, its state and its summary all moved to `AppShell` (D20).
+   *
+   * This screen used to own them, which is exactly why `/conta` had no menu
+   * at all: the navigation was a detail of one screen rather than of the
+   * application. It also fetched `/api/conta/resumo` on every open — correct
+   * for a drawer that only exists while open, and wrong for a rail that is the
+   * first thing painted, so the layout now reads it on the server.
+   *
+   * What is left here is the trigger, and it is `undefined` outside a shell:
+   * the Landing renders `RadarView` in an example panel with no shell around
+   * it, and `radar-view.tsx` already declines to draw a button that opens
+   * nothing.
+   */
+  const menu = useAppMenu()
 
   const onRetry = useCallback(() => {
     forgetList(key)
@@ -630,21 +626,8 @@ export function RadarScreen() {
       onNavigate={onNavigate}
       onRetry={onRetry}
       onLoadMore={onLoadMore}
-      onOpenMenu={openMenu}
+      onOpenMenu={menu?.open}
     />
-      <Sheet
-        open={menuOpen}
-        labelledBy={MENU_TITLE_ID}
-        onDismiss={closeMenu}
-        dismissLabel={messages.common.close}
-      >
-        <MenuView
-          summary={summary}
-          current="/radar"
-          onDismiss={closeMenu}
-          titleId={MENU_TITLE_ID}
-        />
-      </Sheet>
     </>
   )
 }
