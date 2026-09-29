@@ -93,6 +93,8 @@ export function FavouriteButton({ tenderId }: { tenderId: string }) {
       label={refused ? copy.signedOut : state.favourite ? copy.added : copy.add}
       onClick={toggle}
       aria-pressed={state.favourite}
+      filled={state.favourite}
+      className={state.favourite ? 'text-blue' : undefined}
     />
   )
 }

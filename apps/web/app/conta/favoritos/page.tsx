@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { listFavourites } from '@/lib/favourites/store'
+import { readCompany, segmentsByFit } from '@/lib/radar/company'
 import { messages } from '@/lib/messages'
 import { readAccountData } from '../account-data'
 import { FavouritesView } from './favourites-view'
@@ -21,11 +22,29 @@ export const metadata: Metadata = {
 
 export default async function FavouritesPage() {
   const account = await readAccountData()
+
+  /**
+   * The compatibility badge comes from **the account's own CNPJ**, read now —
+   * Sci's decision, 2026-09-29.
+   *
+   * The alternative was storing the group at the moment of marking, which
+   * needs no read and goes stale: change the CNPJ, or let the segment map
+   * improve, and the badge keeps claiming what was true months ago. A claim
+   * about the past rendered as a claim about now is the defect this repo
+   * keeps finding.
+   *
+   * No CNPJ on the account means no segments, so every card reads `keyword` —
+   * which is honest: it is here because they put it here.
+   */
+  const company = account.cnpj ? await readCompany(account.cnpj) : null
+  const fits = company?.data.company.segments ?? []
+  const { compatible, check } = segmentsByFit(fits)
+
   return (
     <FavouritesView
       plan={account.plan}
       planName={account.planName}
-      favourites={await listFavourites(account.userId)}
+      favourites={await listFavourites(account.userId, { compatible, check, fits })}
     />
   )
 }

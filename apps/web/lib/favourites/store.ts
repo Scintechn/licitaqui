@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
+import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
+import type { CompanyMatch } from '@/lib/radar/tenders'
 
 /**
  * Marking a tender, and finding it again — card **D23**.
@@ -29,25 +31,22 @@ import { db, type Executor } from '@/lib/db'
  * answers one row from the primary key.
  */
 
-/** A marked tender, as the section renders it. */
+/**
+ * A marked tender, as the section renders it.
+ *
+ * **A `TenderCard`, the same shape the Radar list uses**, plus when it was
+ * marked. The first version carried four fields — the raw `object`, the
+ * agency, the state and a date — and Sci's verdict was the right one: *"even
+ * closed of a good UX… tells nothing worthy"*. The object is a wall of text;
+ * `short_title` is the two-to-eight-word title the worker writes and every
+ * other screen shows. Reusing the card means the value, the deadline
+ * countdown, the item count and the ME/EPP tags come for free and cannot
+ * drift from how the Radar draws them.
+ */
 export type Favourite = {
-  tenderId: string
-  object: string
-  agencyName: string | null
-  state: string | null
-  /** `null` when PNCP published none, which the card must not read as "today". */
-  closeAt: Date | null
+  card: TenderCard
   /** When the person marked it. The section is newest-first on this. */
   markedAt: Date
-}
-
-type Row = {
-  tender_id: string
-  object: string | null
-  agency_name: string | null
-  state: string | null
-  proposals_close_at: Date | string | null
-  created_at: Date | string
 }
 
 /**
@@ -125,31 +124,94 @@ export async function isFavourite(
 }
 
 /**
- * Everything this person marked, newest first.
+ * Everything this person marked, newest first, as cards.
  *
  * `join tenders` rather than a left join: the migration cascades a deleted
- * tender, so a favourite without one cannot exist — and if it ever did, an
+ * tender, so a favourite without one cannot exist — and if one ever did, an
  * inner join drops it rather than rendering a card with no object, which is
  * the honest failure.
+ *
+ * **`match` decides the compatibility badge**, and it is the account's own
+ * CNPJ rather than a stored value. Sci's decision, 2026-09-29: a badge frozen
+ * at the moment of marking would keep claiming "compatível" after the CNPJ
+ * changed or the segment map improved — a claim about the past rendered as a
+ * claim about now.
  */
 export async function listFavourites(
   userId: number,
+  match: CompanyMatch = { compatible: [], check: [], fits: [] },
   database: Executor = db(),
 ): Promise<Favourite[]> {
   const found = await database.execute<Row>(sql`
-    select f.tender_id, f.created_at,
-           t.object, t.agency_name, t.state, t.proposals_close_at
+    select f.created_at,
+           t.id, t.object, t.short_title, t.agency_name, t.city, t.state,
+           t.modality_name, t.proposals_close_at, t.estimated_value,
+           t.confidential_budget, t.price_registration, t.me_epp_summary,
+           t.favored_treatment, t.segments, t.status, t.pncp_updated_at,
+           (select count(*) from tender_items i where i.tender_id = t.id) as item_count
       from favourites f
       join tenders t on t.id = f.tender_id
      where f.user_id = ${userId}::bigint
      order by f.created_at desc, f.tender_id
   `)
-  return found.rows.map((row) => ({
-    tenderId: row.tender_id,
-    object: row.object ?? '',
-    agencyName: row.agency_name,
-    state: row.state,
-    closeAt: row.proposals_close_at === null ? null : new Date(row.proposals_close_at),
-    markedAt: new Date(row.created_at),
-  }))
+  return found.rows.map((row) => {
+    const segments = row.segments ?? []
+    return {
+      markedAt: new Date(row.created_at),
+      card: {
+        id: row.id,
+        object: row.object ?? '',
+        shortTitle: row.short_title,
+        agencyName: row.agency_name,
+        city: row.city,
+        state: row.state,
+        modalityName: row.modality_name,
+        proposalsCloseAt: row.proposals_close_at
+          ? new Date(row.proposals_close_at).toISOString()
+          : null,
+        estimatedValue: row.estimated_value,
+        confidentialBudget: Boolean(row.confidential_budget),
+        priceRegistration: Boolean(row.price_registration),
+        meEppSummary: row.me_epp_summary,
+        favoredTreatment: row.favored_treatment,
+        itemCount: row.item_count === null ? null : Number(row.item_count),
+        segments,
+        matchedSegments: match.fits.filter((fit) => segments.includes(fit.segment)),
+        // The badge, from the account's CNPJ. `keyword` is the honest answer
+        // for a tender that matches no segment of theirs: it is here because
+        // they put it here, not because the segments agreed.
+        group: groupFor(segments, match),
+        status: row.status,
+        pncpUpdatedAt: row.pncp_updated_at ? new Date(row.pncp_updated_at).toISOString() : null,
+      },
+    }
+  })
+}
+
+/** The same three-way split the Radar list makes, in TypeScript rather than SQL. */
+function groupFor(segments: string[], match: CompanyMatch): TenderGroup {
+  if (segments.some((segment) => match.compatible.includes(segment))) return 'compatible'
+  if (segments.some((segment) => match.check.includes(segment))) return 'check'
+  return 'keyword'
+}
+
+type Row = {
+  created_at: Date | string
+  id: string
+  object: string | null
+  short_title: string | null
+  agency_name: string | null
+  city: string | null
+  state: string | null
+  modality_name: string | null
+  proposals_close_at: Date | string | null
+  estimated_value: string | null
+  confidential_budget: boolean | null
+  price_registration: boolean | null
+  me_epp_summary: string | null
+  favored_treatment: boolean | null
+  segments: string[] | null
+  status: string | null
+  pncp_updated_at: Date | string | null
+  item_count: string | number | null
 }

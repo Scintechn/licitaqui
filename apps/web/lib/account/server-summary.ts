@@ -93,7 +93,11 @@ export async function readShell(): Promise<ShellSummary> {
         planOf(viewer),
         executor,
       ),
-      viewer?.kind === 'user' ? listFavourites(viewer.user.userId, executor) : null,
+      viewer?.kind === 'user'
+        // The badge only needs the count, so the match is left empty: no
+        // segments read for a number.
+        ? listFavourites(viewer.user.userId, undefined, executor)
+        : null,
     ])
     return { summary, favouriteCount: favourites === null ? null : favourites.length }
   } catch {
