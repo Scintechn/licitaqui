@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { MAX_SEAT } from '@/lib/auth/founder-seat'
 import { describe, expect, it } from 'vitest'
 import { FOUNDERS } from '../product'
 import {
@@ -169,5 +172,33 @@ describe('soldOutLabel', () => {
     const label = soldOutLabel(25, 25)
     expect(label).toContain('25')
     expect(label).not.toContain('primeiro lote')
+  })
+})
+
+describe('the database bound is never shown as the offer size', () => {
+  /**
+   * `MAX_SEAT` is 48 because spec §6.2 gives `founder_seat` a
+   * `between 1 and 48` CHECK. It is a validity bound for a column. It is not
+   * how many seats are on sale, and on 2026-09-29 `/conta` rendered it as
+   * "Vaga 1 de 48" while the landing banner said "restam 16 de 17 vagas" and
+   * the terms sold 25 — three numbers for one offer, live.
+   *
+   * It survived D18 for a reason worth remembering: a blanket replacement of
+   * `48` was rejected because it would have corrupted
+   * `SEAT_LOCK = { namespace: 19537, key: 48 }` in `signup.ts`, and this
+   * constant was excluded along with it.
+   */
+  it('keeps MAX_SEAT distinct from the number of seats sold', () => {
+    expect(MAX_SEAT).toBeGreaterThanOrEqual(FOUNDERS.seatsTotal)
+    expect(FOUNDERS.seatsTotal).not.toBe(MAX_SEAT)
+  })
+
+  it('shows the offer size on the account screen, not the column bound', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../../app/conta/page.tsx', import.meta.url)),
+      'utf8',
+    )
+    expect(source).toContain('seatTotal={FOUNDERS.seatsTotal}')
+    expect(source).not.toContain('seatTotal={MAX_SEAT}')
   })
 })
