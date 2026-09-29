@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AppBarAction } from '@/components/app-bar'
 import { messages } from '@/lib/messages'
+import { tenderApiPath } from '@/lib/radar/client'
 
 /**
  * *Favoritar* — mark this edital, or take the mark off (card **D23**).
@@ -23,6 +24,18 @@ import { messages } from '@/lib/messages'
  * label and its destination agree. It is the sixth instance of the shape
  * CLAUDE.md lists, and the reason `grep` missed it earlier is that D23's
  * survey looked for *acompanhar* and *favorit*, and this one says *seguir*.
+ *
+ * ## The id has a slash in it, and that is why this uses `tenderApiPath`
+ *
+ * A `numeroControlePNCP` is `51327708000192-1-000084/2026`. This first used
+ * `encodeURI`, which does **not** encode `/` — so the request went to
+ * `/api/tenders/51327708000192-1-000084/2026/favorito`: two segments where the
+ * route declares one. Every call 404'd, the button stayed absent for ever, and
+ * absent is exactly what "still loading" looks like.
+ *
+ * `client.ts` has had `tenderApiPath` since the band route hit this, carrying
+ * the comment *"The single-segment spelling `/api/tenders/[id]` matches"*. I
+ * wrote my own encoding rather than using the helper that existed.
  *
  * ## It renders nothing until it knows
  *
@@ -50,7 +63,7 @@ export function FavouriteButton({ tenderId }: { tenderId: string }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch(`/api/tenders/${encodeURI(tenderId)}/favorito`, { signal: controller.signal })
+    fetch(`/api/tenders/${tenderApiPath(tenderId)}/favorito`, { signal: controller.signal })
       .then((answer) => (answer.ok ? answer.json() : null))
       .then((body) => {
         if (body?.state === 'ready') setState({ known: true, favourite: body.favourite === true })
@@ -69,7 +82,7 @@ export function FavouriteButton({ tenderId }: { tenderId: string }) {
     setState((was) => (was.known ? { known: true, favourite: !was.favourite } : was))
     setRefused(false)
 
-    fetch(`/api/tenders/${encodeURI(tenderId)}/favorito`, { method: 'POST' })
+    fetch(`/api/tenders/${tenderApiPath(tenderId)}/favorito`, { method: 'POST' })
       .then(async (answer) => {
         if (answer.status === 401) {
           setRefused(true)
