@@ -60,9 +60,26 @@ function databaseSuites(directory: string, found: string[] = []): string[] {
   return found
 }
 
+/**
+ * Comments and their contents, removed before the scan.
+ *
+ * **The guard was one sentence away from being defeated.** `variablesIn` used
+ * to match the whole file text, docblocks included — and `d3.db.test.ts` is
+ * the only suite with no `?? testDatabaseUrl()` fallback, which is exactly
+ * what makes the guard load-bearing for it. Writing the characters
+ * `testDatabaseUrl()` anywhere in that file's docblock, which is most of the
+ * file, would have added the shared variable to its list, let the shared
+ * secret satisfy it, and reported success while the suite skipped.
+ *
+ * Prose cannot open a database connection, so prose does not get a vote.
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+}
+
 /** Every `TEST_DATABASE_URL*` a file could be satisfied by. */
 function variablesIn(file: string): string[] {
-  const source = readFileSync(join(WEB, file), 'utf8')
+  const source = stripComments(readFileSync(join(WEB, file), 'utf8'))
   const names = new Set<string>()
   for (const match of source.matchAll(/testDatabaseUrl\(\s*'([A-Z0-9_]+)'\s*\)/g)) {
     names.add(match[1] as string)
@@ -81,6 +98,23 @@ describe('every database suite can reach a database', () => {
     // If this trips, the scan broke rather than the suites vanishing — the
     // failure mode that made a previous guard here pass while blind.
     expect(SUITES.length).toBeGreaterThanOrEqual(12)
+  })
+
+  it('does not count a variable that only appears in prose', () => {
+    // The defect this guard nearly shipped with. A docblock mentioning the
+    // bare call must not satisfy a suite that never makes one — `d3` has no
+    // fallback, so for `d3` that is the difference between running and not.
+    const pretend = `
+      /** Historically this read testDatabaseUrl() before D3 got its own. */
+      const url = testDatabaseUrl('TEST_DATABASE_URL_D3')
+    `
+    expect(stripComments(pretend)).not.toContain('testDatabaseUrl()')
+    expect(stripComments(pretend)).toContain("testDatabaseUrl('TEST_DATABASE_URL_D3')")
+  })
+
+  it('still sees a real call on the same line as a trailing comment', () => {
+    const real = "const url = testDatabaseUrl() // the shared database\n"
+    expect(stripComments(real)).toContain('testDatabaseUrl()')
   })
 
   it.each(SUITES)('%s names at least one database variable', (file) => {

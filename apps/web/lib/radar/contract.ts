@@ -233,7 +233,7 @@ export type BandResponse =
   | {
       state: 'ready'
       band: PriceBand | null
-      /**
+      /*
        * **There is deliberately no `entitled` here.**
        *
        * There was, briefly. An unentitled caller on an item with no band gets

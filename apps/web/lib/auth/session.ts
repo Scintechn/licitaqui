@@ -48,6 +48,27 @@ export type SessionUser = {
  * deployment URL is `https`, so production and localhost differ, and a cookie
  * jar can legitimately hold both after a deployment moves.
  */
+/**
+ * One cookie value, decoded — and **never throwing**.
+ *
+ * `decodeURIComponent` raises `URIError` on a lone `%`, and the loop below
+ * decodes *every* value it walks past before it checks the name. So one
+ * malformed cookie, from any source, anywhere in the jar, threw before the
+ * session token was ever reached: the caller lost the session, and in an API
+ * route that surfaced as a 500 on a request that was perfectly valid.
+ *
+ * A value that will not decode is returned as it arrived. That is right for
+ * this function's one job — a session token is a UUID and matches either way,
+ * while an unrelated cookie must not be able to sign anybody out.
+ */
+function decodeCookieValue(raw: string): string {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
 export function sessionTokenFromCookies(header: string | null): string | null {
   if (!header) return null
   let insecure: string | null = null
@@ -56,7 +77,7 @@ export function sessionTokenFromCookies(header: string | null): string | null {
     const equals = trimmed.indexOf('=')
     if (equals <= 0) continue
     const name = trimmed.slice(0, equals)
-    const value = decodeURIComponent(trimmed.slice(equals + 1))
+    const value = decodeCookieValue(trimmed.slice(equals + 1))
     if (!value) continue
     // The `__Secure-` cookie wins: a browser will not send it over plain HTTP,
     // so when both arrive the secure one is the current session.

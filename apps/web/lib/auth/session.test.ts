@@ -58,3 +58,35 @@ describe('sessionTokenFromCookies', () => {
     expect(sessionTokenFromCookies(`${SESSION_COOKIE}=YWJj==`)).toBe('YWJj==')
   })
 })
+
+describe('sessionTokenFromCookies survives a neighbour it cannot decode', () => {
+  /**
+   * `decodeURIComponent` throws `URIError` on a lone `%`, and the parser
+   * decodes every value it walks past *before* it checks the name. So one
+   * malformed cookie — from any source, anywhere in the jar — used to throw
+   * before the session token was reached. `readViewer` propagated it, and in
+   * an API route it surfaced as a 500 on a valid request.
+   *
+   * Found while fixing a price-screen read that rebuilt the header out of
+   * `cookies().getAll()`: those values come back already decoded, so a real
+   * `%25` became a bare `%` and was decoded a second time. That call site now
+   * uses the raw header, and this makes the parser safe for every other one.
+   */
+  it('still finds the session token after a lone percent sign', () => {
+    expect(sessionTokenFromCookies('junk=100%; __Secure-authjs.session-token=REAL')).toBe('REAL')
+  })
+
+  it('still finds it after a truncated escape', () => {
+    expect(sessionTokenFromCookies('bad=%E0%A4%A; __Secure-authjs.session-token=REAL')).toBe('REAL')
+  })
+
+  it('keeps decoding the values it can', () => {
+    // A genuinely encoded token must still come back decoded, or a session
+    // whose token contained an escaped character would stop matching.
+    expect(sessionTokenFromCookies('__Secure-authjs.session-token=a%2Bb')).toBe('a+b')
+  })
+
+  it('returns an undecodable value unchanged rather than dropping it', () => {
+    expect(sessionTokenFromCookies('__Secure-authjs.session-token=100%')).toBe('100%')
+  })
+})
