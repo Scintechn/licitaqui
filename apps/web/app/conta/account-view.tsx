@@ -1,10 +1,10 @@
 import Link from 'next/link'
-import { AppBar, Button, Card, CardRow, Logo, SectionLabel, Tag } from '@/components'
+import { Button, SectionLabel } from '@/components'
+import { AccountChrome } from './account-chrome'
 import { MenuTrigger } from '@/components/menu-trigger'
 import { format, messages } from '@/lib/messages'
 import type { QuotaView } from '@/lib/radar/contract'
-import { ACCOUNT_PATH, ALERTS_HREF, PLAN_HREF } from '@/lib/routes'
-import { CompanyForm } from './company-form'
+import { ALERTS_HREF, COMPANY_PATH, PLAN_PATH } from '@/lib/routes'
 
 /**
  * `/conta` — what this account is and what is left of it (spec §10).
@@ -24,24 +24,9 @@ const copy = messages.account.screen
 export type AccountViewProps = {
   /** §10's plan key. The display name comes from `messages.plans`. */
   plan: string
-  /** Screenings: the feature this plan is actually measured by. */
-  quota: QuotaView
-  /** The company this account searched, or `null`. */
-  cnpj: string | null
-  companyName: string | null
-  /** 1..48 when they came from the founders list. */
-  founderSeat: number | null
-  /** The total number of founder seats — `founders_list.seat`'s check. */
-  seatTotal: number
+  /** The display name, resolved by `readAccountData`. */
+  planName: string
   signOutAction: () => void | Promise<void>
-  /**
-   * `saveCompany` (task E3). The account setting `rememberUserCnpj` has been
-   * deferring to since U1: until it existed, the first company anybody searched
-   * in the Radar was theirs permanently.
-   */
-  companyAction: (formData: FormData) => void | Promise<void>
-  /** `?estado=…` after `saveCompany` redirected back here. */
-  notice: AccountNotice
 }
 
 export type AccountNotice = 'company' | 'cnpj-invalid' | null
@@ -60,12 +45,7 @@ const DATA_REQUEST = format(messages.legal.dataRequest, {
   email: messages.support.privacyEmail,
 })
 
-const PLAN_NAMES: Record<string, string> = {
-  basico: messages.plans.basic.name,
-  promocional: messages.plans.promo.name,
-  essencial: messages.plans.essential.name,
-  pro: messages.plans.pro.name,
-}
+
 
 /** "5 de 5 neste mês", "Sem limite", "Não incluídas neste plano" — never a literal. */
 export function screeningsLabel(quota: QuotaView): string {
@@ -85,87 +65,11 @@ export function formatCnpj(cnpj: string): string {
 
 export function AccountView({
   plan,
-  quota,
-  cnpj,
-  companyName,
-  founderSeat,
-  seatTotal,
+  planName,
   signOutAction,
-  companyAction,
-  notice,
 }: AccountViewProps) {
   return (
-    <div className="flex min-h-dvh flex-col">
-      <AppBar
-        leading={
-          <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
-            <Logo size={30} />
-          </Link>
-        }
-        actions={
-          <>
-            <Tag tone="muted">{PLAN_NAMES[plan] ?? plan}</Tag>
-            {/* **The control this screen never had.** Signed in, on your own
-                account, with no way to reach your plan or your triagens —
-                which is how D20 was found. `MenuTrigger` renders nothing
-                outside a shell, so this stays inert wherever the view is
-                rendered on its own. */}
-            <MenuTrigger />
-          </>
-        }
-      />
-      <main className="mx-auto flex w-full max-w-[560px] grow flex-col gap-4 px-gutter pt-6 pb-10">
-        <h1 className="font-display text-[26px] leading-tight font-semibold">{copy.title}</h1>
-
-        <Card padding="none">
-          <div className="px-4 py-1">
-            <CardRow label={copy.planLabel} value={PLAN_NAMES[plan] ?? plan} />
-            <CardRow label={copy.screeningsLabel} value={screeningsLabel(quota)} />
-            <CardRow
-              label={copy.companyLabel}
-              value={cnpj ? (companyName ?? formatCnpj(cnpj)) : copy.companyNone}
-              last={!founderSeat}
-            />
-            {founderSeat ? (
-              <CardRow
-                label={copy.founderLabel}
-                value={format(copy.founderSeat, { numero: founderSeat, total: seatTotal })}
-                last
-              />
-            ) : null}
-          </div>
-        </Card>
-
-        {founderSeat ? (
-          <p className="text-meta leading-relaxed text-muted">{copy.founderNote}</p>
-        ) : null}
-
-        {notice === 'company' ? (
-          <Card accent>
-            <p className="text-meta leading-relaxed">{copy.companySaved}</p>
-          </Card>
-        ) : null}
-        {cnpj && !companyName ? (
-          <p className="text-meta leading-relaxed text-muted">{copy.companyPending}</p>
-        ) : null}
-
-        {/*
-          Task E3. The row above states the company; this changes it. A separate
-          section rather than an inline control on the row, because the CNPJ is
-          the single input that decides which editais this account ever sees —
-          it earns a label and a hint, not a pencil icon.
-        */}
-        <section className="flex flex-col gap-2 pt-2">
-          <SectionLabel>{copy.companyTitle}</SectionLabel>
-          <CompanyForm
-            action={companyAction}
-            next={ACCOUNT_PATH}
-            cnpj={cnpj}
-            invalid={notice === 'cnpj-invalid'}
-            submitLabel={cnpj ? copy.companyChange : copy.companySave}
-          />
-        </section>
-
+    <AccountChrome plan={plan} planName={planName} title={copy.title}>
         <div className="flex flex-col gap-2 min-[560px]:flex-row">
           <Button href="/radar" iconEnd="arrowRight">
             {copy.radar}
@@ -173,8 +77,11 @@ export function AccountView({
           <Button href={ALERTS_HREF} variant="secondary">
             {copy.alerts}
           </Button>
-          <Button href={PLAN_HREF} variant="secondary">
-            {copy.plans}
+          <Button href={COMPANY_PATH} variant="secondary">
+            {messages.radar.menu.company}
+          </Button>
+          <Button href={PLAN_PATH} variant="secondary">
+            {messages.radar.menu.billing}
           </Button>
         </div>
 
@@ -189,7 +96,6 @@ export function AccountView({
             {copy.signOut}
           </Button>
         </form>
-      </main>
-    </div>
+    </AccountChrome>
   )
 }

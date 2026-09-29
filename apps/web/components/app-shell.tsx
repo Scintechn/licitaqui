@@ -101,11 +101,11 @@ export function useAppMenu(): AppMenu | null {
  * can read it.
  *
  * Longest match wins, so `/conta/alertas` is Alertas rather than Perfil.
- * `/conta` exactly resolves to **`profile`** because three items —
- * "Minha empresa", "Plano e pagamento", "Perfil" — all point there and
- * marking by href lit all three at once. Three labels for one page is the
- * real gap and is carded as **D22**; this picks the one under CONTA, which is
- * what the page calls itself ("Sua conta").
+ * `/conta` exactly resolves to **`profile`**. That used to be a tie-break:
+ * three items pointed there and marking by href lit all three at once. **D22
+ * gave "Minha empresa" and "Plano e pagamento" their own routes**, so it is
+ * now simply the profile — and the longest-match order above is what keeps
+ * `/conta/plano` from also matching the `/conta` prefix.
  *
  * Exported for its test: the bug this replaces was invisible in every unit
  * test because the menu was only ever rendered with `/radar`.
@@ -113,6 +113,8 @@ export function useAppMenu(): AppMenu | null {
 export function currentItem(pathname: string | null): string | undefined {
   if (!pathname) return undefined
   if (pathname.startsWith('/conta/alertas')) return 'alerts'
+  if (pathname.startsWith('/conta/empresa')) return 'company'
+  if (pathname.startsWith('/conta/plano')) return 'billing'
   if (pathname.startsWith('/conta/criar')) return undefined
   if (pathname.startsWith('/conta')) return 'profile'
   if (pathname.startsWith('/radar')) return 'radar'

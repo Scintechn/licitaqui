@@ -1,14 +1,8 @@
-import { sql } from 'drizzle-orm'
 import type { Metadata } from 'next'
-import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
-import { db } from '@/lib/db'
 import { messages } from '@/lib/messages'
-import { FOUNDERS } from '@/lib/product'
-import { countUsage, FEATURES, quotaView, readLimit } from '@/lib/radar/quota'
-import { ACCOUNT_CREATE_PATH } from '@/lib/routes'
-import { AccountView, type AccountNotice } from './account-view'
-import { saveCompany, signOutEverywhere } from './actions'
+import { readAccountData } from './account-data'
+import { AccountView } from './account-view'
+import { signOutEverywhere } from './actions'
 
 /**
  * `/conta` — the signed-in account (spec §10, §6.2).
@@ -32,59 +26,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-type Row = { plan: string; cnpj: string | null; founder_seat: number | null }
-
-type Search = Promise<{ [key: string]: string | string[] | undefined }>
-
-function noticeFrom(value: string | string[] | undefined): AccountNotice {
-  const one = Array.isArray(value) ? value[0] : value
-  if (one === 'empresa') return 'company'
-  if (one === 'cnpj-invalido') return 'cnpj-invalid'
-  return null
-}
-
-export default async function AccountPage({ searchParams }: { searchParams: Search }) {
-  const session = await auth()
-  const id = session?.user?.id
-  if (!id) redirect(ACCOUNT_CREATE_PATH)
-
-  const executor = db()
-  const found = await executor.execute<Row>(sql`
-    select plan, cnpj, founder_seat from users where id = ${id}::bigint
-  `)
-  const user = found.rows[0]
-  // The session names a user who is gone (LGPD deletion, or a rolled-back
-  // database). Signing in again is the only honest next step.
-  if (!user) redirect(ACCOUNT_CREATE_PATH)
-
-  const userId = Number(id)
-  const limit = await readLimit(user.plan, FEATURES.screening, executor)
-  const used = await countUsage({ userId }, limit, executor)
-
-  const company = user.cnpj
-    ? await executor.execute<{ name: string | null }>(sql`
-        select coalesce(trade_name, legal_name) as name from companies where cnpj = ${user.cnpj}
-      `)
-    : null
-
-  // `seatTotal` is **not** `MAX_SEAT`. That constant is 48 because spec §6.2
-  // gives `founder_seat` a `between 1 and 48` database CHECK: a validity bound
-  // for the column, not a number of seats on sale. Rendering it told a founder
-  // "Vaga 1 de 48" while the landing banner beside it said "restam 16 de 17
-  // vagas" and the terms sold 25 — three numbers for one offer, on one
-  // product. The offer's size lives in `docs/product.json`, like every other
-  // number a reader is allowed to believe.
-  return (
-    <AccountView
-      plan={user.plan}
-      quota={quotaView(limit, used)}
-      cnpj={user.cnpj}
-      companyName={company?.rows[0]?.name ?? null}
-      founderSeat={user.founder_seat === null ? null : Number(user.founder_seat)}
-      seatTotal={FOUNDERS.seatsTotal}
-      signOutAction={signOutEverywhere}
-      companyAction={saveCompany}
-      notice={noticeFrom((await searchParams).estado)}
-    />
-  )
+export default async function AccountPage() {
+  const account = await readAccountData()
+  return <AccountView plan={account.plan} planName={account.planName} signOutAction={signOutEverywhere} />
 }

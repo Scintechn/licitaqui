@@ -3,7 +3,7 @@ import { Button, Icon, Logo, SectionLabel, type IconName } from '@/components'
 import type { AccountSummary } from '@/lib/account/summary'
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
-import { ACCOUNT_PATH, accountHref, PLAN_HREF } from '@/lib/routes'
+import { ACCOUNT_PATH, accountHref, COMPANY_PATH, PLAN_HREF, PLAN_PATH } from '@/lib/routes'
 
 /**
  * Canvas 09 — `docs/design/wireframes/Menu.dc.html` — finally rendered.
@@ -56,16 +56,18 @@ const PAID_PLANS = new Set(['promocional', 'essencial', 'pro'])
  * inside `radar-screen.tsx` and always passed `/radar`. Sci found it within
  * minutes of D20 putting the menu on `/conta`.
  *
- * Three labels for one page is the real gap, and it is carded (**D22**). Until
- * those destinations exist, the id is what lets exactly one of them be marked.
+ * **D22 gave those destinations real routes**, so the three no longer collide.
+ * The `id` stays anyway: marking by href was only ever correct by accident,
+ * and the next entry that shares a prefix — `/conta` and `/conta/plano` both
+ * match `startsWith` — would light two again.
  */
 type Item = { id: string; href: string; icon: IconName; label: string }
 
 const MAIN: Item[] = [
   { id: 'radar', href: '/radar', icon: 'search', label: copy.radar },
   { id: 'alerts', href: '/conta/alertas', icon: 'alert', label: copy.alerts },
-  { id: 'company', href: '/conta', icon: 'company', label: copy.company },
-  { id: 'billing', href: '/conta', icon: 'money', label: copy.billing },
+  { id: 'company', href: COMPANY_PATH, icon: 'company', label: copy.company },
+  { id: 'billing', href: PLAN_PATH, icon: 'money', label: copy.billing },
 ]
 
 /**
