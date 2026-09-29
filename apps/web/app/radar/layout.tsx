@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function RadarLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AppShell summary={await readShellSummary()} current="/radar">
+    <AppShell summary={await readShellSummary()}>
       {children}
     </AppShell>
   )

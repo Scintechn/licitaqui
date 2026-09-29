@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { AccountView } from '@/app/conta/account-view'
 import type { AccountSummary } from '@/lib/account/summary'
 import { messages } from '@/lib/messages'
-import { AppShell } from './app-shell'
+import { MenuView as MenuViewProbe } from '@/app/radar/menu-view'
+import { AppShell, currentItem } from './app-shell'
 import { MenuTrigger } from './menu-trigger'
 
 /**
@@ -128,5 +129,51 @@ describe('the menu can actually be reached', () => {
     // The Landing puts `RadarView` in an example panel with no shell around
     // it. A hamburger there would open nothing at all.
     expect(renderToStaticMarkup(<MenuTrigger />)).toBe('')
+  })
+})
+
+describe('currentItem — exactly one nav item is marked', () => {
+  /**
+   * **The defect Sci found minutes after D20 shipped to preview.** Three items
+   * — "Minha empresa", "Plano e pagamento" and "Perfil" — all point at
+   * `/conta`, because those sections have no routes of their own. `Section`
+   * marked the current page by **href**, so all three lit at once.
+   *
+   * It was invisible for as long as the menu lived inside `radar-screen.tsx`,
+   * which always passed `/radar`. Putting the menu on `/conta` is what made a
+   * latent bug visible, and no unit test could have caught it, because none of
+   * them rendered the menu anywhere but the Radar.
+   *
+   * It is also why `current` is no longer a prop from the layout: a layout
+   * wraps a subtree, so `app/conta/layout.tsx` would hand the same value to
+   * `/conta` and `/conta/alertas` and be wrong on one of them.
+   */
+  it.each([
+    ['/radar', 'radar'],
+    ['/radar/edital/45699626000176-1-000463/2026', 'radar'],
+    ['/conta', 'profile'],
+    ['/conta/alertas', 'alerts'],
+  ])('%s marks %s', (pathname, expected) => {
+    expect(currentItem(pathname)).toBe(expected)
+  })
+
+  it('marks nothing on the sign-in page or off the app', () => {
+    // `/conta/criar` is the sign-in page and gets no shell at all; marking a
+    // nav item for it would be marking navigation nobody can see.
+    expect(currentItem('/conta/criar')).toBeUndefined()
+    expect(currentItem('/')).toBeUndefined()
+    expect(currentItem(null)).toBeUndefined()
+  })
+
+  it('never marks more than one item, on any route the shell serves', () => {
+    // The assertion the old code could not make. `/conta` has three items
+    // behind it; exactly one may be marked.
+    for (const pathname of ['/radar', '/conta', '/conta/alertas']) {
+      const id = currentItem(pathname)
+      const html = renderToStaticMarkup(
+        <MenuViewProbe summary={summary()} current={id} />,
+      )
+      expect(html.match(/aria-current="page"/g) ?? []).toHaveLength(1)
+    }
   })
 })
