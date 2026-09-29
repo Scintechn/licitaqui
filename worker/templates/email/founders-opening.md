@@ -30,7 +30,7 @@ O LicitaQui gratuito para busca, nada muda. Quando abrirmos as assinaturas, voc�
 
 O QUE EU PEÇO EM TROCA
 
-Me conte o que funcionou e o que atrapalhou. Pode responder este e-mail ou escrever para {{email_contato}}. Nesta primeira semana eu leio e respondo tudo — é para isso que existem os 48.
+Me conte o que funcionou e o que atrapalhou. Pode responder este e-mail ou escrever para {{email_contato}}. Nesta primeira semana eu leio e respondo tudo — é para isso que existem os {{vagas}}.
 
 Boas licitações.
 

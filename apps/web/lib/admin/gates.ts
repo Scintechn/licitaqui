@@ -1,3 +1,4 @@
+import { FOUNDERS } from '@/lib/product'
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 
@@ -6,7 +7,7 @@ import { db, type Executor } from '@/lib/db'
  *
  * > founders signed up (≥ 150), CNPJs searched (≥ 300), Telegram linked
  * > (≥ 100), concierge users paying (≥ 6 of 20), founder seats paid (≥ 15 of
- * > 48), weekly digest open rate (≥ 50%).
+ * > seats), weekly digest open rate (≥ 50%).
  *
  * Most of them are zero today, and one of them cannot be measured at all yet.
  * Every row is rendered anyway, saying which it is: a hidden row is a gate
@@ -131,7 +132,12 @@ async function founderSeatsPaid(database: Executor): Promise<GateReading> {
          and lower(coalesce(status, '')) in ('active', 'confirmed')
     `,
   )
-  return { state: 'counted', value, of: 48 }
+  // **Not a literal.** This read "of: 48" while `docs/product.json` sells 25,
+  // so the Gate 0 dashboard measured paid founders against a denominator the
+  // product does not have. Third category of the same leak found on
+  // 2026-09-29, after the account page and the opening e-mail — and the only
+  // one of the three that was executable rather than prose.
+  return { state: 'counted', value, of: FOUNDERS.seatsTotal }
 }
 
 /**
@@ -214,7 +220,7 @@ export async function readGates(database: Executor = db()): Promise<Gate[]> {
       key: 'founder_seats_paid',
       label: 'Vagas de fundador pagas',
       target: 15,
-      targetOf: 48,
+      targetOf: FOUNDERS.seatsTotal,
       unit: 'count',
       source: 'subscriptions no plano promocional com status ativo.',
       reading: seats,

@@ -43,7 +43,7 @@
 | Slow data | **Cache first**: users always read from the database. Every call to PNCP writes to the cache. Stale data is served immediately and refreshed in the background |
 | Collector | **Python** worker (reusing the POCs) on AWS, inside the existing Easypanel |
 | AI | OpenRouter. Screening: `qwen/qwen3.7-flash`. Deep analysis: `openai/gpt-5.6-luna`, fallback `google/gemini-3.8-flash` |
-| Plans & prices | **Básico** R$ 0 · **Promocional** R$ 26/month for the first 6 months, then R$ 57 (founders only, 48 seats) · **Essencial** R$ 57 · **Pro** R$ 98 — all monthly, no lock-in |
+| Plans & prices | **Básico** R$ 0 · **Promocional** R$ 26/month for the first 6 months, then R$ 57 (founders only — seat count in `docs/product.json`) · **Essencial** R$ 57 · **Pro** R$ 98 — all monthly, no lock-in |
 | Messaging | Telegram Bot API (alerts on Básico and Essencial). WhatsApp **always via Evolution API** (already running on Easypanel): founders messages in Phase 0, alerts on Pro only. Both connected during development |
 | Payments | Asaas (sandbox + production accounts): hosted checkout (subscription link) + webhook. **Customer invoices (NF): to be defined later with the accountant** — no invoice promise in the product for now |
 | URL | Vercel default URL (`https://<project>.vercel.app`) until a domain is registered |
@@ -362,7 +362,7 @@ create unique index jobs_dedupe on jobs (kind, key) where status in ('queued','r
 create table events (user_id bigint, visitor_id uuid, name text, props jsonb, created_at timestamptz default now());
 ```
 
-**Founder seats:** assign the seat inside a transaction (lock a control row, or use a dedicated sequence capped at 48) so two people can never both get seat 48. The Offer page shows `48 − seats taken`.
+**Founder seats:** assign the seat inside a transaction (lock a control row, or use a dedicated sequence capped at the seat total) so two people can never both get the same seat. The Offer page shows `seats total − seats taken`. **The number lives in `docs/product.json`** (`founders.seatsTotal`, 25 since D18) and nowhere else; the `between 1 and 48` CHECK in `0001_initial.sql` is a column bound, not the offer.
 
 ---
 
@@ -412,7 +412,7 @@ Priority 1 = a user waiting on screen (the web also calls the worker's `POST /wa
 
 | Method & route | Caller | Does |
 |---|---|---|
-| `POST /api/founders` | public | Validates (Zod), inserts into the list, assigns seat (≤ 48), sends welcome; rate limit per IP |
+| `POST /api/founders` | public | Validates (Zod), inserts into the list, assigns seat (≤ `founders.seatsTotal`), sends welcome; rate limit per IP |
 | `GET /api/founders/seats` | public | Seats remaining (cache 60 s) |
 | `POST /api/radar/cnpj` | visitor/user | Creates or reads visitor (cookie), reads `companies`; if missing, `company_lookup` job → 202 |
 | `GET /api/radar/tenders?group=compatible&state=SP&q=` | visitor/user | Reads from DB; groups Compatible / Check / Keyword |
@@ -449,7 +449,7 @@ Priority 1 = a user waiting on screen (the web also calls the worker's `POST /wa
 
 ## 10. Plans, quotas and what each screen unlocks
 
-| Feature | Visitor (3 days) | Básico R$ 0 (with account) | Essencial R$ 57 · Promocional R$ 26 for 6 months (48 founders) | Pro R$ 98 |
+| Feature | Visitor (3 days) | Básico R$ 0 (with account) | Essencial R$ 57 · Promocional (founders — count in `docs/product.json`) | Pro R$ 98 |
 |---|---|---|---|---|
 | Search by CNPJ or keyword | yes | yes | yes | yes |
 | AI screening | 2 total | 5/month | unlimited | unlimited |
@@ -520,7 +520,7 @@ Source: `Marca/assest/LEIAME.md`.
 Events stored in `events`: `offer_viewed`, `founder_signed_up`, `cnpj_searched`, `screening_requested`, `screening_viewed`, `tender_opened`, `account_created`, `telegram_linked`, `alert_sent`, `alert_opened`, `locked_block_clicked`, `checkout_opened`, `subscription_active`, `cancelled`.
 
 Ready-made queries (simple protected `/admin` page):
-- Phase 0 gate (2026-11-06): founders signed up (≥ 150), CNPJs searched (≥ 300), Telegram linked (≥ 100), concierge users paying (≥ 6 of 20), founder seats paid (≥ 15 of 48), weekly digest open rate (≥ 50%).
+- Phase 0 gate (2026-11-06): founders signed up (≥ 150), CNPJs searched (≥ 300), Telegram linked (≥ 100), concierge users paying (≥ 6 of 20), founder seats paid (≥ 15 of `founders.seatsTotal`), weekly digest open rate (≥ 50%).
 - Operations: age of last `sync_open_tenders`, failed jobs by kind, AI cost today and this month, average screening time.
 
 ---
@@ -566,7 +566,7 @@ Rules from that incident:
 7. Events and gate dashboard. Privacy policy.
 
 **Phase 0 continued (S4–S7, 10-12 → 11-06)**
-Public Landing (10-13), Asaas subscriptions in production (Promocional R$ 26 for 6 months → R$ 57; Essencial R$ 57; Pro R$ 98), webhook, 1-click cancellation, deep analysis with quota, awards for concierge segments. Subscription link to the 48 founders on 10-29.
+Public Landing (10-13), Asaas subscriptions in production (Promocional R$ 26 for 6 months → R$ 57; Essencial R$ 57; Pro R$ 98), webhook, 1-click cancellation, deep analysis with quota, awards for concierge segments. Subscription link to the founders on 10-29.
 
 **v1 · Essencial (6–8 weeks after gate 0)**
 Daily alerts, ME/EPP and value filters, `sync_awards` + winning price range by state, target price and margin calculator, (The 3-day charge reminder moved to Phase 0 / M5 — see §10, task F4.)

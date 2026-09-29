@@ -3,7 +3,7 @@ id: founders-waitlist
 channel: whatsapp
 status: draft
 placeholders: [nome, posicao_espera, vagas]
-notes: Sent when the 48 seats are already taken (POST /api/founders puts the person on the waitlist).
+notes: Sent when every seat is already taken (POST /api/founders puts the person on the waitlist).
 ---
 
 Oi, {{nome}}! Aqui é a LicitaQui.

@@ -7,6 +7,7 @@ missing placeholder **raises**, and never renders an empty string or the raw
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -418,3 +419,51 @@ def test_the_founders_opening_email_renders_now_that_the_price_is_decided() -> N
     template = templates.load("email", "founders-opening")
     assert template.ready_to_send, "a TODO(Sci): came back and blocks the 08/10 opening e-mail"
     assert "TODO(Sci):" not in template.body
+
+
+def test_no_template_states_a_seat_count_of_its_own() -> None:
+    """A rendered message must never name a number ``product.json`` does not.
+
+    ``founders-opening.md`` said both. Line 14 rendered ``{{vagas}}`` -- 25,
+    the contractual total in terms §6 -- and nineteen lines later line 33
+    hardcoded **48**: "é para isso que existem os 48". One founder, one e-mail,
+    two numbers, and for anyone seated 26-48 a message contradicting the
+    contract it arrived under. It would have sent that way on 08/10.
+
+    It was the **third** leak of 48 found on 2026-09-29, after ``/conta``
+    rendering ``MAX_SEAT`` as the seat count and ``CLAIMS.md`` saying "once all
+    48 are taken". They share one cause: D18 could not blanket-replace ``48``
+    without corrupting ``SEAT_LOCK = {namespace: 19537, key: 48}``, so every
+    site was excluded by hand and these were missed.
+
+    ``apps/web`` has had this guard since ``product.test.ts`` -- every ``R$`` in
+    the tree must be a plan price or be classified. Templates had nothing.
+    """
+    stale = {"48"} - {str(product.FOUNDER_SEATS_TOTAL)}
+    offenders: list[str] = []
+    # `README.md` is documentation, not a message -- the same exclusion
+    # `test_every_template_in_the_repository_parses` already makes.
+    for path in sorted(p for p in REAL_TEMPLATES.rglob("*.md") if p.name != "README.md"):
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            for number in stale:
+                # The seat count appears as a bare word, never inside a
+                # price. `\b` alone would match `R$ 48.196`, so a following
+                # `.` or `,` is only disqualifying when a **digit** follows
+                # it.
+                #
+                # The first version was `(?![\d.,])`, which also rejected a
+                # sentence-ending period -- so "existem os 48." never matched
+                # and the guard passed with the defect restored. It was
+                # mutation-checking that said so; reading it did not.
+                if re.search(rf"(?<![\d.,]){number}(?!\d)(?![.,]\d)", line):
+                    # The relative path, not `path.name`: `email/` and
+                    # `whatsapp/` both hold a `founders-waitlist.md`,
+                    # and a bare filename sent the first fix to the
+                    # wrong one of the two.
+                    where = path.relative_to(REAL_TEMPLATES)
+                    offenders.append(f"{where}:{line_number}: {line.strip()}")
+    assert offenders == [], (
+        "a template names a seat count that docs/product.json does not: "
+        f"{offenders}. Render the number from {{{{vagas}}}} instead."
+    )
