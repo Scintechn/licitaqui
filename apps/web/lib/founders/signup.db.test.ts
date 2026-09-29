@@ -428,7 +428,39 @@ suite('founders signup (database)', () => {
     expect(Number(rows[0].count)).toBe(0)
   })
 
+/**
+ * Waits for a rate-limit window with room left in it.
+ *
+ * **The burst test was flaky by construction, and the odds were measurable.**
+ * `lib/rate-limit.ts` uses a fixed tumbling window aligned to the wall clock —
+ * `windowStart(now, windowMs) = Math.floor(now / windowMs) * windowMs` — and
+ * the route allows 6 per 60 s. The test fires eight sequential requests and
+ * asserts the last two are refused. If the loop straddles a minute boundary
+ * the counter resets and requests 7 and 8 are allowed, so the assertion reads
+ * `expected [201, 201] to deeply equal [429, 429]` and blames rate limiting
+ * for what is really a clock.
+ *
+ * The failure probability is simply `burst duration / 60 s`. Measured against
+ * Neon in `sa-east-1`: the burst takes 11–16 s, so roughly one run in four.
+ * It went unnoticed because this suite had never run in CI (B22) and a laptop
+ * run that fails once in four is read as bad luck.
+ *
+ * Starting only when at least `needMs` of the window remains makes it
+ * deterministic for any burst shorter than that — 25 s, against a slowest
+ * observed burst of 16 s.
+ *
+ * The wait is bounded by `needMs`, and the caller's timeout has to cover
+ * **wait plus burst**: 25 s + 16 s does not fit in the 60 s this test used to
+ * declare once the database is slow, which is why it now asks for 120 s.
+ */
+async function freshRateLimitWindow(needMs = 25_000) {
+  const remaining = 60_000 - (Date.now() % 60_000)
+  if (remaining >= needMs) return
+  await new Promise((resolve) => setTimeout(resolve, remaining + 100))
+}
+
   it('rate limits a burst from one address', async () => {
+    await freshRateLimitWindow()
     const address = ip(200)
     const statuses: number[] = []
     for (let i = 0; i < 8; i += 1) {
@@ -441,7 +473,10 @@ suite('founders signup (database)', () => {
     expect(last.headers.get('retry-after')).toBeTruthy()
     // Somebody else is unaffected.
     expect((await POST(request(body(201), ip(201)))).status).toBe(201)
-  }, 60_000)
+    // 120 s, not 60 s: `freshRateLimitWindow` may wait up to 25 s for a window
+    // with room in it, and the burst itself takes 11–16 s against a remote
+    // database. The old budget covered the burst but not the wait.
+  }, 120_000)
 })
 
 suite('60 parallel signups (F1 acceptance criterion)', () => {
