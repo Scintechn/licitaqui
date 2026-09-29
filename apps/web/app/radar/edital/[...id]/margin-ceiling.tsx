@@ -72,6 +72,20 @@ export function MarginCeiling({ band }: { band: PriceBand }) {
   // `moneyExactNonZero` is the function the old comment described.
   const money = ceiling === null ? null : moneyExactNonZero(String(ceiling))
 
+  /**
+   * **Two reasons the figure is missing, and they are not the same sentence.**
+   *
+   * `marginPct === null` means the field is empty or unparseable: the reader
+   * has not told us a margin, so `marginBlank` asks for one.
+   *
+   * A margin that *was* given can still produce no figure —
+   * `moneyExactNonZero` refuses anything that formats as `R$ 0,00`, and a
+   * median of R$ 0,40 at 99% is R$ 0,004. 376 OK awards sit under R$ 1,00 and
+   * the margin is the reader's, so this is reachable rather than theoretical.
+   * Saying "Informe a margem" there tells somebody to redo what they just did.
+   */
+  const missing = marginPct === null ? page.marginBlank : page.ceilingBelowCent
+
   return (
     <Card accent className="flex flex-col gap-2.5">
       <div className="text-body font-medium text-blue">{page.maxTitle}</div>
@@ -85,7 +99,7 @@ export function MarginCeiling({ band }: { band: PriceBand }) {
       <div className="flex items-center gap-2.5">
         {money === null ? (
           <strong className="font-display text-[30px] leading-none font-semibold text-muted">
-            {page.marginBlank}
+            {missing}
           </strong>
         ) : (
           <>
