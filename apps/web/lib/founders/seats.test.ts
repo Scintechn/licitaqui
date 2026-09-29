@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { MAX_SEAT } from '@/lib/auth/founder-seat'
 import { describe, expect, it } from 'vitest'
@@ -193,12 +194,20 @@ describe('the database bound is never shown as the offer size', () => {
     expect(FOUNDERS.seatsTotal).not.toBe(MAX_SEAT)
   })
 
-  it('shows the offer size on the account screen, not the column bound', () => {
-    const source = readFileSync(
-      fileURLToPath(new URL('../../app/conta/page.tsx', import.meta.url)),
-      'utf8',
-    )
-    expect(source).toContain('seatTotal={FOUNDERS.seatsTotal}')
-    expect(source).not.toContain('seatTotal={MAX_SEAT}')
+  it('shows the offer size on the account screens, not the column bound', () => {
+    // **Scans the tree, not one file.** This used to name `app/conta/page.tsx`
+    // and broke the moment D22 split that screen in three and the seat row
+    // moved to `/conta/plano` — a guard that fails because the code moved
+    // teaches the next person to weaken it. What must stay true is that no
+    // account screen passes the column bound, wherever the row lives.
+    const root = fileURLToPath(new URL('../../app/conta', import.meta.url))
+    const files = readdirSync(root, { recursive: true, encoding: 'utf8' })
+      .filter((name) => name.endsWith('.tsx') && !name.endsWith('.test.tsx'))
+      .map((name) => readFileSync(join(root, name), 'utf8'))
+
+    expect(files.some((source) => source.includes('seatTotal={FOUNDERS.seatsTotal}'))).toBe(true)
+    for (const source of files) {
+      expect(source).not.toContain('seatTotal={MAX_SEAT}')
+    }
   })
 })

@@ -52,7 +52,23 @@ export const ACCOUNT_HREF: string = ACCOUNT_CREATE_PATH
  */
 export const ALERTS_HREF: string = ALERTS_PATH
 
-/** Task F2's address for the plan and checkout screen. Not built yet. */
+/**
+ * The company screen — the CNPJ and changing it (card D22).
+ *
+ * `/conta` used to be all three account screens at once, with three menu
+ * entries pointing at it. Sci's decision, 2026-09-29: split them, so a menu
+ * entry leads somewhere that differs from the others.
+ */
+export const COMPANY_PATH = '/conta/empresa'
+
+/**
+ * The plan screen. **F2's address for checkout, and now the plan summary.**
+ *
+ * It has named this path since U1 and was unbuilt until D22 split `/conta`.
+ * That is why the split lands here rather than somewhere new: when billing
+ * opens on 10-29 it has a page to open onto, and the menu entry that already
+ * says "Plano e pagamento" already leads to it.
+ */
 export const PLAN_PATH = '/conta/plano'
 
 /**

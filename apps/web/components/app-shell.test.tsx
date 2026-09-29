@@ -111,14 +111,8 @@ describe('the menu can actually be reached', () => {
       <AppShell summary={summary()}>
         <AccountView
           plan="essencial"
-          quota={{ feature: 'screening', plan: 'essencial', period: 'month', limit: null, used: 3, left: null }}
-          cnpj={null}
-          companyName={null}
-          founderSeat={null}
-          seatTotal={25}
+          planName={messages.plans.essential.name}
           signOutAction={async () => {}}
-          companyAction={async () => {}}
-          notice={null}
         />
       </AppShell>,
     )
@@ -175,5 +169,33 @@ describe('currentItem — exactly one nav item is marked', () => {
       )
       expect(html.match(/aria-current="page"/g) ?? []).toHaveLength(1)
     }
+  })
+})
+
+describe('D22 — three entries, three destinations', () => {
+  /**
+   * The card's whole point. Before the split, "Minha empresa", "Plano e
+   * pagamento" and "Perfil" all pointed at `/conta`: a reader tapping "Plano e
+   * pagamento" arrived on a page headed "Sua conta", and the three entries
+   * were indistinguishable once there.
+   *
+   * Giving items an `id` stopped the highlight bug. It did not stop three
+   * labels leading to one room — that is what this asserts.
+   */
+  it.each([
+    ['/conta', 'profile'],
+    ['/conta/empresa', 'company'],
+    ['/conta/plano', 'billing'],
+    ['/conta/alertas', 'alerts'],
+  ])('%s marks %s', (pathname, expected) => {
+    expect(currentItem(pathname)).toBe(expected)
+  })
+
+  it('gives every account route a different answer', () => {
+    // `startsWith` is prefix matching, and `/conta` is a prefix of all of
+    // them. Longest match first is what makes this true; reorder those lines
+    // and `/conta/plano` becomes the profile.
+    const marked = ['/conta', '/conta/empresa', '/conta/plano', '/conta/alertas'].map(currentItem)
+    expect(new Set(marked).size).toBe(marked.length)
   })
 })

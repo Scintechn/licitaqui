@@ -2,17 +2,19 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { format, messages } from '@/lib/messages'
 import type { QuotaView } from '@/lib/radar/contract'
-import { ALERTS_HREF, PLAN_HREF } from '@/lib/routes'
-import { AccountView, formatCnpj, screeningsLabel, type AccountViewProps } from './account-view'
+import { ALERTS_HREF, COMPANY_PATH, PLAN_PATH } from '@/lib/routes'
+import { AccountView, formatCnpj, screeningsLabel } from './account-view'
 
 /**
- * `/conta`, plan by plan.
+ * `/conta` — the profile, since **D22** split this screen in three.
  *
- * The assertion this file exists for is the negative one: **no number on this
- * screen is written in the markup**. The legal brief's §5 says the limits live
- * in `plan_limits` and are changeable without a deploy, so every figure here
- * arrives through `quota` and a component that hard-coded "5" would be lying
- * the first time Sci edited a row.
+ * It was one page doing three jobs, with three menu entries pointing at it.
+ * The plan assertions now live in `plano/plan-view.test.tsx` and the company
+ * ones in `empresa/company-view.test.tsx`, deliberately: a test file covering
+ * three screens cannot say which one broke.
+ *
+ * `screeningsLabel` and `formatCnpj` stay here because they are still exported
+ * from this module and used by the screens that moved.
  */
 
 const copy = messages.account.screen
@@ -27,20 +29,9 @@ const BASICO: QuotaView = {
   left: 3,
 }
 
-function render(props: Partial<AccountViewProps> = {}) {
+function render() {
   return renderToStaticMarkup(
-    <AccountView
-      plan="basico"
-      quota={BASICO}
-      cnpj={null}
-      companyName={null}
-      founderSeat={null}
-      seatTotal={48}
-      signOutAction={noop}
-      companyAction={noop}
-      notice={null}
-      {...props}
-    />,
+    <AccountView plan="basico" planName={messages.plans.basic.name} signOutAction={noop} />,
   )
 }
 
@@ -79,87 +70,30 @@ describe('formatCnpj', () => {
   })
 })
 
-describe('AccountView', () => {
-  it('names the plan in Portuguese and shows what is left of it', () => {
+describe('AccountView — the profile', () => {
+  it('names the plan and offers the way out', () => {
     const out = render()
     expect(out).toContain(messages.plans.basic.name)
-    expect(out).toContain('2 de 5 neste mês')
     expect(out).toContain(copy.signOut)
   })
 
-  it('says plainly when no CNPJ has been searched yet', () => {
-    expect(render()).toContain(copy.companyNone)
-  })
-
-  it('prefers the company name, and falls back to the punctuated CNPJ', () => {
-    expect(render({ cnpj: '12345678000190', companyName: 'Papelaria Aurora' })).toContain(
-      'Papelaria Aurora',
-    )
-    expect(render({ cnpj: '12345678000190' })).toContain('12.345.678/0001-90')
-  })
-
-  it('shows a founder their seat, and shows nobody else a seat row', () => {
-    const founder = render({ founderSeat: 7 })
-    expect(founder).toContain(copy.founderLabel)
-    expect(founder).toContain('Vaga 7 de 48')
-    expect(founder).toContain(copy.founderNote)
-    expect(render()).not.toContain(copy.founderLabel)
+  it('leads to the other two account screens, not back to itself', () => {
+    // The point of D22. Before the split, "Minha empresa" and "Plano e
+    // pagamento" both pointed at `/conta` — three menu entries, one room.
+    const out = render()
+    expect(out).toContain(`href="${COMPANY_PATH}"`)
+    expect(out).toContain(`href="${PLAN_PATH}"`)
+    expect(COMPANY_PATH).not.toBe(PLAN_PATH)
   })
 
   it('links onward only through the route constants, so E1 and F2 move in one edit', () => {
     const out = render()
     expect(out).toContain(`href="${ALERTS_HREF}"`)
-    expect(out).toContain(`href="${PLAN_HREF}"`)
     expect(out).toContain('href="/radar"')
   })
 
   it('leaves no message placeholder unresolved', () => {
-    expect(render({ founderSeat: 48, cnpj: '12345678000190' })).not.toMatch(/\{[a-zA-Z]+\}/)
-  })
-})
-
-/**
- * Task E3's third problem: the company was permanent.
- *
- * `rememberUserCnpj` only ever fills a `null`, and its comment says why —
- * "changing a company is an account setting, not a side effect of one search".
- * The reasoning was right and the setting it deferred to was never built, so
- * the first CNPJ anybody happened to search became theirs for good. A
- * bookkeeper who looked up a client before their own company was stuck.
- */
-describe('changing the company', () => {
-  it('offers the setting, pre-filled with the CNPJ already on the account', () => {
-    const out = render({ cnpj: '12345678000190', companyName: 'Papelaria Aurora' })
-    expect(out).toContain(copy.companyTitle)
-    expect(out).toContain(copy.companyChange)
-    expect(out).toContain('name="cnpj"')
-    // Pre-filled and punctuated, so changing it is an edit and not a retype.
-    expect(out).toContain('value="12.345.678/0001-90"')
-  })
-
-  it('asks for a first one when the account has none', () => {
-    const out = render()
-    expect(out).toContain(copy.companySave)
-    expect(out).not.toContain(copy.companyChange)
-  })
-
-  it('posts back to /conta rather than trusting whatever sent it', () => {
-    expect(render()).toContain('value="/conta"')
-  })
-
-  it('confirms a change, and reports a CNPJ that failed its check digits', () => {
-    expect(render({ notice: 'company' })).toContain(copy.companySaved)
-    expect(render({ notice: 'cnpj-invalid' })).toContain(copy.companyInvalid)
-    expect(render()).not.toContain(copy.companySaved)
-  })
-
-  it('explains the wait while company_lookup is still running', () => {
-    // `users.cnpj` is set immediately; the `companies` row arrives seconds
-    // later with the job. §3 forbids reading BrasilAPI inside the request.
-    expect(render({ cnpj: '12345678000190', companyName: null })).toContain(copy.companyPending)
-    expect(render({ cnpj: '12345678000190', companyName: 'Papelaria Aurora' })).not.toContain(
-      copy.companyPending,
-    )
+    expect(render()).not.toMatch(/\{[a-zA-Z]+\}/)
   })
 })
 
