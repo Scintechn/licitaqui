@@ -35,14 +35,33 @@ import { MARTA, tender } from '../fixtures/world'
  * unit, not the path* — and the fix for the padlock (#173) shipped straight
  * into it: the link was corrected and the destination was never asked.
  *
- * So both tests below end on a **document that is on screen**, not on a prop,
- * a tab's `aria-selected`, or an href.
+ * So the two tests that guard the defect end on a **document that is on
+ * screen**, not on a prop or an href. Both are mutation-checked red against
+ * the restored bug.
+ *
+ * ## What this file does *not* claim
+ *
+ * There is no reset to defend. The first fix added a ref so the loader reset
+ * the tab only when the tender id changed — dead code: `id` is the `[...id]`
+ * catch-all segment, and the App Router keys that subtree by a cache key
+ * containing the segment value, so a different tender **remounts** the screen
+ * and `useState` re-reads the new URL. The branch could never execute. It was
+ * removed rather than tested, and this note exists so nobody adds it back.
  */
 
 const EDITAL = '11546530000156-1-000027/2026'
 
 /** The three files the real tender carries, which is why they are named here. */
 const FILES = [
+  {
+    sequence: 3,
+    title: '07___Publicacao___Pregao_n_10___2026.pdf',
+    docType: 'Outros Documentos',
+    url: 'https://pncp.gov.br/arquivos/3',
+    publishedAt: null,
+    pages: 2,
+    noText: false,
+  },
   {
     sequence: 1,
     title: '06___Edital___Pregao_Eletronico_n_10___2026.pdf',
@@ -65,14 +84,17 @@ const FILES = [
 
 function withFiles() {
   // `files` is an array and not `null`: §8 hands the URLs to an account, and
-  // Sci was signed in. A `null` here would be testing the padlock instead.
+  // Sci was signed in. A `null` here would be testing the padlock instead —
+  // and on **this** screen `files` is the whole of it. `WorldOptions.visitor`
+  // reaches `/api/radar/cnpj` and the screening routes only; `GET
+  // /api/tenders/:id` carries no visitor and the Opportunity screen passes
+  // none to the view, so it is `files` alone that says "signed in" here.
   return tender({ id: EDITAL, files: FILES })
 }
 
 async function world(page: Parameters<typeof installRadarApi>[0]) {
   return installRadarApi(page, {
     companies: [{ company: MARTA.company, tenders: [withFiles()] }],
-    visitor: null,
   })
 }
 
@@ -92,25 +114,23 @@ test.describe('Dona Marta · Documentos', () => {
     )
   })
 
-  test('the tab survives the screen finishing its load', async ({ page }) => {
-    // The defect was a *race*: correct on the first render, wrong once the
-    // loader ran. A test that asserted immediately would have passed against
-    // the bug. So this one waits for the load to have visibly completed — the
-    // Itens count is rendered from the answer — and only then looks at the tab.
+  test('without the parameter it still opens on Itens', async ({ page }) => {
+    // The other half. Reading `?tab=files` must not make Documentos the
+    // default for everybody — this is the assertion that fails if somebody
+    // ever "fixes" the tab by hardcoding it.
     await world(page)
 
-    await page.goto(`${editalPath(EDITAL)}?cnpj=${MARTA.cnpj}&tab=files`)
-    await expect(page.getByRole('tab', { name: 'Itens' })).toBeVisible()
-    await page.waitForLoadState('networkidle')
+    await page.goto(`${editalPath(EDITAL)}?cnpj=${MARTA.cnpj}`)
 
-    await expect(page.getByRole('link', { name: /Termo_de_Referencia/ })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Itens' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('link', { name: /Termo_de_Referencia/ })).toBeHidden()
   })
 
-  test('switching to Itens and back still works — the reset was not simply removed', async ({
-    page,
-  }) => {
-    // The cheap fix would have been deleting `setTab('items')`, which would
-    // break the thing it was there for. The tab is still a live control.
+  test('the strip is still a live control after the URL has chosen for it', async ({ page }) => {
+    // Deep-linking into a tab must not freeze it. This exercises the **strip**
+    // and nothing else: it neither needs nor proves anything about resetting
+    // the tab when the tender changes, which no code here does — the App
+    // Router remounts the screen on a new id and `useState` reads the new URL.
     await world(page)
 
     await page.goto(`${editalPath(EDITAL)}?cnpj=${MARTA.cnpj}&tab=files`)

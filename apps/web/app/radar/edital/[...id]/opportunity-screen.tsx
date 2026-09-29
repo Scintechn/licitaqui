@@ -1,7 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getJobStatus, getTender, radarHref, readSearch, TAB_PARAM } from '@/lib/radar/client'
 import type {
   Freshness,
@@ -69,24 +69,6 @@ export function OpportunityScreen({ id }: { id: string }) {
   const [itemsVisible, setItemsVisible] = useState(ITEMS_PAGE)
 
   /**
-   * The tender the open tab belongs to.
-   *
-   * The loader below resets the tab, because a different tender is a different
-   * table. It also runs **on mount**, where there is no previous tender — and
-   * that reset landed one render after the initial value above, so `?tab=files`
-   * was read, applied, and then thrown away before anybody saw it. Sci clicked
-   * *Documentos* and arrived at *Itens*: the exact defect the parameter was
-   * added to fix, restored by the reset that was already there.
-   *
-   * No test could see it. `vitest.config.mts` runs `environment: 'node'`, so
-   * `useEffect` never fires in the suite: a unit test reads the initial state
-   * and sees `'files'`, which is true for one render and false by the time the
-   * browser paints. The guard for this is `e2e/journeys/documentos.spec.ts`,
-   * which walks the link rather than rendering either end of it.
-   */
-  const tabOwner = useRef(id)
-
-  /**
    * The search this screen is carrying — read once and used for every address
    * it draws, both the "Voltar" below and the triagem link the view puts at
    * the bottom of the page. Two readings of the same query string were how the
@@ -101,14 +83,23 @@ export function OpportunityScreen({ id }: { id: string }) {
 
     async function load() {
       setData(INITIAL)
-      // A different tender is a different table: keep neither the open tab nor
-      // how far the last one had been scrolled. **Only when it really is a
-      // different one** — this also runs on mount and on retry, where the
-      // reset would discard the tab `?tab=files` had just chosen.
-      if (tabOwner.current !== id) {
-        tabOwner.current = id
-        setTab('items')
-      }
+      // **No `setTab('items')` here.** There used to be one, to stop a new
+      // tender inheriting the previous one's open tab, and it is what broke
+      // `?tab=files`: this effect also runs on **mount**, where there is no
+      // previous tender, so the tab chosen one line above was read, applied
+      // and discarded a render later. Sci clicked *Documentos* and got *Itens*.
+      //
+      // It is not needed, and a narrower guard around it would have been dead
+      // code wearing a comment. `id` comes from the `[...id]` catch-all, and
+      // the App Router keys each segment's subtree by a cache key that
+      // *contains the segment value* (`create-router-cache-key.js`, used as
+      // the React key at `layout-router.js:673`). A different tender is a
+      // different subtree: this component **remounts**, with a fresh `useState`
+      // that re-reads the new URL. The router already does the resetting.
+      //
+      // What removing it changes, and the only thing it changes: `attempt`
+      // also re-runs this effect, so a retry no longer throws the reader off
+      // Documentos.
       setItemsVisible(ITEMS_PAGE)
       const { value, timedOut } = await waitForData<TenderResponse>({
         read: () => getTender(id, signal),
