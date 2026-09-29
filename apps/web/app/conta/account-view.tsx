@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { AppBar, Button, Card, CardRow, Logo, SectionLabel, Tag } from '@/components'
+import { MenuTrigger } from '@/components/menu-trigger'
 import { format, messages } from '@/lib/messages'
 import type { QuotaView } from '@/lib/radar/contract'
 import { ACCOUNT_PATH, ALERTS_HREF, PLAN_HREF } from '@/lib/routes'
@@ -101,7 +102,17 @@ export function AccountView({
             <Logo size={30} />
           </Link>
         }
-        actions={<Tag tone="muted">{PLAN_NAMES[plan] ?? plan}</Tag>}
+        actions={
+          <>
+            <Tag tone="muted">{PLAN_NAMES[plan] ?? plan}</Tag>
+            {/* **The control this screen never had.** Signed in, on your own
+                account, with no way to reach your plan or your triagens —
+                which is how D20 was found. `MenuTrigger` renders nothing
+                outside a shell, so this stays inert wherever the view is
+                rendered on its own. */}
+            <MenuTrigger />
+          </>
+        }
       />
       <main className="mx-auto flex w-full max-w-[560px] grow flex-col gap-4 px-gutter pt-6 pb-10">
         <h1 className="font-display text-[26px] leading-tight font-semibold">{copy.title}</h1>

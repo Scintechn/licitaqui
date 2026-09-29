@@ -103,34 +103,51 @@ export function MenuView({
   summary: AccountSummary | null
   /** Which item to mark as the page you are on. */
   current?: string
-  onDismiss: () => void
-  titleId: string
+  /**
+   * **Present means drawer, absent means rail** — one component, two
+   * presentations (D20).
+   *
+   * A drawer is dismissible and is a dialog, so it draws a close button and
+   * carries the accessible name that `Sheet` points `aria-labelledby` at. A
+   * rail is neither: it is always there, in the layout flow, and a close
+   * button on it would close nothing. Giving the rail its own component would
+   * have meant two copies of the nav items and two copies of the plan strip,
+   * which is the duplication D5 wrote this file to end.
+   */
+  onDismiss?: () => void
+  titleId?: string
 }) {
+  const drawer = onDismiss !== undefined
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className={cn('flex flex-col', drawer ? 'min-h-dvh' : 'h-full')}>
       <div className="flex min-h-[60px] items-center gap-3 py-2 pr-3 pl-gutter">
         <Link href="/radar" aria-label={messages.radar.nav.home} className="inline-flex grow">
           <Logo />
         </Link>
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label={messages.common.close}
-          className={
-            'inline-flex size-touch items-center justify-center rounded-pill border-0 ' +
-            'bg-transparent text-ink transition-colors hover:bg-fill-muted'
-          }
-        >
-          <Icon name="close" size={22} />
-        </button>
+        {drawer ? (
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label={messages.common.close}
+            className={
+              'inline-flex size-touch items-center justify-center rounded-pill border-0 ' +
+              'bg-transparent text-ink transition-colors hover:bg-fill-muted'
+            }
+          >
+            <Icon name="close" size={22} />
+          </button>
+        ) : null}
       </div>
 
       {/* The a11y name of the dialog. Visually hidden: the canvas has no
           visible "Menu" heading, and inventing one to satisfy a rule would
-          change the design rather than describe it. */}
-      <h2 id={titleId} className="sr-only">
-        {copy.title}
-      </h2>
+          change the design rather than describe it. The rail is not a dialog
+          and has no name to give — it is landmarked by the <aside> around it. */}
+      {drawer ? (
+        <h2 id={titleId} className="sr-only">
+          {copy.title}
+        </h2>
+      ) : null}
 
       <nav className="flex grow flex-col gap-1 px-3 py-2">
         <Section label={copy.sectionMain} items={MAIN} current={current} />
@@ -173,13 +190,22 @@ function Section({ label, items, current }: { label: string; items: Item[]; curr
 }
 
 function PlanStrip({ summary }: { summary: AccountSummary | null }) {
-  if (summary === null) {
-    return (
-      <div className="rounded-card border border-line bg-surface p-3.5">
-        <div className="text-meta text-muted">{messages.common.loading}</div>
-      </div>
-    )
-  }
+  /**
+   * **Nothing, not "Carregando…".**
+   *
+   * `null` used to mean *in flight*: `radar-screen.tsx` fetched
+   * `/api/conta/resumo` when the drawer opened, so a spinner was honest for
+   * the moment it lasted. D20 reads the summary on the server, in the layout,
+   * so by the time this renders the answer has either arrived or thrown —
+   * and `readShellSummary` returns a real summary for a visitor. `null` now
+   * means only *the read failed*, and a strip that says "Carregando…" for
+   * ever is a lie the reader cannot act on.
+   *
+   * So the strip is absent and the navigation above it still works, which is
+   * the part that matters. Inventing a plan name would be worse than showing
+   * none.
+   */
+  if (summary === null) return null
 
   const { limit, used } = summary.screenings
   const pct = limit === null || limit === 0 ? 0 : Math.min(100, Math.round((used / limit) * 100))

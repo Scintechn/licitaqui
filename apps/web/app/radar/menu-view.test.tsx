@@ -124,14 +124,22 @@ describe('the menu (canvas 09)', () => {
     expect(out).not.toContain(copy.upgrade)
   })
 
-  it('draws the links before the plan strip has arrived', () => {
-    // The strip is fetched when the drawer opens. Navigation must not wait on
-    // it — a menu whose links appear a second late is a menu that gets tapped
-    // twice.
+  it('draws the links even when the summary could not be read', () => {
+    // Navigation must not depend on the strip — a menu whose links are missing
+    // is not a menu.
+    //
+    // **What `null` means changed in D20**, so this assertion changed with it.
+    // It used to mean *in flight*: `radar-screen.tsx` fetched
+    // `/api/conta/resumo` when the drawer opened, and "Carregando…" was
+    // honest for the moment it lasted. The summary is now read on the server
+    // in the layout, and `readShellSummary` returns a real summary for a
+    // visitor — so `null` reaches here only when the read **threw**, and a
+    // strip stuck on "Carregando…" would be a permanent lie about something
+    // that is not loading.
     const out = render(null)
     expect(out).toContain(copy.radar)
     expect(out).toContain(copy.alerts)
-    expect(out).toContain(messages.common.loading)
+    expect(out).not.toContain(messages.common.loading)
   })
 
   it('names itself for assistive technology without inventing a visible title', () => {
