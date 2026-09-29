@@ -94,6 +94,14 @@ const NOT_A_PLAN_PRICE = new Map<string, string>([
     + 'estimate in the brief, not a price'],
   ['82,05', 'the 2026 DAS-MEI (comércio) — what the reader already pays monthly, '
     + 'quoted for comparison. Not ours, and not derived from anything here'],
+  // The smallest figure `moneyExact` will print, quoted as a threshold rather
+  // than as an amount: `radar.price.ceilingBelowCent` says a purchase ceiling
+  // is below it. A median of R$ 0,40 at a 99% margin is R$ 0,004, and 376 OK
+  // awards sit under R$ 1,00, so the case is reachable and needs its own
+  // sentence — telling that reader "Informe a margem" would be telling them
+  // to redo what they just did (E17).
+  ['0,01', 'the one-centavo floor below which a purchase ceiling cannot be '
+    + 'printed — a threshold in the copy, not a price'],
 ])
 
 /** Every `R$ …` in a file, normalised to just the digits. */
