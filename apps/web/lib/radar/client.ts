@@ -106,9 +106,19 @@ export function editalPath(id: string): string {
  * went to a bare `/radar`: no CNPJ, no keyword, no tab. Sci's "I move back to
  * the list of editais, I lost the search" is that link.
  */
-export function tenderHref(id: string, search: RadarSearch): string {
-  return withParams(editalPath(id), searchParams(search))
+export function tenderHref(id: string, search: RadarSearch, tab?: 'files'): string {
+  const params = searchParams(search)
+  // **`?tab=files` exists so a link can land on Documentos.** The tab is local
+  // state on the Opportunity screen, so without this the screening screen's
+  // "Documentos" tab sent a reader to the same page's *Itens* — they clicked
+  // Documentos and got something else, which is barely better than the
+  // padlock it replaced.
+  if (tab) params.set(TAB_PARAM, tab)
+  return withParams(editalPath(id), params)
 }
+
+/** `?tab=files` — the only tab worth addressing from outside the screen. */
+export const TAB_PARAM = 'tab'
 
 /**
  * The Radar's URL for a tender's AI screening — canvas 04.

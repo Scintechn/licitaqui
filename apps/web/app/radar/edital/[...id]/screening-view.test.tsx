@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { ACCOUNT_HREF } from '@/lib/routes'
 import { messages } from '@/lib/messages'
+import { accountHref } from '@/lib/routes'
+import { tenderHref } from '@/lib/radar/client'
 import type { QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
 import type { ScreeningModel } from '@/lib/radar/screening-result'
 import { ScreeningView, quotaLabel, type ScreeningViewProps } from './screening-view'
@@ -105,6 +107,7 @@ function render(overrides: Partial<ScreeningViewProps> = {}): string {
     model: MODEL,
     quota: QUOTA,
     visitor: VISITOR,
+    signedIn: false,
     status: { kind: 'ready' },
     backHref: `/radar/edital/${TENDER.id}`,
     search: SEARCH,
@@ -310,5 +313,49 @@ describe('the links out of this screen carry the search', () => {
 
   it('never links to a bare preço', () => {
     expect(render()).not.toContain(`href="/radar/edital/${TENDER.id}/preco"`)
+  })
+})
+
+describe('the Documentos tab, and who it is locked for', () => {
+  /**
+   * **A paying subscriber met a padlock for files they could open one screen
+   * back.** The tab was an unconditional `accountHref(...)` with a lock icon,
+   * written to §8's rule — *"files only with an account"* — and applied to
+   * people who have one. Clicking it bounced an Essencial subscriber to
+   * `/conta`. Sci found it on his own account, 2026-09-29.
+   *
+   * **All thirty tests in this file passed**, because none of them rendered
+   * this view as somebody signed in — there was no way to say it. The prop
+   * exists now partly so the state can be tested at all.
+   *
+   * The other half of the bug was quieter: the link went to the tender page,
+   * which opens on **Itens**. A reader clicked Documentos and got something
+   * else, which is barely better than the padlock. `?tab=files` fixes that.
+   */
+  it('locks it for a visitor, and sends them to create an account', () => {
+    const out = render({ signedIn: false })
+    expect(out).toContain(accountHref(tenderHref(TENDER.id, SEARCH)))
+  })
+
+  it('does not lock it for an account', () => {
+    const out = render({ signedIn: true })
+    expect(out).not.toContain(accountHref(tenderHref(TENDER.id, SEARCH)))
+  })
+
+  it('sends an account to the documents themselves, not to Itens', () => {
+    // The files live on the tender screen and never lived on this one, so the
+    // tab is a link either way — but it must land on the tab it names.
+    const out = render({ signedIn: true })
+    // `&` is escaped to `&amp;` inside an href attribute, so the raw URL is
+    // not what appears in the markup.
+    const href = tenderHref(TENDER.id, SEARCH, 'files')
+    expect(out).toContain(href.replaceAll('&', '&amp;'))
+    expect(href).toContain('tab=files')
+  })
+
+  it('carries the search across, so Voltar still knows where it came from', () => {
+    const href = tenderHref(TENDER.id, SEARCH, 'files')
+    expect(href).toContain(`cnpj=${SEARCH.cnpj}`)
+    expect(href).toContain(`q=${SEARCH.q}`)
   })
 })

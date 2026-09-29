@@ -96,7 +96,7 @@ function readyStatus(status: 'ok' | 'no_text', model: ScreeningModel | null): Sc
   return model ? { kind: 'ready' } : { kind: 'failed' }
 }
 
-export function ScreeningScreen({ id }: { id: string }) {
+export function ScreeningScreen({ id, signedIn }: { id: string; signedIn: boolean }) {
   const params = useSearchParams()
   const [attempt, setAttempt] = useState(0)
   const [tab, setTab] = useState<ScreeningTab>('summary')
@@ -294,6 +294,7 @@ export function ScreeningScreen({ id }: { id: string }) {
       model={data.model}
       quota={data.quota}
       visitor={data.visitor}
+      signedIn={signedIn}
       status={data.status}
       tab={tab}
       onSelectTab={setTab}

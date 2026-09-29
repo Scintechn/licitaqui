@@ -5,6 +5,7 @@ import { messages } from '@/lib/messages'
 import { radarHref, readSearch, screeningHref, tenderHref } from '@/lib/radar/client'
 import { OpportunityScreen } from './opportunity-screen'
 import { OpportunityView } from './opportunity-view'
+import { readHasAccount } from '@/lib/auth/has-account'
 import { readPriceBandEntitlement } from './entitlement'
 import { PriceScreen } from './price-screen'
 import { PriceView } from './price-view'
@@ -79,6 +80,18 @@ async function PricePane({ id }: { id: string }) {
   return <PriceScreen id={id} entitled={await readPriceBandEntitlement()} />
 }
 
+/**
+ * The screening screen plus the one fact the server has to look up for it.
+ *
+ * Inside the Suspense boundary, for the same reason `PricePane` is: the
+ * fallback exists to paint immediately, and awaiting a session read in
+ * `TenderPage` would hold every byte of the page behind a round trip to a
+ * database that autosuspends.
+ */
+async function ScreeningPane({ id }: { id: string }) {
+  return <ScreeningScreen id={id} signedIn={await readHasAccount()} />
+}
+
 export default async function TenderPage({
   params,
   searchParams,
@@ -108,6 +121,10 @@ export default async function TenderPage({
     return (
       <Suspense
         fallback={
+          /* `signedIn={false}` on the skeleton: it has read nothing yet, so it
+             claims no account. That is the locked link — wrong for a
+             subscriber for exactly as long as the shell takes to stream, and
+             never unlocking files for somebody who has none. */
           <ScreeningView
             tenderId={route.tenderId}
             tender={null}
@@ -115,12 +132,13 @@ export default async function TenderPage({
             quota={null}
             visitor={null}
             status={{ kind: 'analyzing' }}
+            signedIn={false}
             backHref={tenderHref(route.tenderId, search)}
             search={search}
           />
         }
       >
-        <ScreeningScreen id={route.tenderId} />
+        <ScreeningPane id={route.tenderId} />
       </Suspense>
     )
   }
