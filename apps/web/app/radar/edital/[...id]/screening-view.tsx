@@ -12,6 +12,7 @@ import {
   Tag,
   type TabItem,
 } from '@/components'
+import { MenuTrigger } from '@/components/menu-trigger'
 import { cn } from '@/lib/cn'
 import { accountHref } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
@@ -466,7 +467,14 @@ export function ScreeningView({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppBar leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>} title={page.title} />
+      {/* `actions` holds only the menu here: this screen has no per-tender
+          control of its own. See the note in `opportunity-view.tsx` — D24
+          half 2, the menu that below `lg` disappeared on every tender screen. */}
+      <AppBar
+        leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>}
+        title={page.title}
+        actions={<MenuTrigger />}
+      />
 
       <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3 px-gutter pb-10">
         {/* §3.5: the same banner on every AI result screen for the tender.
