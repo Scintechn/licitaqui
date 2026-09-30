@@ -114,7 +114,20 @@ class ScheduleEntry:
 #: promises the person a day of the week — and `test_telegram.py` pins them
 #: together so this entry cannot move without the copy moving with it.
 DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
-    ScheduleEntry(kind="sync_open_tenders", every_seconds=30 * 60, priority=5),
+    # **Hourly since 2026-09-30, was half-hourly.** Sci: *"we need to kept the
+    # cost tiny - its a new application without paid user yet"*. Neon suspends
+    # after five minutes with no connections, so every wake costs a five-minute
+    # tail whether or not there is work in it: measured 5.5 h/day of compute
+    # against roughly 1.5 h of actual work. Halving the wakes takes about a
+    # third off the compute line.
+    #
+    # What it costs: an edital appears up to an hour after PNCP publishes the
+    # change rather than up to half an hour. Deadlines here are measured in
+    # days — the closest thing to a real constraint is the "48 h antes" alert,
+    # which this does not feed — so an hour is inside every promise the product
+    # makes. Revisit on the evening of 08/10, when `WORKER_POLL_INTERVAL_SECONDS`
+    # is meant to be shortened anyway.
+    ScheduleEntry(kind="sync_open_tenders", every_seconds=60 * 60, priority=5),
     ScheduleEntry(kind="sync_awards", daily_at="03:00", priority=9),
     # B17, and the reason it is daily rather than half-hourly like the change
     # feed above: this is an **inventory**, not a feed. It asks PNCP what is
@@ -150,11 +163,16 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # `tenders.next_refresh_at`, so it drains a backlog over consecutive cycles
     # instead of queueing thousands of jobs in one tick.
     #
-    # Half-hourly, matching `sync_open_tenders`: a tender is worth showing a
-    # value for in the same cycle it is worth showing at all. Priority 9 keeps
-    # it behind every collector — a missing value degrades a card, it does not
-    # lose a tender.
-    ScheduleEntry(kind="sweep_tender_values", every_seconds=30 * 60, priority=9),
+    # Hourly, **matching `sync_open_tenders`** — that is the point, not a
+    # coincidence. A tender is worth showing a value for in the same cycle it
+    # is worth showing at all, and sharing the cycle means sharing the wake:
+    # two entries due at the same instant are one connection and one
+    # five-minute tail, not two. If this ever drifts off `sync_open_tenders`'
+    # cadence the compute saving of 2026-09-30 quietly halves, which is why
+    # `test_scheduler.py` pins the two together. Priority 9 keeps it behind
+    # every collector — a missing value degrades a card, it does not lose a
+    # tender.
+    ScheduleEntry(kind="sweep_tender_values", every_seconds=60 * 60, priority=9),
 )
 
 
@@ -167,6 +185,23 @@ class Scheduler:
     stop: threading.Event = field(default_factory=threading.Event)
     tick_seconds: float = DEFAULT_TICK_SECONDS
     now: Callable[[], datetime] = field(default=lambda: datetime.now(ZoneInfo("UTC")))
+    #: Called after a tick that actually enqueued something, so the consumers
+    #: pick it up **in the same wake window** instead of on their next poll.
+    #:
+    #: Without this the scheduler and the consumers are two independent reasons
+    #: to open a connection, and Neon suspends after five minutes of having
+    #: none: every wake costs a five-minute tail whether or not there is work
+    #: in it. Measured 2026-09-30 — 5.5 h/day of compute, of which roughly 4 h
+    #: was tail. Two unsynchronised half-hourly wake sources is the worst of
+    #: both: you pay two tails an hour and still wait up to a poll interval for
+    #: the work to start.
+    #:
+    #: It is also what makes a long `poll_interval` safe. The poll stops being
+    #: how scheduled work is discovered and becomes a safety net under a lost
+    #: notify, so it can be lengthened without a scheduled sync silently
+    #: becoming a two-cycle one — which is the degradation `config.py` warns
+    #: about, and the reason the interval could not simply be raised before.
+    on_enqueue: Callable[[], None] | None = None
     _due: dict[str, datetime] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
@@ -208,4 +243,10 @@ class Scheduler:
                 else:
                     created += 1
                     _log.info("scheduled", extra={"kind": entry.kind, "job_id": job_id})
+        # Outside the `with`: the connection this tick opened is already closed,
+        # so the consumer's own connection reuses a compute that is certainly
+        # still awake. Notifying inside would work too; doing it here keeps the
+        # scheduler's connection as short as it has always been.
+        if created and self.on_enqueue is not None:
+            self.on_enqueue()
         return created

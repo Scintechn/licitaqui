@@ -36,23 +36,43 @@ SENTRY_DSN_VAR = "SENTRY_DSN_WORKER"
 # The compute ran at 0.02 of 0.25 vCPU throughout. We were never paying for
 # queries; we were paying for an endpoint that never slept.
 #
-# **Why 1800 and not 3600 or 7200.** The scheduler enqueues `sync_open_tenders`
-# and `sweep_tender_values` every 30 minutes (`scheduler.py`), opening a
-# connection each time, so 30 minutes is the wake floor whatever this value
-# says. Past it there is nothing left to save and three things to lose: a retry
-# (backoff 120/480/1800) waits for the next poll; a scheduled sync sits
-# unprocessed, so a half-hourly sync silently becomes two-hourly; and a
-# one-off dated job — the 08/10 opening broadcast — fires up to a full interval
-# late against a promise of "19h".
+# **Why 3600 since 2026-09-30, and why it could not have been 3600 before.**
+# The earlier value was 1800, and the note here said 30 minutes was the wake
+# floor whatever this said, because `scheduler.py` enqueued `sync_open_tenders`
+# and `sweep_tender_values` every 30 minutes and opened a connection each time.
+# That was true, and it hid the real problem: the scheduler and the consumers
+# were **two independent reasons to wake Neon**, unsynchronised. Neon suspends
+# after five minutes with no connections, so every wake costs a five-minute
+# tail whether or not there is work in it. Measured on 2026-09-30: 5.5 h/day of
+# compute, of which roughly 4 h was tail and 1.5 h was work.
+#
+# Two changes, and the order matters. `Scheduler.on_enqueue` now notifies the
+# same `WakeSignal` that `POST /wake` does, so a tick that enqueues something
+# starts the consumer **in the same wake window**. Raising this interval on its
+# own would have been the silent degradation this note used to warn about — a
+# scheduled sync sitting unprocessed until the next poll, so an hourly sync
+# becomes two-hourly. With the notify in place the poll is no longer how
+# scheduled work is discovered; it is the safety net under a lost notify.
+#
+# Then the two half-hourly entries moved to hourly. Wakes drop from roughly 48
+# a day to 24, which is about a third off the compute line. Sci, 2026-09-30:
+# *"we need to kept the cost tiny - its a new application without paid user
+# yet"*.
+#
+# **What this still costs.** A retry waits for the next poll, and the backoff
+# is 120/480/1800, so a retry can now sit up to an hour instead of up to
+# thirty minutes. For the kinds that actually retry — `sync_items` and
+# `sync_files` behind an open `pncp-*` breaker — a longer wait is if anything
+# the kinder behaviour.
 #
 # **Nobody waiting on screen is affected.** A priority-1 job is picked up
-# immediately because the web route also calls `POST /wake`
+# immediately because the web route calls `POST /wake`
 # (`apps/web/lib/cache.ts` → `lib/jobs/wake.ts`, spec §3.1). This interval only
-# bounds background work.
+# bounds background work that nothing has notified us about.
 #
 # Override with `WORKER_POLL_INTERVAL_SECONDS` (read in `service.py`) to tune
 # without a deploy — which is how to shorten it for the evening of 08/10.
-DEFAULT_POLL_INTERVAL_SECONDS = 1800.0
+DEFAULT_POLL_INTERVAL_SECONDS = 3600.0
 # Pause before retrying after the database itself failed, so an outage does not
 # turn into a hot reconnect loop.
 DEFAULT_ERROR_PAUSE_SECONDS = 30.0

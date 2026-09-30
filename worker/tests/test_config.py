@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from licitaqui import config
+from licitaqui.scheduler import DEFAULT_SCHEDULE
 
 #: How long Neon waits with **no connections** before suspending the compute
 #: (spec §5.1, "scale to zero after 5 min"). Not ours to set from code — it is
@@ -72,10 +73,22 @@ def test_the_idle_poll_is_longer_than_neons_suspend_timer():
     assert config.DEFAULT_POLL_INTERVAL_SECONDS > NEON_SUSPEND_SECONDS, (
         "a poll shorter than Neon's suspend timer keeps the compute awake 24/7"
     )
-    # And not so long that a half-hourly scheduled sync is left unprocessed:
-    # the scheduler is the wake floor, so exceeding it buys nothing and costs
-    # freshness. See DEFAULT_POLL_INTERVAL_SECONDS' own comment.
-    assert config.DEFAULT_POLL_INTERVAL_SECONDS <= 1800.0
+    # The upper bound used to be 1800, on the reasoning that the scheduler was
+    # the wake floor so exceeding it bought nothing and cost freshness. That
+    # stopped being true on 2026-09-30, when `Scheduler.on_enqueue` began
+    # notifying the same `WakeSignal` as `POST /wake`: scheduled work no longer
+    # waits for a poll, so the poll is a safety net rather than the discovery
+    # mechanism, and it is allowed to be as long as the longest cadence it
+    # backs up.
+    #
+    # What must still hold is that it is not *shorter* than the schedule —
+    # which would put the consumer back to waking Neon between cycles for
+    # nothing, the exact cost this was raised to remove.
+    slowest = max(e.every_seconds for e in DEFAULT_SCHEDULE if e.every_seconds)
+    assert slowest <= config.DEFAULT_POLL_INTERVAL_SECONDS, (
+        "a poll shorter than the slowest interval entry wakes Neon between "
+        "cycles for work that is not there"
+    )
 
 
 def test_retry_budget_matches_the_spec():
