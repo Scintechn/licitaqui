@@ -39,6 +39,7 @@ from . import coverage_check as _coverage_check  # noqa: F401 - registers `cover
 from . import documents as _documents  # noqa: F401 - registers `extract_text`
 from . import email as _email  # noqa: F401 - registers `send_email`
 from . import jobs as _jobs  # noqa: F401 - registers `noop`
+from . import neon_usage as _neon_usage  # noqa: F401 - registers `neon_usage`
 from . import sync_awards as _sync_awards  # noqa: F401 - registers the two awards kinds
 from . import sync_files as _sync_files  # noqa: F401 - registers `sync_files`
 from . import sync_items as _sync_items  # noqa: F401 - registers `sync_items`

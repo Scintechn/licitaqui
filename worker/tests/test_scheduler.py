@@ -70,6 +70,11 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
         # see an edital published once and never touched again — 54 of the 72
         # misses B17 measured were exactly that.
         "reconcile_open_tenders",
+        # B27, sharing `reconcile_open_tenders`' 04:00 on purpose. It reads
+        # Neon's API rather than the database, so its cost is a wake — and a
+        # job that opened a wake of its own to report on wakes would be
+        # measuring itself. Daily because awake time is a trend.
+        "neon_usage",
         "sweep_titles",
         "weekly_digest",
         # `sweep_tender_values` is on the clock for the same reason
