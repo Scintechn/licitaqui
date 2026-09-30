@@ -45,6 +45,15 @@
   all of it.
 - Never commit secrets. Use `.env.example`. Never log CPF, emails or tokens.
 - Every change: tests for new logic, `pnpm lint && pnpm typecheck && pnpm test` (web) or `ruff check && pytest` (worker) green.
+- **The worker suite takes ~43 minutes locally and prints nothing until the end.**
+  1 175 tests, 2 567 s, measured 2026-09-30; the `test_integration_*` files carry
+  almost all of it because each one talks to the shared Neon test databases. It
+  looks exactly like a hang, and on 2026-09-30 it was killed three times and
+  reported as one — after which the same run, left alone, passed. Start it in the
+  background and let it finish; `pytest tests/ --ignore-glob="tests/test_integration_*.py"`
+  is the 42-second answer while you iterate, and it was 852 green with the slow
+  half still to come. Do not run two at once: they share those databases, which
+  is B24.
 - Schema changes only via `db/migrations`, in their own PR.
 - Tests that write to a shared database scope every row by a **per-run** id (see
   `RUN_ID` in `worker/tests/conftest.py`), never by a per-task constant. A task-scoped
