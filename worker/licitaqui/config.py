@@ -95,7 +95,36 @@ BREAKER_RESET_SECONDS = 900.0
 STALE_RUNNING_SECONDS = 3600
 
 DEFAULT_PORT = 8080
-DEFAULT_CONCURRENCY = 1
+
+# Consumer threads, and **the only lever on the Neon compute bill** (card B28).
+#
+# Neon charges for wall-clock time the endpoint is awake, not for query time.
+# Measured 2026-09-30 from the System-operations log: awake **61% of the day**
+# across ~57 wake cycles, 6.96 CU-h/day — while the whole query board totals
+# under a minute. `consumer.drain()` holds **one** connection for the entire
+# batch, so the endpoint stays up for each job's PNCP HTTP call, which is
+# seconds against 1.7 ms of SQL.
+#
+# **Closing the connection between jobs makes it worse, not better.** Neon
+# bills a five-minute tail after the last connection closes, and **300 s is the
+# floor on Launch** — 60/90/120/180/240 s are refused outright ("suspend
+# interval is too short for your plan"). Ten thousand short connections would
+# be ten thousand tails. Batching inside a drain buys nothing either: anything
+# happening inside five minutes keeps the endpoint up regardless.
+#
+# So the only thing that shortens the awake window is finishing sooner. At 1
+# thread the measured rate is 15-24 jobs/min, which made the 10 758-job backlog
+# after the 30/09 outage an ~8-hour drain and ~8 hours of billed compute.
+#
+# **2, not 4.** The ceiling is not CPU, it is PNCP: `pncp-arquivos` and
+# `pncp-itens` already open their breakers under one thread, and doubling the
+# request rate is the risk this change carries. The breakers and per-endpoint
+# throttles are the safety net, and B28's acceptance is that breaker-open
+# counts do **not** rise. Raise it further only with that number in hand.
+#
+# `WORKER_CONCURRENCY` overrides without a deploy, which is how to back this
+# out in one Easypanel restart if PNCP complains.
+DEFAULT_CONCURRENCY = 2
 APPLICATION_NAME = "licitaqui-worker"
 
 _CREDENTIALS_RE = re.compile(r"([a-z][a-z0-9+.-]*://[^:/@\s]+:)[^@\s]*@", re.IGNORECASE)

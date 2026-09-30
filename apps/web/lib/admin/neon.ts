@@ -144,7 +144,17 @@ function unbounded(value: number): Measured {
 
 export { bounded as boundedMetric, unbounded as unboundedMetric }
 
-const NEON_API_MISSING = [NEON_API_KEY_VAR, NEON_PROJECT_ID_VAR] as const
+/**
+ * The variables that are genuinely absent — not the whole pair.
+ *
+ * Production on 2026-09-30 had `NEON_PROJECT_ID` set and `NEON_API_KEY` not,
+ * and the card told Sci to configure **both**. A screen whose job is telling
+ * you what to do must not send you to fix something already done; naming the
+ * one that is missing is the difference between a task and a scavenger hunt.
+ */
+function missingNeonVars(env: Record<string, string | undefined>): readonly string[] {
+  return [NEON_API_KEY_VAR, NEON_PROJECT_ID_VAR].filter((name) => !env[name]?.trim())
+}
 
 /** True once both Neon API variables are set — nothing here reads their values. */
 export function neonApiConfigured(env: Record<string, string | undefined> = process.env): boolean {
@@ -187,7 +197,7 @@ export async function readNeonUsage(
   // saying the first while the second was true.
   const fromApi: UsageMetric = neonApiConfigured(env)
     ? { state: 'pending', limit: null, writtenBy: 'neon_consumption (B27)' }
-    : { state: 'not_configured', limit: null, missing: NEON_API_MISSING }
+    : { state: 'not_configured', limit: null, missing: missingNeonVars(env) }
 
   return {
     databaseSize: size,
