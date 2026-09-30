@@ -161,3 +161,25 @@ describe('the rendered card', () => {
     expect(html).toContain('80% do limite')
   })
 })
+
+describe('it names only the variables that are actually missing', () => {
+  // Production on 2026-09-30 had NEON_PROJECT_ID set and NEON_API_KEY not, and
+  // the card asked Sci to configure both. A screen that tells you to fix
+  // something already done is worse than one that says nothing.
+  const database = { execute: async () => ({ rows: [{ bytes: '1' }] }) } as never
+
+  it('names one when one is set', async () => {
+    const read = await readNeonUsage(database, { NEON_PROJECT_ID: 'p' })
+    expect(read.projectStorage).toMatchObject({ state: 'not_configured' })
+    if (read.projectStorage.state === 'not_configured') {
+      expect(read.projectStorage.missing).toEqual(['NEON_API_KEY'])
+    }
+  })
+
+  it('names both when neither is set', async () => {
+    const read = await readNeonUsage(database, {})
+    if (read.projectStorage.state === 'not_configured') {
+      expect(read.projectStorage.missing).toEqual(['NEON_API_KEY', 'NEON_PROJECT_ID'])
+    }
+  })
+})

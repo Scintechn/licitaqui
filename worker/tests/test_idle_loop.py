@@ -142,3 +142,46 @@ def test_a_database_failure_pauses_instead_of_spinning(monkeypatch: pytest.Monke
 
     assert len(attempts) >= 2, "the loop should retry after the error pause"
     assert len(attempts) <= 6, "the loop must not hammer a database that is down"
+
+
+def test_a_busy_drain_opens_one_connection_for_the_whole_batch(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """**One connection per drain, never one per job** — card B28.
+
+    Neon bills wall-clock awake time, and the suspend tail is **five minutes
+    with no way to shorten it**: 300 s is the floor on Launch, verified by the
+    API refusing 60, 90, 120, 180 and 240 s with *"suspend interval is too
+    short for your plan"*. So a connection per job would not release the
+    endpoint between jobs — it would buy ten thousand five-minute tails while
+    the endpoint stayed up anyway.
+
+    That makes `drain()`'s single `with self.connect()` a **cost decision**,
+    not a style one, and nothing else in the suite would notice if somebody
+    moved the `with` inside the loop to "hold connections for less time". It
+    reads like an improvement and is the expensive shape.
+
+    What actually shortens the awake window is finishing sooner, which is
+    `DEFAULT_CONCURRENCY` — see `config.py`.
+    """
+    factory = TrackingFactory()
+    jobs = list(range(25))
+
+    def claim(_conn, **_kwargs):
+        factory.claims += 1
+        return jobs.pop() if jobs else None
+
+    monkeypatch.setattr(consumer_module.queue, "claim", claim)
+    monkeypatch.setattr(consumer_module.queue, "requeue_stale", lambda _conn, **_kw: 0)
+
+    consumer = Consumer(factory, stale_after=0)
+    monkeypatch.setattr(consumer, "execute", lambda _conn, _job: None)
+
+    processed = consumer.drain()
+
+    assert processed == 25
+    assert factory.opened == 1, (
+        "drain must hold one connection for the whole batch; a connection per "
+        "job buys a five-minute Neon tail each and shortens nothing"
+    )
+    assert factory.open_now == 0, "the drain must close its connection when it ends"
