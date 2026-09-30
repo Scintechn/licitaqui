@@ -65,10 +65,24 @@ SENTRY_DSN_VAR = "SENTRY_DSN_WORKER"
 # `sync_files` behind an open `pncp-*` breaker — a longer wait is if anything
 # the kinder behaviour.
 #
-# **Nobody waiting on screen is affected.** A priority-1 job is picked up
-# immediately because the web route calls `POST /wake`
-# (`apps/web/lib/cache.ts` → `lib/jobs/wake.ts`, spec §3.1). This interval only
-# bounds background work that nothing has notified us about.
+# **Nobody waiting on screen is affected — and this is now actually true.**
+# A priority-1 job is woken by `apps/web/lib/jobs/index.ts`, which posts to
+# `/wake` from inside `enqueueJob` itself.
+#
+# **The sentence above used to be false, and this interval was raised on the
+# strength of it.** The wake lived one layer up, in `lib/cache.ts`, so every
+# caller that skipped the cache skipped the wake — and `lib/radar/screening.ts`
+# is exactly that caller. The AI triagem, the one job a person sits and
+# watches, woke nothing and waited for this poll: **24 minutes on 2026-09-30**,
+# with "a triagem está demorando mais que o normal" on screen. The
+# infrastructure was fine throughout — `POST /wake` answers
+# `202 {"woken": true}` — nothing was calling it.
+#
+# Moving the wake into `enqueueJob` is what makes a long interval safe: that
+# is the only place a job can be created, and therefore the only place a
+# future caller cannot forget. This interval now bounds **background** work
+# only — sweeps and follow-ups, which nobody is waiting for. Idle sleeps; a
+# person's request wakes it.
 #
 # Override with `WORKER_POLL_INTERVAL_SECONDS` (read in `service.py`) to tune
 # without a deploy — which is how to shorten it for the evening of 08/10.
