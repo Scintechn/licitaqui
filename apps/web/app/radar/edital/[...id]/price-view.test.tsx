@@ -394,13 +394,17 @@ describe('the action bar', () => {
     return at === -1 ? null : html.slice(html.lastIndexOf('<div', at))
   }
 
-  it('offers the plan where the screen already offers it', () => {
-    const block = bar(render({ showPlanCta: true }))
+  it('offers the plan once, in the bar, and not twice', () => {
+    const page = render({ showPlanCta: true })
+    const block = bar(page)
     expect(block).not.toBeNull()
     expect(block).toContain(messages.radar.price.cta)
     expect(block).toContain(PLAN_HREF)
+    // The in-page full-width button is gone, not hidden: it used to offer the
+    // same action under the same accessible name, and below `lg` both were on
+    // screen at once.
+    expect(page.split(`href="${PLAN_HREF}"`), 'one link to the plan').toHaveLength(2)
     expect(block).toContain(messages.common.tender)
-    expect(block).toContain('lg:hidden')
     expect(block).toContain('z-40')
     // **The slot says "Edital" and has to go to the edital.** `backHref` on
     // this screen is `screeningHref` — the triagem — so the first version sent

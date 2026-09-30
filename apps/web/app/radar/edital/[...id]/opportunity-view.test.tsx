@@ -537,31 +537,70 @@ describe('OpportunityView · the whole Objeto', () => {
    * so nothing would have stopped a later merge putting it back — which is
    * exactly what happened to the Objeto block and `cc4b766`.
    */
-  it('offers the AI reading before the record’s tabs, not after twenty items', () => {
+  /**
+   * **This guard changed shape on 2026-09-30, and the reason is the point.**
+   *
+   * It used to require the CTA to sit above the tab strip, because the CTA was
+   * in the page: below the Itens panel it sat ~4 500px down a 700px viewport
+   * and every "Mostrar mais" pushed it another ~2 800px away. Position in the
+   * document was the only thing keeping it reachable.
+   *
+   * The action is now in the bar, which is `sticky` and on screen at every
+   * width, so its position in the document no longer decides anything — and
+   * asserting the old order would now be asserting the opposite of the fix.
+   * What still has to hold is that the agency's own words come before the
+   * record, and that the action is **not** in the page.
+   */
+  it('keeps the action out of the scroll entirely', () => {
     const out = render({ tender: { ...TENDER, object: LONG } })
     const at = (needle: string) => {
       const i = out.indexOf(needle)
       expect(i).toBeGreaterThan(-1)
       return i
     }
-    // `page.tabs.items` is "Itens", which also labels a row in the Operação
-    // block above — so the strip is found by its role, which is unique.
-    expect(at(page.screeningCta)).toBeLessThan(at('role="tablist"'))
-    // …and still after the Objeto, which the guard above also asserts: the
-    // agency's own words are read before anything we offer to do with them.
-    expect(at(page.objectTitle)).toBeLessThan(at(page.screeningCta))
+    // One CTA, and it is the bar's — after `</main>`, not buried in it.
+    expect(at(page.screeningCta)).toBeGreaterThan(at('</main>'))
+    // **And it is the only one.** Without this the guard is document order
+    // alone: a restored in-page duplicate rendering the *returning* label
+    // would leave `indexOf(screeningCta)` pointing at the bar and pass.
+    expect(out.split('href="/radar/edital/'), 'one link into the triagem tree').toHaveLength(2)
+    // Whether it is *pinned* is a layout fact and `environment: 'node'` has no
+    // boxes — `e2e/journeys/tender-action-bar.spec.ts` measures that, at every
+    // width, now including desktop.
   })
 
-  it('keeps the AI notice with the button it qualifies (§2.2 rule 5)', () => {
-    // The notice belongs where reading stops and acting starts. Moving the
-    // button without it would leave the notice stranded below the item list,
-    // qualifying nothing — a silent break of a rule CI could not see.
-    const out = render({ tender: { ...TENDER, object: LONG } })
-    const notice = out.indexOf(messages.ai.disclaimer)
-    const cta = out.indexOf(page.screeningCta)
-    expect(notice).toBeGreaterThan(-1)
-    expect(notice).toBeLessThan(cta)
-    expect(out.indexOf('role="tablist"')).toBeGreaterThan(cta)
+  /**
+   * §2.2 rule 5 says the AI notice appears on **every result screen**, and it
+   * still does. What it no longer does is sit immediately above the button:
+   * the button left the page for the bar, and Sci moved the notice to the foot
+   * of the reading on 2026-09-30 — *"the disclaimer is [necessary], can be at
+   * the footer of this page"*.
+   *
+   * The consequence is written down rather than left to be discovered: the
+   * action is always on screen, so a reader can press it without having
+   * scrolled to the notice. That is a question about what the rule means, not
+   * about whether this screen carries the sentence, and it is Sci's.
+   */
+  it('still carries the AI notice, now closing the reading (§2.2 rule 5)', () => {
+    // Both halves, and on **both tabs**: the notice sits below the record, and
+    // the nearest wrong place to put it is inside the Itens panel — where the
+    // order assertions below still hold and a reader on Documentos gets no
+    // notice at all. `pncpUrl` is the other trap: the block beside it renders
+    // only for an id this app can parse.
+    for (const tab of ['items', 'files'] as const) {
+      const out = render({ tender: { ...TENDER, object: LONG }, tab })
+      const notice = out.indexOf(messages.ai.disclaimer)
+      expect(notice, tab).toBeGreaterThan(-1)
+      expect(out, tab).toContain(messages.ai.notLegalAdvice)
+      expect(notice, tab).toBeGreaterThan(out.indexOf('role="tablist"'))
+      expect(notice, 'inside the reading, not stranded after it').toBeLessThan(
+        out.indexOf('</main>'),
+      )
+    }
+    // And on a tender whose id this app cannot parse, which drops the PNCP
+    // block the notice now sits beside.
+    const unparseable = render({ tender: { ...TENDER, id: 'nao-e-um-id-do-pncp' } })
+    expect(unparseable).toContain(messages.ai.disclaimer)
   })
 
   it('keeps "Ver no PNCP" available without letting it compete', () => {
@@ -994,12 +1033,14 @@ describe('the action bar', () => {
     }
   }
 
-  it('is drawn below `lg` and never at `lg`, where the rail is in the flow', () => {
-    // A `fixed` element is positioned against the viewport, and at `lg` the
-    // rail is 56px or 264px of *layout* — localStorage state no media query
-    // can read — so no `left` is correct there and the bar does not render.
+  it('is drawn at every width, now that it is laid out by the column', () => {
+    // It was `lg:hidden` while it was `fixed`: a fixed bar is positioned
+    // against the viewport and the rail is 56px or 264px of *layout* whose
+    // state is `localStorage`, so no left edge was right in both. A sticky bar
+    // is laid out by the column, so the breakpoint had nothing left to do —
+    // and dropping it is what lets each screen keep exactly one CTA.
     const block = bar(render())
-    expect(block).toContain('lg:hidden')
+    expect(block).not.toContain('lg:hidden')
     // `sheet.tsx` reserved this: the drawer is `z-50` and must stay over it.
     expect(block).toContain('z-40')
     expect(block).not.toContain('z-50')
@@ -1007,14 +1048,15 @@ describe('the action bar', () => {
     expect(bar(inShell(null))).not.toContain('z-50')
   })
 
-  it('offers the in-page action, not a second one that could drift from it', () => {
-    // Two controls for one action is how a screen comes to say two things.
-    // Both read `screeningHref` and the same `spent` switch.
+  it('is the only way to the triagem, not one of two', () => {
+    // Two controls for one action is how a screen comes to say two things —
+    // and below `lg` it was also two links with one accessible name. The
+    // in-page button is deleted, not hidden.
     const first = render()
     // React escapes the `&` between the query's parameters, so the literal in
     // the markup is not the string the helper returns.
     const href = `href="${screeningHref(TENDER.id, SEARCH).replaceAll('&', '&amp;')}"`
-    expect(first.split(href), 'the in-page CTA and the bar, and nothing else').toHaveLength(3)
+    expect(first.split(href), 'exactly one link to the triagem').toHaveLength(2)
     expect(bar(first)).toContain(page.screeningCta)
 
     const again = render({ screening: { ready: true, spent: true, metered: true } })
@@ -1043,6 +1085,36 @@ describe('the action bar', () => {
     // "the server fallback renders the bar without the count and fills in".
     expect(bar(render())).not.toContain('Restam')
     expect(bar(inShell(null))).not.toContain('Restam')
+  })
+
+  /**
+   * **The combination the app actually renders, which no test had.**
+   *
+   * `opportunity-screen.tsx` passes `showScreeningCost` unconditionally, so a
+   * metered reader on a fresh edital meets *both* facts: this will cost one,
+   * and you have N. The captions were briefly a ternary — cost *or* count —
+   * and because `screeningsLeftCaption` answers only for `visitor` and
+   * `basico`, which are exactly the metered plans, the count could then never
+   * appear on a first visit at all. D25 (4) was deleted and every test stayed
+   * green, because the cost tests render without a shell and the count tests
+   * render in a shell without `showScreeningCost`. That pair is a shape the
+   * product never produces, and it was the only shape under test.
+   */
+  it('tells a metered reader both the cost and what is left', () => {
+    const block = bar(inShell(quota(), { showScreeningCost: true }))
+    expect(block, 'the press will spend one').toContain(page.screeningCost)
+    expect(block, 'and this is how many remain').toContain('Restam 3 triagens neste mês')
+  })
+
+  it('drops the cost line, not the count, once the triagem is already hers', () => {
+    const block = bar(
+      inShell(quota(), {
+        showScreeningCost: true,
+        screening: { ready: true, spent: true, metered: true },
+      }),
+    )
+    expect(block).not.toContain(page.screeningCost)
+    expect(block).toContain('Restam 3 triagens neste mês')
   })
 
   it('takes the count from the shell’s one server read', () => {

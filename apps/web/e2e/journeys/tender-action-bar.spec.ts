@@ -4,7 +4,7 @@ import { item, MARTA, processo, tender } from '../fixtures/world'
 import { messages } from '@/lib/messages'
 
 /**
- * D25 (3) — the fixed action bar covers nothing, and exists only below `lg`.
+ * D25 (3) — the action bar covers nothing, and is pinned at every width.
  *
  * Sci's journey, 2026-09-29: *"the decision is below the fold"*. The bar takes
  * the tender screen's one action out of the scroll — and a `fixed` element is
@@ -13,7 +13,7 @@ import { messages } from '@/lib/messages'
  * the Itens list, which is exactly what the card predicted would clip.
  *
  * `opportunity-view.test.tsx` pins the *mechanism*: the bar is asked for, it is
- * `lg:hidden`, it is `z-40`, and the `main` asks for the clearance.
+ * `z-40`, it is in the flow, and it is the screen's only call to action.
  * `environment: 'node'` has no boxes, so it cannot tell whether the clearance
  * is **enough** — a `pb-4` would pass every one of those assertions and still
  * bury the last item. That is CLAUDE.md §4b's pattern, the test exercising the
@@ -73,21 +73,38 @@ test.describe('D25 (3) · the tender action bar', () => {
     expect(Math.abs((box!.y + box!.height) - viewport)).toBeLessThan(2)
   })
 
-  test('1280px · no bar, because the rail is in the flow and no offset is right', async ({
+  test('1280px · the same bar, because a sticky one is laid out by the column', async ({
     page,
   }) => {
-    // The rail is 56px or 264px of layout and that state is `localStorage`, so
-    // a `fixed` bar has no correct `left` at this width in either state. The
-    // in-page CTA is what a desktop reader uses, and it is already visible.
+    // It used to be `lg:hidden`, and the reason was `fixed`: a viewport-
+    // positioned bar has no correct left edge beside a rail that is 56px or
+    // 264px of layout with the width in `localStorage`. Sticky removed the
+    // question, and removing the breakpoint is what leaves one CTA per screen
+    // instead of two links with one accessible name.
     await page.setViewportSize({ width: 1280, height: 900 })
-    await expect(actionBar(page)).toBeHidden()
-    await expect(page.getByRole('link', { name: copy.screeningCta })).toBeVisible()
+    await expect(actionBar(page)).toBeVisible()
+    // And the in-page button is gone, not hidden: exactly one on the screen.
+    await expect(page.getByRole('link', { name: copy.screeningCta })).toHaveCount(1)
+
+    // **Pinned, not merely present.** `toBeVisible()` means "has a box", so on
+    // its own it would pass on a bar that had simply been left at the bottom
+    // of a long document — which is the state this card exists to prevent, and
+    // the state a desktop reader would have been left in.
+    const [box, viewport] = await Promise.all([
+      actionBar(page).boundingBox(),
+      page.evaluate(() => window.innerHeight),
+    ])
+    expect(box).not.toBeNull()
+    expect(Math.abs(box!.y + box!.height - viewport)).toBeLessThan(2)
+
+    // It spans the content column and never reaches under the rail.
+    const rail = await page.evaluate(() => {
+      const aside = document.querySelector('aside')
+      return aside === null ? 0 : aside.getBoundingClientRect().width
+    })
+    expect(box!.x, 'starts where the column starts, beside the rail').toBeGreaterThanOrEqual(rail)
   })
 
-  /**
-   * The assertion the unit test cannot make. `BAR_CLEARANCE` is a number
-   * chosen from the bar's parts; this is what checks the number is right.
-   */
   /**
    * The assertion no unit test can make — and the one the first version of
    * this file only appeared to make.
@@ -102,7 +119,7 @@ test.describe('D25 (3) · the tender action bar', () => {
    * This measures the **lowest bottom of anything inside `main`**, which is
    * the real end of the page, and it does it at the three widths where the
    * bar's own height differs — 320, 360 and 390 — and in both label states,
-   * because "Ver a triagem que você pediu" wraps below 390 and makes the bar
+   * because "Ver sua triagem" wraps below 390 and makes the bar
    * 32px taller.
    */
   for (const width of [320, 360, 390]) {
@@ -149,7 +166,7 @@ test.describe('D25 (3) · the tender action bar', () => {
    */
   test('390px · the primary slot opens the triagem', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 780 })
-    await actionBar(page).getByRole('link', { name: copy.screeningCta }).click()
+    await page.getByRole('link', { name: copy.screeningCta }).click()
     await expect(page).toHaveURL(/\/triagem\?/)
   })
 

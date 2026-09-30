@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Button } from './button'
 
 /**
- * The action bar at the bottom of a tender screen, below `lg` (D25 (3)).
+ * The action bar at the bottom of a tender screen (D25 (3)).
  *
  * ## Why it exists
  *
@@ -47,14 +47,21 @@ import { Button } from './button'
  * numbers and they are all written down. A sticky element paints over the
  * content scrolling beneath it, which is the part `fixed` was wanted for.
  *
- * ## `lg:hidden`, and no offset at `lg`
+ * ## It renders at every width, and that is new
  *
- * At `lg` the rail is **in the layout flow** (`app-shell.tsx`) and its width
- * is `localStorage` state — 56px collapsed, 264px open — so a bar pinned to
- * the viewport has no correct left edge in both states, and no media query can
- * read the one it is in. The bar does not render at `lg` at all and the
- * in-page CTA stays where it is, which is where a desktop reader can already
- * see it.
+ * It used to be `lg:hidden`, for a reason that no longer exists: a **fixed**
+ * bar is positioned against the viewport, and at `lg` the rail takes 56px or
+ * 264px of *layout* whose state is `localStorage`, so no left edge was correct
+ * in both and no media query could read which one it was in. A **sticky** bar
+ * sits inside the column and is laid out by it, so the rail is not its problem
+ * in either state.
+ *
+ * With the breakpoint gone the screens keep **one** call to action instead of
+ * two. Sci, 2026-09-30, looking at the edital screen: *"the CTA is at the
+ * bottom so this CTA is not more necessary… both CTA jump to the same
+ * location, and the button at the bottom is the primary cta."* The in-page
+ * buttons are deleted rather than hidden, which also ends the duplicate
+ * accessible names the bar had introduced below `lg`.
  *
  * ## What is deliberately not here
  *
@@ -98,7 +105,7 @@ export function ActionBar({
   caption?: ReactNode
 }) {
   return (
-    <div className="sticky bottom-0 z-40 border-t border-line bg-surface lg:hidden">
+    <div className="sticky bottom-0 z-40 border-t border-line bg-surface">
       <div className="mx-auto flex w-full max-w-[960px] flex-col gap-1 px-gutter py-2.5">
         <div className="flex items-center gap-2">
           {/* `grow` on the primary and intrinsic width on the secondary: at

@@ -115,11 +115,7 @@ test.describe('Dona Marta · is this worth my time?', () => {
     // §3.5: the same banner on every AI result screen for this edital. Someone
     // who arrived straight at the triagem from a link would have no other way
     // of learning the tender had been stopped.
-    // Scoped to `main`: D25 (3) put the same action in a fixed bar as well,
-    // so the page now has two links with this name below `lg` and the journey
-    // has to say which control the persona used. The bar has a spec of its
-    // own — `tender-action-bar.spec.ts`.
-    await page.getByRole('main').getByRole('link', { name: 'Ver triagem por IA' }).click()
+    await page.getByRole('link', { name: 'Ver triagem por IA' }).click()
     await expect(page.getByRole('status').first()).toContainText('Edital SUSPENSO pelo órgão em')
     await noUrgency(page)
   })

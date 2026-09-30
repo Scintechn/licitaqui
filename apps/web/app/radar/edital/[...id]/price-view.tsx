@@ -356,33 +356,33 @@ export function PriceView({
           </>
         )}
 
-        {/* **Not shown to someone who already has the plan.** Gating the band
-            made this visible: the button reads "Ver plano Essencial" and the
-            screen was rendering it unconditionally, including to Essencial and
-            Pro subscribers, and including beside a band they had just been
-            shown. `bandLocked` is the closest thing this component has to
-            "does not have the plan" — when the band is not locked, either the
-            caller is entitled or no number exists for anybody — but those are
-            not the same thing, so the server says which — read once in the
-            page (`entitlement.ts`) and passed in as `showPlanCta`, never off
-            the band response. */}
-        {showPlanCta ? (
-          <div className="mt-auto pt-2">
-            <Button href={PLAN_HREF} fullWidth iconEnd="arrowRight">
-              {page.cta}
-            </Button>
-          </div>
-        ) : null}
+        {/* **The plan CTA moved into the action bar below.**
+
+            It used to be a full-width button here *and* a slot in the bar, so
+            below `lg` the screen offered the same action twice under the same
+            accessible name. Sci, 2026-09-30: *"both CTA jump to the same
+            location, and the button at the bottom is the primary cta."*
+
+            The condition it carried survives and still governs the bar:
+            `showPlanCta` is read once in the page (`entitlement.ts`) and
+            passed in, never inferred from the band response. Gating the band
+            is what made the old defect visible — the button read "Ver plano
+            Essencial" and rendered unconditionally, including to Essencial
+            and Pro subscribers, beside a band they had just been shown. */}
       </main>
 
       {/* D25 (3). This screen is the end of the journey, so the only thing
-          ahead of the reader is the plan that unlocks the band — the same
-          action and the same approved words as the button above, which stays
-          because at `lg` the bar does not exist. When `showPlanCta` is false
-          the caller is entitled or no band exists for anybody, and there is
-          no next action to put in a bar; the AppBar's "Voltar" is still
-          there, and the second slot names where it goes rather than how the
-          browser gets there. */}
+          ahead of the reader is the plan that unlocks the band — and since
+          2026-09-30 this is the **only** place that action appears: the
+          full-width button that used to sit above was drawn under the same
+          accessible name and has been deleted, not hidden.
+
+          When `showPlanCta` is false the caller is entitled or no band exists
+          for anybody, so there is no next action and no bar. **That also
+          takes the second slot with it**, which is worth knowing: an entitled
+          subscriber's only way back is the AppBar's "Voltar", and on this
+          screen that goes to the triagem rather than to the edital. Carded,
+          not fixed here. */}
       {showPlanCta ? (
         <ActionBar
           primary={{ href: PLAN_HREF, label: page.cta }}
