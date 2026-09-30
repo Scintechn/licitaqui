@@ -274,11 +274,21 @@ function Verdict({ model }: { model: ScreeningModel }) {
         <div className={cn('text-lead font-semibold', ink)}>{model.verdict}</div>
         {model.reason ? <div className="text-meta text-ink">{model.reason}</div> : null}
       </div>
+      {/* The label was `sr-only`, so a sighted reader met a bare "4/10" under a
+          heading reading *Difícil*, with nothing saying which end is good. Two
+          independent reviews called that ambiguous, and the string to fix it
+          has shipped all along — it was simply never on screen. Visible text
+          rather than an `aria-label`, so both readers get the same sentence.
+          The scale runs 10 = "Boa para empresa pequena". */}
       {model.score === null ? null : (
-        <div className={cn('shrink-0 font-display text-[26px] leading-none font-semibold', ink)}>
-          {model.score}
-          <span className="text-[14px]">/10</span>
-          <span className="sr-only"> {page.verdict.scoreLabel}</span>
+        <div className={cn('shrink-0 text-right', ink)}>
+          <div className="font-display text-[26px] leading-none font-semibold">
+            {model.score}
+            <span className="text-[14px]">/10</span>
+          </div>
+          <div className="pt-0.5 text-caption leading-tight text-muted">
+            {page.verdict.scoreLabel}
+          </div>
         </div>
       )}
     </div>
@@ -549,12 +559,23 @@ export function ScreeningView({
 
             <div className="flex flex-col gap-1 pt-1 text-caption leading-relaxed text-muted">
               <p className="m-0">
-                {model.citations && model.citations.citations > 0
-                  ? format(page.citations, {
-                      conferidas: model.citations.verified,
-                      total: model.citations.citations,
-                    })
-                  : page.citationsNone}{' '}
+                {/* The aggregate ratio — "6 de 7 páginas citadas conferem" —
+                    is gone. A reader who cannot tell *which* of the seven
+                    failed discounts all seven, including the page the blocker
+                    depends on, so disclosing the error rate in one number cost
+                    trust in every citation rather than buying it in one.
+
+                    Nothing is hidden by removing it: `pageUnverified` already
+                    marks the failing row itself, in colour, with a `*` and an
+                    `sr-only` explanation — *"A página citada não confere:
+                    procure no edital inteiro"*. Per-row failure is actionable
+                    and contained; the ratio was neither.
+
+                    `citationsNone` stays, because "this reading cited no page
+                    at all" is a different statement and a reader needs it. */}
+                {model.citations && model.citations.citations > 0 ? null : (
+                  <>{page.citationsNone} </>
+                )}
                 {page.shared}
               </p>
               <p className="m-0">{disclaimer}</p>

@@ -158,14 +158,45 @@ describe('ScreeningView · a finished analysis', () => {
     expect(html).toContain(messages.ai.notLegalAdvice)
   })
 
-  it('reports how many of the cited pages the worker could confirm', () => {
-    expect(html).toContain('8 de 8 páginas citadas conferem')
+  /**
+   * **Inverted by D28.** It required the aggregate — *"8 de 8 páginas citadas
+   * conferem"* — and that number is now gone.
+   *
+   * A reader who cannot tell *which* of the cited pages failed discounts all of
+   * them, including the page the blocker depends on, so one disclosed ratio
+   * cost trust in every citation rather than buying it in one. Nothing is
+   * hidden by its removal: `pageUnverified` marks the failing row itself, in
+   * colour, with a `*` and an `sr-only` explanation. Per-row failure is
+   * actionable; the ratio was not.
+   *
+   * Inverted rather than deleted so the next person to reach for an aggregate
+   * finds the reason it was taken out.
+   */
+  it('never states an aggregate citation rate', () => {
+    expect(html).not.toMatch(/\d+ de \d+ páginas citadas/)
+    // The per-row marker is what carries it now, and it still ships.
+    expect(page.pageUnverified).toContain('não confere')
   })
 
-  it('shows the score, the verdict and the reason', () => {
+  it('still says so when a reading cited no page at all', () => {
+    // A different statement, and one the reader needs: "we cited nothing" is
+    // not "some of what we cited did not check out".
+    const out = render({ model: { ...MODEL, citations: { citations: 0, verified: 0, rate: 0 } } })
+    expect(out).toContain(page.citationsNone)
+    // …and the other half, which the first version of this test was missing:
+    // inverting the condition left all 35 green, because nothing asserted the
+    // sentence stays away when pages *were* cited.
+    expect(html).not.toContain(page.citationsNone)
+  })
+
+  it('shows the score with its label, the verdict and the reason', () => {
     expect(html).toContain(page.verdict.hard)
     expect(html).toContain('Obra complexa de engenharia')
     expect(html).toContain('/10')
+    // D28: the label shipped `sr-only`, so a sighted reader met a bare "4/10"
+    // under a heading reading *Difícil* with nothing saying which end is good.
+    expect(html).toContain(page.verdict.scoreLabel)
+    expect(html).not.toContain(`sr-only"> ${page.verdict.scoreLabel}`)
   })
 
   it('offers the locked price block, canvas 05, as a real link', () => {

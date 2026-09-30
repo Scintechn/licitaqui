@@ -1131,7 +1131,6 @@
       "page": "p.{numero}",
       "noPage": "—",
       "pageUnverified": "A página citada não confere: procure no edital inteiro.",
-      "citations": "{conferidas} de {total} páginas citadas conferem com o edital.",
       "citationsNone": "Esta triagem não citou página nenhuma.",
       "shared": "Análise compartilhada: quem pedir este edital depois lê a mesma.",
       "verdict": {
