@@ -66,6 +66,19 @@ A scheduled job's hour is BRT (`scheduler.py`'s `daily_at`), and the row it
 writes is UTC.
 
 - Design: use tokens from `apps/web/styles/tokens.css` (Ivory/Graphite/Blue, Archivo/IBM Plex). Brand name is always "LicitaQui".
+- **Inside the app shell, a breakpoint above ~720px is a container query, never a
+  viewport one.** `components/app-shell.tsx` puts a rail in the layout flow from
+  `lg` (1024px), **264px** wide — or 56px, because the reader can collapse it and
+  that state is `localStorage`, which no media query can observe at all. `main` then
+  takes another 40px of gutter, so at the moment the rail appears the content box is
+  **720px**. A viewport breakpoint at or below 720 is safe (the rail does not exist
+  yet, and by 1024 the content has already cleared it); **anything above 720 is
+  asking about the window while the block lives in the column**, and is wrong by up
+  to 264px. Use `@container` on a wrapper and `@min-[Npx]:` on the child, as
+  `app/(public)/fundadores/page.tsx` and the tender screen do, and write the
+  arithmetic in the comment. D29 is what this costs when it is missing: two columns
+  drawn in 760px between 1024px and ~1164px, from two numbers chosen in different
+  cards that never met. **`radar-view.tsx` still has the same shape** — see D30.
 
 ## Knowledge base and POCs
 
@@ -116,10 +129,38 @@ mis-attribute both the commit and the Vercel deployment. Verify with
    and tell it that tests passing is not evidence. Ask specifically for defects
    where the tests pass and the behaviour is wrong.
 
-   And when you mutation-check, **assert the mutation applied**. A `replace`
-   that matched nothing prints success and proves nothing; that happened here
-   too, in the same afternoon.
+   And when you mutation-check, **assert the mutation applied** — and **assert
+   the restore too**. A `replace` that matched nothing prints success and proves
+   nothing; that happened here in the same afternoon. Two more ways it lies, both
+   on 2026-09-30 in D29: a `grep -c` check counts **lines, not occurrences**, so
+   four changed classes on one line read as "1" and the check reported a mutation
+   that had in fact applied; and a `cd` inside a compound command left the restore
+   running in the wrong directory, so it silently never ran and the file stayed
+   mutated. Compare the restored file to the pre-mutation `md5`: a byte-identical
+   restore is the only proof you put it back.
+
+4c. **What `environment: 'node'` cannot see, it cannot fail on.** `vitest.config.mts`
+   has no jsdom; component tests are `renderToStaticMarkup` string assertions. Two
+   whole classes of defect are therefore invisible **by construction**, and both
+   shipped green in the same week:
+
+   - **An effect undoing what the first render decided.** `useEffect` never runs
+     in that suite, so a test reads the initial state and passes while the browser
+     shows something else. D24: `?tab=files` *was* read, by the `useState`
+     initialiser, and a `setTab('items')` on mount discarded it one render later —
+     the parameter was correct for exactly one frame.
+   - **Layout.** There are no boxes to measure, so a block can pass every assertion
+     and still be drawn wrong. D29: two columns rendered inside 760px because a
+     `min-[900px]` viewport query could not know the desktop rail had taken 264px.
+
+   Neither is a reason to write a weaker test — it is the signal to reach for
+   `apps/web/e2e/`. Pin the *mechanism* in the unit test and the *result* in
+   Playwright, and say in the PR which one is doing which.
 5. Append one line to `docs/STATUS.md`: date · task ID · status · PR link · follow-ups.
+   Two open PRs both appending to the end of that file **will** conflict on whichever
+   merges second — GitHub says so before git does, and a local `git rebase origin/main`
+   applies both appends cleanly. Rebase and force-push with `--force-with-lease`; do not
+   resolve it in the web editor.
 
 Decisions marked open in plan §1.2 are Sci's: stop and ask. External side effects need
 Sci's OK — Asaas **sandbox** only, no real messages except to Sci's test contacts, no
