@@ -118,6 +118,21 @@ export type Unavailable = {
 
 export type UsageMetric = Measured | NotConfigured | Pending | Unavailable
 
+/** What `neon_usage` (worker, card B27) last wrote. */
+export type AwakeReading = {
+  measuredAt: Date
+  observedDays: number
+  wakeCyclesPerDay: number | null
+  awakeHoursPerDay: number | null
+  awakeShare: number | null
+  tailHoursPerDay: number | null
+  awakeNow: boolean
+  awakeSince: Date | null
+  projectStorageBytes: number | null
+  /** Why no CU-hours are shown. Rendered, not hidden. */
+  computeNote: string | null
+}
+
 export type NeonUsage = {
   /** Real: `pg_database_size(current_database())`, this database only. */
   databaseSize: UsageMetric
@@ -129,6 +144,8 @@ export type NeonUsage = {
   computeHours: UsageMetric
   /** The plan the figures above are read against. */
   plan: string
+  /** The worker's last reading of the compute operations log. */
+  awake: AwakeReading | null
 }
 
 /** A measurement with a ceiling — the shape the card can draw a bar for. */
@@ -174,6 +191,42 @@ export function storageCostUsd(bytes: number): number {
   return (bytes / 1_000_000_000) * LAUNCH_STORAGE_USD_PER_GB_MONTH
 }
 
+/**
+ * The newest `neon_usage` row the worker wrote.
+ *
+ * §3 keeps the Neon API out of a web request, so the card reads what a job
+ * left behind. `null` means no job has run yet — which the card says, rather
+ * than drawing an empty gauge.
+ */
+export async function readAwake(database: Executor = db()): Promise<AwakeReading | null> {
+  const { rows } = await database.execute<{ props: Record<string, unknown>; created_at: Date }>(
+    sql`select props, created_at from events
+         where name = 'neon_usage'
+         order by created_at desc
+         limit 1`,
+  )
+  const row = rows[0]
+  if (!row) return null
+  const p = row.props ?? {}
+  const num = (key: string): number | null => {
+    const value = p[key]
+    return typeof value === 'number' && Number.isFinite(value) ? value : null
+  }
+  const since = typeof p.awake_since === 'string' ? new Date(p.awake_since) : null
+  return {
+    measuredAt: new Date(row.created_at),
+    observedDays: num('observed_days') ?? 0,
+    wakeCyclesPerDay: num('wake_cycles_per_day'),
+    awakeHoursPerDay: num('awake_hours_per_day'),
+    awakeShare: num('awake_share'),
+    tailHoursPerDay: num('tail_hours_per_day'),
+    awakeNow: p.awake_now === true,
+    awakeSince: since && !Number.isNaN(since.getTime()) ? since : null,
+    projectStorageBytes: num('project_storage_bytes'),
+    computeNote: typeof p.compute_note === 'string' ? p.compute_note : null,
+  }
+}
+
 export async function readNeonUsage(
   database: Executor = db(),
   env: Record<string, string | undefined> = process.env,
@@ -199,12 +252,28 @@ export async function readNeonUsage(
     ? { state: 'pending', limit: null, writtenBy: 'neon_consumption (B27)' }
     : { state: 'not_configured', limit: null, missing: missingNeonVars(env) }
 
+  let awake: AwakeReading | null = null
+  try {
+    awake = await readAwake(database)
+  } catch {
+    // The card renders without it. A usage screen that 500s because one of
+    // its rows is missing is worse than a usage screen missing a row.
+  }
+
+  // Neon's own storage figure, once a job has fetched it — the metric Neon
+  // actually bills, as opposed to this database's logical size.
+  const projectStorage: UsageMetric =
+    awake?.projectStorageBytes != null
+      ? unbounded(awake.projectStorageBytes)
+      : fromApi
+
   return {
     databaseSize: size,
     storageUsdPerMonth: cost,
-    projectStorage: fromApi,
+    projectStorage,
     computeHours: fromApi,
     plan: PLAN_NAME,
+    awake,
   }
 }
 

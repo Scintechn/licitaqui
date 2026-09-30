@@ -42,6 +42,7 @@ function usage(overrides: Partial<NeonUsage> = {}): NeonUsage {
     projectStorage: { state: 'pending', limit: null, writtenBy: 'neon_consumption (B27)' },
     computeHours: { state: 'pending', limit: null, writtenBy: 'neon_consumption (B27)' },
     plan: PLAN_NAME,
+    awake: null,
     ...overrides,
   }
 }
@@ -181,5 +182,53 @@ describe('it names only the variables that are actually missing', () => {
     if (read.projectStorage.state === 'not_configured') {
       expect(read.projectStorage.missing).toEqual(['NEON_API_KEY', 'NEON_PROJECT_ID'])
     }
+  })
+})
+
+describe('the awake block — card B27', () => {
+  const reading = {
+    measuredAt: new Date('2026-09-30T04:00:00Z'),
+    observedDays: 7,
+    wakeCyclesPerDay: 21.7,
+    awakeHoursPerDay: 12.68,
+    awakeShare: 0.5282,
+    tailHoursPerDay: 1.81,
+    awakeNow: true,
+    awakeSince: new Date('2026-09-30T09:13:49Z'),
+    projectStorageBytes: 1_754_308_608,
+    computeNote: "Neon's own compute figures disagreed across endpoints",
+  }
+
+  it('shows the hours awake, which is what Neon actually charges for', () => {
+    const html = renderToStaticMarkup(<UsageCard usage={usage({ awake: reading })} />)
+    expect(html).toContain('12,7 h')
+    expect(html).toContain('53%')
+    expect(html).toContain('21,7')
+  })
+
+  it('never renders a CU-hours figure, and says why', () => {
+    // Neon's console said 57.08 CU-h while its API said 19.25 then 0, inside
+    // three hours. A number here that contradicts Neon's billing page is the
+    // defect this card was rebuilt for.
+    const html = renderToStaticMarkup(<UsageCard usage={usage({ awake: reading })} />)
+    expect(html).not.toContain('CU-h ')
+    expect(html).not.toMatch(/\d+(,\d+)?\s*CU-horas/)
+    expect(html).toContain('de propósito')
+    expect(html).toContain('disagreed')
+  })
+
+  it('says plainly when no job has written a reading yet', () => {
+    const html = renderToStaticMarkup(<UsageCard usage={usage({ awake: null })} />)
+    expect(html).toContain('Nenhuma leitura ainda')
+    expect(html).toContain('neon_usage')
+  })
+
+  it('flags that the compute is awake right now', () => {
+    expect(renderToStaticMarkup(<UsageCard usage={usage({ awake: reading })} />)).toContain(
+      'acordado agora',
+    )
+    expect(
+      renderToStaticMarkup(<UsageCard usage={usage({ awake: { ...reading, awakeNow: false } })} />),
+    ).toContain('suspenso')
   })
 })

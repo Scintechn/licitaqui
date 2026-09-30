@@ -146,6 +146,12 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # to revisit once the coverage figure is being measured rather than
     # estimated.
     ScheduleEntry(kind="reconcile_open_tenders", daily_at="04:00", priority=9),
+    # **Deliberately the same 04:00 as `reconcile_open_tenders`.** It reads
+    # Neon's API, not the database, so its own cost is one wake — and sharing
+    # the reconcile's means it is not even that. A job about the compute bill
+    # that opened a wake of its own to report on wakes would be funny once.
+    # Daily: awake time is a trend, and the figure it reads moves slowly.
+    ScheduleEntry(kind="neon_usage", daily_at="04:00", priority=9),
     # Hourly, and off the collectors' priority. A missing title degrades a
     # card; a missing tender loses it, so this never competes with B2/B3. An
     # hour is well inside `sync_open_tenders`' own 30 min cycle, so a tender

@@ -50,7 +50,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -109,9 +108,7 @@ def main() -> int:
     parser.add_argument("--create-project", action="store_true", help="create the Neon project too")
     parser.add_argument("--project-id", help="an existing Neon project to use")
     parser.add_argument("--name", default="licitaqui-tests", help="name for a created project")
-    parser.add_argument(
-        "--region", default="aws-sa-east-1", help="region for a created project"
-    )
+    parser.add_argument("--region", default="aws-sa-east-1", help="region for a created project")
     args = parser.parse_args()
 
     source = os.environ.get("DATABASE_URL_UNPOOLED") or os.environ.get("DATABASE_URL")
