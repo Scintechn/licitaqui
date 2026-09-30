@@ -16,6 +16,33 @@
   already be known to be undecided. The task card is the scope; do not widen it.
 - Code, identifiers, tables, commits: English. User-facing copy: Brazilian Portuguese in `apps/web/messages/pt-BR.json`.
 - Never read PNCP/BrasilAPI/OpenRouter inside a web request; enqueue a job (spec §3).
+- **PNCP refuses some origins outright, so a measurement that needs it runs on the
+  worker, not here.** On 2026-09-29/30 every `GET /api/search/` from Sci's laptop
+  answered `ReadError: [Errno 54] Connection reset by peer` — including the
+  client's own known-good parameter shape, so not a malformed query — while the
+  same endpoint served the worker 47 times in 24 h. Run locally, B17's comparison
+  would have reported that we hold **0%** of the open editais: a measurement of
+  our own blocked connection. `coverage_check` exists for this reason and **raises
+  on an empty walk instead of recording a zero**. Write any new PNCP measurement
+  the same way, and see `memory: empty-result-is-not-absence`.
+
+  **Before blaming PNCP, run the check that tells the two apart.** *"PNCP is down"*
+  and *"PNCP is refusing us"* look identical from one machine, and the answer is a
+  single query — the worker and the laptop hit the same endpoint, so ask what the
+  worker just did:
+
+  ```sql
+  select kind, status, count(*), max(updated_at) from jobs
+   where updated_at > now() - interval '3 hours' group by 1,2 order by 1,2;
+  ```
+
+  `sync_open_tenders` **is** `/api/search/`. On 2026-09-30 at 10:50 UTC — with the
+  site apparently down and every local request reset — it read **7 done at 10:35**,
+  so the endpoint was serving and only this origin was refused. Two things that
+  query also settles: the breaker is **per endpoint** (`pncp-resultados` was open
+  that morning while search was healthy), and the **public website and the API are
+  different surfaces** that fail independently. "PNCP is down" is rarely true of
+  all of it.
 - Never commit secrets. Use `.env.example`. Never log CPF, emails or tokens.
 - Every change: tests for new logic, `pnpm lint && pnpm typecheck && pnpm test` (web) or `ruff check && pytest` (worker) green.
 - Schema changes only via `db/migrations`, in their own PR.
@@ -32,6 +59,23 @@
   `git reset --hard` in a live worktree destroys uncommitted work: it happened to B4,
   which lost two fixes and had to re-apply them. Wait for the lane to finish, then
   resolve.
+- **The branch under you can change while you work, and the stash stack is shared.**
+  On 2026-09-30 a session committed to `perf/worker-wake-and-coverage`, ran tests,
+  and found itself on `fix/objeto-trim` holding another lane's uncommitted files —
+  another agent had checked out the main tree in between. It then ran bare
+  `git stash` / `git stash pop` there to test a baseline. The files came back
+  intact, but by luck: the stash stack is shared across every worktree, so a bare
+  `pop` can restore somebody else's work or let theirs swallow yours. In the main
+  checkout: print `git branch --show-current` immediately before any git command
+  that writes; never bare-stash (use a WIP commit, or `git stash push -u -m
+  "<tag>"` and `apply` by SHA); push finished work by refspec — `git push origin
+  <branch>:<branch>` — which touches no working tree; and when you need a tree of
+  your own, `git worktree add` one, which disturbs nothing.
+- **A merge can silently drop your card.** B26 and B27 were written, committed and
+  merged in #175 — and were **not in `main`** afterwards, because the
+  `DEVELOPMENT_PLAN.md` conflict was resolved in favour of another lane's copy.
+  Both had to be recovered from the branch. After a PR merges, `grep` `main` for
+  the card ids it added: the code landing says nothing about whether the row did.
 - AI prompt or extraction changes must run `worker/evaluation` and report the score diff.
 - **A "later" in a comment is not a task.** If your change leaves something for
   somebody else — a column nothing reads yet, a string nothing renders, an event
@@ -136,8 +180,12 @@ mis-attribute both the commit and the Vercel deployment. Verify with
    four changed classes on one line read as "1" and the check reported a mutation
    that had in fact applied; and a `cd` inside a compound command left the restore
    running in the wrong directory, so it silently never ran and the file stayed
-   mutated. Compare the restored file to the pre-mutation `md5`: a byte-identical
-   restore is the only proof you put it back.
+   mutated. A third, same day: `perl -pi -e '...  if !$done++'` evaluates that
+   guard **per line**, so it fired on line 1, matched nothing and reported
+   success — and the `grep` that followed found the word inside a *comment* and
+   read as confirmation. Assert the mutation **as code**, not as a string that
+   appears somewhere in the file. Compare the restored file to the pre-mutation
+   `md5`: a byte-identical restore is the only proof you put it back.
 
 4c. **What `environment: 'node'` cannot see, it cannot fail on.** `vitest.config.mts`
    has no jsdom; component tests are `renderToStaticMarkup` string assertions. Two
@@ -156,6 +204,17 @@ mis-attribute both the commit and the Vercel deployment. Verify with
    Neither is a reason to write a weaker test — it is the signal to reach for
    `apps/web/e2e/`. Pin the *mechanism* in the unit test and the *result* in
    Playwright, and say in the PR which one is doing which.
+4d. **When a limit turns out not to exist, change the shape, not the constant.**
+   `/admin`'s Neon card measured a **Launch** project against **Free**'s 0.5 GB
+   and would have rendered *338% and a red alert* on a database in no danger —
+   a false alarm on the one screen whose purpose is warning before Neon stops
+   the database. The first fix proposed Launch's "10 GB": a number that does not
+   exist, inferred from remembered quotas and reported to Sci as though
+   measured. Launch removes the limits and prices storage per GB-month, so the
+   answer was a nullable limit — no ratio, no bar, no alert — and a **cost**
+   where the ceiling used to be. Before pinning a threshold, check it is one;
+   and always say which figures you measured and which you inferred.
+
 5. Append one line to `docs/STATUS.md`: date · task ID · status · PR link · follow-ups.
    Two open PRs both appending to the end of that file **will** conflict on whichever
    merges second — GitHub says so before git does, and a local `git rebase origin/main`
