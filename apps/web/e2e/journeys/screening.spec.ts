@@ -126,10 +126,24 @@ test.describe('Dona Marta · the AI triagem', () => {
 
     await expect(page.getByText('Boa para empresa pequena')).toBeVisible()
     // §2.2 rule 4: a conclusion without its source is a defect, not a design
-    // choice. Every row carries its page, and the footer says how many checked
-    // out.
+    // choice. Every row carries its page.
     await expect(page.getByText('p.43').first()).toBeVisible()
-    await expect(page.getByText('6 de 6 páginas citadas conferem com o edital.')).toBeVisible()
+    // **The footer's aggregate is gone (D28)**, and this assertion is inverted
+    // rather than dropped. A reader who cannot tell *which* of the cited pages
+    // failed discounts all of them, including the page the blocker rests on,
+    // so one disclosed ratio cost trust in every citation instead of buying it
+    // in one. What replaces it is per-row: `pageUnverified` marks the line that
+    // failed, in colour, with a `*` and an `sr-only` explanation.
+    await expect(page.getByText(/\d+ de \d+ páginas citadas/)).toHaveCount(0)
+    // …and the score now says which way it runs, which it did only for a
+    // screen reader before.
+    //
+    // `toBeVisible()` alone could not test this: `sr-only` is a 1px clipped
+    // box, not `display: none`, so Playwright calls it visible and the
+    // assertion passed with the label still hidden. What the change actually
+    // did is take it *out* of `.sr-only`, so that is what this asserts.
+    await expect(page.locator('.sr-only', { hasText: 'Nota da triagem' })).toHaveCount(0)
+    await expect(page.getByText('Nota da triagem').first()).toBeVisible()
     // §2.2 rule 5: the AI notice on every result screen.
     await expect(
       page.getByText('Não substitui assessoria jurídica ou contábil.').first(),
