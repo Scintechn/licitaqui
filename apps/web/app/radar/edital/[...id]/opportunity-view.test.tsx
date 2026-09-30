@@ -4,6 +4,9 @@ import { format, messages } from '@/lib/messages'
 import type { SegmentFit, TenderDetail } from '@/lib/radar/contract'
 import { TENDER_ITEMS_FIXTURE } from '@/lib/radar/items-fixture'
 import { tenderBudget } from '@/lib/radar/headline'
+import { AppShell } from '@/components/app-shell'
+import type { AccountSummary } from '@/lib/account/summary'
+import { screeningHref } from '@/lib/radar/client'
 import { OpportunityView, matchKind, reasons, type OpportunityViewProps } from './opportunity-view'
 
 const NOW = new Date('2026-09-17T15:00:00.000Z')
@@ -911,5 +914,186 @@ describe('the cost line under the button, which is its own question', () => {
       showScreeningCost: true,
     })
     expect(visitor).toContain(page.screeningCost)
+  })
+})
+
+/**
+ * D25 (3) and (4) — the action bar, and the count under its button.
+ *
+ * Sci's journey, 2026-09-29: *"the decision is below the fold"*. The bar takes
+ * the one action this screen is for out of the scroll.
+ *
+ * **These render the screen, and one of them renders it inside a real
+ * `AppShell`**, because the count reaches the bar through the shell's context
+ * and nothing else. That is the assertion this repo keeps failing to make:
+ * `menu-view.test.tsx` rendered a drawer nothing could open, and #93 shipped
+ * `onOpenMenu` on a props type that no screen called, green throughout. A test
+ * that renders `ActionBar` with a caption prop would prove only that a string
+ * passed to a component comes out of it.
+ *
+ * What these cannot do is see a layout: `environment: 'node'` has no boxes, so
+ * whether the bar actually covers the last row of the Itens list is
+ * `e2e/journeys/tender-action-bar.spec.ts` (CLAUDE.md §4c).
+ */
+describe('the action bar', () => {
+  /**
+   * The bar's markup — **its subtree, not the rest of the document**.
+   *
+   * The first version sliced to the end of the string, which inside a shell
+   * swept up `Sheet` and the whole `MenuView`. Its assertions survived by the
+   * luck of their wording: `not.toContain('z-50')` would have failed on the
+   * drawer, and the caption checks passed only because `MenuView` says
+   * "3 de 5 triagens usadas" and never "Restam". So this counts `<div>`s.
+   */
+  function bar(html: string): string {
+    const at = html.indexOf('sticky bottom-0')
+    expect(at, 'the screen must draw the bottom bar').toBeGreaterThan(-1)
+    const open = html.lastIndexOf('<div', at)
+    let depth = 0
+    for (const tag of html.slice(open).matchAll(/<(\/?)div\b[^>]*>/g)) {
+      depth += tag[1] === '/' ? -1 : 1
+      if (depth === 0) return html.slice(open, open + tag.index + tag[0].length)
+    }
+    throw new Error('the bar’s subtree is not closed')
+  }
+
+  /** The same screen, inside the shell that actually wraps it in `/radar`. */
+  function inShell(summary: AccountSummary | null, overrides: Partial<OpportunityViewProps> = {}) {
+    const props: OpportunityViewProps = {
+      tender: TENDER,
+      freshness: { state: 'fresh', updatedAt: '2026-09-17T14:30:00.000Z', ageSeconds: 1_800 },
+      status: { kind: 'ready' },
+      backHref: '/radar?cnpj=51885242000140&group=check',
+      search: SEARCH,
+      screening: FIRST_VISIT,
+      now: NOW,
+      ...overrides,
+    }
+    return renderToStaticMarkup(
+      <AppShell summary={summary}>
+        <OpportunityView {...props} />
+      </AppShell>,
+    )
+  }
+
+  function quota(over: Partial<AccountSummary['screenings']> = {}): AccountSummary {
+    return {
+      plan: 'basico',
+      screenings: {
+        feature: 'screening',
+        plan: 'basico',
+        period: 'month',
+        limit: 5,
+        used: 2,
+        left: 3,
+        ...over,
+      },
+      alerts: { feature: 'alert', plan: 'basico', period: 'week', limit: 1, used: 0, left: 1 },
+      founderSeat: null,
+      signedIn: true,
+    }
+  }
+
+  it('is drawn below `lg` and never at `lg`, where the rail is in the flow', () => {
+    // A `fixed` element is positioned against the viewport, and at `lg` the
+    // rail is 56px or 264px of *layout* — localStorage state no media query
+    // can read — so no `left` is correct there and the bar does not render.
+    const block = bar(render())
+    expect(block).toContain('lg:hidden')
+    // `sheet.tsx` reserved this: the drawer is `z-50` and must stay over it.
+    expect(block).toContain('z-40')
+    expect(block).not.toContain('z-50')
+    // And the drawer really is above it, on the screen as it ships.
+    expect(bar(inShell(null))).not.toContain('z-50')
+  })
+
+  it('offers the in-page action, not a second one that could drift from it', () => {
+    // Two controls for one action is how a screen comes to say two things.
+    // Both read `screeningHref` and the same `spent` switch.
+    const first = render()
+    // React escapes the `&` between the query's parameters, so the literal in
+    // the markup is not the string the helper returns.
+    const href = `href="${screeningHref(TENDER.id, SEARCH).replaceAll('&', '&amp;')}"`
+    expect(first.split(href), 'the in-page CTA and the bar, and nothing else').toHaveLength(3)
+    expect(bar(first)).toContain(page.screeningCta)
+
+    const again = render({ screening: { ready: true, spent: true, metered: true } })
+    expect(bar(again)).toContain(page.screeningCtaRequested)
+    expect(bar(again)).not.toContain(page.screeningCta)
+  })
+
+  /**
+   * The second slot, Sci's ruling of 2026-09-30, in the words the tabs
+   * themselves use. **And the anchor it points at has to exist**: a link to a
+   * fragment nothing defines is this repo's named defect wearing an `href` —
+   * `radar.list.changeCompany` was approved copy rendered nowhere, and this
+   * would be an approved control leading nowhere.
+   */
+  it('sends the reader to the record, and the record is there to be sent to', () => {
+    const html = render()
+    const anchor = html.match(/href="#([a-z-]+)"/)
+    expect(anchor, 'the second slot is an in-page link').not.toBeNull()
+    expect(bar(html)).toContain(page.barRecord)
+    expect(html).toContain(`id="${(anchor as RegExpMatchArray)[1]}"`)
+  })
+
+  it('renders without the count, outside a shell and before one is read', () => {
+    // The Landing renders these screens' siblings with no shell at all, and
+    // the server pass has no summary yet. Both must draw the bar anyway —
+    // "the server fallback renders the bar without the count and fills in".
+    expect(bar(render())).not.toContain('Restam')
+    expect(bar(inShell(null))).not.toContain('Restam')
+  })
+
+  it('takes the count from the shell’s one server read', () => {
+    // Not a second `readShell()` in `page.tsx`: a session read outside the
+    // Suspense boundary costs the whole page on a cold Neon.
+    const html = inShell(quota())
+    expect(bar(html)).toContain('Restam 3 triagens neste mês')
+  })
+
+  it('puts the count under the button and never inside its label', () => {
+    // A primary action that is also a status readout resizes under itself as
+    // the number changes, and it cannot be translated — the label and the
+    // count are two sentences with two different plural rules.
+    const block = bar(inShell(quota()))
+    const cta = block.indexOf(page.screeningCta)
+    const close = block.indexOf('</a>', cta)
+    const label = block.slice(block.lastIndexOf('<a', cta), close)
+    expect(label).toContain(page.screeningCta)
+    expect(label, 'the count is a sibling of the button, not part of it').not.toContain('Restam')
+    expect(block.indexOf('Restam'), 'and it comes after it').toBeGreaterThan(close)
+  })
+
+  it('says nothing about a quota it has no sentence for', () => {
+    // `essencial` is unlimited — `left: null` — and the morning founders week
+    // opened, "Usa 1 das suas triagens" ran for six hours under this button on
+    // plans whose own feature list says "Triagens de edital sem limite".
+    const unlimited = quota({ plan: 'essencial', limit: null, left: null })
+    expect(bar(inShell({ ...unlimited, plan: 'essencial' }))).not.toContain('Restam')
+    // Exhausted belongs to `radar.screening.quotaTitle`, which reads the real
+    // total from `plan_limits`; the `=0` copy here names a literal 5.
+    expect(bar(inShell(quota({ used: 5, left: 0 })))).not.toContain('triagens deste mês')
+  })
+
+  /**
+   * The bar reserves its own height by **being in the flow**, so nothing can
+   * be covered and there is no number to get wrong.
+   *
+   * The first version was `fixed` plus a `BAR_CLEARANCE` padding constant, and
+   * the test here asserted `main` contained that same constant — importing it
+   * and looking for the string it had just produced. It passed for every
+   * possible value, including `pb-0`, which is what the review proved by
+   * setting it. The measured heights are 69px to 144px across widths, labels
+   * and the caption, so no constant was ever going to be right.
+   */
+  it('takes its room from the flow rather than from a constant', () => {
+    const block = bar(render())
+    expect(block).toContain('sticky')
+    expect(block, 'out of flow is what made a clearance necessary').not.toContain('fixed')
+    // And it is the last thing in the column, after `main`, which is the one
+    // thing `sticky bottom-0` needs from its caller.
+    const html = render()
+    expect(html.indexOf('sticky bottom-0')).toBeGreaterThan(html.indexOf('</main>'))
   })
 })

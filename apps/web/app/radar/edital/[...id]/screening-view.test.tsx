@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { ACCOUNT_HREF } from '@/lib/routes'
 import { messages } from '@/lib/messages'
 import { accountHref } from '@/lib/routes'
-import { tenderHref } from '@/lib/radar/client'
+import { priceHref, tenderHref } from '@/lib/radar/client'
 import type { QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
 import type { ScreeningModel } from '@/lib/radar/screening-result'
 import { ScreeningView, quotaLabel, type ScreeningViewProps } from './screening-view'
@@ -400,5 +400,48 @@ describe('the Documentos tab, and who it is locked for', () => {
   it('says so when the agency published nothing, rather than showing an empty panel', () => {
     const out = render({ signedIn: true, tab: 'files', tender: { ...TENDER, files: [] } })
     expect(out).toContain(opportunity.files.emptyTitle)
+  })
+})
+
+/**
+ * D25 (3) — the action bar on the triagem screen.
+ *
+ * The funnel's next step from a finished reading is the price question, and
+ * below `lg` the only other way off this screen was the AppBar's "Voltar" — a
+ * browser-history word, not a destination. The bar names where it goes.
+ *
+ * Widths and clipping are `e2e/journeys/tender-action-bar.spec.ts`;
+ * `environment: 'node'` has no layout (CLAUDE.md §4c).
+ */
+describe('the action bar', () => {
+  function bar(html: string): string | null {
+    const at = html.indexOf('sticky bottom-0')
+    return at === -1 ? null : html.slice(html.lastIndexOf('<div', at))
+  }
+
+  it('offers the price question once the reading is on screen', () => {
+    const block = bar(render())
+    expect(block).not.toBeNull()
+    expect(block).toContain(messages.radar.screening.barPrice)
+    expect(block).toContain(priceHref(TENDER.id, SEARCH).replaceAll('&', '&amp;'))
+    // The way back names the place, not the gesture.
+    expect(block).toContain(messages.common.tender)
+    expect(block).toContain('lg:hidden')
+    expect(block).toContain('z-40')
+  })
+
+  it('offers nothing while the reading is still being made', () => {
+    // A bar proposing the next step under "Lendo o edital…" would be offering
+    // it before this step has finished.
+    expect(bar(render({ status: { kind: 'analyzing' }, model: null }))).toBeNull()
+  })
+
+  it('takes its room from the flow, after `main`', () => {
+    // `sticky` reserves its own height whatever it turns out to be; the
+    // `fixed` version needed a padding constant, and no constant covered the
+    // 69px–144px the bar actually measures across widths and labels.
+    const html = render()
+    expect(bar(html)).toContain('sticky')
+    expect(html.indexOf('sticky bottom-0')).toBeGreaterThan(html.indexOf('</main>'))
   })
 })

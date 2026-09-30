@@ -13,7 +13,8 @@ import { MenuTrigger } from '@/components/menu-trigger'
 import { cn } from '@/lib/cn'
 import { PLAN_HREF } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
-import { priceHref, type RadarSearch } from '@/lib/radar/client'
+import { ActionBar } from '@/components/action-bar'
+import { priceHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { moneyExact, moneyExactNonZero, trimObject } from '@/lib/radar/format'
@@ -373,6 +374,25 @@ export function PriceView({
           </div>
         ) : null}
       </main>
+
+      {/* D25 (3). This screen is the end of the journey, so the only thing
+          ahead of the reader is the plan that unlocks the band — the same
+          action and the same approved words as the button above, which stays
+          because at `lg` the bar does not exist. When `showPlanCta` is false
+          the caller is entitled or no band exists for anybody, and there is
+          no next action to put in a bar; the AppBar's "Voltar" is still
+          there, and the second slot names where it goes rather than how the
+          browser gets there. */}
+      {showPlanCta ? (
+        <ActionBar
+          primary={{ href: PLAN_HREF, label: page.cta }}
+          // **Not `backHref`.** On this screen that is `screeningHref` — the
+          // triagem — so a slot labelled "Edital" would have landed somewhere
+          // else. The AppBar's "Voltar" is honest about being history; a slot
+          // that names a destination has to go to it.
+          secondary={{ href: tenderHref(tenderId, search), label: messages.common.tender }}
+        />
+      ) : null}
     </div>
   )
 }

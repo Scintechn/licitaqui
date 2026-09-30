@@ -2,6 +2,20 @@ import { expect, test, type Page } from '@playwright/test'
 import { messages } from '../../lib/messages'
 import { installRadarApi } from '../fixtures/radar-api'
 import { card } from '../fixtures/screen'
+
+/**
+ * The tender screen's own call to action, scoped to `main`.
+ *
+ * D25 (3) put the same action in a fixed bar as well, so below `lg` the page
+ * carries two links with this name and a bare `getByRole` is a strict-mode
+ * violation rather than an ambiguity worth tolerating. These tests are about
+ * the in-page button — `toHaveCount(0)` on the first-time label after a
+ * triagem is spent means *this* control changed its verb — and the bar has a
+ * spec of its own in `tender-action-bar.spec.ts`.
+ */
+function cta(page: import('@playwright/test').Page, name: string) {
+  return page.getByRole('main').getByRole('link', { name })
+}
 import { MARTA, processo, tenderRun } from '../fixtures/world'
 
 /**
@@ -164,18 +178,18 @@ test.describe('Dona Marta · the AI triagem', () => {
     await card(page, processo(1)).click()
 
     // First time: the button is the usual one, and asking costs one of the two.
-    await expect(page.getByRole('link', { name: 'Ver triagem por IA' })).toBeVisible()
-    await page.getByRole('link', { name: 'Ver triagem por IA' }).click()
+    await expect(cta(page, 'Ver triagem por IA')).toBeVisible()
+    await cta(page, 'Ver triagem por IA').click()
     await expect(page.getByText('Boa para empresa pequena')).toBeVisible()
     await expect(page.getByText('1 de 2 sem conta')).toBeVisible()
 
     // She goes back to the edital. The button now knows the reading is hers.
     await page.getByRole('link', { name: 'Voltar' }).click()
-    await expect(page.getByRole('link', { name: 'Ver a triagem que você pediu' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Ver triagem por IA' })).toHaveCount(0)
+    await expect(cta(page, 'Ver a triagem que você pediu')).toBeVisible()
+    await expect(cta(page, 'Ver triagem por IA')).toHaveCount(0)
 
     const spent = api.calls.screeningPost.length
-    await page.getByRole('link', { name: 'Ver a triagem que você pediu' }).click()
+    await cta(page, 'Ver a triagem que você pediu').click()
     await expect(page.getByText('Boa para empresa pequena')).toBeVisible()
 
     // One more ask — the route answers `ready` from cache and `quota.spend`
@@ -196,8 +210,8 @@ test.describe('Dona Marta · the AI triagem', () => {
 
     await page.goto(`/radar/edital/${EDITAL}?cnpj=${MARTA.cnpj}&group=compatible`)
 
-    await expect(page.getByRole('link', { name: 'Ver triagem por IA' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Ver a triagem que você pediu' })).toHaveCount(0)
+    await expect(cta(page, 'Ver triagem por IA')).toBeVisible()
+    await expect(cta(page, 'Ver a triagem que você pediu')).toHaveCount(0)
   })
 
   test('when the triagens run out the screen says how many there were and offers the account', async ({

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { PLAN_HREF } from '@/lib/routes'
-import { priceHref } from '@/lib/radar/client'
+import { priceHref, tenderHref } from '@/lib/radar/client'
 import { messages } from '@/lib/messages'
 import type { TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { PriceView, chooseItem, unitPrice, type PriceViewProps } from './price-view'
@@ -375,5 +375,47 @@ describe('the price screen after Sci\'s journey (D25 part 5)', () => {
     // a bare ordinal says nothing about what the reader would be pricing.
     expect(html).toContain('min-h-touch')
     expect(html).not.toContain('font-mono text-label no-underline')
+  })
+})
+
+/**
+ * D25 (3) — the action bar on the preço screen, which is the end of the
+ * journey.
+ *
+ * The only thing ahead of a reader here is the plan that unlocks the band, so
+ * the bar exists exactly where that button does and nowhere else. An entitled
+ * reader has no next action, and a bar proposing one would be inventing it —
+ * the same defect as the plan CTA that rendered to Essencial subscribers until
+ * `showPlanCta` was passed from the server.
+ */
+describe('the action bar', () => {
+  function bar(html: string): string | null {
+    const at = html.indexOf('sticky bottom-0')
+    return at === -1 ? null : html.slice(html.lastIndexOf('<div', at))
+  }
+
+  it('offers the plan where the screen already offers it', () => {
+    const block = bar(render({ showPlanCta: true }))
+    expect(block).not.toBeNull()
+    expect(block).toContain(messages.radar.price.cta)
+    expect(block).toContain(PLAN_HREF)
+    expect(block).toContain(messages.common.tender)
+    expect(block).toContain('lg:hidden')
+    expect(block).toContain('z-40')
+    // **The slot says "Edital" and has to go to the edital.** `backHref` on
+    // this screen is `screeningHref` — the triagem — so the first version sent
+    // a reader somewhere its own label did not name, and the test that only
+    // checked the words was green.
+    expect(block).toContain(tenderHref(TENDER.id, SEARCH).replaceAll('&', '&amp;'))
+    expect(block).not.toContain('/triagem')
+    const html = render({ showPlanCta: true })
+    expect(html.indexOf('sticky bottom-0')).toBeGreaterThan(html.indexOf('</main>'))
+  })
+
+  it('offers nothing to a reader who already has the plan', () => {
+    // `showPlanCta` is the server's answer, read once in the page. The screen
+    // must not draw a second, more prominent "Ver plano Essencial" for someone
+    // looking at the band they already paid for.
+    expect(bar(render({ showPlanCta: false }))).toBeNull()
   })
 })

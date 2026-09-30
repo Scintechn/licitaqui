@@ -75,7 +75,23 @@ import { Sheet } from './sheet'
  * `null` is a visitor, and `MenuView` already draws that strip.
  */
 
-type AppMenu = { open: () => void }
+type AppMenu = {
+  open: () => void
+  /**
+   * The same `AccountSummary` the rail draws, for a bar rendered inside the
+   * shell (D25 (4)).
+   *
+   * It travels through the context that already exists rather than through a
+   * second server read: `app/radar/layout.tsx` calls `readShell()` once per
+   * route and the screens below it are client components. A `readShell()` in
+   * `page.tsx` would be a session read **outside** the Suspense boundary, and
+   * on a cold Neon that is the whole page waiting for it.
+   *
+   * `null` is a visitor or a server pass with nothing read yet, and every
+   * consumer has to render without it.
+   */
+  summary: AccountSummary | null
+}
 
 const AppMenuContext = createContext<AppMenu | null>(null)
 
@@ -190,7 +206,7 @@ export function AppShell({
   const toggleRail = useCallback(() => writeCollapsed(!readCollapsed()), [])
   const titleId = useId()
   const close = useCallback(() => setOpen(false), [])
-  const menu = useMemo<AppMenu>(() => ({ open: () => setOpen(true) }), [])
+  const menu = useMemo<AppMenu>(() => ({ open: () => setOpen(true), summary }), [summary])
 
   return (
     <AppMenuContext.Provider value={menu}>

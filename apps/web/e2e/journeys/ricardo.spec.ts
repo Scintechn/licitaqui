@@ -104,7 +104,11 @@ test.describe('Ricardo · ME, wants an account and alerts', () => {
     // locked block in place instead of sending him to another page. What has
     // to survive that change is the way back: the signup still has to return
     // him to this edital, with this search, after he creates the account.
-    await page.getByRole('link', { name: 'Ver triagem por IA' }).click()
+    // Scoped to `main`: D25 (3) put the same action in a fixed bar as well,
+    // so the page now has two links with this name below `lg` and the journey
+    // has to say which control the persona used. The bar has a spec of its
+    // own — `tender-action-bar.spec.ts`.
+    await page.getByRole('main').getByRole('link', { name: 'Ver triagem por IA' }).click()
     await expect(page.getByText('Boa para empresa pequena')).toBeVisible()
 
     await page.getByRole('tab', { name: 'Documentos' }).click()
