@@ -68,7 +68,13 @@ export function chooseItem(
     const found = items.find((item) => item.number === wanted)
     if (found) return found
   }
-  return items[0]
+  // Sci, on his journey: *"the item that has the price should be the first."*
+  // He landed on item 2 of a two-item edital and met "ainda sem dados de
+  // vencedores" — a screen called *Até quanto ofertar* opening on the one item
+  // it cannot answer for. `hasAward` is already on the wire, so the default is
+  // the first item a band can exist for; `items[0]` only when none has one,
+  // which is the honest fallback rather than an arbitrary pick.
+  return items.find((item) => item.hasAward) ?? items[0]
 }
 
 export type PriceStatus =
@@ -241,20 +247,25 @@ export function PriceView({
             </div>
 
             {tender.items.length > 1 ? (
-              <nav aria-label={page.itemsLabel} className="flex flex-wrap gap-1.5">
+              <nav aria-label={page.itemsLabel} className="flex flex-col gap-1">
                 {tender.items.map((other) => (
                   <a
                     key={other.number}
                     href={priceHref(tenderId, search, other.number)}
                     aria-current={other.number === chosen.number ? 'page' : undefined}
                     className={cn(
-                      'inline-flex min-h-8 items-center rounded-badge border px-2 font-mono text-label no-underline',
+                      'flex min-h-touch items-center rounded-control border px-3 text-body no-underline',
                       other.number === chosen.number
                         ? 'border-blue-line bg-blue-soft text-blue'
-                        : 'border-line-strong bg-surface text-muted',
+                        : 'border-line-strong bg-surface text-ink',
                     )}
                   >
-                    {other.number}
+                    {other.description
+                      ? format(page.item, {
+                          numero: other.number,
+                          descricao: trimObject(other.description, 70),
+                        })
+                      : format(copy.card.items, { count: other.number })}
                   </a>
                 ))}
               </nav>
@@ -333,13 +344,6 @@ export function PriceView({
                 <p className="m-0 text-meta leading-relaxed text-muted">{page.noDataHelp}</p>
               </Card>
             )}
-
-            <div className="flex items-start gap-2.5 rounded-card bg-blue-soft p-3">
-              <Icon name="margin" size={20} className="shrink-0 text-blue" />
-              <p className="m-0 text-meta leading-relaxed">
-                <strong>{page.exampleLead}</strong> {page.exampleBody}
-              </p>
-            </div>
 
             {/* Legal brief §2.2 rule 5: every result screen carries the notice.
                 This one shows money — an estimate read out of the edital, and

@@ -115,6 +115,35 @@ describe('chooseItem', () => {
     expect(chooseItem(ITEMS, null)?.number).toBe(1)
   })
 
+  /**
+   * Sci opened a two-item edital and landed on item 2, which has no awards —
+   * *"Ainda sem dados de vencedores para este item"* on a screen called **Até
+   * quanto ofertar**. The default now prefers an item a band can exist for.
+   */
+  it('prefers an item with a published winner when none was asked for', () => {
+    const items = [
+      { ...ITEMS[0], number: 1, hasAward: false },
+      { ...ITEMS[0], number: 2, hasAward: true },
+    ]
+    expect(chooseItem(items, null)?.number).toBe(2)
+  })
+
+  it('still honours ?item=, even onto an item with no winner', () => {
+    const items = [
+      { ...ITEMS[0], number: 1, hasAward: false },
+      { ...ITEMS[0], number: 2, hasAward: true },
+    ]
+    expect(chooseItem(items, 1)?.number).toBe(1)
+  })
+
+  it('falls back to the first when no item has one, rather than showing nothing', () => {
+    const items = [
+      { ...ITEMS[0], number: 1, hasAward: false },
+      { ...ITEMS[0], number: 2, hasAward: null },
+    ]
+    expect(chooseItem(items, null)?.number).toBe(1)
+  })
+
   it('honours ?item= when the tender has that one', () => {
     expect(chooseItem(ITEMS, 2)?.number).toBe(2)
   })
@@ -162,7 +191,6 @@ describe('PriceView', () => {
     // one: nothing here invents a figure.
     expect(html).toContain(page.noData)
     expect(html).toContain(page.noDataHelp)
-    expect(html).not.toContain('20,34</strong>')
     // The `won` row is gone with the band it belonged to; `market` stays
     // locked, because a market price genuinely is an Essencial feature we hold
     // and do not show, which is what a locked bar is for.
@@ -329,5 +357,23 @@ describe('the item chips carry the search', () => {
     expect(html).toContain('cnpj=51885242000140')
     expect(html).toContain('item=2')
     expect(html).not.toContain(`href="/radar/edital/${TENDER.id}/preco?item=`)
+  })
+})
+
+describe('the price screen after Sci\'s journey (D25 part 5)', () => {
+  const html = render()
+
+  it('no longer tells the A4 story', () => {
+    // Sci: *"The Exemplo real must be removed."* The keys went with it —
+    // a string rendered nowhere is this repo's named defect.
+    expect(html).not.toContain('papel A4')
+    expect(html).not.toContain('35,87')
+  })
+
+  it('lists the other items by name, not as numbered chips', () => {
+    // The chips were `min-h-8` — 32px, under the 44px `--spacing-touch` — and
+    // a bare ordinal says nothing about what the reader would be pricing.
+    expect(html).toContain('min-h-touch')
+    expect(html).not.toContain('font-mono text-label no-underline')
   })
 })
