@@ -142,3 +142,53 @@ def test_two_schedulers_produce_the_same_key_so_the_index_dedupes(fake_queue: Fa
     assert len(fake_queue.calls) == 2
     assert len({call[1] for call in fake_queue.calls}) == 1, "keys must collide"
     assert len(fake_queue.live) == 1, "the dedupe index keeps a single live job"
+
+
+def test_a_tick_that_enqueues_notifies_the_consumers(fake_queue: FakeQueue):
+    """One wake window per cycle, not two — the 2026-09-30 compute change.
+
+    The scheduler and the consumers are two independent reasons to open a
+    connection, and Neon suspends after five minutes without one, so every wake
+    costs a five-minute tail whether or not there is work in it. Unsynchronised
+    they cost two tails an hour *and* leave the work waiting up to a poll
+    interval to start.
+
+    This notify is also what makes `DEFAULT_POLL_INTERVAL_SECONDS = 3600` safe:
+    scheduled work is no longer discovered by polling, so the poll became a
+    safety net rather than the mechanism. Without it, raising the interval is
+    the silent degradation `config.py` warns about — an hourly sync quietly
+    becoming two-hourly.
+    """
+    woken: list[int] = []
+    clock = {"now": datetime(2026, 9, 17, 10, 0, tzinfo=UTC)}
+    entry = ScheduleEntry(kind="sync_open_tenders", every_seconds=1800, priority=5)
+    scheduler = Scheduler(
+        fake_queue.connect,
+        entries=(entry,),
+        now=lambda: clock["now"],
+        on_enqueue=lambda: woken.append(1),
+    )
+
+    clock["now"] += timedelta(minutes=31)
+    assert scheduler.tick() == 1
+    assert woken == [1], "a tick that enqueued work must start the consumers"
+
+
+def test_a_tick_with_nothing_due_notifies_nobody(fake_queue: FakeQueue):
+    """A notify is a wake. Sending one for an empty tick would spend the very
+    five-minute tail this mechanism exists to avoid."""
+    woken: list[int] = []
+    clock = {"now": datetime(2026, 9, 17, 10, 0, tzinfo=UTC)}
+    entry = ScheduleEntry(kind="sync_open_tenders", every_seconds=1800, priority=5)
+    scheduler = Scheduler(
+        fake_queue.connect,
+        entries=(entry,),
+        now=lambda: clock["now"],
+        on_enqueue=lambda: woken.append(1),
+    )
+    clock["now"] += timedelta(minutes=31)
+    scheduler.tick()
+    woken.clear()
+
+    assert scheduler.tick() == 0
+    assert woken == []

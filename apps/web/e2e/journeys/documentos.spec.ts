@@ -77,6 +77,40 @@ async function world(page: Parameters<typeof installRadarApi>[0]) {
 }
 
 test.describe('Dona Marta · Documentos', () => {
+  /**
+   * D31 — on the triagem, *Documentos* must not be a destination.
+   *
+   * It carried an `href` to this tender's own Documentos tab, so the click was
+   * a navigation: another page, scrolled to the top, annexes below the fold.
+   * Sci, 2026-09-30: *"I kind of get sent back to the previous view, and I need
+   * to scroll to see the attachment. Why can't we have this list after clicking
+   * the Documentos tab — so simple — like we see the Exigências information
+   * below it."*
+   *
+   * **The URL assertion is the test.** A string assertion cannot see a
+   * navigation — `renderToStaticMarkup` has no location — so the unit suite can
+   * prove the markup carries no href and still not prove the reader stays put.
+   * This asserts both halves: the address does not move, and the document is on
+   * screen underneath the strip.
+   */
+  test('on the triagem, Documentos opens in place and does not navigate', async ({ page }) => {
+    await world(page)
+
+    const url = `/radar/edital/${EDITAL}/triagem?cnpj=${MARTA.cnpj}&group=compatible`
+    await page.goto(url)
+    await expect(page.getByRole('tab', { name: 'Documentos' })).toBeVisible()
+    const before = page.url()
+
+    await page.getByRole('tab', { name: 'Documentos' }).click()
+
+    await expect(page.getByRole('link', { name: /Termo_de_Referencia/ })).toBeVisible()
+    expect(page.url()).toBe(before)
+    await expect(page.getByRole('tab', { name: 'Documentos' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
+
   test('arriving on ?tab=files shows the documents, not the Itens table', async ({ page }) => {
     // The regression itself. Before the fix this reached the screen with
     // Documentos selected for one render and Itens selected thereafter, so

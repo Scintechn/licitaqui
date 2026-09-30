@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from . import ai_screening as _ai_screening  # noqa: F401 - registers `ai_screening`
 from . import company as _company  # noqa: F401 - imported for its registration side effect
+from . import coverage_check as _coverage_check  # noqa: F401 - registers `coverage_check`
 from . import documents as _documents  # noqa: F401 - registers `extract_text`
 from . import email as _email  # noqa: F401 - registers `send_email`
 from . import jobs as _jobs  # noqa: F401 - registers `noop`

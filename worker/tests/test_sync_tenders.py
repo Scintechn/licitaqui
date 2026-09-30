@@ -75,12 +75,29 @@ def test_scope_does_not_depend_on_the_order_modalities_were_written_in():
 # -- the schedule ----------------------------------------------------------
 
 
-def test_the_sweep_is_scheduled_every_thirty_minutes():
-    """§7.1. B1 left DEFAULT_SCHEDULE empty for this entry."""
+def test_the_sweep_is_scheduled_hourly_and_shares_its_wake():
+    """§7.1, and the compute saving of 2026-09-30.
+
+    Was half-hourly. Neon suspends after five minutes with no connections, so
+    every wake costs a five-minute tail whether or not there is work in it —
+    measured 5.5 h/day of compute against ~1.5 h of work. Halving the wakes
+    takes about a third off the compute line, and an hour is inside every
+    promise the product makes about freshness.
+
+    **`sweep_tender_values` is pinned to the same cadence deliberately.** Two
+    entries due at the same instant are one connection and one tail; if they
+    drift apart the saving quietly halves, and nothing else would notice.
+    """
     entries = [e for e in DEFAULT_SCHEDULE if e.kind == "sync_open_tenders"]
     assert len(entries) == 1
-    assert entries[0].every_seconds == 30 * 60
+    assert entries[0].every_seconds == 60 * 60
     assert entries[0].priority == 5
+
+    values = next(e for e in DEFAULT_SCHEDULE if e.kind == "sweep_tender_values")
+    assert values.every_seconds == entries[0].every_seconds, (
+        "sweep_tender_values must share sync_open_tenders' cycle, or each "
+        "costs its own five-minute Neon tail"
+    )
 
 
 def test_the_scheduled_sweep_carries_no_window_of_its_own():

@@ -89,7 +89,13 @@ class WorkerService:
             self._spawn(consumer.name, consumer.run)
 
         if self.scheduler_enabled:
-            self._scheduler = Scheduler(self.connect, entries=self.schedule, stop=self.stop)
+            self._scheduler = Scheduler(
+                self.connect,
+                entries=self.schedule,
+                stop=self.stop,
+                # One wake window per cycle, not two. See `Scheduler.on_enqueue`.
+                on_enqueue=self.wake.notify,
+            )
             self._spawn("scheduler", self._scheduler.run)
 
         if not self.wake_token:

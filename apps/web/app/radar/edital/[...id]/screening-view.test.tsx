@@ -18,6 +18,8 @@ import { ScreeningView, quotaLabel, type ScreeningViewProps } from './screening-
 
 const copy = messages.radar
 const page = copy.screening
+/** The shared `Files` component draws from the Opportunity screen's copy. */
+const opportunity = copy.opportunity
 
 const TENDER = {
   id: '00394544000185-1-002027/2026',
@@ -299,9 +301,12 @@ describe('the links out of this screen carry the search', () => {
     expect(render()).toContain(`/radar/edital/${TENDER.id}/preco?${SEARCH_QUERY}`)
   })
 
-  it('sends the Documentos tab the search, through the account round trip', () => {
-    const html = render()
-    expect(html).toContain(encodeURIComponent(`/radar/edital/${TENDER.id}?cnpj=51885242000140`))
+  it('does not send the reader anywhere for Documentos — it is a panel (D31)', () => {
+    // The inverse of what this asserted until D31, and the inversion is the
+    // point: the tab carried an href, so opening it navigated to the tender
+    // page and landed at the top of it. Nothing on this screen may link there
+    // for the annexes any more.
+    expect(render()).not.toContain('tab=files')
   })
 
   it('comes back to this same triagem after creating an account', () => {
@@ -332,9 +337,21 @@ describe('the Documentos tab, and who it is locked for', () => {
    * which opens on **Itens**. A reader clicked Documentos and got something
    * else, which is barely better than the padlock. `?tab=files` fixes that.
    */
-  it('locks it for a visitor, and sends them to create an account', () => {
-    const out = render({ signedIn: false })
-    expect(out).toContain(accountHref(tenderHref(TENDER.id, SEARCH)))
+  const ANNEX = {
+    sequence: 1,
+    title: 'Anexo I — Termo de Referência',
+    docType: 'Anexo',
+    url: 'https://pncp.gov.br/anexo-1.pdf',
+    publishedAt: null,
+    pages: 12,
+    noText: false,
+  }
+
+  it('shows a visitor the locked block **in place**, instead of bouncing them', () => {
+    const out = render({ signedIn: false, tab: 'files', tender: { ...TENDER, files: null } })
+    expect(out).toContain(opportunity.filesLocked)
+    // The bounce is what Sci met, and it is what this test now forbids.
+    expect(out).not.toContain('tab=files')
   })
 
   it('does not lock it for an account', () => {
@@ -342,20 +359,15 @@ describe('the Documentos tab, and who it is locked for', () => {
     expect(out).not.toContain(accountHref(tenderHref(TENDER.id, SEARCH)))
   })
 
-  it('sends an account to the documents themselves, not to Itens', () => {
-    // The files live on the tender screen and never lived on this one, so the
-    // tab is a link either way — but it must land on the tab it names.
-    const out = render({ signedIn: true })
-    // `&` is escaped to `&amp;` inside an href attribute, so the raw URL is
-    // not what appears in the markup.
-    const href = tenderHref(TENDER.id, SEARCH, 'files')
-    expect(out).toContain(href.replaceAll('&', '&amp;'))
-    expect(href).toContain('tab=files')
+  it('renders the annexes on this screen for an account, with no navigation', () => {
+    const out = render({ signedIn: true, tab: 'files', tender: { ...TENDER, files: [ANNEX] } })
+    expect(out).toContain(ANNEX.title)
+    expect(out).toContain(ANNEX.url)
+    expect(out).not.toContain('tab=files')
   })
 
-  it('carries the search across, so Voltar still knows where it came from', () => {
-    const href = tenderHref(TENDER.id, SEARCH, 'files')
-    expect(href).toContain(`cnpj=${SEARCH.cnpj}`)
-    expect(href).toContain(`q=${SEARCH.q}`)
+  it('says so when the agency published nothing, rather than showing an empty panel', () => {
+    const out = render({ signedIn: true, tab: 'files', tender: { ...TENDER, files: [] } })
+    expect(out).toContain(opportunity.files.emptyTitle)
   })
 })

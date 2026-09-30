@@ -15,7 +15,8 @@ import {
 import { cn } from '@/lib/cn'
 import { accountHref } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
-import { priceHref, screeningHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
+import { priceHref, screeningHref, type RadarSearch } from '@/lib/radar/client'
+import { Files } from './opportunity-view'
 import type { ErrorCode, QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { agencyLine, displayTitle } from '@/lib/radar/format'
@@ -60,8 +61,16 @@ import { TenderStatusBanner } from '../../tender-status-banner'
 const copy = messages.radar
 const page = copy.screening
 
-/** Canvas 04's tabs. "Documentos" is not one: it is locked, so it is a link. */
-export type ScreeningTab = 'summary' | 'requirements'
+/**
+ * `files` is a **panel**, not a link (D31).
+ *
+ * It was special-cased out of this union and given an `href` to the tender's
+ * own Documentos tab, so opening it navigated to another page and left the
+ * reader at the top of it — Sci, 2026-09-30: *"I kind of get sent back to the
+ * previous view, and I need to scroll to see the attachment."* `Resumo` and
+ * `Exigências` were panels and behaved; this one was a destination and did not.
+ */
+export type ScreeningTab = 'summary' | 'files' | 'requirements'
 
 export type ScreeningStatus =
   /** The analysis is on screen. */
@@ -277,24 +286,25 @@ function Verdict({ model }: { model: ScreeningModel }) {
 
 /**
  * Canvas 04's strip, now drawn by `components/tabs.tsx` — the one tab
- * implementation, which the Opportunity screen also uses. The set is this
- * screen's own: Resumo and Exigências are panels, Documentos is a link out,
- * because on *this* screen the files are not merely locked, they are somewhere
- * else entirely (§8: files only with an account).
+ * implementation, which the Opportunity screen also uses.
+ *
+ * **All three are panels** (D31). This used to say that Documentos was a link
+ * out "because on *this* screen the files are not merely locked, they are
+ * somewhere else entirely", and that was wrong twice over: the files are on
+ * this screen — `screening-screen.tsx` fetches the tender, and the route
+ * returns `files` to any caller with an account — and a tab that navigates is
+ * not a tab. It dropped the reader at the top of another page with the annexes
+ * below the fold, which is how Sci found it.
  */
 const TAB_PREFIX = 'screening'
 
 function ScreeningTabs({
   active,
   onSelect,
-  tenderId,
-  search,
   signedIn,
 }: {
   active: ScreeningTab
   onSelect?: (tab: ScreeningTab) => void
-  tenderId: string
-  search: RadarSearch
   signedIn: boolean
 }) {
   /**
@@ -309,25 +319,21 @@ function ScreeningTabs({
    * Signed in, the tab is an ordinary link to the tender's own **Documentos**
    * tab, which is where the files live — this screen never held them.
    */
-  const items: TabItem<ScreeningTab | 'files'>[] = [
+  const items: TabItem<ScreeningTab>[] = [
     { id: 'summary', label: page.tabs.summary },
     {
       id: 'files',
       label: page.tabs.files,
-      href: signedIn
-        ? tenderHref(tenderId, search, 'files')
-        : accountHref(tenderHref(tenderId, search)),
+      // No `href`: this opens a panel here (D31). The padlock stays for a
+      // visitor as the affordance that says why the panel will offer a signup
+      // rather than a list — `Files` draws that block from `files === null`,
+      // so the tab and the panel cannot disagree about who may read the edital.
       ...(signedIn ? {} : { icon: 'locked' as const }),
     },
     { id: 'requirements', label: page.tabs.requirements },
   ]
   return (
-    <Tabs
-      items={items}
-      active={active}
-      onSelect={onSelect as ((tab: ScreeningTab | 'files') => void) | undefined}
-      idPrefix={TAB_PREFIX}
-    />
+    <Tabs items={items} active={active} onSelect={onSelect} idPrefix={TAB_PREFIX} />
   )
 }
 
@@ -489,18 +495,20 @@ export function ScreeningView({
         </div>
 
         {ready ? (
-          <ScreeningTabs
-            active={tab}
-            onSelect={onSelectTab}
-            tenderId={tenderId}
-            search={search}
-            signedIn={signedIn}
-          />
+          <ScreeningTabs active={tab} onSelect={onSelectTab} signedIn={signedIn} />
         ) : null}
 
         {ready && model ? (
           <>
-            {tab === 'summary' ? (
+            {tab === 'files' ? (
+              <TabPanel idPrefix={TAB_PREFIX} id="files" className="flex flex-col gap-3">
+                {/* The same component the Edital screen draws, so the two
+                    cannot disagree about one viewer — and so a visitor meets
+                    the locked block here instead of being bounced to signup
+                    on a page they did not ask for. */}
+                {tender ? <Files tender={tender} /> : null}
+              </TabPanel>
+            ) : tab === 'summary' ? (
               <TabPanel idPrefix={TAB_PREFIX} id="summary" className="flex flex-col gap-3">
                 <Verdict model={model} />
 
