@@ -62,12 +62,16 @@ def fake_pncp(monkeypatch: pytest.MonkeyPatch, pages: list[list[str]], total: in
     """Serve `pages` of control numbers, then empty."""
     monkeypatch.setattr(coverage_check, "PncpClient", lambda: object())
 
-    def search(_client, _query, page):
+    seen_params: list[tuple] = []
+
+    def search(_client, _query, page, modalities):
+        seen_params.append(modalities)
         index = page - 1
         items = [{"numero_controle_pncp": c} for c in pages[index]] if index < len(pages) else []
         return {"total": total, "items": items}
 
     monkeypatch.setattr(coverage_check, "_search", search)
+    return seen_params
 
 
 def test_it_reports_what_share_of_the_open_editais_we_hold(monkeypatch: pytest.MonkeyPatch):
@@ -147,3 +151,69 @@ def test_it_is_not_on_the_schedule(monkeypatch: pytest.MonkeyPatch):
     from licitaqui.scheduler import DEFAULT_SCHEDULE
 
     assert all(entry.kind != "coverage_check" for entry in DEFAULT_SCHEDULE)
+
+
+def test_it_asks_PNCP_only_for_the_modalities_the_sweep_collects(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The defect that made the first measurement meaningless.
+
+    `sync_open_tenders` ingests `DEFAULT_MODALITIES` and nothing else. The
+    first version of this job searched **every** modality, so it counted
+    editais we deliberately never collect — Pregão Presencial among them — and
+    reported them as coverage we had lost. 11 of 128 on 2026-09-30, every
+    sampled one absent from `tenders` entirely, which reads as a gap and was
+    partly just the scope.
+
+    The tuple is asserted against `tenders.DEFAULT_MODALITIES` rather than
+    against a literal, so the measurement cannot drift from what the sweep
+    collects: if someone widens the sweep and not this, the two disagree
+    silently, which is the whole failure mode.
+    """
+    from licitaqui.tenders import DEFAULT_MODALITIES
+
+    seen = fake_pncp(monkeypatch, [["a"]], total=1)
+    conn = FakeConn(held=["a"])
+
+    coverage_check.coverage_check(FakeCtx(conn))
+
+    assert seen, "the search was never called"
+    assert all(m == DEFAULT_MODALITIES for m in seen)
+    assert conn.writes[0][1][1].obj["modalities"] == list(DEFAULT_MODALITIES)
+
+
+def test_a_deliberate_wider_question_is_still_possible(monkeypatch: pytest.MonkeyPatch):
+    """Overridable, so asking a different question stays an explicit act."""
+    seen = fake_pncp(monkeypatch, [["a"]], total=1)
+    conn = FakeConn(held=["a"])
+
+    coverage_check.coverage_check(FakeCtx(conn, {"modalities": [6]}))
+
+    assert seen[0] == (6,)
+
+
+def test_the_request_itself_carries_the_modality_filter():
+    """**Asserts the params, not the call.**
+
+    The test above monkeypatches `_search`, so it proves the tuple reaches the
+    function and nothing about the request that leaves the process. Deleting
+    the `modalidades` line from the params dict left all eight tests green —
+    the mutation check caught it, which is what mutation checks are for. This
+    one builds the real params through the real function.
+    """
+    from licitaqui.tenders import DEFAULT_MODALITIES
+
+    captured: dict = {}
+
+    class FakeClient:
+        search_breaker = object()
+
+        def _get(self, _path, params, _breaker):
+            captured.update(params)
+            return {"total": 0, "items": []}
+
+    coverage_check._search(FakeClient(), "saas", 1, DEFAULT_MODALITIES)
+
+    assert captured["modalidades"] == "6|8|4"
+    assert captured["status"] == "recebendo_proposta"
+    assert captured["q"] == "saas"

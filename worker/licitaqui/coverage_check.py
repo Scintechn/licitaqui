@@ -48,6 +48,7 @@ from psycopg.types.json import Jsonb
 
 from .pncp import SEARCH_PATH, PncpClient
 from .registry import REGISTRY, JobContext
+from .tenders import DEFAULT_MODALITIES
 
 #: The keyword B17 measured. Kept as the default so a re-run is comparable with
 #: the 2026-09-27 baseline rather than with a different question.
@@ -63,18 +64,41 @@ MAX_PAGES = 12
 TARGET_RATIO = 0.95
 
 
-def _search(client: PncpClient, query: str, page: int) -> dict[str, Any]:
-    """One page of `q=<query>, status=recebendo_proposta`.
+def _search(
+    client: PncpClient, query: str, page: int, modalities: tuple[int, ...]
+) -> dict[str, Any]:
+    """One page of `q=<query>, status=recebendo_proposta`, **in scope**.
 
     Through `client._get` rather than `search_page`, because `_search_params`
     has no `q` — the product never needs a keyword search, and B17's
     measurement does. Same breaker, same throttle, same headers.
+
+    ## `modalidades` is the whole point of this function
+
+    The first version of this job left it out, and the resulting number was
+    **not a measurement of B17**. `sync_open_tenders` ingests
+    `DEFAULT_MODALITIES` — (6, 8, 4), Pregão Eletrônico, Dispensa,
+    Concorrência — and nothing else. An unfiltered search returns every
+    modality PNCP has, **Pregão Presencial among them**, so the comparison
+    counted editais we deliberately never collect and reported them as
+    coverage we had lost.
+
+    Measured 2026-09-30: unfiltered gave 117 of 128 (91,4%) and 11 "missing",
+    every sampled one absent from `tenders` entirely — which reads as a gap
+    and was, in part, simply the scope. Sci spotted it from the number alone:
+    *"there is one case we didnt scope to received, is the Pregáo presencial"*.
+
+    The modality set is imported from `tenders.py` rather than written here,
+    so the measurement cannot drift from what the sweep actually collects —
+    the two would then disagree silently, which is exactly the failure this
+    file is for.
     """
     params = {
         "q": query,
         "tipos_documento": "edital",
         "ordenacao": "-data",
         "status": "recebendo_proposta",
+        "modalidades": "|".join(str(m) for m in modalities),
         "tam_pagina": PAGE_SIZE,
         "pagina": page,
     }
@@ -84,6 +108,9 @@ def _search(client: PncpClient, query: str, page: int) -> dict[str, Any]:
 @REGISTRY.job("coverage_check")
 def coverage_check(ctx: JobContext) -> None:
     query = str(ctx.payload.get("q") or DEFAULT_QUERY)
+    # The scope the sweep actually collects. Overridable so a future question
+    # can be asked deliberately, never by forgetting.
+    modalities = tuple(int(m) for m in ctx.payload.get("modalities") or DEFAULT_MODALITIES)
     client = PncpClient()
 
     ids: list[str] = []
@@ -92,7 +119,7 @@ def coverage_check(ctx: JobContext) -> None:
     truncated = False
 
     for page in range(1, MAX_PAGES + 1):
-        body = _search(client, query, page)
+        body = _search(client, query, page, modalities)
         if total is None:
             total = body.get("total")
         items = body.get("items") or []
@@ -121,6 +148,9 @@ def coverage_check(ctx: JobContext) -> None:
 
     props = {
         "q": query,
+        # Recorded, because a coverage figure without the scope it was taken
+        # in is the defect this field exists to prevent.
+        "modalities": list(modalities),
         "pncp_total": total,
         "collected": len(ids),
         "held": len(held),
