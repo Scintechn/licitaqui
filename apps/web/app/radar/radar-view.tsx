@@ -707,19 +707,72 @@ function Body({
   }
 
   return (
-    <ul className="grid list-none grid-cols-1 gap-2.5 p-0 min-[900px]:grid-cols-2 min-[1280px]:grid-cols-3">
-      {tenders.map((tender) => (
-        <li key={tender.id} className="flex">
-          {/* The card carries the search into the tender's URL, which is where
-              the Opportunity screen reads its "Voltar" link from. */}
-          <TenderCardView
-            tender={tender}
-            now={now}
-            href={tenderHref(tender.id, { ...query, group })}
-          />
-        </li>
-      ))}
-    </ul>
+    /* D30 — how many cards fit is a fact about this column, not about the
+       window, so the thresholds are container queries.
+
+       They used to be `min-[900px]:` and `min-[1280px]:`, **viewport**
+       queries, and D20 then put a rail in the layout flow beside the content:
+       `hidden lg:block` from 1024px and **264px** wide, or 56px when the
+       reader collapses it — `localStorage` state that no media query can
+       observe at all. This list is `main` (`max-w-[1120px]`) inside
+       `px-gutter`, so its own width is
+
+         min(viewport − rail, 1120) − 2×20
+
+       and the two numbers never met. At 1280 with the rail out that is
+       1016 − 40 = **976px**, and the window's answer was three columns —
+       ~318px cards on the screen the product is used on most. Same defect as
+       D29 on the tender screen, one floor down.
+
+       **860 and 1080 are today's thresholds restated, not new ones.** 860 is
+       what this column measured at the old 900px breakpoint, where there is
+       no rail yet (900 − 40); 1080 is what it measures at `main`'s
+       `max-w-[1120px]` cap (1120 − 40), which is the width the old 1280px
+       query actually delivered when it was right — at 1280 with the rail
+       collapsed. Below `lg` the two rules are identical. **Three bands move,
+       and they are exactly the bands the window could not see:**
+
+         viewport 1024–1163, rail 264   column  720–859  2 → **1**
+         viewport 1280–1383, rail 264   column  976–1079 3 → **2**
+         viewport 1176–1279, rail  56   column     1080  2 → **3**
+
+       The third is the rule working, not a regression escaping it: at 1200
+       with the rail retracted this column really is 1080px — the same width
+       it has at 1440 with the rail out, where three columns were never in
+       dispute. It is named here because it is the one band where a card gets
+       *narrower* than before (535px → 353px), and a reader comparing two
+       machines deserves to find it written down.
+
+       The step from two 535px cards to three 353px ones at 1080 is inherited,
+       not introduced: the old query made the same jump at 1280.
+
+       The wrapper is here because an element cannot query itself, and it is
+       `@container` and nothing else — `container-type: inline-size` also makes
+       the element a containing block for fixed descendants (`sheet.tsx` says
+       so at its `centre` box), so it stays around the list rather than going
+       on the `px-gutter` div, where it would silently capture the
+       `position: fixed` bar D25 (3) is about to add. `radar-view.test.tsx`
+       asserts that placement as markup, because moving it up one element
+       changes no width and would otherwise pass every test in the suite.
+
+       These widths are read from the source; `environment: 'node'` has no
+       layout to measure them in. `e2e/journeys/radar-columns.spec.ts` is what
+       actually looks. */
+    <div className="@container">
+      <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
+        {tenders.map((tender) => (
+          <li key={tender.id} className="flex">
+            {/* The card carries the search into the tender's URL, which is
+                where the Opportunity screen reads its "Voltar" link from. */}
+            <TenderCardView
+              tender={tender}
+              now={now}
+              href={tenderHref(tender.id, { ...query, group })}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

@@ -581,3 +581,94 @@ describe('an empty tab, when the results are on another one', () => {
     expect(elected).not.toContain('name="group"')
   })
 })
+
+/**
+ * D30 — the same defect D29 fixed on the tender screen, one floor down.
+ *
+ * The columns were `min-[900px]:` and `min-[1280px]:`, **viewport** queries,
+ * and D20 put a 264px rail in the layout flow beside the content from `lg`
+ * (1024px) — collapsible to 56px through `localStorage`, which no media query
+ * can observe. So at 1280px with the rail out the window said three columns
+ * and the column had 976px: ~318px cards, on the screen the product is used
+ * on most.
+ *
+ * `renderToStaticMarkup` has no layout, so these assert the **mechanism** and
+ * `e2e/journeys/radar-columns.spec.ts` asserts the widths (CLAUDE.md §4c).
+ *
+ * **Every assertion here is about markup, not about a substring somewhere in
+ * the page.** The first draft of this block asked whether `@container`
+ * appeared *before* the grid in the output and whether `<ul` fell between
+ * them, which is a substring relation and not an ancestor one: putting
+ * `@container` on the enclosing `px-gutter` div, on `<main>`, or on a sibling
+ * of the list all satisfied it. The first two of those also change no width
+ * at all — the `px-gutter` div's content box **is** the list's width — so they
+ * would have passed the browser suite too, and the one decision this card
+ * exists to make would have been guarded by nothing.
+ */
+describe('the list grid', () => {
+  const GRID = /<div class="([^"]*)"><ul class="(grid[^"]*)">/
+
+  /** The wrapper's class list and the grid's own, from the rendered markup. */
+  function grid(out: string): { wrapper: string; list: string } {
+    // One grid on this screen, so the pair below is unambiguous.
+    expect(out.match(/<ul class="grid/g), 'one card grid on the Radar').toHaveLength(1)
+    const found = out.match(GRID)
+    expect(found, 'the card list must be a <ul> opening directly inside a <div>').not.toBeNull()
+    const [, wrapper, list] = found as RegExpMatchArray
+    return { wrapper, list }
+  }
+
+  it('keys its columns to the column, never to the window', () => {
+    const { list } = grid(render())
+    expect(list).toContain('@min-[860px]:grid-cols-2')
+    expect(list).toContain('@min-[1080px]:grid-cols-3')
+    // Both spellings of a viewport query, because `app-shell.tsx` is written
+    // in `lg:` and that is what a future editor will reach for. The lookbehind
+    // is load bearing: `\b` sits between `@` and `min`, so a bare word
+    // boundary would match the container queries this test exists to require.
+    expect(list, 'a viewport query must never govern this list again').not.toMatch(
+      /(?<!@)\b(?:sm|md|lg|xl|2xl|min-\[\d+px\]):/,
+    )
+  })
+
+  /**
+   * 860 and 1080 are today's thresholds restated, not new ones: this list is
+   * `main` (`max-w-[1120px]`) inside `px-gutter`, so it measures
+   * `min(viewport − rail, 1120) − 2×20`. At the old 900px breakpoint there is
+   * no rail yet, which is 860; 1080 is `main` at its cap, the width the old
+   * 1280px query delivered in the one case it was right — the rail collapsed.
+   *
+   * Pinned because the numbers are the whole fix. A later `@min-[900px]:`
+   * would look like a container query, pass the test above, and put the
+   * defect back one breakpoint over.
+   */
+  it('derives both thresholds from the content box, not from a viewport', () => {
+    const { list } = grid(render())
+    expect(list.match(/@min-\[\d+px\]:/g)).toEqual(['@min-[860px]:', '@min-[1080px]:'])
+  })
+
+  /**
+   * `container-type: inline-size` also makes the element a containing block
+   * for `position: fixed` descendants — the trap `components/sheet.tsx`
+   * documents at its `centre` box. D25 (3) adds a fixed bottom bar to these
+   * screens, so the container has to stay around the list.
+   *
+   * The `px-gutter` div one element up is the dangerous placement precisely
+   * because it is **indistinguishable by width**: its content box is the same
+   * number, so every threshold above and every width in Playwright would go on
+   * passing. Only the markup can tell them apart, so the markup is what this
+   * asserts.
+   */
+  it('puts the container on the list, not on the element above it', () => {
+    const out = render()
+    const { wrapper } = grid(out)
+    expect(wrapper).toBe('@container')
+    expect(out.match(/@container/g), 'one container, and it is this one').toHaveLength(1)
+    // Named so a reader knows which placements were considered and rejected.
+    expect(wrapper, 'not the padded div — it would capture D25 (3)’s fixed bar').not.toContain(
+      'px-gutter',
+    )
+    const main = out.slice(out.indexOf('<main id="radar"'), out.indexOf('>', out.indexOf('<main')))
+    expect(main, 'nor <main>, for the same reason').not.toContain('@container')
+  })
+})
