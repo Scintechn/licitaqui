@@ -441,7 +441,42 @@ describe('OpportunityView · the whole Objeto', () => {
   it('spans the content column instead of sharing the two-column grid', () => {
     const out = render({ tender: { ...TENDER, object: LONG } })
     // The grid wrapper must open *after* the Objeto block, never around it.
-    expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf('min-[900px]:grid'))
+    //
+    // The marker was `min-[900px]:grid` until D29 keyed the columns to the
+    // block's own width instead of the window's. Only the spelling moved: this
+    // guard is about the *order*, and it fails the same way if the block goes
+    // back inside the grid. `indexOf` returning -1 for a renamed marker also
+    // fails it, which is the behaviour we want — a guard that cannot find what
+    // it guards must go red, not quietly pass.
+    expect(out.indexOf(page.objectTitle)).toBeLessThan(out.indexOf('@min-[860px]:grid'))
+  })
+
+  /**
+   * D29: the columns are a fact about this block, not about the viewport.
+   *
+   * `min-[900px]` was a viewport query, and D20 later put a 264px rail beside
+   * the content from `lg` (1024px) up — so between 1024px and ~1164px the
+   * block drew two columns in about 760px. The rail can also be collapsed to
+   * 56px from `localStorage`, which no media query can observe at all.
+   *
+   * `renderToStaticMarkup` cannot measure a layout, so this asserts the
+   * *mechanism* rather than the result: a container, and a container query
+   * keyed to the width `main`'s content box had at the old breakpoint
+   * (900 − 2×20 gutter = 860). The widths themselves are Playwright's.
+   */
+  it('keys its columns to the block, never to the viewport', () => {
+    const out = render({ tender: { ...TENDER, object: LONG } })
+    const at = out.indexOf('@min-[860px]:grid')
+    expect(at).toBeGreaterThan(-1)
+    // The query needs a container, and it must be a different element.
+    const container = out.lastIndexOf('@container', at)
+    expect(container).toBeGreaterThan(-1)
+    expect(container).toBeLessThan(at)
+    // No viewport query may govern this block again. The lookbehind is load
+    // bearing: `\b` sits between `@` and `min`, so a bare word boundary here
+    // matches the container query this test exists to require.
+    const block = out.slice(container, out.indexOf(page.screeningCta))
+    expect(block).not.toMatch(/(?<!@)min-\[\d+px\]:/)
   })
 
   /**

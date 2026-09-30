@@ -745,12 +745,45 @@ export function OpportunityView({
             solves exactly this shape — a two-column block that stacks —
             with the rhythm PR #55 settled at 40/48:
 
-              between topics   `pt-7` + main's `gap-3.5`  = **42px** (≈ #55's 40)
-              stacked, <900px  `gap-7`                    = **28px**
-              columns, ≥900px  `min-[900px]:gap-10`       = **40px** (was 32)
+              between topics   `pt-7` + main's `gap-3.5`   = **42px** (≈ #55's 40)
+              stacked          `gap-7`                     = **28px**
+              columns          `@min-[860px]:gap-10`       = **40px** (was 32)
 
             Borrowing them keeps one system rather than inventing a second
             scale for the app screens.
+
+            ## Why the columns are keyed to this block and not to the window
+
+            They used to be `min-[900px]:`, a **viewport** query, and D20 then
+            put a rail beside the content: `hidden lg:block` from 1024px, and
+            **264px wide** (56px when the reader collapses it, which is
+            `localStorage` state no media query can see). The two numbers were
+            chosen in different cards and neither knew about the other, so from
+            1024px to about 1164px this block drew two columns inside roughly
+            760px — each one ~350px, on a layout whose own gap assumes it is
+            wide.
+
+            Whether two columns fit is a fact about **this block**, not about
+            the window, so it is a container query — the same argument, and the
+            same `@container` + `@min-[…]` pattern, as the founders page's step
+            row.
+
+            **860px is today's threshold restated, not a new one.** `main` is
+            `max-w-[960px] px-gutter`, so at the old 900px viewport its content
+            box was 900 − 2×20 = **860px**. Keying the columns to that number
+            reproduces the phone and tablet behaviour exactly and changes only
+            the case the viewport query could not see:
+
+              viewport 1024, rail 264   content 720  → one column (was two)
+              viewport 1164, rail 264   content 860  → two columns
+              viewport 1024, rail  56   content 920  → two columns
+
+            The wrapper exists because an element cannot query itself. It is
+            `@container` and nothing else: `container-type: inline-size` also
+            makes the element a containing block for fixed descendants, so it
+            is scoped to this block rather than put on `main`, where it would
+            silently reposition any `position: fixed` child added later —
+            exactly the trap `components/sheet.tsx` documents for `centre`.
 
             `pt-7` here and on `<Record>`, not a bigger gap on `main`: what
             needed air is a change of subject, not the header's tightly
@@ -758,25 +791,27 @@ export function OpportunityView({
             want to stay at 14px. The two `pt-7`s together are also what keeps
             this block from reading as floating — 42px above it and 42px
             below, rather than 42 above and 14 below. */}
-        <div className="flex flex-col gap-7 pt-7 min-[900px]:grid min-[900px]:grid-cols-2 min-[900px]:items-start min-[900px]:gap-10">
-          <section className="flex flex-col gap-2">
-            <SectionLabel tone="muted">{page.whyTitle}</SectionLabel>
-            {why.length === 0 ? (
-              <StateCard kind="empty" title={page.whyEmptyTitle} description={page.whyEmptyBody} />
-            ) : (
-              <ul className="m-0 flex list-none flex-col gap-2 p-0">
-                {why.map((reason) => (
-                  <li key={reason} className="flex items-start gap-2.5 text-body">
-                    <Icon name="check" size={16} strokeWidth={2.4} className="mt-1 text-success" />
-                    <span>{reason}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="text-caption leading-relaxed text-muted">{page.requirementsNote}</p>
-          </section>
+        <div className="@container">
+          <div className="flex flex-col gap-7 pt-7 @min-[860px]:grid @min-[860px]:grid-cols-2 @min-[860px]:items-start @min-[860px]:gap-10">
+            <section className="flex flex-col gap-2">
+              <SectionLabel tone="muted">{page.whyTitle}</SectionLabel>
+              {why.length === 0 ? (
+                <StateCard kind="empty" title={page.whyEmptyTitle} description={page.whyEmptyBody} />
+              ) : (
+                <ul className="m-0 flex list-none flex-col gap-2 p-0">
+                  {why.map((reason) => (
+                    <li key={reason} className="flex items-start gap-2.5 text-body">
+                      <Icon name="check" size={16} strokeWidth={2.4} className="mt-1 text-success" />
+                      <span>{reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-caption leading-relaxed text-muted">{page.requirementsNote}</p>
+            </section>
 
-          <Operation tender={tender} />
+            <Operation tender={tender} />
+          </div>
         </div>
 
         {/* The action, above the record and not after it.
