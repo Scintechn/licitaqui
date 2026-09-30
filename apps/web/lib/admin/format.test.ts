@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { formatCnpj, formatWhatsapp } from './founders'
 import { gateMet, type Gate, type GateReading } from './gates'
-import { ALERT_AT, FREE_COMPUTE_HOURS, FREE_STORAGE_BYTES, formatBytes, formatPercent } from './neon'
+import { ALERT_AT, formatBytes, formatPercent } from './neon'
 
 describe('formatCnpj', () => {
   it('punctuates the 14 digits the way a Brazilian reads them', () => {
@@ -27,12 +27,13 @@ describe('formatWhatsapp', () => {
 })
 
 describe('formatBytes', () => {
-  it('uses the same decimal units the Free limit is read in', () => {
+  it('uses the decimal units Neon prices a GB in', () => {
     expect(formatBytes(0)).toBe('0 B')
     expect(formatBytes(999)).toBe('999 B')
     expect(formatBytes(1_500)).toBe('1,50 kB')
     expect(formatBytes(412_500_000)).toBe('412,5 MB')
-    expect(formatBytes(FREE_STORAGE_BYTES)).toBe('500,0 MB')
+    expect(formatBytes(500_000_000)).toBe('500,0 MB')
+    expect(formatBytes(1_690_000_000)).toBe('1,69 GB')
   })
 })
 
@@ -44,14 +45,10 @@ describe('formatPercent', () => {
   })
 })
 
-describe('the Free plan limits are the ones in spec §5.1', () => {
-  it('reads 0.5 GB as the smaller of the two readings, so the alert is early', () => {
-    expect(FREE_STORAGE_BYTES).toBe(500_000_000)
-    expect(FREE_STORAGE_BYTES).toBeLessThan(0.5 * 1024 ** 3)
-    expect(FREE_COMPUTE_HOURS).toBe(100)
-    expect(ALERT_AT).toBe(0.8)
-  })
-})
+// The Free-plan constants this file used to pin are gone: the project is on
+// Launch, which has no such ceilings. What replaced them lives in
+// `neon.test.tsx`, and it asserts a shape rather than a number — a metric
+// with no ceiling must not produce a ratio. See card B27.
 
 describe('gateMet', () => {
   const gate = (reading: GateReading, overrides: Partial<Gate> = {}): Gate => ({
