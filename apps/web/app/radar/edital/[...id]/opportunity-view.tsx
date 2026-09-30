@@ -344,8 +344,28 @@ function FullObject({ object }: { object: string }) {
  * `files: []` is the third state and a different fact: the agency published
  * nothing. It gets its own sentence rather than the upsell.
  */
-function Files({ tender }: { tender: TenderDetail }) {
-  if (tender.files === null) {
+/**
+ * The tender's annexes, in the three states §8 allows.
+ *
+ * Exported because **the triagem draws the same list** (D31). It used to send
+ * the reader here instead — a tab whose click was a navigation to this page
+ * with `?tab=files`, landing at the top with the annexes far below the fold —
+ * and the docstring justifying that said the screening screen "never held
+ * them", which was never true: `screening-screen.tsx` fetches the tender and
+ * `GET /api/tenders/:id` returns `files` for any caller with an account.
+ *
+ * One component rather than two is also what stops the screens disagreeing
+ * about a viewer, which is the defect D24 half 1 was: `files === null` is the
+ * visitor's locked block wherever it renders, so neither screen can invent its
+ * own rule about who may read an edital.
+ */
+export function Files({ tender }: { tender: TenderDetail }) {
+  // `== null`, not `=== null`: the type says `TenderFileView[] | null` and the
+  // route always sends one of those, but this component is now drawn by two
+  // screens, and a missing value crashing on `.length` would replace an
+  // annexes list with a blank screen. Absent reads as locked, which is the
+  // safe direction — §8's default is that files need an account.
+  if (tender.files == null) {
     return (
       <LockedBlock
         href={ACCOUNT_HREF}
