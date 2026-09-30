@@ -376,15 +376,22 @@ describe('OpportunityView · the whole Objeto', () => {
     'mediante requisição da Secretaria, pelo período de 12 (doze) meses.\n' +
     'Lote 01 — mobiliário hospitalar.\nLote 02 — equipamentos de informática.'
 
-  it('prints the object in full, with no truncation and no ellipsis', () => {
+  /**
+   * **Half inverted by D25**, on Sci's 2026-09-30 ruling. The block is trimmed
+   * for the eye now, so the "no ellipsis" half is gone — that ellipsis is
+   * `trimObject`'s and is the visible sign that there is more.
+   *
+   * The half that mattered survives untouched and is why this test is inverted
+   * rather than deleted: **the whole objeto is still in the markup.** Trimming
+   * what is shown is a rendering decision; withholding the agency's own words
+   * from find-in-page or from assistive technology is not one this product may
+   * make (§2.2 rule 4).
+   */
+  it('keeps the whole objeto in the markup, however little of it is shown', () => {
     const out = render({ tender: { ...TENDER, object: LONG } })
     expect(out).toContain(page.objectTitle)
     expect(out).toContain('pelo período de 12 (doze) meses.')
     expect(out).toContain('Lote 02 — equipamentos de informática.')
-    // The h1 above still trims at 180 characters and keeps its ellipsis; this
-    // block is the one place with no ellipsis in it.
-    const block = out.slice(out.indexOf(page.objectTitle), out.indexOf(page.screeningCta))
-    expect(block).not.toContain('…')
   })
 
   it('keeps every character the agency published, not a trimmed copy', () => {
@@ -401,11 +408,40 @@ describe('OpportunityView · the whole Objeto', () => {
     expect(out).toContain('whitespace-pre-line')
   })
 
-  it('renders expanded, with no "ler mais" toggle to pay for', () => {
+  /**
+   * **Inverted by D25, on Sci's ruling of 2026-09-30**: *"settle the Objeto in
+   * 3–4 lines + 'ler tudo'"*. It used to require the block expanded with no
+   * toggle at all.
+   *
+   * Inverted and not deleted, because a deleted guard on this component is how
+   * its position was silently reverted once already (`cc4b766`).
+   *
+   * **Two halves of the old rule survive, and they are the load-bearing ones.**
+   * No `line-clamp`: `format.ts` argues truncation beats clamping because a
+   * clamp hides that there is more and leaves the whole string in the
+   * accessibility tree, so a screen-reader user would hear 500 characters while
+   * a sighted one saw four lines. And the old assertion was a literal
+   * `/ler mais/i` — Sci's wording is *"Ler tudo"*, which would have walked
+   * straight past a guard written to stop exactly this, so the new one names
+   * the string it actually renders.
+   */
+  it('trims with a real disclosure, and never with a clamp', () => {
     const out = render({ tender: { ...TENDER, object: LONG } })
     const block = out.slice(out.indexOf(page.objectTitle))
     expect(block).not.toMatch(/line-clamp/)
-    expect(out).not.toMatch(/ler mais/i)
+    expect(block).toContain('<details')
+    expect(block).toContain(page.objectMore)
+    expect(block).toContain(page.objectLess)
+    // The whole objeto is still in the markup — trimmed for the eye, entire for
+    // find-in-page and for anyone reading the page with assistive technology.
+    expect(block).toContain(LONG.slice(-40))
+  })
+
+  it('leaves a short objeto alone rather than giving it a toggle', () => {
+    const out = render({ tender: { ...TENDER, object: 'Compra de café em grão.' } })
+    const block = out.slice(out.indexOf(page.objectTitle))
+    expect(block).not.toContain('<details')
+    expect(block).not.toContain(page.objectMore)
   })
 
   it('sits before the call to action that offers the AI reading', () => {
@@ -557,7 +593,10 @@ describe('OpportunityView · the whole Objeto', () => {
     // The Objeto's own <p>, isolated — a `max-w-` anywhere else on the screen
     // must neither satisfy nor break this.
     const after = out.slice(out.indexOf(page.objectTitle))
-    const open = after.indexOf('<p')
+    // `'<p '` with the space, not `'<p'`: D25 gave the block a disclosure whose
+    // chevron renders `<path d="…">`, and a prefix match found that instead of
+    // the paragraph. The guard was right and looking at the wrong tag.
+    const open = after.indexOf('<p ')
     const tag = after.slice(open, after.indexOf('>', open) + 1)
     expect(tag).toContain('whitespace-pre-line')
     expect(tag).not.toMatch(/max-w-/)
