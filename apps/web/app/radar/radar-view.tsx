@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from "next/link";
 import {
   AppBar,
   AppBarAction,
@@ -9,8 +9,8 @@ import {
   Logo,
   Select,
   StateCard,
-} from '@/components'
-import { cn } from '@/lib/cn'
+} from "@/components";
+import { cn } from "@/lib/cn";
 import type {
   CompanyView,
   ErrorCode,
@@ -18,16 +18,16 @@ import type {
   TenderCard,
   TenderGroup,
   VisitorView,
-} from '@/lib/radar/contract'
-import { ageParts } from '@/lib/radar/format'
-import { errorText } from '@/lib/radar/error-text'
-import { format, messages } from '@/lib/messages'
-import { radarHref, tenderHref } from '@/lib/radar/client'
-import { everyGroupEmpty, otherPopulatedGroup } from '@/lib/radar/group'
-import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
-import { TENDER_GROUPS } from '@/lib/radar/contract'
-import { UF_OPTIONS } from '@/lib/radar/ufs'
-import { TenderCardView } from './tender-card'
+} from "@/lib/radar/contract";
+import { ageParts } from "@/lib/radar/format";
+import { errorText } from "@/lib/radar/error-text";
+import { format, messages } from "@/lib/messages";
+import { radarHref, tenderHref } from "@/lib/radar/client";
+import { everyGroupEmpty, otherPopulatedGroup } from "@/lib/radar/group";
+import { ACCOUNT_HREF, ALERTS_HREF } from "@/lib/routes";
+import { TENDER_GROUPS } from "@/lib/radar/contract";
+import { UF_OPTIONS } from "@/lib/radar/ufs";
+import { TenderCardView } from "./tender-card";
 
 /**
  * The Radar — canvas 02, `Editais.dc.html`.
@@ -60,72 +60,78 @@ import { TenderCardView } from './tender-card'
  * the filters for something the filters did not do. It gets its own words.
  */
 
-const copy = messages.radar
-const list = copy.list
+const copy = messages.radar;
+const list = copy.list;
 
 export type RadarStatus =
-  | { kind: 'ready' }
-  | { kind: 'analyzing'; what: 'company' | 'list' }
-  | { kind: 'timeout' }
-  | { kind: 'error'; code: ErrorCode; text?: string }
-  | { kind: 'needCnpj' }
-  | { kind: 'noSegments' }
-  | { kind: 'manualCnae' }
+  | { kind: "ready" }
+  | { kind: "analyzing"; what: "company" | "list" }
+  | { kind: "timeout" }
+  | { kind: "error"; code: ErrorCode; text?: string }
+  | { kind: "needCnpj" }
+  | { kind: "noSegments" }
+  | { kind: "manualCnae" };
 
 export type RadarQuery = {
-  cnpj: string | null
-  state: string | null
-  q: string | null
+  cnpj: string | null;
+  state: string | null;
+  q: string | null;
   /** The tab on screen: chosen, or elected by `bestGroup()` from the counts. */
-  group: TenderGroup
+  group: TenderGroup;
   /**
    * The user pressed this tab. An elected one must not be written into the
    * filter form as though it had been, or changing the UF would carry a
    * decision the user never made into a search where it may be wrong again.
    */
-  groupChosen?: boolean
-}
+  groupChosen?: boolean;
+};
 
 export type RadarViewProps = {
-  query: RadarQuery
-  status: RadarStatus
-  company: CompanyView | null
-  visitor: VisitorView | null
-  counts: Record<TenderGroup, number> | null
-  tenders: TenderCard[]
-  freshness: Freshness | null
+  query: RadarQuery;
+  status: RadarStatus;
+  company: CompanyView | null;
+  visitor: VisitorView | null;
+  counts: Record<TenderGroup, number> | null;
+  tenders: TenderCard[];
+  freshness: Freshness | null;
   /**
    * The cursor for the next page, straight from the envelope. `null` is the
    * end of the list and hides the control — there is nothing more to fetch.
    */
-  nextCursor?: string | null
+  nextCursor?: string | null;
   /** A page is in flight: the button says so and refuses a second press. */
-  loadingMore?: boolean
+  loadingMore?: boolean;
   /** Absent means no pagination at all, the way `onRetry` works. */
-  onLoadMore?: () => void
+  onLoadMore?: () => void;
   /** Injected so the countdown on every card is assertable. */
-  now?: Date
+  now?: Date;
   /**
    * Client-side navigation. When it is absent every control still works: the
    * tabs are real links and the filters are a real GET form, so the screen
    * degrades to full navigations instead of breaking.
    */
-  onNavigate?: (href: string) => void
-  onRetry?: () => void
+  onNavigate?: (href: string) => void;
+  onRetry?: () => void;
   /**
    * Opens the menu drawer (canvas 09). Absent on the server pass and wherever
    * there is no drawer to open — the control is then not rendered at all
    * rather than rendered inert.
    */
-  onOpenMenu?: () => void
-}
+  onOpenMenu?: () => void;
+};
 
 /* ------------------------------------------------------------------ pieces */
 
-function CompanyLine({ company, query }: { company: CompanyView | null; query: RadarQuery }) {
-  const name = company?.tradeName || company?.legalName || list.companyFallback
-  const cnaes = company ? company.segments.length : 0
-  const where = query.state ?? copy.ufAll
+function CompanyLine({
+  company,
+  query,
+}: {
+  company: CompanyView | null;
+  query: RadarQuery;
+}) {
+  const name = company?.tradeName || company?.legalName || list.companyFallback;
+  const cnaes = company ? company.segments.length : 0;
+  const where = query.state ?? copy.ufAll;
   // No chevron. It used to draw one here, inside a `<p>` with no link, no
   // button and no handler — the universal "tap me" affordance on something
   // that could not be tapped, which is worse than no affordance at all: it
@@ -135,7 +141,7 @@ function CompanyLine({ company, query }: { company: CompanyView | null; query: R
     <p className="text-meta text-muted">
       {name} · {format(list.cnaeCount, { count: cnaes })} · {where}
     </p>
-  )
+  );
 }
 
 /**
@@ -144,13 +150,19 @@ function CompanyLine({ company, query }: { company: CompanyView | null; query: R
  * screen too; it lives here for now because canvas 02 draws it, and it is one
  * self-contained function for D4 to lift.
  */
-export function VisitorBanner({ visitor, now }: { visitor: VisitorView; now: Date }) {
-  const msLeft = new Date(visitor.expiresAt).getTime() - now.getTime()
-  const days = Math.max(0, Math.ceil(msLeft / 86_400_000))
+export function VisitorBanner({
+  visitor,
+  now,
+}: {
+  visitor: VisitorView;
+  now: Date;
+}) {
+  const msLeft = new Date(visitor.expiresAt).getTime() - now.getTime();
+  const days = Math.max(0, Math.ceil(msLeft / 86_400_000));
   const screenings =
     visitor.screeningsLeft === null
       ? copy.visitor.unlimited
-      : format(copy.visitor.screenings, { count: visitor.screeningsLeft })
+      : format(copy.visitor.screenings, { count: visitor.screeningsLeft });
 
   if (visitor.expired) {
     return (
@@ -166,15 +178,17 @@ export function VisitorBanner({ visitor, now }: { visitor: VisitorView; now: Dat
           }
         />
       </div>
-    )
+    );
   }
 
   return (
     <div className="mx-gutter flex items-center gap-2.5 rounded-[10px] bg-attention-soft px-3 py-2.5 text-meta">
       <Icon name="visitor" size={18} className="text-attention" />
       <span className="grow text-ink">
-        <strong className="font-semibold text-attention">{copy.visitor.label}</strong>{' '}
-        ·{' '}
+        <strong className="font-semibold text-attention">
+          {copy.visitor.label}
+        </strong>{" "}
+        ·{" "}
         {format(copy.visitor.line, {
           dias: format(copy.visitor.days, { count: days }),
           triagens: screenings,
@@ -187,7 +201,7 @@ export function VisitorBanner({ visitor, now }: { visitor: VisitorView; now: Dat
         {copy.visitor.createAccount}
       </Link>
     </div>
-  )
+  );
 }
 
 /**
@@ -218,26 +232,29 @@ function GroupTabs({
   counts,
   query,
 }: {
-  active: TenderGroup
-  counts: Record<TenderGroup, number> | null
-  query: RadarQuery
+  active: TenderGroup;
+  counts: Record<TenderGroup, number> | null;
+  query: RadarQuery;
 }) {
   return (
-    <nav aria-label={list.resultsLabel} className="flex gap-2 overflow-x-auto px-gutter pt-3 pb-2">
+    <nav
+      aria-label={list.resultsLabel}
+      className="flex gap-2 overflow-x-auto px-gutter pt-3 pb-2"
+    >
       {TENDER_GROUPS.map((group) => {
-        const current = group === active
-        const count = counts ? counts[group] : null
+        const current = group === active;
+        const count = counts ? counts[group] : null;
         return (
           <Link
             key={group}
             href={radarHref({ ...query, group })}
-            aria-current={current ? 'page' : undefined}
+            aria-current={current ? "page" : undefined}
             className={cn(
-              'inline-flex min-h-9 items-center gap-1.5 rounded-pill px-2.5 text-meta font-medium',
-              'whitespace-nowrap no-underline transition-colors',
+              "inline-flex min-h-9 items-center gap-1.5 rounded-pill px-2.5 text-meta font-medium",
+              "whitespace-nowrap no-underline transition-colors",
               current
-                ? 'bg-blue text-surface'
-                : 'border border-line-strong bg-surface text-ink hover:bg-fill-muted',
+                ? "bg-blue text-surface"
+                : "border border-line-strong bg-surface text-ink hover:bg-fill-muted",
             )}
           >
             {list.groups[group]}
@@ -250,20 +267,22 @@ function GroupTabs({
                 <span
                   aria-hidden
                   className={cn(
-                    'font-mono text-caption tabular-nums',
-                    current ? '' : count === 0 ? 'text-muted' : 'text-ink',
+                    "font-mono text-caption tabular-nums",
+                    current ? "" : count === 0 ? "text-muted" : "text-ink",
                   )}
                 >
                   {count}
                 </span>
-                <span className="sr-only">{format(copy.tabs.count, { count })}</span>
+                <span className="sr-only">
+                  {format(copy.tabs.count, { count })}
+                </span>
               </>
             )}
           </Link>
-        )
+        );
       })}
     </nav>
-  )
+  );
 }
 
 /**
@@ -281,8 +300,10 @@ function GroupTabs({
  */
 function GroupHint({ group }: { group: TenderGroup }) {
   return (
-    <p className="px-gutter pb-1 text-meta text-muted">{list.groupHint[group]}</p>
-  )
+    <p className="px-gutter pb-1 text-meta text-muted">
+      {list.groupHint[group]}
+    </p>
+  );
 }
 
 /**
@@ -317,8 +338,8 @@ function FilterRow({
   query,
   onNavigate,
 }: {
-  query: RadarQuery
-  onNavigate?: (href: string) => void
+  query: RadarQuery;
+  onNavigate?: (href: string) => void;
 }) {
   // **Open when there is nothing to search by.**
   //
@@ -338,15 +359,15 @@ function FilterRow({
   //
   // `open` is only the initial attribute: `<details>` stays uncontrolled, so a
   // reader can still collapse it.
-  const nothingToSearchBy = !query.cnpj && !query.q
+  const nothingToSearchBy = !query.cnpj && !query.q;
 
   return (
     <div className="relative px-gutter">
       <details className="group" open={nothingToSearchBy}>
         <summary
           className={cn(
-            'flex cursor-pointer list-none items-center py-1 text-body',
-            '[&::-webkit-details-marker]:hidden',
+            "flex cursor-pointer list-none items-center py-1 text-body",
+            "[&::-webkit-details-marker]:hidden",
           )}
         >
           {/*
@@ -374,16 +395,16 @@ function FilterRow({
           onSubmit={
             onNavigate
               ? (event) => {
-                  event.preventDefault()
-                  const data = new FormData(event.currentTarget)
+                  event.preventDefault();
+                  const data = new FormData(event.currentTarget);
                   onNavigate(
                     radarHref({
-                      cnpj: String(data.get('cnpj') ?? '') || null,
-                      state: String(data.get('uf') ?? '') || null,
-                      q: String(data.get('q') ?? '').trim() || null,
+                      cnpj: String(data.get("cnpj") ?? "") || null,
+                      state: String(data.get("uf") ?? "") || null,
+                      q: String(data.get("q") ?? "").trim() || null,
                       group: query.group,
                     }),
-                  )
+                  );
                 }
               : undefined
           }
@@ -405,15 +426,17 @@ function FilterRow({
             mono
             label={copy.landing.cnpjLabel}
             placeholder={copy.landing.cnpjPlaceholder}
-            defaultValue={query.cnpj ?? ''}
+            defaultValue={query.cnpj ?? ""}
             className="min-[560px]:w-60"
           />
-          {query.groupChosen ? <input type="hidden" name="group" value={query.group} /> : null}
+          {query.groupChosen ? (
+            <input type="hidden" name="group" value={query.group} />
+          ) : null}
           <Select
             id="radar-uf"
             name="uf"
             label={copy.landing.ufLabel}
-            defaultValue={query.state ?? ''}
+            defaultValue={query.state ?? ""}
             options={UF_OPTIONS}
             className="min-[560px]:w-56"
           />
@@ -425,13 +448,17 @@ function FilterRow({
               id="radar-q"
               name="q"
               type="search"
-              defaultValue={query.q ?? ''}
+              defaultValue={query.q ?? ""}
               placeholder={copy.landing.keywordPlaceholder}
               /* 16px (`text-base`): below that iOS Safari zooms on focus. */
               className="min-h-control w-full rounded-control border border-field-line bg-surface px-3 text-base text-ink placeholder:text-muted"
             />
           </div>
-          <Button type="submit" variant="secondary" className="min-[560px]:w-auto">
+          <Button
+            type="submit"
+            variant="secondary"
+            className="min-[560px]:w-auto"
+          >
             {list.apply}
           </Button>
         </form>
@@ -448,19 +475,31 @@ function FilterRow({
         {list.sort}
       </span>
     </div>
-  )
+  );
 }
 
 /** "Atualizado há 12 minutos", and what we are doing about it when it is old. */
 export function FreshnessLine({ freshness }: { freshness: Freshness | null }) {
-  if (!freshness) return null
-  const parts = ageParts(freshness.ageSeconds)
+  if (!freshness) return null;
+  const parts = ageParts(freshness.ageSeconds);
   if (!parts) {
-    return <p className="px-gutter pb-2 text-caption text-muted">{copy.freshness.unknown}</p>
+    return (
+      <p className="px-gutter pb-2 text-caption text-muted">
+        {copy.freshness.unknown}
+      </p>
+    );
   }
-  const age = parts.unit === 'now' ? copy.age.now : format(copy.age[parts.unit], { count: parts.count })
-  const template = freshness.state === 'stale' ? copy.freshness.stale : copy.freshness.fresh
-  return <p className="px-gutter pb-2 text-caption text-muted">{format(template, { idade: age })}</p>
+  const age =
+    parts.unit === "now"
+      ? copy.age.now
+      : format(copy.age[parts.unit], { count: parts.count });
+  const template =
+    freshness.state === "stale" ? copy.freshness.stale : copy.freshness.fresh;
+  return (
+    <p className="px-gutter pb-2 text-caption text-muted">
+      {format(template, { idade: age })}
+    </p>
+  );
 }
 
 /**
@@ -494,15 +533,15 @@ function More({
   loading,
   onLoadMore,
 }: {
-  shown: number
-  total: number | null
-  nextCursor: string | null
-  loading: boolean
-  onLoadMore?: () => void
+  shown: number;
+  total: number | null;
+  nextCursor: string | null;
+  loading: boolean;
+  onLoadMore?: () => void;
 }) {
   // No handler means no client navigation — the same contract `onRetry` has —
   // and a cursor of `null` means the last page is already on screen.
-  if (!onLoadMore || shown === 0) return null
+  if (!onLoadMore || shown === 0) return null;
 
   return (
     <div className="flex flex-col items-center gap-2 pt-4">
@@ -521,24 +560,36 @@ function More({
         </Button>
       ) : null}
     </div>
-  )
+  );
 }
 
 /* ------------------------------------------------------------------ states */
 
 const EMPTY: Record<TenderGroup, { title: string; body: string }> = {
   compatible: { title: copy.states.emptyTitle, body: copy.states.emptyBody },
-  check: { title: copy.states.emptyCheckTitle, body: copy.states.emptyCheckBody },
-  keyword: { title: copy.states.emptyKeywordTitle, body: copy.states.emptyKeywordBody },
-}
+  check: {
+    title: copy.states.emptyCheckTitle,
+    body: copy.states.emptyCheckBody,
+  },
+  keyword: {
+    title: copy.states.emptyKeywordTitle,
+    body: copy.states.emptyKeywordBody,
+  },
+};
 
-function RetryAction({ label, onRetry }: { label: string; onRetry?: () => void }) {
-  if (!onRetry) return null
+function RetryAction({
+  label,
+  onRetry,
+}: {
+  label: string;
+  onRetry?: () => void;
+}) {
+  if (!onRetry) return null;
   return (
     <Button variant="link" className="px-0" onClick={onRetry}>
       {label}
     </Button>
-  )
+  );
 }
 
 /**
@@ -560,11 +611,11 @@ function EmptyGroup({
   query,
   counts,
 }: {
-  query: RadarQuery
-  counts: Record<TenderGroup, number> | null
+  query: RadarQuery;
+  counts: Record<TenderGroup, number> | null;
 }) {
-  const group = query.group
-  const elsewhere = otherPopulatedGroup(counts, group)
+  const group = query.group;
+  const elsewhere = otherPopulatedGroup(counts, group);
 
   if (everyGroupEmpty(counts)) {
     return (
@@ -578,7 +629,7 @@ function EmptyGroup({
           </Button>
         }
       />
-    )
+    );
   }
 
   return (
@@ -595,7 +646,9 @@ function EmptyGroup({
             iconEnd="arrowRight"
           >
             {format(list.seeOther, {
-              quantos: format(copy.tabs.count, { count: counts ? counts[elsewhere] : 0 }),
+              quantos: format(copy.tabs.count, {
+                count: counts ? counts[elsewhere] : 0,
+              }),
               grupo: list.groups[elsewhere],
             })}
           </Button>
@@ -606,7 +659,7 @@ function EmptyGroup({
         )
       }
     />
-  )
+  );
 }
 
 function Body({
@@ -618,41 +671,43 @@ function Body({
   now,
   onRetry,
 }: {
-  status: RadarStatus
-  group: TenderGroup
-  counts: Record<TenderGroup, number> | null
-  query: RadarQuery
-  tenders: TenderCard[]
-  now: Date
-  onRetry?: () => void
+  status: RadarStatus;
+  group: TenderGroup;
+  counts: Record<TenderGroup, number> | null;
+  query: RadarQuery;
+  tenders: TenderCard[];
+  now: Date;
+  onRetry?: () => void;
 }) {
   switch (status.kind) {
-    case 'analyzing':
+    case "analyzing":
       return (
         <StateCard
           kind="analyzing"
           title={
-            status.what === 'company'
+            status.what === "company"
               ? copy.states.analyzingCompanyTitle
               : copy.states.analyzingListTitle
           }
           description={
-            status.what === 'company'
+            status.what === "company"
               ? copy.states.analyzingCompanyBody
               : copy.states.analyzingListBody
           }
         />
-      )
-    case 'timeout':
+      );
+    case "timeout":
       return (
         <StateCard
           kind="empty"
           title={copy.states.timeoutTitle}
           description={copy.states.timeoutBody}
-          action={<RetryAction label={copy.states.timeoutAction} onRetry={onRetry} />}
+          action={
+            <RetryAction label={copy.states.timeoutAction} onRetry={onRetry} />
+          }
         />
-      )
-    case 'error':
+      );
+    case "error":
       // `empty`, not `limit`: `limit` draws the board's padlock, which would
       // tell the user a plan is missing when what is missing is an answer.
       return (
@@ -660,67 +715,126 @@ function Body({
           kind="empty"
           title={copy.states.errorTitle}
           description={status.text ?? errorText(status.code)}
-          action={<RetryAction label={copy.states.errorAction} onRetry={onRetry} />}
+          action={
+            <RetryAction label={copy.states.errorAction} onRetry={onRetry} />
+          }
         />
-      )
-    case 'needCnpj':
+      );
+    case "needCnpj":
       return (
         <StateCard
           kind="empty"
           title={copy.states.needCnpjTitle}
           description={copy.states.needCnpjBody}
           action={
-            <Button variant="link" href="/" className="px-0" iconEnd="arrowRight">
+            <Button
+              variant="link"
+              href="/"
+              className="px-0"
+              iconEnd="arrowRight"
+            >
               {copy.states.needCnpjAction}
             </Button>
           }
         />
-      )
-    case 'noSegments':
+      );
+    case "noSegments":
       return (
         <StateCard
           kind="empty"
           title={copy.states.noSegmentsTitle}
           description={copy.states.noSegmentsBody}
           action={
-            <Button variant="link" href="/" className="px-0" iconEnd="arrowRight">
+            <Button
+              variant="link"
+              href="/"
+              className="px-0"
+              iconEnd="arrowRight"
+            >
               {copy.states.noSegmentsAction}
             </Button>
           }
         />
-      )
-    case 'manualCnae':
-      if (tenders.length > 0) break
+      );
+    case "manualCnae":
+      if (tenders.length > 0) break;
       return (
         <StateCard
           kind="empty"
           title={copy.states.manualCnaeTitle}
           description={copy.states.manualCnaeBody}
         />
-      )
-    case 'ready':
-      break
+      );
+    case "ready":
+      break;
   }
 
   if (tenders.length === 0) {
-    return <EmptyGroup query={query} counts={counts} />
+    return <EmptyGroup query={query} counts={counts} />;
   }
 
   return (
-    <ul className="grid list-none grid-cols-1 gap-2.5 p-0 min-[900px]:grid-cols-2 min-[1280px]:grid-cols-3">
-      {tenders.map((tender) => (
-        <li key={tender.id} className="flex">
-          {/* The card carries the search into the tender's URL, which is where
-              the Opportunity screen reads its "Voltar" link from. */}
-          <TenderCardView
-            tender={tender}
-            now={now}
-            href={tenderHref(tender.id, { ...query, group })}
-          />
-        </li>
-      ))}
-    </ul>
-  )
+    /* D30 — how many cards fit is a fact about this column, not about the
+       window, so the thresholds are container queries.
+
+       They used to be `min-[900px]:` and `min-[1280px]:`, **viewport**
+       queries, and D20 then put a rail in the layout flow beside the content:
+       `hidden lg:block` from 1024px and **264px** wide, or 56px when the
+       reader collapses it — `localStorage` state that no media query can
+       observe at all. This list is `main` (`max-w-[1120px]`) inside
+       `px-gutter`, so its own width is
+
+         min(viewport − rail, 1120) − 2×20
+
+       and the two numbers never met. At 1280 with the rail out that is
+       1016 − 40 = **976px**, and the window's answer was three columns —
+       ~318px cards on the screen the product is used on most. Same defect as
+       D29 on the tender screen, one floor down.
+
+       **860 and 1080 are today's thresholds restated, not new ones.** 860 is
+       what this column measured at the old 900px breakpoint, where there is
+       no rail yet (900 − 40); 1080 is what it measures at `main`'s
+       `max-w-[1120px]` cap (1120 − 40), which is the width the old 1280px
+       query actually delivered when it was right — at 1280 with the rail
+       collapsed. So the phone and tablet behaviour is unchanged and only the
+       cases the viewport could not see move:
+
+         viewport 1023, no rail       column  983  → two    (was two)
+         viewport 1024, rail 264      column  720  → one    (was two, ~355px)
+         viewport 1024, rail  56      column  928  → two    (was one)
+         viewport 1164, rail 264      column  860  → two    (the threshold)
+         viewport 1280, rail 264      column  976  → two    (was three, ~318px)
+         viewport 1280, rail  56      column 1080  → three  (was three)
+         viewport 1440, rail 264      column 1080  → three  (was three)
+
+       The step from two 535px cards to three 353px ones at 1080 is inherited,
+       not introduced: the old query made the same jump at 1280.
+
+       The wrapper is here because an element cannot query itself, and it is
+       `@container` and nothing else — `container-type: inline-size` also makes
+       the element a containing block for fixed descendants, so it stays around
+       the list rather than going on the `px-gutter` div, where it would
+       silently capture the `position: fixed` bar D25 (3) is about to add.
+
+       These widths are read from the source; `environment: 'node'` has no
+       layout to measure them in. `e2e/journeys/radar-columns.spec.ts` is what
+       actually looks. */
+    <div className="@container">
+      <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
+        {tenders.map((tender) => (
+          <li key={tender.id} className="flex">
+            {/* The card carries the search into the tender's URL, which is
+                where the Opportunity screen reads its "Voltar" link from. */}
+            <TenderCardView
+              tender={tender}
+              now={now}
+              href={tenderHref(tender.id, { ...query, group })}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------- shell */
@@ -741,7 +855,7 @@ export function RadarView({
   onLoadMore,
   onOpenMenu,
 }: RadarViewProps) {
-  const showList = status.kind === 'ready' || status.kind === 'manualCnae'
+  const showList = status.kind === "ready" || status.kind === "manualCnae";
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -760,8 +874,16 @@ export function RadarView({
         }
         actions={
           <>
-            <AppBarActionLink icon="alert" label={copy.nav.alerts} href={ALERTS_HREF} />
-            <AppBarActionLink icon="account" label={copy.nav.account} href={ACCOUNT_HREF} />
+            <AppBarActionLink
+              icon="alert"
+              label={copy.nav.alerts}
+              href={ALERTS_HREF}
+            />
+            <AppBarActionLink
+              icon="account"
+              label={copy.nav.account}
+              href={ACCOUNT_HREF}
+            />
             {/* Canvas 09's trigger.
 
                 The drawer, its API, its view and its tests all shipped in
@@ -776,15 +898,24 @@ export function RadarView({
                 Rendered only when a handler exists, so the Landing's example
                 panel does not draw a button that opens nothing. */}
             {onOpenMenu ? (
-              <AppBarAction icon="menu" label={copy.nav.menu} onClick={onOpenMenu} />
+              <AppBarAction
+                icon="menu"
+                label={copy.nav.menu}
+                onClick={onOpenMenu}
+              />
             ) : null}
           </>
         }
       />
 
-      <main id="radar" className="mx-auto flex w-full max-w-[1120px] grow flex-col pb-10">
+      <main
+        id="radar"
+        className="mx-auto flex w-full max-w-[1120px] grow flex-col pb-10"
+      >
         <div className="flex flex-col gap-1 px-gutter pb-2.5">
-          <h1 className="font-display text-[28px] leading-tight font-semibold">{list.title}</h1>
+          <h1 className="font-display text-[28px] leading-tight font-semibold">
+            {list.title}
+          </h1>
           <CompanyLine company={company} query={query} />
         </div>
 
@@ -819,5 +950,5 @@ export function RadarView({
         </div>
       </main>
     </div>
-  )
+  );
 }
