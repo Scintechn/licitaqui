@@ -90,3 +90,35 @@ def delivery_problems(env: Mapping[str, str] | None = None) -> list[str]:
                 f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} unset"
             )
     return problems
+
+
+def neon_usage_problem(env: Mapping[str, str] | None = None) -> str | None:
+    """Whether the `neon_usage` job (card B27) can read Neon's API.
+
+    **Reported at boot rather than discovered at 04:00.** This job is the only
+    thing that fills `/admin`'s awake-time block, and it runs once a day. If a
+    variable is missing, the failure is one `failed` row at four in the morning
+    and a card that says "nenhuma leitura ainda" — which looks exactly like
+    "the job has not run yet" and would stay unexplained for a day at a time.
+
+    Both variables are needed and they arrive from different places: Sci set
+    `NEON_API_KEY` in Easypanel on 2026-09-30, while `NEON_PROJECT_ID` had been
+    set in Vercel — which is the **web** app's environment and not this one.
+    Naming exactly which is absent is the difference between a fix and a hunt.
+
+    Not fatal, like every other entry here: a worker that refused to drain the
+    queue because it could not report on its own bill would have its priorities
+    backwards.
+    """
+    environ = os.environ if env is None else env
+    missing = [
+        name
+        for name in ("NEON_API_KEY", "NEON_PROJECT_ID")
+        if not (environ.get(name) or "").strip()
+    ]
+    if not missing:
+        return None
+    return (
+        f"neon_usage cannot read Neon's API: {', '.join(missing)} "
+        f"{'is' if len(missing) == 1 else 'are'} unset in the worker's environment"
+    )

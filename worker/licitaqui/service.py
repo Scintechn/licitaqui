@@ -108,6 +108,14 @@ class WorkerService:
         for problem in problems:
             _log.error("delivery is switched on but not configured", extra={"problem": problem})
 
+        # Card B27. A daily job's misconfiguration is otherwise discovered as
+        # one `failed` row at 04:00 and a card that reads "nenhuma leitura
+        # ainda" — indistinguishable from "it has not run yet".
+        neon_problem = preflight.neon_usage_problem()
+        if neon_problem:
+            problems.append(neon_problem)
+            _log.warning("neon_usage is not configured", extra={"problem": neon_problem})
+
         _log.info(
             "worker started",
             extra={

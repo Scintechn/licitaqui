@@ -184,3 +184,28 @@ def test_it_is_scheduled_on_the_reconcile_wake_and_not_its_own(
         "a five-minute tail to measure five-minute tails"
     )
     assert mine.every_seconds is None
+
+
+# -- boot-time reporting --------------------------------------------------
+
+
+def test_preflight_names_exactly_which_neon_variable_is_missing():
+    """`NEON_API_KEY` is set in Easypanel and `NEON_PROJECT_ID` was set in
+    Vercel — a different environment. Naming both when one is present sends
+    somebody to configure something already done; naming neither leaves a
+    daily job failing at 04:00 into a card that reads like it simply has not
+    run yet."""
+    from licitaqui import preflight
+
+    assert preflight.neon_usage_problem({"NEON_API_KEY": "k", "NEON_PROJECT_ID": "p"}) is None
+
+    only_key = preflight.neon_usage_problem({"NEON_API_KEY": "k"})
+    assert only_key is not None
+    assert "NEON_PROJECT_ID" in only_key
+    assert "NEON_API_KEY" not in only_key
+
+    neither = preflight.neon_usage_problem({})
+    assert neither is not None
+    assert "NEON_API_KEY" in neither and "NEON_PROJECT_ID" in neither
+
+    assert preflight.neon_usage_problem({"NEON_API_KEY": "  ", "NEON_PROJECT_ID": "p"}) is not None
