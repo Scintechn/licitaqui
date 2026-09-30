@@ -174,13 +174,18 @@ export async function readOrEnqueue<T>(options: ReadOrEnqueueOptions<T>): Promis
     // §3.1 step 4: nothing to show, so the job is what the user is waiting on.
     const job =
       mayEnqueue && (options.enqueueWhenAbsent ?? true)
-        ? await enqueueJob({ ...options.refresh, priority: PRIORITY_USER_WAITING }, executor)
+        ? await enqueueJob(
+            { ...options.refresh, priority: PRIORITY_USER_WAITING },
+            executor,
+            options.wake ?? wakeWorker,
+          )
         : null
-    // Only a row we actually inserted. A `deduped` job is already queued or
-    // running, and the consumer drains the queue to empty before it sleeps
-    // again — so whoever inserted that row already woke the worker, and a
-    // second POST would be load with nothing behind it.
-    if (job && !job.deduped) (options.wake ?? wakeWorker)()
+    // **The wake now lives inside `enqueueJob`**, which is the only place a
+    // job can be created and therefore the only place that cannot be
+    // forgotten. It used to be here, and every caller that skipped the cache
+    // skipped the wake with it — `lib/radar/screening.ts` did exactly that,
+    // so the AI triagem waited for the consumer's next poll. 24 minutes, on
+    // 2026-09-30, with a person watching.
     return { state: 'absent', data: null, updatedAt: null, ageSeconds: null, job, status: 202 }
   }
 

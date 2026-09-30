@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+import { wakeWorker } from './wake'
 import { cnpjRef } from '@/lib/cnpj'
 import { db, type Executor } from '@/lib/db'
 
@@ -165,9 +166,56 @@ export type EnqueuedJob = {
  * Add a job unless one with the same `(kind, key)` is already queued or
  * running. Runs on the pool, or inside the transaction you hand it.
  */
+/**
+ * Write a job, and **wake the worker when somebody is waiting for it**.
+ *
+ * ## The defect this now prevents
+ *
+ * The wake used to live in `lib/cache.ts`, one layer up. Every caller that
+ * went through the cache got it; every caller that called this function
+ * directly did not — and `lib/radar/screening.ts` is exactly that caller. So
+ * the **AI triagem, the one job a person sits and watches**, never woke
+ * anything and always waited for the consumer's next poll.
+ *
+ * On 2026-09-30 that was 24 minutes, with *"a triagem está demorando mais que
+ * o normal"* on screen. The worker, its domain and its token were all fine —
+ * `POST /wake` answered `202 {"woken": true}` when called by hand. Nothing was
+ * calling it.
+ *
+ * `worker/licitaqui/config.py` said, and I repeated while doubling the poll
+ * interval that morning: *"Nobody waiting on screen is affected. A priority-1
+ * job is picked up immediately because the web route also calls POST /wake."*
+ * For this path it had never been true.
+ *
+ * So the wake belongs **here**, at the one place a job can be created, rather
+ * than at each call site that remembers to. That is the whole fix: a future
+ * caller cannot forget something it does not have to do.
+ *
+ * ## Only when someone is waiting
+ *
+ * Gated on `PRIORITY_USER_WAITING`, and that gate is the cost half of the
+ * bargain. Neon bills wall-clock awake time and suspends after five minutes
+ * (300 s is Launch's floor — 60/90/120/180/240 are refused), so waking for
+ * every enqueue would keep the endpoint up permanently: the backlog of
+ * 2026-09-30 alone was 10 758 background jobs. Background work waits for the
+ * poll, which is what lets the poll be long.
+ *
+ * Idle stays asleep; a person's request wakes it. That is how both goals hold
+ * at once — Sci, 2026-09-30: *"We will kept the neon cost reduce with put they
+ * to 'sleep', and If a user reqeust a triage, we call this request to wake up
+ * him"*.
+ *
+ * ## Not on a deduped row
+ *
+ * A `deduped` job is already queued or running, and the consumer drains to
+ * empty before sleeping — so whoever inserted that row already woke the
+ * worker, and a second POST is load with nothing behind it.
+ */
 export async function enqueueJob(
   request: JobRequest,
   database: Executor = db(),
+  /** Injected by the tests; nothing in the product passes it. */
+  wake: () => void = wakeWorker,
 ): Promise<EnqueuedJob> {
   const { kind, key, priority = PRIORITY_REFRESH, payload } = request
   const result = await database.execute<{ id: string | number }>(sql`
@@ -180,6 +228,7 @@ export async function enqueueJob(
     returning id
   `)
   const row = result.rows[0]
+  if (row && priority <= PRIORITY_USER_WAITING) wake()
   return { kind, key, id: row ? Number(row.id) : null, deduped: !row }
 }
 
