@@ -17,8 +17,8 @@ import {
 import { MenuTrigger } from '@/components/menu-trigger'
 import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
-import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
-import { screeningHref, type RadarSearch } from '@/lib/radar/client'
+import { accountHref } from '@/lib/routes'
+import { screeningHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
 import type {
   ErrorCode,
   Freshness,
@@ -360,7 +360,7 @@ function FullObject({ object }: { object: string }) {
  * visitor's locked block wherever it renders, so neither screen can invent its
  * own rule about who may read an edital.
  */
-export function Files({ tender }: { tender: TenderDetail }) {
+export function Files({ tender, signupHref }: { tender: TenderDetail; signupHref: string }) {
   // `== null`, not `=== null`: the type says `TenderFileView[] | null` and the
   // route always sends one of those, but this component is now drawn by two
   // screens, and a missing value crashing on `.length` would replace an
@@ -369,7 +369,7 @@ export function Files({ tender }: { tender: TenderDetail }) {
   if (tender.files == null) {
     return (
       <LockedBlock
-        href={ACCOUNT_HREF}
+        href={signupHref}
         title={page.filesLocked}
         description={page.filesLockedNote}
       />
@@ -424,12 +424,14 @@ export type OpportunityTab = 'items' | 'files'
 
 function Record({
   tender,
+  search,
   tab,
   onSelectTab,
   itemsVisible,
   onShowMoreItems,
 }: {
   tender: TenderDetail
+  search: RadarSearch
   tab: OpportunityTab
   onSelectTab?: (tab: OpportunityTab) => void
   itemsVisible?: number
@@ -461,7 +463,7 @@ function Record({
         </TabPanel>
       ) : (
         <TabPanel idPrefix={TAB_PREFIX} id="files">
-          <Files tender={tender} />
+          <Files tender={tender} signupHref={accountHref(tenderHref(tender.id, search, 'files'))} />
         </TabPanel>
       )}
     </section>
@@ -901,6 +903,7 @@ export function OpportunityView({
         {/* PNCP's shape: the object, then the record's tabs. */}
         <Record
           tender={tender}
+          search={search}
           tab={tab}
           onSelectTab={onSelectTab}
           itemsVisible={itemsVisible}

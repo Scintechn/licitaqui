@@ -16,7 +16,7 @@ import { MenuTrigger } from '@/components/menu-trigger'
 import { cn } from '@/lib/cn'
 import { accountHref } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
-import { priceHref, screeningHref, type RadarSearch } from '@/lib/radar/client'
+import { priceHref, screeningHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
 import { Files } from './opportunity-view'
 import type { ErrorCode, QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
@@ -514,7 +514,12 @@ export function ScreeningView({
                     cannot disagree about one viewer — and so a visitor meets
                     the locked block here instead of being bounced to signup
                     on a page they did not ask for. */}
-                {tender ? <Files tender={tender} /> : null}
+                {tender ? (
+                  <Files
+                    tender={tender}
+                    signupHref={accountHref(tenderHref(tenderId, search, 'files'))}
+                  />
+                ) : null}
               </TabPanel>
             ) : tab === 'summary' ? (
               <TabPanel idPrefix={TAB_PREFIX} id="summary" className="flex flex-col gap-3">

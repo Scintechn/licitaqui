@@ -91,23 +91,27 @@ test.describe('Ricardo · ME, wants an account and alerts', () => {
     await page.getByRole('tab', { name: 'Documentos' }).click()
     const locked = page.getByRole('link', { name: /Edital e anexos/ })
     await expect(locked).toBeVisible()
-    // FINDING, recorded rather than asserted as fixed: this block points at a
-    // bare `ACCOUNT_HREF` (`opportunity-view.tsx`, `Files`), with no `?next=`.
-    // Someone who creates an account from here lands on `/conta` and loses the
-    // edital they were reading — the same defect as #68, on a link the type
-    // check cannot reach because `accountHref()`'s argument is optional. It is
-    // in the report and in the PR; the test asserts what is true today, not
-    // what it ought to be.
-    expect(await locked.getAttribute('href')).toBe('/conta/criar')
+    // **That FINDING is closed.** This block used to point at a bare
+    // `ACCOUNT_HREF` with no `?next=`, so signing up from here landed on
+    // `/conta` and lost the edital — a link no type check could reach, because
+    // `accountHref()`'s argument is optional. `Files` takes the way back as a
+    // prop now, and both screens pass it, so neither can quietly drop it.
+    const tenderHrefBack = decodeURIComponent((await locked.getAttribute('href')) ?? '')
+    expect(tenderHrefBack).toContain('/conta/criar?next=')
+    expect(tenderHrefBack).toContain('51885242000140-1-000001/2026')
 
-    // On the triagem, "Documentos" is a link out — and it has to bring him
-    // back to this edital, with this search, after he creates the account.
+    // On the triagem, "Documentos" is a **tab** since D31 — it opens the same
+    // locked block in place instead of sending him to another page. What has
+    // to survive that change is the way back: the signup still has to return
+    // him to this edital, with this search, after he creates the account.
     await page.getByRole('link', { name: 'Ver triagem por IA' }).click()
     await expect(page.getByText('Boa para empresa pequena')).toBeVisible()
 
-    const href = decodeURIComponent(
-      (await page.getByRole('link', { name: 'Documentos' }).getAttribute('href')) ?? '',
-    )
+    await page.getByRole('tab', { name: 'Documentos' }).click()
+    const onTriagem = page.getByRole('link', { name: /Edital e anexos/ })
+    await expect(onTriagem).toBeVisible()
+
+    const href = decodeURIComponent((await onTriagem.getAttribute('href')) ?? '')
     expect(href).toContain('/conta/criar?next=')
     expect(href, 'the way back lost the edital').toContain(
       '/radar/edital/51885242000140-1-000001/2026',

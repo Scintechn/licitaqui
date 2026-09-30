@@ -2,7 +2,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { format, messages } from '@/lib/messages'
 import type { SegmentFit, TenderDetail } from '@/lib/radar/contract'
-import { ACCOUNT_HREF } from '@/lib/routes'
 import { TENDER_ITEMS_FIXTURE } from '@/lib/radar/items-fixture'
 import { tenderBudget } from '@/lib/radar/headline'
 import { OpportunityView, matchKind, reasons, type OpportunityViewProps } from './opportunity-view'
@@ -180,9 +179,15 @@ describe('the Opportunity screen', () => {
   it('locks the files behind the account, as a real link and not a disabled control', () => {
     const out = render({ tab: 'files' })
     expect(out).toContain(page.filesLocked)
-    expect(out).toContain(`href="${ACCOUNT_HREF}"`)
     expect(out).toContain('border-dashed')
     expect(out).not.toMatch(/\sdisabled(=|\s|>)/)
+    // **It used to assert the bare `ACCOUNT_HREF`, and that was the bug.** A
+    // visitor who signed up from here landed on `/conta` and lost the edital
+    // they were reading — recorded as a FINDING in `ricardo.spec.ts` and left
+    // standing because `accountHref()`'s argument is optional, so no type
+    // check could reach it. The signup now carries the way back.
+    expect(out).toContain('/conta/criar?next=')
+    expect(out).toContain(encodeURIComponent('/radar/edital/'))
   })
 
   it('leads to the screening at the address the design gives it', () => {
@@ -658,9 +663,11 @@ describe('OpportunityView · the Documentos tab', () => {
     const out = render({ tab: 'files' })
     expect(out).toContain(page.filesLocked)
     expect(out).toContain(page.filesLockedNote)
-    // The dashed upsell surface, inside the panel, as a real link.
+    // The dashed upsell surface, inside the panel, as a real link — and one
+    // that comes back to this edital rather than dropping him on `/conta`.
     expect(out).toContain('border-dashed')
-    expect(out).toContain(`href="${ACCOUNT_HREF}"`)
+    expect(out).toContain('/conta/criar?next=')
+    expect(out).toContain(encodeURIComponent('tab=files'))
   })
 
   it('marks the locked tab with the padlock before it is opened', () => {
