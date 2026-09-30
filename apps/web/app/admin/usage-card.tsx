@@ -4,6 +4,7 @@ import {
   formatPercent,
   formatUsd,
   type AwakeReading,
+  type ClaimLatency,
   type NeonUsage,
   type UsageMetric,
 } from '@/lib/admin/neon'
@@ -54,6 +55,8 @@ export function UsageCard({ usage }: { usage: NeonUsage }) {
       </Card>
 
       <Awake reading={usage.awake} />
+
+      <Latency reading={usage.latency} />
     </section>
   )
 }
@@ -223,5 +226,72 @@ function Line({ label, value, note }: { label: string; value: string; note: stri
         {note ? <span className="text-caption text-muted">{note}</span> : null}
       </dd>
     </div>
+  )
+}
+
+/**
+ * **A triagem tem que sair na hora** — card B30.
+ *
+ * Sci, 2026-09-30: *"The user could request the triage anytime, and this must
+ * be available."* This is that promise as a number.
+ *
+ * It exists because the day it broke, nothing was red. The worker was healthy,
+ * the queue was draining, every test passed — and two triagens sat queued for
+ * **24 minutes** while somebody watched a spinner. The wake was not being sent
+ * and the only thing that noticed was a person looking at the screen.
+ *
+ * **`samples: 0` is not "fast".** It means nobody asked in the window, and the
+ * card says so rather than drawing a reassuring dash — an empty measurement
+ * reading as a good one is the shape this whole screen was rebuilt to avoid.
+ */
+const SLOW_SECONDS = 30
+
+function Latency({ reading }: { reading: ClaimLatency | null }) {
+  if (!reading) {
+    return (
+      <Card className="flex flex-col gap-1.5">
+        <span className="text-lead font-semibold text-ink">Espera até a triagem começar</span>
+        <p className="text-caption leading-relaxed text-muted">
+          Nenhuma leitura ainda. O worker grava uma linha por job de prioridade 1.
+        </p>
+      </Card>
+    )
+  }
+
+  if (reading.samples === 0) {
+    return (
+      <Card className="flex flex-col gap-1.5">
+        <span className="text-lead font-semibold text-ink">Espera até a triagem começar</span>
+        <p className="text-caption leading-relaxed text-muted">
+          Ninguém pediu triagem nos últimos {reading.windowDays} dias. Sem pedido não há medida —
+          isto não quer dizer que está rápido.
+        </p>
+      </Card>
+    )
+  }
+
+  const slow = reading.p95 !== null && reading.p95 > SLOW_SECONDS
+  const secs = (value: number | null) =>
+    value === null ? '—' : `${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`
+
+  return (
+    <Card accent={slow} className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="text-lead font-semibold text-ink">Espera até a triagem começar</span>
+        {slow ? <Tag tone="attention">acima de {SLOW_SECONDS} s</Tag> : null}
+      </div>
+
+      <dl className="m-0 flex flex-col gap-1.5">
+        <Line label="p95" value={secs(reading.p95)} note={`${reading.samples} pedidos`} />
+        <Line label="mediana" value={secs(reading.median)} note={null} />
+        <Line label="pior caso" value={secs(reading.worst)} note={null} />
+      </dl>
+
+      <p className="text-caption leading-relaxed text-muted">
+        Tempo entre o pedido e o worker pegar o job, nos últimos {reading.windowDays} dias. O pedido
+        acorda o worker na hora; se este número subir, é porque parou de acordar — foi o que
+        aconteceu em 30/09, quando duas triagens esperaram 24 minutos.
+      </p>
+    </Card>
   )
 }

@@ -38,7 +38,8 @@ update jobs
               order by priority, id
               for update skip locked
               limit 1)
-returning id, kind, key, priority, payload, attempts
+returning id, kind, key, priority, payload, attempts,
+          extract(epoch from (now() - created_at))
 """
 
 
@@ -100,6 +101,15 @@ class Job:
     priority: int
     payload: dict[str, Any] | None
     attempts: int
+    #: Seconds this job sat queued before being claimed — card **B30**.
+    #:
+    #: **Computed in SQL, not here.** `now() - created_at` takes both sides
+    #: from the database's clock. `CLAUDE.md` is explicit that mixing clocks
+    #: has already produced a wrong answer in this repo — on 2026-09-23 a
+    #: worker was declared stalled for an hour on a database `now()` read
+    #: against a laptop clock, and it was six minutes. The worker's container
+    #: has no reason to agree with Neon either.
+    waited_seconds: float = 0.0
 
 
 def enqueue_many(
@@ -189,7 +199,15 @@ def claim(conn: psycopg.Connection, *, kinds: Sequence[str] | None = None) -> Jo
         row = cur.fetchone()
     if row is None:
         return None
-    return Job(id=row[0], kind=row[1], key=row[2], priority=row[3], payload=row[4], attempts=row[5])
+    return Job(
+        id=row[0],
+        kind=row[1],
+        key=row[2],
+        priority=row[3],
+        payload=row[4],
+        attempts=row[5],
+        waited_seconds=float(row[6]) if row[6] is not None else 0.0,
+    )
 
 
 def mark_done(conn: psycopg.Connection, job_id: int) -> None:

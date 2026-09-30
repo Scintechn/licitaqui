@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from . import config, queue
 from .db import ConnectionFactory
@@ -150,8 +151,56 @@ class Consumer:
 
     # -- one job ----------------------------------------------------------
 
+    #: Jobs at or above this priority have somebody looking at a screen.
+    #: Matches `PRIORITY_USER_WAITING` in `apps/web/lib/jobs/index.ts`.
+    USER_WAITING_PRIORITY = 1
+
+    def _record_wait(self, conn: psycopg.Connection, job: Job) -> None:
+        """How long a person waited before their job started — card **B30**.
+
+        Only for user-waiting priorities, and that bound is the point: a row
+        per claim across every kind would be an insert per job, and the
+        backlog of 2026-09-30 was 10 758 of them. At priority 1 it is a
+        handful a day.
+
+        **Why this is measured at all.** On 2026-09-30 two `ai_screening`
+        jobs sat queued for 24 minutes while somebody watched "a triagem está
+        demorando mais que o normal". Nothing was red: the worker was healthy,
+        the queue was draining, every test passed. The wake simply was not
+        being sent (`apps/web/lib/jobs/index.ts`), and the only thing that
+        noticed was Sci looking at a spinner.
+
+        "Triage is available anytime" was an opinion until this row existed.
+        `/admin` reads the p95 from it, so the next regression is a number
+        that moves rather than a screenshot somebody happens to take.
+
+        Never fatal: a metric that can stop a queue draining is worse than no
+        metric.
+        """
+        if job.priority > self.USER_WAITING_PRIORITY:
+            return
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "insert into events (name, props) values (%s, %s)",
+                    (
+                        "job_claim_latency",
+                        Jsonb(
+                            {
+                                "kind": job.kind,
+                                "priority": job.priority,
+                                "waited_seconds": round(job.waited_seconds, 3),
+                                "attempt": job.attempts,
+                            }
+                        ),
+                    ),
+                )
+        except Exception:  # noqa: BLE001 - never let a metric break the queue
+            _log.warning("could not record claim latency", exc_info=True)
+
     def execute(self, conn: psycopg.Connection, job: Job) -> str:
         """Run one claimed job and record its outcome. Returns the status."""
+        self._record_wait(conn, job)
         started = time.monotonic()
         base = {
             "consumer": self.name,
