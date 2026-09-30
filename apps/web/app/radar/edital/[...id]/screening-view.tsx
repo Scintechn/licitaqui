@@ -12,6 +12,7 @@ import {
   Tag,
   type TabItem,
 } from '@/components'
+import { ActionBar } from '@/components/action-bar'
 import { MenuTrigger } from '@/components/menu-trigger'
 import { cn } from '@/lib/cn'
 import { accountHref } from '@/lib/routes'
@@ -601,6 +602,25 @@ export function ScreeningView({
           </div>
         ) : null}
       </main>
+
+      {/* D25 (3). The funnel's next step, which on this screen is the price
+          question — the LockedBlock above says the same thing in the same
+          words, and `radar.screening.barPrice` is the price screen's own h1
+          without its question mark (Sci, 2026-09-30). The second slot goes
+          back to the edital, because the reader who wants the Itens or the
+          anexos after reading the triagem has no other way there below `lg`
+          but the AppBar's "Voltar", which is a browser-history word and not a
+          destination.
+
+          Only when the analysis is on screen: a bar offering the next step
+          under "Lendo o edital…" would be offering it before this step has
+          finished. */}
+      {ready ? (
+        <ActionBar
+          primary={{ href: priceHref(tenderId, search), label: page.barPrice }}
+          secondary={{ href: backHref, label: messages.common.tender }}
+        />
+      ) : null}
     </div>
   )
 }

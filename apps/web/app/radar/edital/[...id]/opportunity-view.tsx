@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { ActionBar } from '@/components/action-bar'
+import { ScreeningsLeft } from '@/components/screenings-left'
 import {
   AppBar,
   AppBarBack,
@@ -491,6 +493,9 @@ export function Files({ tender, signupHref }: { tender: TenderDetail; signupHref
  * more than "already on the screen".
  */
 const TAB_PREFIX = 'tender'
+/** The Itens/Documentos block, for the action bar's in-page link. */
+const RECORD_ANCHOR = 'registro'
+
 export type OpportunityTab = 'items' | 'files'
 
 function Record({
@@ -522,7 +527,16 @@ function Record({
   return (
     // `pt-7`: the third topic block, on the same 42px boundary as the pair
     // above it. See the note on that block.
-    <section className="flex flex-col gap-3 pt-7">
+    //
+    // `id` because the action bar's second slot points here (D25 (3)). It is
+    // an in-page anchor and not a route: the Itens and the Documentos are on
+    // this screen already — the reader's problem is that they are past the
+    // fold, which is the same problem the bar exists for. `scroll-mt-4` so
+    // the heading does not land flush against the top of the viewport.
+    // `tabIndex={-1}` so the bar's link moves focus and not only the scroll:
+    // a fragment link on a plain <section> scrolls, and where the keyboard
+    // goes next is then up to the browser.
+    <section id={RECORD_ANCHOR} tabIndex={-1} className="flex scroll-mt-4 flex-col gap-3 pt-7">
       <Tabs items={tabs} active={tab} onSelect={onSelectTab} idPrefix={TAB_PREFIX} />
       {tab === 'items' ? (
         <TabPanel idPrefix={TAB_PREFIX} id="items">
@@ -1031,6 +1045,22 @@ export function OpportunityView({
           ) : null}
         </div>
       </main>
+
+      {/* D25 (3). The same action as the in-page CTA, not a different one:
+          `screeningHref` and the `spent` switch are read from the same two
+          values, so the bar cannot come to say something the button below it
+          does not. The second slot is the record — Sci's ruling, 2026-09-30,
+          with "Itens e Documentos" the words the tabs themselves already use.
+          Favoritar is deliberately not here: it has a home beside the menu in
+          the top bar. */}
+      <ActionBar
+        primary={{
+          href: screeningHref(tender.id, search),
+          label: screening?.spent ? page.screeningCtaRequested : page.screeningCta,
+        }}
+        secondary={{ href: `#${RECORD_ANCHOR}`, label: page.barRecord }}
+        caption={<ScreeningsLeft />}
+      />
     </div>
   )
 }

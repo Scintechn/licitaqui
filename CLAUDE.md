@@ -131,7 +131,11 @@ writes is UTC.
   `app/(public)/fundadores/page.tsx` and the tender screen do, and write the
   arithmetic in the comment. D29 is what this costs when it is missing: two columns
   drawn in 760px between 1024px and ~1164px, from two numbers chosen in different
-  cards that never met. **`radar-view.tsx` still has the same shape** — see D30.
+  cards that never met. D30 was the same defect in `radar-view.tsx` and is fixed. **What that sweep
+  missed is the other spelling**: `min-[Npx]:` was searched and every one of
+  them was safe, but `md:`, `lg:` and `xl:` were not, and `tender-items.tsx`
+  swaps a five-column table for a stacked list at `md:` — 768px of *window* —
+  inside the same shell. That is D32. Search both spellings.
 
 ## Knowledge base and POCs
 

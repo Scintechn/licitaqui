@@ -21,6 +21,7 @@
   "common": {
     "continue": "Continuar",
     "back": "Voltar",
+    "tender": "Edital",
     "cancel": "Cancelar",
     "save": "Salvar",
     "close": "Fechar",
@@ -1058,6 +1059,7 @@
       "systemLink": "Abrir no portal de compras",
       "screeningCta": "Ver triagem por IA",
       "screeningCtaRequested": "Ver a triagem que você pediu",
+      "barRecord": "Itens e Documentos",
       "screeningCost": "Usa 1 das suas triagens.",
       "screeningCostReady": "Este edital já foi lido pela IA. Abrir usa 1 das suas triagens.",
       "tabs": {
@@ -1154,6 +1156,7 @@
       "filesLocked": "Edital e anexos · criar conta",
       "openTender": "Ver o edital no Radar",
       "priceTitle": "Até quanto ofertar com lucro?",
+      "barPrice": "Até quanto ofertar",
       "priceBody": "Faixa dos vencedores e o máximo a pagar ao fornecedor para manter a sua margem · Essencial"
     },
     "price": {
