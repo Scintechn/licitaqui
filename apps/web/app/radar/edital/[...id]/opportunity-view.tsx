@@ -36,6 +36,7 @@ import {
   deadlineTall,
   meEppSummary,
   displayTitle,
+  trimObject,
 } from '@/lib/radar/format'
 import { tenderBudget } from '@/lib/radar/headline'
 import {
@@ -314,12 +315,82 @@ function Operation({ tender }: { tender: TenderDetail }) {
  * becomes a generated short title, this block is unchanged and becomes the
  * only place the real wording lives.
  */
+/**
+ * How much Objeto is shown before the disclosure, in characters.
+ *
+ * Phone-derived, because Sci's 2026-09-29 ruling is mobile first: at
+ * `text-body` in a 390px frame the column takes roughly 45 characters a line,
+ * so this is the "3–4 lines" he asked for. A desktop reader gets fewer lines
+ * from the same budget — the column is wider — and that is the right way round
+ * for a block whose job is to be identified and scrolled past, with the whole
+ * text one keyboard stop away.
+ *
+ * `tender-items.tsx` caps its descriptions at 160 for the same reason. This is
+ * larger because the Objeto is the agency's own statement of what is being
+ * bought, and §2.2 rule 4 wants it read before any reading of ours.
+ */
+const OBJECT_MAX = 240
+
+/**
+ * The Objeto, trimmed with a disclosure — Sci, 2026-09-30: *"settle the Objeto
+ * in 3–4 lines + 'ler tudo'"*.
+ *
+ * ## What this keeps and what it reverses
+ *
+ * Two earlier rulings of his stand and are still pinned: the block sits
+ * **directly after the deadline/value card** (*"The Objeto should be right
+ * after the box with the price"*), and it **spans the full column** — no
+ * `max-w-`, his 2026-09-22 overrule of the 68ch measure.
+ *
+ * It reverses the third: `renders expanded, with no "ler mais" toggle to pay
+ * for`. That test is **inverted, not deleted** — a deleted guard on this
+ * component is exactly how the block's position was silently reverted once
+ * already (`cc4b766`).
+ *
+ * ## `trimObject`, never `line-clamp`
+ *
+ * The same test forbids the clamp, and `format.ts` gives the reason: a clamp
+ * hides that there is more and leaves the whole string in the accessibility
+ * tree, so a screen-reader user hears 500 characters while a sighted one sees
+ * four lines. Real truncation plus a `<details>` is honest in both.
+ *
+ * The shape is `tender-items.tsx`'s, deliberately — one disclosure idiom in
+ * the app. It is a keyboard stop with its expanded state announced, it is
+ * searchable by find-in-page, and it works before React has hydrated.
+ */
 function FullObject({ object }: { object: string }) {
   if (!object.trim()) return null
+
+  // The agency's own line breaks survive in the expanded text; the collapsed
+  // summary is flattened, because a trimmed fragment of a multi-line block
+  // reads as a mistake.
+  const full = object.replace(/[ \t]+/g, ' ').trim()
+  const flat = full.replace(/\s+/g, ' ')
+
   return (
     <section className="flex flex-col gap-2">
       <SectionLabel tone="muted">{page.objectTitle}</SectionLabel>
-      <p className="m-0 text-body leading-loose whitespace-pre-line">{object}</p>
+      {flat.length <= OBJECT_MAX ? (
+        <p className="m-0 text-body leading-loose whitespace-pre-line">{object}</p>
+      ) : (
+        <details className="group">
+          <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <span className="block text-body leading-loose group-open:hidden">
+              {trimObject(flat, OBJECT_MAX)}
+            </span>
+            <span className="flex min-h-touch items-center gap-1.5 text-meta font-medium text-blue">
+              <Icon
+                name="chevronRight"
+                size={14}
+                className="transition-transform group-open:rotate-90"
+              />
+              <span className="group-open:hidden">{page.objectMore}</span>
+              <span className="hidden group-open:inline">{page.objectLess}</span>
+            </span>
+          </summary>
+          <p className="m-0 text-body leading-loose whitespace-pre-line">{full}</p>
+        </details>
+      )}
     </section>
   )
 }
