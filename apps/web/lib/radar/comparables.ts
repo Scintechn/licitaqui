@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 import type { Comparable } from './price-band'
+import { sameProduct } from './product-key'
 import { canonicalUnitSql } from './unit'
 
 /**
@@ -24,6 +25,22 @@ import { canonicalUnitSql } from './unit'
  *   to ~2. That is why only ~1% of items can be priced today, and why **C3**
  *   (a canonical product key) is the card that changes this number. `ncm`
  *   would settle it and is 7.4% populated, so it cannot be the key yet.
+ *
+ *   **and the same product** — `product-key.ts`, added 2026-09-30 because the
+ *   three conditions above are **not sufficient and the band's own gate
+ *   cannot make up the difference**. PNCP descriptions are mostly attribute
+ *   scaffolding, so inside one segment and unit a hole punch scores well
+ *   against a notebook; measured over 103 open items that returned any
+ *   comparables, the median share that were even the same product was **0%**.
+ *   The spread check in `price-band.ts` does not catch it and no threshold on
+ *   it could: cadernos all cost R$ 9–15, so a sample made entirely of them is
+ *   *tighter* than a correct one. See that module for the two items Sci found.
+ *
+ *   It is applied **after** the `LIMIT`, so an item whose 200 closest
+ *   candidates are all the wrong product loses its band even if a right one
+ *   sits at 201. That is the safe direction — a missing band, not a wrong
+ *   price — and the rows are ordered by similarity, so a real match is far
+ *   more likely inside the cap than outside it.
  *
  * ## Cost
  *
@@ -70,6 +87,9 @@ type Row = {
   unit_awarded_value: string | null
   awarded_on: Date | string | null
   tender_id: string
+  /** Both descriptions, because `sameProduct` needs the pair. */
+  subject_description: string | null
+  candidate_description: string | null
 }
 
 /**
@@ -93,7 +113,8 @@ export async function comparablesForItem(
         from tender_items
        where tender_id = ${tenderId} and number = ${itemNumber}
     )
-    select a.unit_awarded_value, a.awarded_on, j.tender_id
+    select a.unit_awarded_value, a.awarded_on, j.tender_id,
+           s.description as subject_description, j.description as candidate_description
       from subject s
       join tender_items j
         on j.segment = s.segment
@@ -118,9 +139,11 @@ export async function comparablesForItem(
      limit ${MAX_COMPARABLES}
   `)
 
-  return found.rows.map((row) => ({
-    unitAwardedValue: Number(row.unit_awarded_value),
-    awardedOn: row.awarded_on === null ? null : new Date(row.awarded_on),
-    tenderId: row.tender_id,
-  }))
+  return found.rows
+    .filter((row) => sameProduct(row.subject_description, row.candidate_description))
+    .map((row) => ({
+      unitAwardedValue: Number(row.unit_awarded_value),
+      awardedOn: row.awarded_on === null ? null : new Date(row.awarded_on),
+      tenderId: row.tender_id,
+    }))
 }
