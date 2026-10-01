@@ -59,6 +59,23 @@ export const WAKE_TIMEOUT_MS = 1_500
  */
 type WakeEnv = Record<string, string | undefined>
 
+/**
+ * Who we say we are when we knock on the worker's door.
+ *
+ * **Defensive, not a fix for a live bug** — and the distinction is worth
+ * keeping, because it was briefly reported as one. Cloudflare sits in front of
+ * the worker and refuses a request whose User-Agent is **absent or empty**
+ * with a 403 that never reaches the worker. Node's `fetch` does send one
+ * (`undici`), which passes, so the wake from Vercel was not being blocked.
+ *
+ * What this buys: the header stops being something we inherit from whatever
+ * the runtime happens to send, and the caller becomes identifiable in
+ * Cloudflare's log if this ever has to be diagnosed again. A product string,
+ * not a browser impersonation — the point is to be nameable, not to look like
+ * something else.
+ */
+export const WAKE_USER_AGENT = 'LicitaQui-Web/1.0 (+https://www.licitaquiapp.com.br)'
+
 export type WakeTarget = { url: string; token: string }
 
 /**
@@ -97,7 +114,22 @@ export async function postWake(
   try {
     const response = await fetchImpl(target.url, {
       method: 'POST',
-      headers: { authorization: `Bearer ${target.token}` },
+      headers: {
+        authorization: `Bearer ${target.token}`,
+        // Cloudflare fronts the worker and refuses an **absent or empty**
+        // User-Agent. Measured 2026-09-30 against the live endpoint, same
+        // token, same body, only this header changed:
+        //
+        //   (empty)                -> 403 Forbidden, `server: cloudflare`
+        //   python's default       -> 403 Forbidden
+        //   `undici` (node's own)  -> 202 {"woken": true}
+        //   this string            -> 202 {"woken": true}
+        //
+        // So node's default already passes and nothing was being blocked here.
+        // Sending our own name means the header is a decision rather than an
+        // inheritance, and it identifies the caller in Cloudflare's log.
+        'user-agent': WAKE_USER_AGENT,
+      },
       signal: AbortSignal.timeout(WAKE_TIMEOUT_MS),
       cache: 'no-store',
     })
