@@ -10,6 +10,10 @@ Exported from the approved "Wireframes LicitaQui" canvas on 2026-09-17. Claude C
 - Tender examples (Campinas batteries, Mário Gatti hospital supplies, Americana SaaS) are real PNCP tenders from 2026-09-16 and match the seed fixtures in `gabaritos/`. "13 dias" is relative to 2026-09-17.
 - Rebuild with React components and the design tokens below; do not copy inline styles.
 - Offer and Landing pages are separate, final HTML files: `../paginas/oferta_fundadores.html` and `../paginas/landing_radar.html`.
+  **`/` departs from `landing_radar.html` in one place on purpose:** the founders
+  strip above the header (*"Fundadores: R$ 57/mês por 3 meses · restam N de M
+  vagas · Ver oferta"*) was removed on Sci's request on 2026-10-01 (#206). Do not
+  port it back. The seat count stays in the Essencial plan card and on `/fundadores`.
 
 ## Design tokens (from `wireframes/DesignSystem.dc.html`)
 
