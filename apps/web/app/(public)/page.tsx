@@ -182,7 +182,7 @@ export default async function LandingPage() {
             <div className="flex flex-col gap-4.5">
               <span className="inline-flex items-center gap-2 self-start rounded-badge bg-blue-soft px-2.5 py-1.5 font-mono text-caption font-medium tracking-[0.06em] text-blue uppercase">
                 <span aria-hidden className="inline-block size-[7px] rounded-pill bg-blue" />
-                {copy.trial}
+                {copy.badge}
               </span>
 
               <h1 className="font-display text-[30px] leading-[1.12] font-semibold tracking-[-0.01em] text-balance min-[900px]:text-[44px]">

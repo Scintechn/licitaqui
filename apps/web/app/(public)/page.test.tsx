@@ -46,7 +46,7 @@ describe('/', () => {
     expect(out).toContain(copy.ufLabel)
     expect(out).toContain(copy.keywordLabel)
     expect(out).toContain(copy.submit)
-    expect(out).toContain(copy.trial)
+    expect(out).toContain(copy.badge)
     expect(out).toContain(copy.sources)
   })
 

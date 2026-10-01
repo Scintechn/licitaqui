@@ -654,7 +654,7 @@
     },
     "landing": {
       "title": "Encontre licitações que fazem sentido para sua empresa.",
-      "subtitle": "Digite o CNPJ e a gente mostra editais que você consegue atender, com o prazo e o que pedem.",
+      "subtitle": "Digite o CNPJ ou uma palavra-chave e a gente mostra editais que você consegue atender, com o prazo e o que pedem.",
       "formLabel": "Buscar editais",
       "cnpjLabel": "CNPJ da empresa",
       "cnpjPlaceholder": "00.000.000/0001-00",
@@ -663,7 +663,7 @@
       "keywordLabel": "Ou procure por palavra-chave (opcional)",
       "keywordPlaceholder": "Ex.: material hospitalar",
       "submit": "Encontrar editais",
-      "trial": "3 dias grátis sem conta · 2 triagens por IA",
+      "badge": "Busca grátis · sem cadastro",
       "sources": "Dados públicos do PNCP e da Receita Federal",
       "todayLabel": "Hoje no Brasil",
       "todayOpen": "editais abertos",
