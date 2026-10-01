@@ -54,31 +54,54 @@ concurrency:
 # above, which is per-branch so a second push to one branch still cancels the
 # first.
 #
-# Five of the twelve database suites have no per-task secret and fall back to
-# the shared `TEST_DATABASE_URL`. Two of those do not scope their rows by a
-# per-run id: `rate-limit.db.test.ts` deletes `bucket like 'rl-db-test:%'` in
-# `beforeEach` — a per-task constant, which is the shape CLAUDE.md names
-# verbatim — and `founders/signup.db.test.ts` asserts a **global**
-# `count(*) from founders_list` is 0. Two runs on one database delete each
-# other's rows mid-test, and the failure names the wrong cause.
+# **The twelve database suites now run against a Postgres container, not Neon.**
 #
-# That was harmless while these suites only ever ran on one laptop, one at a
-# time. Turning them on in CI is what makes two runs concurrent, so this job
-# serialises across every branch until each suite owns its data (**B24**).
-# Queueing costs wall-clock; a suite that fails on somebody else's pull
-# request costs trust, and a pipeline nobody trusts gets ignored.
+# What that fixes, beyond the bill:
+#
+# *B24 is closed by construction.* Five of the twelve had no per-task secret
+# and fell back to the shared `TEST_DATABASE_URL`; two of those did not scope
+# their rows by a per-run id — `rate-limit.db.test.ts` deletes
+# `bucket like 'rl-db-test:%'` in `beforeEach`, a per-task constant, and
+# `founders/signup.db.test.ts` asserts a **global** `count(*) from
+# founders_list` is 0. Two runs on one database deleted each other's rows
+# mid-test and the failure named the wrong cause. This job used to serialise
+# across every branch to avoid it. **Each run now has its own container**, so
+# there is nothing to serialise and the group is gone — pull requests stop
+# queueing behind each other.
+#
+# *B25 cannot happen.* The databases are created and migrated from
+# `db/migrations` on every run, so they cannot drift behind it the way the
+# Neon ones had, three to six migrations deep and silently.
+#
+# *Cost.* The Neon test databases shared the **production** compute, so every
+# run woke the live database and held it awake for the run plus a five-minute
+# tail that cannot be shortened.
+#
+# The suites' own isolation is still worth fixing on its own merits — a test
+# that deletes by a per-task constant is wrong wherever it runs — but it is no
+# longer load-bearing for CI.
 
 jobs:
   quality:
     name: lint · typecheck · test · build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # The repo-wide serialisation the block above the `jobs:` key explains.
-    # Job level, so it is independent of the per-branch workflow group, and
-    # `cancel-in-progress: false` so a waiting run queues instead of losing.
-    concurrency:
-      group: ci-web-shared-database
-      cancel-in-progress: false
+
+    services:
+      postgres:
+        # Matches production: Neon reports `pg_version: 18`.
+        image: postgres:18
+        env:
+          POSTGRES_USER: licitaqui
+          POSTGRES_PASSWORD: licitaqui
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U licitaqui"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
 
     steps:
       - name: Checkout
@@ -122,30 +145,23 @@ jobs:
       #
       # A fork's pull request has no secrets, does not get the flag set to a
       # meaningful value, and keeps skipping: that is the case the skip is for.
+      - name: Create and migrate the test databases
+        env:
+          CI_POSTGRES_URL: postgresql://licitaqui:licitaqui@localhost:5432/postgres
+        run: |
+          python3 -m pip install --quiet "psycopg[binary]"
+          python3 db/ci_databases.py
+          python3 db/ci_databases.py --print >> "$GITHUB_ENV"
+
       - name: Test
         run: pnpm test
         env:
-          # Keyed on **any** of the seven, not on `TEST_DATABASE_URL` alone.
-          # Hanging it on one variable meant that rotating or renaming that one
-          # secret, with the other six still in place, would send all twelve
-          # suites back to skipping silently — and the guard written to catch
-          # exactly that would have reported green. One secret away from the
-          # failure this job exists to close.
-          REQUIRE_TEST_DATABASE: >-
-            ${{ (secrets.TEST_DATABASE_URL != ''
-              || secrets.TEST_DATABASE_URL_B2 != ''
-              || secrets.TEST_DATABASE_URL_D3 != ''
-              || secrets.TEST_DATABASE_URL_E1 != ''
-              || secrets.TEST_DATABASE_URL_FH != ''
-              || secrets.TEST_DATABASE_URL_O1 != ''
-              || secrets.TEST_DATABASE_URL_R1 != '') && '1' || '0' }}
-          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-          TEST_DATABASE_URL_B2: ${{ secrets.TEST_DATABASE_URL_B2 }}
-          TEST_DATABASE_URL_D3: ${{ secrets.TEST_DATABASE_URL_D3 }}
-          TEST_DATABASE_URL_E1: ${{ secrets.TEST_DATABASE_URL_E1 }}
-          TEST_DATABASE_URL_FH: ${{ secrets.TEST_DATABASE_URL_FH }}
-          TEST_DATABASE_URL_O1: ${{ secrets.TEST_DATABASE_URL_O1 }}
-          TEST_DATABASE_URL_R1: ${{ secrets.TEST_DATABASE_URL_R1 }}
+          # The container is always there, so a skip is always a defect
+          # rather than a missing secret. This used to be keyed on whether any
+          # of seven Neon secrets existed, because rotating one of them would
+          # have sent all twelve suites back to skipping silently while the
+          # guard reported green.
+          REQUIRE_TEST_DATABASE: '1'
 
       - name: Build
         run: pnpm build
