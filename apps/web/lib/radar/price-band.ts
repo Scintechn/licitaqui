@@ -37,6 +37,13 @@ export type Comparable = {
   /** When it was awarded, for the recency bound. */
   awardedOn: Date | null
   /**
+   * The awarded item's own description (E22).
+   *
+   * Optional because the band never needed it: five editais and a tight spread
+   * were the argument. A thin rung has neither, so it shows this instead.
+   */
+  description?: string | null
+  /**
    * Which edital it came from. Carried so the sample floor can count
    * **editais**, not rows — see {@link MIN_SAMPLE}.
    */
@@ -99,6 +106,122 @@ function percentile(sorted: readonly number[], fraction: number): number {
   const upper = Math.ceil(position)
   if (lower === upper) return sorted[lower]
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower)
+}
+
+/**
+ * One past result, as the thin rungs print it (E22).
+ *
+ * `description` is the awarded item's own words, and it is the whole point: at
+ * one or two editais nothing checks the product-identity heuristic, so the
+ * screen hands the reader what it matched instead of asserting that it matched
+ * correctly.
+ */
+export type PriceSample = {
+  tenderId: string
+  value: number
+  description: string | null
+}
+
+/**
+ * What a past winner is worth saying when there is not enough for a band.
+ *
+ * ## Why this exists
+ *
+ * Measured 2026-10-01 over 600 open items, after the awards backfill took the
+ * priced corpus from 5 408 to 23 448: **11.17%** have at least one past winner
+ * of the same product, 4.83% have two or more — and **0.67%** show a band.
+ * {@link priceBand} returns `null` below {@link MIN_SAMPLE} and the count goes
+ * with it, so the screen could not tell *"one winner"* from *"nothing"* and
+ * said nothing to 94% of the items it had evidence for.
+ *
+ * ## What it may say, and what it may not
+ *
+ * Counts, the individual prices, and what each one was. **Never a median, a
+ * quartile or a preço-alvo** — those belong to the band, and the band is
+ * earned by five independent editais and a spread the gate checked. A single
+ * result with a median drawn through it is a confident-looking number with
+ * nothing behind it.
+ *
+ * `range` is `null` at one edital for the same reason: a low and a high drawn
+ * through one price reads as two sources agreeing, and there is one.
+ *
+ * ## Free at every rung
+ *
+ * Sci's ruling, 2026-10-01: **raw evidence free, computation paid**. The
+ * matched results are public PNCP records of closed tenders; the band and the
+ * preço-alvo are the work. Drawn that way the ladder is monotonic — the
+ * alternative, free below five and locked at five, would show a non-subscriber
+ * *less* at four editais than at three.
+ */
+export type PriceEvidence = {
+  /** Distinct editais, counted the way {@link PriceBand.sampleSize} is. */
+  editais: number
+  /** `null` at a single edital — see above. */
+  range: { low: number; high: number } | null
+  /** One per edital, newest first, capped by {@link MAX_SAMPLES_SHOWN}. */
+  samples: PriceSample[]
+}
+
+/**
+ * How many matched results a thin rung prints.
+ *
+ * Four, because that is the most a rung below {@link MIN_SAMPLE} can hold, so
+ * the cap never truncates the rungs it exists for. At or above the floor the
+ * band speaks and this list is context rather than the argument.
+ */
+export const MAX_SAMPLES_SHOWN = 4
+
+export function priceEvidence(
+  comparables: readonly Comparable[],
+  now = new Date(),
+): PriceEvidence | null {
+  const cutoff = new Date(now)
+  cutoff.setMonth(cutoff.getMonth() - MAX_AGE_MONTHS)
+
+  // The band's own freshness and sanity filter, so a price it refused cannot
+  // reappear on a thinner rung with less around it to judge by.
+  const fresh = comparables.filter(
+    (c) =>
+      (c.awardedOn === null || c.awardedOn >= cutoff) &&
+      Number.isFinite(c.unitAwardedValue) &&
+      c.unitAwardedValue > 0,
+  )
+  if (fresh.length === 0) return null
+
+  // One price per edital. A registro de preços split into 40 lots is one
+  // decision, and printing it 40 times would be this rung's version of the
+  // defect `priceBand`'s own comment describes.
+  const byEdital = new Map<string, { value: number; description: string | null; at: Date | null }[]>()
+  for (const item of fresh) {
+    const rows = byEdital.get(item.tenderId) ?? []
+    rows.push({ value: item.unitAwardedValue, description: item.description ?? null, at: item.awardedOn })
+    byEdital.set(item.tenderId, rows)
+  }
+
+  const perEdital = [...byEdital.entries()].map(([tenderId, rows]) => {
+    const sorted = [...rows].sort((a, b) => a.value - b.value)
+    return {
+      tenderId,
+      value: percentile(sorted.map((r) => r.value), 0.5),
+      // The middle row's words, so the description belongs to the price shown.
+      description: sorted[Math.floor((sorted.length - 1) / 2)].description,
+      at: rows.reduce<Date | null>((newest, r) => (r.at && (!newest || r.at > newest) ? r.at : newest), null),
+    }
+  })
+
+  const values = perEdital.map((e) => e.value).sort((a, b) => a - b)
+  const samples = [...perEdital]
+    // Newest first: the most recent closing is the most useful single data
+    // point, and an edital with no date sorts last rather than first.
+    .sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0))
+    .slice(0, MAX_SAMPLES_SHOWN)
+    .map(({ tenderId, value, description }) => ({ tenderId, value, description }))
+
+  return {
+    editais: perEdital.length,
+    range: perEdital.length < 2 ? null : { low: values[0], high: values[values.length - 1] },
+    samples,
+  }
 }
 
 /**

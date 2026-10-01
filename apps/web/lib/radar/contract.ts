@@ -1,4 +1,4 @@
-import type { PriceBand } from './price-band'
+import type { PriceBand, PriceEvidence } from './price-band'
 
 /**
  * The wire contract of the Radar routes (spec §8).
@@ -233,6 +233,21 @@ export type BandResponse =
   | {
       state: 'ready'
       band: PriceBand | null
+      /**
+       * What was found when it was not enough for a band (E22).
+       *
+       * **Free at every rung, and that is deliberate.** Sci's ruling,
+       * 2026-10-01: raw evidence free, computation paid. The matched results
+       * are public PNCP records of closed tenders; the band's quartiles and
+       * the preço-alvo are the work. It rides on `locked` as well, so the
+       * ladder is monotonic — gating it at five and not below would show a
+       * non-subscriber *less* at four editais than at three.
+       *
+       * Present whenever any comparable survives, including alongside a band:
+       * at five editais it is the context, and below five it is the whole
+       * message.
+       */
+      evidence: PriceEvidence | null
       /*
        * **There is deliberately no `entitled` here.**
        *
@@ -260,7 +275,11 @@ export type BandResponse =
    * something that is not there, or tell a visitor nothing is there when the
    * truth is that they have not paid for it.
    */
-  | { state: 'locked' }
+  | {
+      state: 'locked'
+      /** Free at every rung — see `evidence` on `ready`. */
+      evidence: PriceEvidence | null
+    }
   | { state: 'error'; error: ErrorCode; fields?: Record<string, string> }
 
 export type TenderDetail = TenderCard & {

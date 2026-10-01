@@ -4,6 +4,7 @@ import {
   MAX_SPREAD,
   MIN_SAMPLE,
   priceBand,
+  priceEvidence,
   targetPurchasePrice,
   type Comparable,
 } from './price-band'
@@ -172,5 +173,116 @@ describe('targetPurchasePrice', () => {
     expect(targetPurchasePrice(band, 100)).toBeNull()
     expect(targetPurchasePrice(band, -1)).toBeNull()
     expect(targetPurchasePrice(band, Number.NaN)).toBeNull()
+  })
+})
+
+/**
+ * E22 — the rungs below the band.
+ *
+ * Measured 2026-10-01 over 600 open items: 11.17% have at least one past
+ * winner of the same product and 0.67% show a band, because everything under
+ * `MIN_SAMPLE` was discarded along with its count. These assert what a thin
+ * rung may say — and, more importantly, what it may not.
+ */
+describe('priceEvidence', () => {
+  const at = (iso: string) => new Date(iso)
+  const NOW = new Date('2026-10-01T00:00:00.000Z')
+  const one = (
+    tenderId: string,
+    value: number,
+    description: string | null = 'Perfurador Papel material: ferro fundido',
+    awardedOn: Date | null = at('2026-06-01T00:00:00.000Z'),
+  ): Comparable => ({ tenderId, unitAwardedValue: value, awardedOn, description })
+
+  it('says nothing when there is nothing', () => {
+    expect(priceEvidence([], NOW)).toBeNull()
+  })
+
+  /**
+   * A low and a high drawn through one price reads as two sources agreeing,
+   * and there is one.
+   */
+  it('shows a single result as a result, never as a range', () => {
+    const found = priceEvidence([one('a', 204)], NOW)
+    expect(found).toMatchObject({ editais: 1, range: null })
+    expect(found?.samples).toHaveLength(1)
+    expect(found?.samples[0].value).toBe(204)
+  })
+
+  it('carries what was matched, which is the point of a thin rung', () => {
+    // Nothing checks the product-identity heuristic at one edital — no spread,
+    // nothing to outvote a wrong match — so the screen hands the reader the
+    // description instead of asserting the match was right.
+    const found = priceEvidence(
+      [one('a', 204, 'PERFURADOR DE PAPEL 02 FUROS AÇO FUNDIDO 100 FOLHAS')],
+      NOW,
+    )
+    expect(found?.samples[0].description).toBe('PERFURADOR DE PAPEL 02 FUROS AÇO FUNDIDO 100 FOLHAS')
+  })
+
+  it('ranges across editais once there is more than one', () => {
+    const found = priceEvidence([one('a', 204), one('b', 180), one('c', 230)], NOW)
+    expect(found).toMatchObject({ editais: 3, range: { low: 180, high: 230 } })
+  })
+
+  /**
+   * One edital's lots are one decision. Counting rows would let a registro de
+   * preços split into 40 lots read as 40 agreeing sources — the defect
+   * `priceBand`'s own comment describes, one rung down.
+   */
+  it('counts editais, never rows', () => {
+    const lots = Array.from({ length: 40 }, () => one('a', 1.2))
+    const found = priceEvidence([...lots, one('b', 2.4)], NOW)
+    expect(found?.editais).toBe(2)
+    expect(found?.samples).toHaveLength(2)
+  })
+
+  it('applies the band’s freshness rule, so nothing it refused appears here', () => {
+    const stale = one('old', 999, 'antigo', at('2024-01-01T00:00:00.000Z'))
+    const found = priceEvidence([stale, one('a', 204)], NOW)
+    expect(found?.editais).toBe(1)
+    expect(found?.samples[0].value).toBe(204)
+  })
+
+  it('refuses a value the band would refuse', () => {
+    expect(priceEvidence([one('a', 0), one('b', -5)], NOW)).toBeNull()
+  })
+
+  it('shows the newest results first, and caps them', () => {
+    const found = priceEvidence(
+      [
+        one('a', 1, 'um', at('2026-01-01T00:00:00.000Z')),
+        one('b', 2, 'dois', at('2026-05-01T00:00:00.000Z')),
+        one('c', 3, 'três', at('2026-09-01T00:00:00.000Z')),
+        one('d', 4, 'quatro', at('2026-08-01T00:00:00.000Z')),
+        one('e', 5, 'cinco', at('2026-07-01T00:00:00.000Z')),
+      ],
+      NOW,
+    )
+    expect(found?.editais).toBe(5)
+    expect(found?.samples.map((s) => s.description)).toEqual(['três', 'quatro', 'cinco', 'dois'])
+  })
+
+  /**
+   * The rung is **not** a weaker band. A median, a quartile or a preço-alvo is
+   * earned by five independent editais and a spread the gate checked, and a
+   * thin rung has neither.
+   */
+  it('exposes no median, quartile or target price', () => {
+    const found = priceEvidence([one('a', 204), one('b', 180)], NOW) as unknown as Record<string, unknown>
+    for (const forbidden of ['median', 'low', 'high', 'sampleSize', 'target']) {
+      expect(Object.keys(found), forbidden).not.toContain(forbidden)
+    }
+  })
+
+  /**
+   * **Monotonic with the band**: anything the band accepts, the evidence also
+   * describes. The ladder would be incoherent if a stronger rung existed where
+   * a weaker one said nothing.
+   */
+  it('always has something to say wherever the band does', () => {
+    const five = ['a', 'b', 'c', 'd', 'e'].map((t, i) => one(t, 200 + i))
+    expect(priceBand(five, NOW)).not.toBeNull()
+    expect(priceEvidence(five, NOW)?.editais).toBe(5)
   })
 })

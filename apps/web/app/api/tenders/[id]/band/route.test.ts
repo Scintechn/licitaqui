@@ -130,13 +130,47 @@ describe('GET /api/tenders/:id/band', () => {
   })
 
   it('never hands an unentitled caller the band itself', async () => {
-    // Computing first must not leak: the figure is gone from the payload, not
+    // Computing first must not leak: the figures are gone from the payload, not
     // merely hidden by the client.
+    //
+    // **This assertion was narrowed by E22, and the narrowing is a decision.**
+    // It used to be `not.toContain('100')` over the whole payload — no price,
+    // anywhere, for an unentitled caller. E22's ladder sends the matched
+    // results at every rung (Sci, 2026-10-01: raw evidence free, computation
+    // paid), so the raw value *does* appear now and that blanket assertion
+    // would have to fail for the ladder to work at all.
+    //
+    // So the rule it pins is the one that still holds: the **computation** is
+    // what Essencial buys. No median, no quartile, no sampleSize, no
+    // preço-alvo. A visitor may see that six editais closed and at what — the
+    // public record — and may not see the number drawn through them.
     comparablesForItem.mockResolvedValueOnce(priced(6))
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
 
-    expect(JSON.stringify(body)).not.toContain('100')
+    expect(body.state).toBe('locked')
+    expect(body).not.toHaveProperty('band')
+    // Asserted as **structure**, not as a substring of the payload: `low` and
+    // `high` are also the evidence range's own field names, so a string search
+    // for them fails on a correct answer. The band-exclusive figures are the
+    // median, the quartile pair drawn through the sample, and the sample size.
+    expect(Object.keys(body).sort()).toEqual(['evidence', 'state'])
+    for (const field of ['median', 'sampleSize', 'targetPurchasePrice']) {
+      expect(JSON.stringify(body)).not.toContain(field)
+    }
+  })
+
+  it('hands an unentitled caller the evidence — the ladder is free at every rung', async () => {
+    // **The monotonicity the ladder rests on.** Withholding evidence behind the
+    // gate would show a visitor the matched results at four editais and nothing
+    // at five: crossing the threshold that makes the data *better* would make
+    // the screen emptier. Sci's ruling, 2026-10-01.
+    comparablesForItem.mockResolvedValueOnce(priced(6))
+    planOf.mockReturnValueOnce('visitor')
+    const body = await (await call()).json()
+
+    expect(body.evidence.editais).toBe(6)
+    expect(body.evidence.samples).toHaveLength(4)
   })
 
   it.each(['visitor', 'basico'])('locks %s when a band exists', async (plan) => {

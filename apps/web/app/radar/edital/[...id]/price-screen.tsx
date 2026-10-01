@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { getBand, getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
 import type { BandResponse, TenderDetail, TenderResponse } from '@/lib/radar/contract'
-import type { PriceBand } from '@/lib/radar/price-band'
+import type { PriceBand, PriceEvidence } from '@/lib/radar/price-band'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
 import { chooseItem, PriceView, type PriceStatus } from './price-view'
@@ -26,8 +26,19 @@ function aborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-/** What the screen holds after one band answer. Exported for its test. */
-export type BandState = { band: PriceBand | null; locked: boolean }
+/**
+ * What the screen holds after one band answer. Exported for its test.
+ *
+ * `evidence` (E22) rides beside the band rather than inside it, because the two
+ * answer different questions and are independently present: an item can have
+ * evidence and no band (the common case — 11.17% against 0.67%, measured
+ * 2026-10-01), or a band the reader may not see *and* the evidence under it.
+ */
+export type BandState = {
+  band: PriceBand | null
+  locked: boolean
+  evidence: PriceEvidence | null
+}
 
 /**
  * A `BandResponse` as the screen stores it.
@@ -46,10 +57,15 @@ export type BandState = { band: PriceBand | null; locked: boolean }
  */
 export function bandStateFrom(answer: BandResponse): BandState {
   if (answer.state === 'ready') {
-    return { band: answer.band, locked: false }
+    return { band: answer.band, locked: false, evidence: answer.evidence }
   }
   if (answer.state === 'locked') {
-    return { band: null, locked: true }
+    // **The evidence survives the lock.** Sci's ruling, 2026-10-01: raw
+    // evidence free, computation paid. Dropping it here is the client-side
+    // version of the defect the route's own comment describes — the ladder
+    // would go backwards at five editais, showing a visitor less the moment the
+    // data got good enough to be worth paying for.
+    return { band: null, locked: true, evidence: answer.evidence }
   }
   // `envelope()` does not throw on a non-2xx — it parses the body — so a 429
   // or a 500 arrives here as `state: 'error'`. Falling through left `loaded`
@@ -59,7 +75,7 @@ export function bandStateFrom(answer: BandResponse): BandState {
   // no retry on this path. A failure must degrade to the honest empty card,
   // never to an advertisement for the plan they already bought.
   //
-  return { band: null, locked: false }
+  return { band: null, locked: false, evidence: null }
 }
 
 export function PriceScreen({ id, entitled }: { id: string; entitled: boolean }) {
