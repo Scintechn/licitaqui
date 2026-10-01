@@ -118,6 +118,28 @@ export type Unavailable = {
 
 export type UsageMetric = Measured | NotConfigured | Pending | Unavailable
 
+/**
+ * How long people waited for a job they were watching — card **B30**.
+ *
+ * Written by the worker at claim time (`consumer._record_wait`), one row per
+ * priority-1 job. **The promise this measures**: Sci, 2026-09-30 — *"The user
+ * could request the triage anytime, and this must be available."*
+ *
+ * Until this existed that was an opinion. It became a number because the day
+ * it broke, nothing was red: the worker was healthy, the queue was draining,
+ * every test passed, and two triagens sat queued for 24 minutes while somebody
+ * watched a spinner.
+ */
+export type ClaimLatency = {
+  /** Jobs measured in the window. `0` means nobody asked, not that it is fast. */
+  samples: number
+  /** Seconds, 95th percentile. The number the promise lives or dies on. */
+  p95: number | null
+  median: number | null
+  worst: number | null
+  windowDays: number
+}
+
 /** What `neon_usage` (worker, card B27) last wrote. */
 export type AwakeReading = {
   measuredAt: Date
@@ -146,6 +168,8 @@ export type NeonUsage = {
   plan: string
   /** The worker's last reading of the compute operations log. */
   awake: AwakeReading | null
+  /** How long people waited for a job they were watching (B30). */
+  latency: ClaimLatency | null
 }
 
 /** A measurement with a ceiling — the shape the card can draw a bar for. */
@@ -227,6 +251,46 @@ export async function readAwake(database: Executor = db()): Promise<AwakeReading
   }
 }
 
+/**
+ * The p95 wait for a user-waiting job, over the last week.
+ *
+ * Percentile in SQL rather than pulling every row: the population is small by
+ * design (priority-1 only), but it grows with usage and this screen must not.
+ */
+export async function readClaimLatency(
+  database: Executor = db(),
+  windowDays = 7,
+): Promise<ClaimLatency | null> {
+  const { rows } = await database.execute<{
+    samples: string
+    p95: number | null
+    median: number | null
+    worst: number | null
+  }>(sql`
+    select count(*)::text as samples,
+           percentile_cont(0.95) within group (
+             order by (props->>'waited_seconds')::numeric) as p95,
+           percentile_cont(0.5) within group (
+             order by (props->>'waited_seconds')::numeric) as median,
+           max((props->>'waited_seconds')::numeric) as worst
+      from events
+     where name = 'job_claim_latency'
+       and created_at > now() - make_interval(days => ${windowDays})
+       and props ? 'waited_seconds'
+  `)
+  const row = rows[0]
+  if (!row) return null
+  const num = (value: unknown): number | null =>
+    value === null || value === undefined ? null : Number(value)
+  return {
+    samples: Number(row.samples ?? 0),
+    p95: num(row.p95),
+    median: num(row.median),
+    worst: num(row.worst),
+    windowDays,
+  }
+}
+
 export async function readNeonUsage(
   database: Executor = db(),
   env: Record<string, string | undefined> = process.env,
@@ -252,6 +316,13 @@ export async function readNeonUsage(
     ? { state: 'pending', limit: null, writtenBy: 'neon_consumption (B27)' }
     : { state: 'not_configured', limit: null, missing: missingNeonVars(env) }
 
+  let latency: ClaimLatency | null = null
+  try {
+    latency = await readClaimLatency(database)
+  } catch {
+    // Same rule as below: the card renders without it.
+  }
+
   let awake: AwakeReading | null = null
   try {
     awake = await readAwake(database)
@@ -274,6 +345,7 @@ export async function readNeonUsage(
     computeHours: fromApi,
     plan: PLAN_NAME,
     awake,
+    latency,
   }
 }
 

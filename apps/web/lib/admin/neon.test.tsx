@@ -43,6 +43,7 @@ function usage(overrides: Partial<NeonUsage> = {}): NeonUsage {
     computeHours: { state: 'pending', limit: null, writtenBy: 'neon_consumption (B27)' },
     plan: PLAN_NAME,
     awake: null,
+    latency: null,
     ...overrides,
   }
 }
@@ -230,5 +231,40 @@ describe('the awake block — card B27', () => {
     expect(
       renderToStaticMarkup(<UsageCard usage={usage({ awake: { ...reading, awakeNow: false } })} />),
     ).toContain('suspenso')
+  })
+})
+
+describe('the wait a person actually feels — card B30', () => {
+  const fast = { samples: 12, p95: 0.6, median: 0.4, worst: 1.9, windowDays: 7 }
+
+  it('shows the p95, because that is the promise', () => {
+    const html = renderToStaticMarkup(<UsageCard usage={usage({ latency: fast })} />)
+    expect(html).toContain('0,6 s')
+    expect(html).toContain('12 pedidos')
+    expect(html).not.toContain('acima de')
+  })
+
+  it('goes red when people start waiting', () => {
+    // 30/09: two triagens queued 24 minutes while everything else looked fine.
+    const slow = { ...fast, p95: 1460, worst: 1477 }
+    const html = renderToStaticMarkup(<UsageCard usage={usage({ latency: slow })} />)
+    expect(html).toContain('acima de 30 s')
+  })
+
+  it('does not read an empty window as "fast"', () => {
+    // The trap this whole card was rebuilt to avoid: a missing measurement
+    // rendering as a reassuring one.
+    const html = renderToStaticMarkup(
+      <UsageCard usage={usage({ latency: { ...fast, samples: 0, p95: null } })} />,
+    )
+    expect(html).toContain('Ninguém pediu triagem')
+    expect(html).toContain('não quer dizer que está rápido')
+    expect(html).not.toContain('acima de')
+  })
+
+  it('says so when no job has recorded a wait yet', () => {
+    expect(renderToStaticMarkup(<UsageCard usage={usage({ latency: null })} />)).toContain(
+      'Nenhuma leitura ainda',
+    )
   })
 })
