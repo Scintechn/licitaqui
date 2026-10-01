@@ -18,7 +18,18 @@ import pytest
 from licitaqui import neon_usage
 from licitaqui.neon_usage import SUSPEND_TAIL_SECONDS, NeonUnavailable, awake_windows
 
-NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
+#: **Relative to the real clock, never a fixed date.**
+#:
+#: This was `datetime(2026, 9, 30, 12, 0)`. It passed on 30/09 and failed on
+#: 01/10 with `assert 0 == 1`, because `neon_usage` computes its own window
+#: from `datetime.now(UTC)` — so a fixture dated yesterday fell outside it and
+#: every awake window vanished.
+#:
+#: That is **B23**, which was fixed for the radar fixtures two days earlier by
+#: re-dating them from a captured instant. Writing a fresh instance of it in a
+#: new file is how a defect survives being fixed: the lesson lived in
+#: `lib/radar/fixtures.ts` and not in anybody's hands.
+NOW = datetime.now(UTC).replace(microsecond=0)
 
 
 def op(action: str, minutes_ago: int) -> dict[str, Any]:
@@ -184,3 +195,24 @@ def test_it_is_scheduled_on_the_reconcile_wake_and_not_its_own(
         "a five-minute tail to measure five-minute tails"
     )
     assert mine.every_seconds is None
+
+
+def test_the_fixtures_are_dated_from_the_real_clock():
+    """**B23, guarded rather than remembered.**
+
+    `NOW` was a constant: `datetime(2026, 9, 30, 12, 0)`. The suite passed on
+    30/09 and failed on 01/10 with `assert 0 == 1`, because `neon_usage`
+    computes its window from `datetime.now(UTC)` — a fixture dated yesterday
+    fell outside it and every awake window disappeared.
+
+    The same defect had been fixed two days earlier in `lib/radar/fixtures.ts`,
+    where twenty tenders expired with the calendar. Fixing it there did not
+    stop it being written here, which is what this assertion is for: a future
+    edit back to a literal date fails now instead of on whatever morning the
+    window moves past it.
+    """
+    drift = abs((datetime.now(UTC) - NOW).total_seconds())
+    assert drift < 300, (
+        "NOW must be derived from the real clock, not a literal date — "
+        "a dated fixture passes until the window moves past it (B23)"
+    )
