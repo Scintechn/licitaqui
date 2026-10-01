@@ -118,6 +118,16 @@ function percentile(sorted: readonly number[], fraction: number): number {
  */
 export type PriceSample = {
   tenderId: string
+  /**
+   * **A price somebody actually closed at** — never a statistic.
+   *
+   * This started as the median of the edital's own rows, which interpolates on
+   * an even count: two lots at R$ 10 and R$ 20 printed *R$ 15,00*, a figure
+   * nobody awarded, attributed to a `tenderId` where the reader can look it up
+   * and not find it. {@link priceBand} may interpolate because it never prints
+   * the intermediate; this rung is a citation, not a statistic, so it picks a
+   * real row and shows that row's own words.
+   */
   value: number
   description: string | null
 }
@@ -142,8 +152,28 @@ export type PriceSample = {
  * result with a median drawn through it is a confident-looking number with
  * nothing behind it.
  *
- * `range` is `null` at one edital for the same reason: a low and a high drawn
- * through one price reads as two sources agreeing, and there is one.
+ * ## There is deliberately no range
+ *
+ * A `{low, high}` over the matched editais was here and was removed on
+ * 2026-10-01, for three independent reasons found in one review:
+ *
+ * 1. **Its extremes could be invisible.** `samples` is capped at
+ *    {@link MAX_SAMPLES_SHOWN} and sorted newest-first, and an award with no
+ *    date sorts last, so the row driving the low was routinely the one the cap
+ *    dropped. A reader was shown *"R$ 1,00 – R$ 210,00 · 5 editais"* with the
+ *    R$ 1,00 row absent from the list and of unknown age — a span they could
+ *    not check, which is the shape this rung exists to avoid.
+ * 2. **It inherited none of {@link MAX_SPREAD}.** `priceBand` refuses an
+ *    incoherent sample outright; the range drew one anyway. A caderno at
+ *    R$ 9,50 beside a notebook at R$ 3 000 produced a range rather than
+ *    silence, which is exactly the wrong-product failure the product gate was
+ *    added for.
+ * 3. **It handed back the paid band.** Together with the four sampled values it
+ *    reconstructed the whole per-edital set at five editais, and `priceBand`
+ *    over that set returns the real `low`, `median` and `high` to the cent.
+ *
+ * The printed samples carry the span instead, where every number has an edital
+ * and a description beside it. Anything the reader is told, they can check.
  *
  * ## Free at every rung
  *
@@ -156,8 +186,6 @@ export type PriceSample = {
 export type PriceEvidence = {
   /** Distinct editais, counted the way {@link PriceBand.sampleSize} is. */
   editais: number
-  /** `null` at a single edital — see above. */
-  range: { low: number; high: number } | null
   /** One per edital, newest first, capped by {@link MAX_SAMPLES_SHOWN}. */
   samples: PriceSample[]
 }
@@ -198,18 +226,27 @@ export function priceEvidence(
     byEdital.set(item.tenderId, rows)
   }
 
+  // **One real row stands for the edital, chosen rather than computed.**
+  //
+  // `priceBand` takes each edital's median and may interpolate, because it only
+  // ever publishes the quartiles drawn across editais. Here the number is
+  // printed beside a `tenderId` and a description, so an interpolated R$ 15,00
+  // between lots of R$ 10 and R$ 20 would be a price nobody awarded, cited to
+  // an edital that does not contain it — and `description` would come from a
+  // third row. The lower-middle row by value is the same choice, made among
+  // rows that exist.
   const perEdital = [...byEdital.entries()].map(([tenderId, rows]) => {
     const sorted = [...rows].sort((a, b) => a.value - b.value)
+    const chosen = sorted[Math.floor((sorted.length - 1) / 2)]
     return {
       tenderId,
-      value: percentile(sorted.map((r) => r.value), 0.5),
-      // The middle row's words, so the description belongs to the price shown.
-      description: sorted[Math.floor((sorted.length - 1) / 2)].description,
+      value: chosen.value,
+      // The chosen row's own words, so the description belongs to this price.
+      description: chosen.description,
       at: rows.reduce<Date | null>((newest, r) => (r.at && (!newest || r.at > newest) ? r.at : newest), null),
     }
   })
 
-  const values = perEdital.map((e) => e.value).sort((a, b) => a - b)
   const samples = [...perEdital]
     // Newest first: the most recent closing is the most useful single data
     // point, and an edital with no date sorts last rather than first.
@@ -217,11 +254,7 @@ export function priceEvidence(
     .slice(0, MAX_SAMPLES_SHOWN)
     .map(({ tenderId, value, description }) => ({ tenderId, value, description }))
 
-  return {
-    editais: perEdital.length,
-    range: perEdital.length < 2 ? null : { low: values[0], high: values[values.length - 1] },
-    samples,
-  }
+  return { editais: perEdital.length, samples }
 }
 
 /**

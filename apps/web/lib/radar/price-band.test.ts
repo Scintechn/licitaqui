@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_AGE_MONTHS,
+  MAX_SAMPLES_SHOWN,
   MAX_SPREAD,
   MIN_SAMPLE,
   priceBand,
@@ -204,7 +205,7 @@ describe('priceEvidence', () => {
    */
   it('shows a single result as a result, never as a range', () => {
     const found = priceEvidence([one('a', 204)], NOW)
-    expect(found).toMatchObject({ editais: 1, range: null })
+    expect(found?.editais).toBe(1)
     expect(found?.samples).toHaveLength(1)
     expect(found?.samples[0].value).toBe(204)
   })
@@ -220,9 +221,49 @@ describe('priceEvidence', () => {
     expect(found?.samples[0].description).toBe('PERFURADOR DE PAPEL 02 FUROS AÇO FUNDIDO 100 FOLHAS')
   })
 
-  it('ranges across editais once there is more than one', () => {
+  it('draws no range, at any width — the printed results carry the span', () => {
+    // **Removed on 2026-10-01, and this test is the guard against it coming
+    // back.** A `{low, high}` here had no `MAX_SPREAD` behind it and its
+    // extremes could be invisible: `samples` is capped and sorted newest-first,
+    // so the row driving the low was routinely the one the cap dropped, and the
+    // reader was shown a span containing a number that was not in the list.
     const found = priceEvidence([one('a', 204), one('b', 180), one('c', 230)], NOW)
-    expect(found).toMatchObject({ editais: 3, range: { low: 180, high: 230 } })
+    expect(found?.editais).toBe(3)
+    expect(found).not.toHaveProperty('range')
+    // Every number the reader is shown has an edital beside it.
+    expect(found?.samples.map((s) => s.value).sort((x, y) => x - y)).toEqual([180, 204, 230])
+  })
+
+  it('never shows a span whose extreme is not in the list', () => {
+    // The concrete failure the range caused. An award with no date sorts last
+    // and is the first thing the cap drops, so a R$ 1,00 row set the low of a
+    // span while being absent from every result printed under it.
+    const undated = { ...one('z', 1), awardedOn: null }
+    const found = priceEvidence(
+      [undated, one('a', 180), one('b', 190), one('c', 200), one('d', 210)],
+      NOW,
+    )
+    expect(found?.editais).toBe(5)
+    expect(found?.samples).toHaveLength(MAX_SAMPLES_SHOWN)
+    expect(found?.samples.some((s) => s.value === 1)).toBe(false)
+    // Nothing in the payload mentions the R$ 1,00 the reader cannot see.
+    expect(JSON.stringify(found)).not.toContain('"value":1,')
+  })
+
+  it('refuses to describe a span across products the band would refuse', () => {
+    // The wrong-product failure (CLAIMS row 85): a caderno beside a notebook.
+    // `priceBand` refuses it outright; a range would have drawn R$ 9,50 –
+    // R$ 3 000 anyway. Now the two prices stand on their own rows with their
+    // own descriptions, which is what lets the reader see the mismatch.
+    const found = priceEvidence(
+      [one('a', 9.5, 'CADERNO BROCHURA 80 FOLHAS'), one('b', 3000, 'NOTEBOOK I5 8GB 256GB SSD')],
+      NOW,
+    )
+    expect(found).not.toHaveProperty('range')
+    expect(found?.samples.map((s) => s.description)).toEqual([
+      'CADERNO BROCHURA 80 FOLHAS',
+      'NOTEBOOK I5 8GB 256GB SSD',
+    ])
   })
 
   /**
@@ -269,10 +310,55 @@ describe('priceEvidence', () => {
    * thin rung has neither.
    */
   it('exposes no median, quartile or target price', () => {
-    const found = priceEvidence([one('a', 204), one('b', 180)], NOW) as unknown as Record<string, unknown>
-    for (const forbidden of ['median', 'low', 'high', 'sampleSize', 'target']) {
-      expect(Object.keys(found), forbidden).not.toContain(forbidden)
-    }
+    // **Asserted as the exact key set, not as a list of absent names.** The
+    // earlier version looped over `['median','low','high','sampleSize','target']`
+    // against `Object.keys` — field names the type makes unreachable, so it
+    // could not fail, while `range.low` and `range.high` existed one level
+    // down. An exhaustive key set is the assertion that actually constrains
+    // what a future change may add here.
+    const found = priceEvidence([one('a', 204), one('b', 180)], NOW)
+    expect(Object.keys(found ?? {}).sort()).toEqual(['editais', 'samples'])
+    expect(Object.keys(found?.samples[0] ?? {}).sort()).toEqual([
+      'description',
+      'tenderId',
+      'value',
+    ])
+  })
+
+  it('cites a price somebody awarded, with that row’s own words', () => {
+    // **Chosen, not computed.** The per-edital representative was the median of
+    // the edital's rows, which interpolates on an even count: two lots at
+    // R$ 10 and R$ 20 printed R$ 15,00 — a figure nobody awarded, cited to an
+    // edital that does not contain it — and took its description from a third
+    // row. `priceBand` may interpolate because it never prints the
+    // intermediate; a citation may not.
+    const found = priceEvidence(
+      [one('a', 10, 'CANETA AZUL CAIXA 50'), one('a', 20, 'CANETA AZUL CAIXA 100')],
+      NOW,
+    )
+    expect(found?.samples).toHaveLength(1)
+    expect(found?.samples[0].value).toBe(10)
+    expect(found?.samples[0].description).toBe('CANETA AZUL CAIXA 50')
+  })
+
+  it('keeps value and description on the same row across four lots', () => {
+    const found = priceEvidence(
+      [
+        one('a', 10, 'd10'),
+        one('a', 20, 'd20'),
+        one('a', 30, 'd30'),
+        one('a', 100, 'd100'),
+      ],
+      NOW,
+    )
+    const [sample] = found?.samples ?? []
+    // Whichever row is chosen, the pair must come from one row — never 25/'d20'.
+    expect([
+      [10, 'd10'],
+      [20, 'd20'],
+      [30, 'd30'],
+      [100, 'd100'],
+    ]).toContainEqual([sample.value, sample.description])
   })
 
   /**

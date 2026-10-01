@@ -150,14 +150,21 @@ describe('GET /api/tenders/:id/band', () => {
 
     expect(body.state).toBe('locked')
     expect(body).not.toHaveProperty('band')
-    // Asserted as **structure**, not as a substring of the payload: `low` and
-    // `high` are also the evidence range's own field names, so a string search
-    // for them fails on a correct answer. The band-exclusive figures are the
-    // median, the quartile pair drawn through the sample, and the sample size.
+    // Asserted as **the exact key set, at both levels**. Two weaker versions
+    // of this check were written first and neither could fail: a substring
+    // search for `low`/`high` (which were the evidence range's own field names,
+    // so it broke on a *correct* payload), and then a loop over `'median'`,
+    // `'sampleSize'`, `'targetPurchasePrice'` — names the line above already
+    // makes unreachable, so the loop asserted nothing. An exhaustive key set is
+    // what constrains a future change, because anything added anywhere in this
+    // payload has to come here and be justified.
     expect(Object.keys(body).sort()).toEqual(['evidence', 'state'])
-    for (const field of ['median', 'sampleSize', 'targetPurchasePrice']) {
-      expect(JSON.stringify(body)).not.toContain(field)
-    }
+    expect(Object.keys(body.evidence).sort()).toEqual(['editais', 'samples'])
+    expect(Object.keys(body.evidence.samples[0]).sort()).toEqual([
+      'description',
+      'tenderId',
+      'value',
+    ])
   })
 
   it('hands an unentitled caller the evidence — the ladder is free at every rung', async () => {

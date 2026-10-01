@@ -157,12 +157,12 @@ export function PriceScreen({ id, entitled }: { id: string; entitled: boolean })
    * avoid. Keeping the item alongside the band makes a stale one unrenderable
    * by construction instead of by timing.
    */
-  const [loaded, setLoaded] = useState<{
-    id: string
-    item: number
-    band: PriceBand | null
-    locked: boolean
-  } | null>(null)
+  // `& BandState` rather than a hand-written copy of its fields: the spread at
+  // `setLoaded` below is exempt from excess-property checking, so when E22 added
+  // `evidence` to `BandState` it arrived here at runtime and was invisible to
+  // the type — `bandStateFrom`'s tested contract was not the contract this
+  // component stored, and nothing could read the new field.
+  const [loaded, setLoaded] = useState<({ id: string; item: number } & BandState) | null>(null)
 
   /**
    * **The item actually on screen, which is not the one in the URL.**
@@ -193,7 +193,7 @@ export function PriceScreen({ id, entitled }: { id: string; entitled: boolean })
         // Aborted, offline, or a network error: the same rule as the error
         // branch of `bandStateFrom`, and spelled the same way on purpose.
         if (!controller.signal.aborted) {
-          setLoaded({ id, item: chosen, band: null, locked: false })
+          setLoaded({ id, item: chosen, band: null, locked: false, evidence: null })
         }
       })
     return () => controller.abort()
