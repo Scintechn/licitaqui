@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { format, messages } from '@/lib/messages'
-import { FOUNDER_SEATS } from '@/lib/founders/seats'
 import { deadlineShort } from '@/lib/radar/format'
 import { EXAMPLE_AS_OF, EXAMPLE_TENDERS, exampleCounts } from '@/lib/radar/landing-example'
 
@@ -104,22 +103,9 @@ describe('/', () => {
  * not.
  */
 describe('/ · the approved page, section by section', () => {
-  it('opens on the founders strip, above the header', () => {
-    expect(out).toContain(copy.founderStrip.label)
-    expect(out).toContain(format(copy.founderStrip.offer, { preco: messages.plans.promo.price }))
-    expect(out).toContain(copy.founderStrip.cta)
-    expect(out.indexOf(copy.founderStrip.label)).toBeLessThan(out.indexOf('<header'))
-  })
-
-  /**
-   * The one assertion on this page that is about honesty rather than layout.
-   * With no database — which is how `next build` and this test run — the strip
-   * must say how many seats the offer has and nothing about how many are left.
-   */
-  it('never invents a remaining seat count when it cannot read one', () => {
-    expect(out).toContain(format(copy.founderStrip.seatsUnknown, { total: FOUNDER_SEATS }))
-    expect(out).not.toContain('restam')
-    expect(out).not.toContain('[N]')
+  /** Removed on Sci's request (2026-10-01); this keeps it from coming back. */
+  it('has no founders strip above the header', () => {
+    expect(out.slice(0, out.indexOf('<header'))).not.toContain('Fundadores:')
   })
 
   it('carries the nav, and every anchor in it lands on a section that exists', () => {

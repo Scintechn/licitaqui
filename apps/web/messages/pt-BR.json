@@ -671,13 +671,6 @@
       "todayHalted": "suspensos, revogados ou anulados",
       "todayHaltedNote": "No PNCP você só descobre abrindo cada edital. Aqui aparece na lista.",
       "founders": "Quer entrar antes? São {$vagas} vagas de fundador.",
-      "founderStrip": {
-        "label": "Fundadores:",
-        "offer": "{preco}/mês por {$mesesPromocionais} meses",
-        "seats": "{count, plural, =0 {vagas de fundador esgotadas} one {resta 1 de {total} vagas} other {restam # de {total} vagas}}",
-        "seatsUnknown": "{total} vagas de fundador",
-        "cta": "Ver oferta"
-      },
       "nav": {
         "label": "Navegação principal",
         "howItWorks": "Como funciona",

@@ -2,9 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Icon, Logo, SectionLabel } from '@/components'
 import { readShellSummary } from '@/lib/account/server-summary'
-import { founderSeats, type FounderSeatsView } from '@/lib/founders/seat-count'
-import { FOUNDER_SEATS } from '@/lib/founders/seats'
-import { format, messages } from '@/lib/messages'
+import { founderSeats } from '@/lib/founders/seat-count'
+import { messages } from '@/lib/messages'
 import { openTenderStats } from '@/lib/radar/stats'
 import { ACCOUNT_HREF } from '@/lib/routes'
 import { ExampleRadar } from './example-radar'
@@ -17,7 +16,7 @@ import { SearchForm } from './search-form'
  *
  * Task D3 built the hero from canvas 01 (`Main.dc.html`) and stopped there,
  * which left the page about a third of the approved document. This is the rest
- * of `paginas/landing_radar.html`, in its order: the founders strip, the nav,
+ * of `paginas/landing_radar.html`, in its order: the nav,
  * the example Radar panel beside the search card, "Como funciona", the
  * opportunity example, the Telegram alert, the plans, the guarantees and the
  * questions — each nav anchor pointing at a section that exists.
@@ -26,8 +25,8 @@ import { SearchForm } from './search-form'
  *
  *  - the **"Prévia" banner**, which only ever existed to mark the file as a
  *    draft for review;
- *  - the source's `[N]` seat placeholder, which is real data here — see
- *    `FoundersStrip`.
+ *  - the **founders strip** above the header — removed on Sci's request
+ *    (2026-10-01); the seat count still shows in the Essencial plan card.
  *
  * The hero's headline, sentence and search card are D3's and untouched: they
  * are the approved canvas-01 copy in `messages.radar.landing`, other lanes read
@@ -76,38 +75,6 @@ function Stat({ value, label }: { value: number; label: string }) {
         {value.toLocaleString('pt-BR')}
       </div>
       <div className="pt-1 text-meta text-muted">{label}</div>
-    </div>
-  )
-}
-
-/**
- * The strip above the header: the founder price, how many seats are left, and
- * the way to the offer.
- *
- * The seat count is F1's — the same `founders_list` count `/fundadores` shows —
- * read on the server at revalidation (`lib/founders/seat-count.ts`). When it
- * cannot be read the strip drops the "restam N" clause entirely and says only
- * how many seats the offer has. It never prints a number nobody counted: this
- * is a scarcity claim on a paid offer, and inventing one would be a lie told to
- * every visitor at the top of the page.
- */
-function FoundersStrip({ seats }: { seats: FounderSeatsView | null }) {
-  const { founderStrip } = copy
-  const line = seats
-    ? format(founderStrip.seats, { count: seats.left, total: seats.total })
-    : format(founderStrip.seatsUnknown, { total: FOUNDER_SEATS })
-
-  return (
-    <div className="bg-attention-soft text-ink">
-      <Wrap className="flex min-h-touch flex-wrap items-center justify-center gap-x-2.5 gap-y-1 py-1.5 text-center text-body leading-[1.45]">
-        <span>
-          <b className="font-semibold text-attention">{founderStrip.label}</b>{' '}
-          {format(founderStrip.offer, { preco: messages.plans.promo.price })} · {line}
-        </span>
-        <Link href="/fundadores" className="font-semibold text-blue no-underline hover:text-blue-hover">
-          {founderStrip.cta}
-        </Link>
-      </Wrap>
     </div>
   )
 }
@@ -201,7 +168,6 @@ export default async function LandingPage() {
         {messages.radar.nav.skip}
       </a>
 
-      <FoundersStrip seats={seats} />
       <Header signedIn={summary?.signedIn === true} />
 
       <main id="inicio" className="grow">
