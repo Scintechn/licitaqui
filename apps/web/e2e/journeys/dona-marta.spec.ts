@@ -187,11 +187,7 @@ test.describe('Dona Marta · MEI, no account', () => {
     // …and the button that leads *forward* off this screen carries the same
     // search. This is the one that broke: "Voltar" was fixed and the outbound
     // link was not.
-    // Scoped to `main`: D25 (3) put the same action in a fixed bar as well,
-    // so the page now has two links with this name below `lg` and the journey
-    // has to say which control the persona used. The bar has a spec of its
-    // own — `tender-action-bar.spec.ts`.
-    const triagem = page.getByRole('main').getByRole('link', { name: 'Ver triagem por IA' })
+    const triagem = page.getByRole('link', { name: 'Ver triagem por IA' })
     const triagemHref = await triagem.getAttribute('href')
     for (const part of ['cnpj=11222333000181', 'uf=SP', 'q=expediente', 'group=compatible']) {
       expect(triagemHref, `the triagem link dropped "${part}"`).toContain(part)

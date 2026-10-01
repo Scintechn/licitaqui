@@ -4,17 +4,17 @@ import { installRadarApi } from '../fixtures/radar-api'
 import { card } from '../fixtures/screen'
 
 /**
- * The tender screen's own call to action, scoped to `main`.
+ * The tender screen's call to action — there is exactly one again.
  *
- * D25 (3) put the same action in a fixed bar as well, so below `lg` the page
- * carries two links with this name and a bare `getByRole` is a strict-mode
- * violation rather than an ambiguity worth tolerating. These tests are about
- * the in-page button — `toHaveCount(0)` on the first-time label after a
- * triagem is spent means *this* control changed its verb — and the bar has a
- * spec of its own in `tender-action-bar.spec.ts`.
+ * D25 (3) briefly gave the screen two, an in-page button and a bar slot with
+ * the same accessible name, and this helper existed to say which one the
+ * persona used. Sci deleted the in-page one on 2026-09-30 — *"both CTA jump to
+ * the same location, and the button at the bottom is the primary cta"* — so
+ * the scoping is gone and `toHaveCount(0)` means what it always said: no link
+ * anywhere on the page carries the first-time label once a triagem is spent.
  */
 function cta(page: import('@playwright/test').Page, name: string) {
-  return page.getByRole('main').getByRole('link', { name })
+  return page.getByRole('link', { name })
 }
 import { MARTA, processo, tenderRun } from '../fixtures/world'
 
@@ -185,11 +185,11 @@ test.describe('Dona Marta · the AI triagem', () => {
 
     // She goes back to the edital. The button now knows the reading is hers.
     await page.getByRole('link', { name: 'Voltar' }).click()
-    await expect(cta(page, 'Ver a triagem que você pediu')).toBeVisible()
+    await expect(cta(page, 'Ver sua triagem')).toBeVisible()
     await expect(cta(page, 'Ver triagem por IA')).toHaveCount(0)
 
     const spent = api.calls.screeningPost.length
-    await cta(page, 'Ver a triagem que você pediu').click()
+    await cta(page, 'Ver sua triagem').click()
     await expect(page.getByText('Boa para empresa pequena')).toBeVisible()
 
     // One more ask — the route answers `ready` from cache and `quota.spend`
@@ -211,7 +211,7 @@ test.describe('Dona Marta · the AI triagem', () => {
     await page.goto(`/radar/edital/${EDITAL}?cnpj=${MARTA.cnpj}&group=compatible`)
 
     await expect(cta(page, 'Ver triagem por IA')).toBeVisible()
-    await expect(cta(page, 'Ver a triagem que você pediu')).toHaveCount(0)
+    await expect(cta(page, 'Ver sua triagem')).toHaveCount(0)
   })
 
   test('when the triagens run out the screen says how many there were and offers the account', async ({

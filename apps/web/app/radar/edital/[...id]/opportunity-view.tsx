@@ -932,59 +932,6 @@ export function OpportunityView({
           </div>
         </div>
 
-        {/* The action, above the record and not after it.
-            
-            It used to be the last thing on the page, below the Itens panel.
-            `ITEMS_PAGE` is 20 and each item card is ~140px at 400px, so the
-            button sat roughly 4 500px down a 700px viewport — six or seven
-            swipes — and **every "Mostrar mais" press pushed it another
-            ~2 800px away**. The control that helps her evaluate was the
-            control that buried the action.
-
-            It belongs here on the reading, too: everything above is the
-            answer to "is this worth my afternoon", and `Itens`/`Documentos`
-            are its appendix. The conclusion does not go in the appendix.
-
-            The tab strip rises with it, which is the other half of the
-            complaint — at ~2 000px down, a person who never scrolled that far
-            did not know Documentos existed. */}
-        <div className="flex flex-col gap-2 pt-7">
-          {/* Legal brief §2.2 rule 5: the AI notice appears on EVERY result
-              screen, not only in the terms. This screen prints a compatibility
-              reading — "Por que este edital apareceu para você" — so it is a
-              result screen, and the notice was missing from it. It sits above
-              the call to action, which is where the reading stops being read
-              and starts being acted on — so it moves **with** the button, and
-              a pinned test now keeps the pair together. */}
-          <p className="text-caption leading-relaxed text-muted">{aiNotice}</p>
-          {/* Sci: *"I already have the AI Triage for this item … but the
-              button remains like the first time, for my user."* — and his
-              ruling on the cure: *"If it is the first time of that user, the
-              CTA stays as-is. However, if the user already requested the
-              triage before, he only wants to see it again, so we could change
-              the text."*
-
-              So the switch is `spent`, and only `spent`. **Not `ready`**: a
-              tender whose analysis exists because somebody else opened it
-              (§3.2 shares the reading) is still a first-time request for this
-              user, and Sci wants that to read exactly as it always has. The
-              first-time label is therefore untouched. */}
-          <Button href={screeningHref(tender.id, search)} fullWidth iconEnd="arrowRight">
-            {screening?.spent ? page.screeningCtaRequested : page.screeningCta}
-          </Button>
-          {/* `metered` is the third condition and the one that was missing.
-              `plan_limits` gives `promocional`, `essencial` and `pro` a null
-              quantity — unlimited — so for six hours on the morning founders
-              week opened, every person who had just paid read "Usa 1 das suas
-              triagens" under the button, on a plan whose own feature list says
-              "Triagens de edital sem limite". */}
-          {showScreeningCost && screening !== null && screening.metered && !screening.spent ? (
-            <p className="text-caption leading-relaxed text-muted">
-              {screening.ready ? page.screeningCostReady : page.screeningCost}
-            </p>
-          ) : null}
-        </div>
-
         {/* PNCP's shape: the object, then the record's tabs. */}
         <Record
           tender={tender}
@@ -996,6 +943,24 @@ export function OpportunityView({
         />
 
         <div className="mt-auto flex flex-col gap-2 pt-2">
+          {/* Legal brief §2.2 rule 5: the AI notice appears on EVERY result
+              screen. This one prints a compatibility reading — "Por que este
+              edital apareceu para você" — so it is a result screen.
+
+              **It used to sit directly above the call to action**, and a test
+              pinned the pair, because the button was in the page and the
+              notice qualified it. Sci moved it here on 2026-09-30 when the
+              button left the page for the bar: *"this CTA is not more
+              necessary, but the disclaimer is, can be at the footer of this
+              page"*. It now closes the reading instead of introducing the
+              action.
+
+              Worth knowing rather than assumed: the action is in a bar that
+              is always on screen, so a reader can act without having scrolled
+              to this. The notice is still on every result screen, which is
+              what the rule says; whether the rule also means "before acting"
+              is Sci's to say, and he has been told. */}
+          <p className="text-caption leading-relaxed text-muted">{aiNotice}</p>
           {/* The source of every fact above. PNCP is the official record
               (Lei 14.133 art. 174); the bidding system below it is where the
               dispute happens, which is a different place and a different
@@ -1059,7 +1024,38 @@ export function OpportunityView({
           label: screening?.spent ? page.screeningCtaRequested : page.screeningCta,
         }}
         secondary={{ href: `#${RECORD_ANCHOR}`, label: page.barRecord }}
-        caption={<ScreeningsLeft />}
+        /* **Both captions, not one.**
+
+           The first version made this a ternary — cost *or* count — and that
+           quietly deleted D25 (4). `screeningsLeftCaption` answers only for
+           `visitor` and `basico`, which are exactly the metered plans, so
+           "cost" and "count" are never alternatives for the same reader: the
+           cost line won every first visit and the count could appear only on
+           an edital already screened, which is the one moment it does not
+           matter. The measured bar on a fresh edital read "Usa 1 das suas
+           triagens." and nothing else — the reader told a triagem will be
+           spent and not how many are left.
+
+           Both suites missed it because no test ever put the two together:
+           the cost tests render without a shell, and the count tests render
+           in a shell without `showScreeningCost`, which is a combination
+           `opportunity-screen.tsx` never produces.
+
+           `metered` is the third condition and the one that was once missing:
+           `plan_limits` gives `promocional`, `essencial` and `pro` a null
+           quantity, and for six hours the morning founders week opened, every
+           person who had just paid read "Usa 1 das suas triagens" on a plan
+           whose feature list says "Triagens de edital sem limite". */
+        caption={
+          <>
+            {showScreeningCost && screening !== null && screening.metered && !screening.spent ? (
+              <p className="text-caption leading-relaxed text-muted">
+                {screening.ready ? page.screeningCostReady : page.screeningCost}
+              </p>
+            ) : null}
+            <ScreeningsLeft />
+          </>
+        }
       />
     </div>
   )

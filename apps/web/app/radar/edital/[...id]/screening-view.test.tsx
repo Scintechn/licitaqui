@@ -426,7 +426,9 @@ describe('the action bar', () => {
     expect(block).toContain(priceHref(TENDER.id, SEARCH).replaceAll('&', '&amp;'))
     // The way back names the place, not the gesture.
     expect(block).toContain(messages.common.tender)
-    expect(block).toContain('lg:hidden')
+    // Drawn at every width now: a sticky bar is laid out by the column, so
+    // the rail it used to hide from is no longer its problem.
+    expect(block).not.toContain('lg:hidden')
     expect(block).toContain('z-40')
   })
 
