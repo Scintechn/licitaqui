@@ -85,7 +85,7 @@ export async function GET(
     const executor = db()
     // Read only: a GET never mints an identity (see `readViewer`).
     const viewer = await readViewer(request.headers.get('cookie'), executor)
-    const entitled = hasPriceBand(planOf(viewer))
+    const entitled = await hasPriceBand(planOf(viewer), executor)
 
     // **Computed before the plan is consulted, on purpose** (Sci, 2026-09-28).
     //

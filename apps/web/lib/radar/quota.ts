@@ -45,33 +45,47 @@ export const FEATURES = {
   alert: 'alert',
   /** Not a quota: the number of days the visitor window lasts. */
   days: 'days',
+  /**
+   * Not a quota either — a **capability**. `null` means the plan includes the
+   * price band, `0` that it does not; there is no third value, because a band
+   * is not consumed. See {@link hasPriceBand} and migration `0012`.
+   */
+  priceBand: 'price_band',
 } as const
 
 export type Feature = (typeof FEATURES)[keyof typeof FEATURES]
 
 /**
- * Plans the price band is included in (E9).
+ * Whether this plan includes the price band (F5).
  *
- * A **capability, not a quota** — a band is not metered, so it has no
- * `plan_limits` row and asking `readLimit` for one would invent a number to
- * compare against. `promocional` is here because 0002 gives it "same
- * entitlements as Essencial", which is the founders' whole offer.
+ * **It is a row now, not a list.** It used to be `PRICE_BAND_PLANS`, frozen in
+ * this file, because E9 shipped ten days before 08/10 and a schema change is
+ * its own PR. Every other entitlement was already a `plan_limits` row —
+ * *precisely so a plan change is one UPDATE rather than a deploy* — and this
+ * one exception meant that changing who gets a band was a deploy, and that the
+ * one place a person would look to find out did not mention it.
  *
- * **This belongs in `plan_limits` and is not there yet.** Entitlements live in
- * the database precisely so a plan change is one row rather than a deploy, and
- * this constant is the exception — a schema change is its own PR (CLAUDE.md),
- * and 08/10 is ten days out. Carded as **F5**; until it lands, changing who
- * gets a band means changing this line.
+ * ## A capability in a table of quotas
+ *
+ * No new convention was needed. `quantity` already carries one, documented at
+ * {@link readLimit} and on {@link Limit.quantity}: **`null` is unlimited, `0`
+ * is "the plan does not include this"**. A capability is a feature that is
+ * only ever one of those two, so `quantity !== 0` is the whole rule.
+ *
+ * ## It does not read a missing row
+ *
+ * `0012` writes a row for **every** plan, including `0` for `visitor` and
+ * `basico`, because absence is the one thing this table cannot currently say
+ * unambiguously: the web reads it as zero and the worker reads it as uncapped
+ * (`worker/licitaqui/telegram_alerts.py`), both deliberately, and **F6 exists
+ * to settle which wins**. This function would answer correctly either way, and
+ * that is the point — F6 can decide without moving the ground under it.
+ *
+ * Async because it is a read. Both call sites were already async.
  */
-export const PRICE_BAND_PLANS: readonly string[] = Object.freeze([
-  'promocional',
-  'essencial',
-  'pro',
-])
-
-/** Whether this plan includes the price band. */
-export function hasPriceBand(plan: string): boolean {
-  return PRICE_BAND_PLANS.includes(plan)
+export async function hasPriceBand(plan: string, database: Executor = db()): Promise<boolean> {
+  const limit = await readLimit(plan, FEATURES.priceBand, database)
+  return limit.quantity !== 0
 }
 
 
