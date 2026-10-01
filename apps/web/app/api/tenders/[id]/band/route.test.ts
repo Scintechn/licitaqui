@@ -5,7 +5,34 @@ const rateLimitRequest = vi.hoisted(() => vi.fn(async () => ({ ok: true })))
 
 vi.mock('@/lib/radar/comparables', () => ({ comparablesForItem }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimitRequest }))
-vi.mock('@/lib/db', () => ({ db: () => ({}) }))
+/**
+ * `plan_limits`, as a table rather than as a stub of `hasPriceBand` (F5).
+ *
+ * The entitlement used to be a frozen list in `quota.ts`, so these tests only
+ * had to drive `planOf`. It is a row now, and mocking `hasPriceBand` itself
+ * would leave the thing under test — *does this plan include the band* —
+ * asserted nowhere. So the database answers instead, from the same five rows
+ * migration `0012` writes, and the real `readLimit` reads them.
+ */
+const PLAN_LIMITS: Record<string, { period: string | null; quantity: number | null }> = {
+  visitor: { period: null, quantity: 0 },
+  basico: { period: null, quantity: 0 },
+  promocional: { period: null, quantity: null },
+  essencial: { period: null, quantity: null },
+  pro: { period: null, quantity: null },
+}
+
+vi.mock('@/lib/db', () => ({
+  db: () => ({
+    execute: async (query: { queryChunks?: unknown[] }) => {
+      // The only statement this route runs through `db()` is `readLimit`'s.
+      // `plan` is the first bound parameter; drizzle keeps them in order.
+      const plan = JSON.stringify(query).match(/"(visitor|basico|promocional|essencial|pro)"/)?.[1]
+      const row = plan === undefined ? undefined : PLAN_LIMITS[plan]
+      return { rows: row === undefined ? [] : [row] }
+    },
+  }),
+}))
 
 const readViewer = vi.hoisted(() => vi.fn(async () => null))
 const planOf = vi.hoisted(() => vi.fn(() => 'essencial'))

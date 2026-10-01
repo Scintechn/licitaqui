@@ -72,7 +72,7 @@ import { hasPriceBand } from '@/lib/radar/quota'
 export async function readPriceBandEntitlement(): Promise<boolean> {
   try {
     const header = (await headers()).get('cookie')
-    return hasPriceBand(planOf(await readViewer(header, db())))
+    return await hasPriceBand(planOf(await readViewer(header, db())))
   } catch {
     return false
   }
