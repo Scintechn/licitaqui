@@ -127,6 +127,9 @@ A scheduled job's hour is BRT (`scheduler.py`'s `daily_at`), and the row it
 writes is UTC.
 
 - Design: use tokens from `apps/web/styles/tokens.css` (Ivory/Graphite/Blue, Archivo/IBM Plex). Brand name is always "LicitaQui".
+- **The landing (`/`) has no founders strip above the header.** Sci removed it on
+  2026-10-01 (#206). `landing_radar.html` still draws it, so a port from that file
+  will bring it back. See `docs/design/README.md`.
 - **Inside the app shell, a breakpoint above ~720px is a container query, never a
   viewport one.** `components/app-shell.tsx` puts a rail in the layout flow from
   `lg` (1024px), **264px** wide — or 56px, because the reader can collapse it and
