@@ -54,7 +54,15 @@
   is the 42-second answer while you iterate, and it was 852 green with the slow
   half still to come. Do not run two at once: they share those databases, which
   is B24.
-- Schema changes only via `db/migrations`, in their own PR.
+- Schema changes only via `db/migrations`, in their own PR. **They apply
+  themselves**: `.github/workflows/migrate.yml` runs `db/migrate.py` on every
+  push to `main` that touches `db/migrations/**`, so a merged migration is
+  live within seconds and `pnpm db:migrate` by hand is for recovery, not for
+  shipping. On 2026-10-01 a whole manual procedure was written out for Sci —
+  credentials, roles, pooling, the lot — for a workflow that had already run
+  the migration eighteen seconds after the PR merged. **Before writing any
+  operational runbook, grep `.github/workflows/`**: the question is almost
+  never "what are the steps", it is "what already does this".
 - Tests that write to a shared database scope every row by a **per-run** id (see
   `RUN_ID` in `worker/tests/conftest.py`), never by a per-task constant. A task-scoped
   prefix looks isolated and is not: two concurrent runs of the same suite delete each
@@ -199,6 +207,21 @@ mis-attribute both the commit and the Vercel deployment. Verify with
    read as confirmation. Assert the mutation **as code**, not as a string that
    appears somewhere in the file. Compare the restored file to the pre-mutation
    `md5`: a byte-identical restore is the only proof you put it back.
+
+   A fourth, 2026-10-01, and the quietest yet: **a check in the middle of an
+   `&&` chain aborts the chain when it finds nothing.** `grep -c` exits 1 on
+   zero matches, so
+
+   ```bash
+   cp old.py file.py; grep -c chave file.py && python -m evaluation ...
+   ```
+
+   printed `0` and **never ran the evaluation** — while the restore after the
+   `;` ran as normal, leaving a tree that looked correct and a measurement that
+   had not happened. It was reported as a completed baseline run with no
+   output. Put the verification *inside* the thing that must fail (an `assert`
+   in the script), never as a shell predicate guarding it, and make a run that
+   produced no result say so loudly.
 
 4c. **What `environment: 'node'` cannot see, it cannot fail on.** `vitest.config.mts`
    has no jsdom; component tests are `renderToStaticMarkup` string assertions. Two
