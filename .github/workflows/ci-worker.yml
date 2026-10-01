@@ -93,39 +93,51 @@ jobs:
   # per-run id, so two runs — here, or here and a laptop — cannot delete each
   # other's data.
   integration:
-    name: integration (Neon)
+    name: integration (Postgres)
     runs-on: ubuntu-latest
 
-    # **Not on every pull request any more.** This job is the largest single
-    # line on the Neon bill after the idle poll: 95 runs in the seven days to
-    # 2026-09-27, averaging ~28 minutes each, against test databases that share
-    # the production compute (spec §5.1) — so every run also kept that compute
-    # awake.
+    # **Postgres in a container, not Neon.** Three things followed from the old
+    # arrangement, and all three are gone:
     #
-    # It still runs on every push to `main` and once a night, so nothing merges
-    # without it and nothing sits unverified for more than a day.
+    # *Cost.* Neon bills wall-clock awake time, and the test databases shared
+    # the **production** compute (spec §5.1), so every run woke the live
+    # database and held it for the run plus a five-minute tail that cannot be
+    # shortened. This job's own note measured it: "the largest single line on
+    # the Neon bill after the idle poll: 95 runs in the seven days to
+    # 2026-09-27, averaging ~28 minutes each".
     #
-    # **The trade, stated plainly:** a database-level defect now surfaces at
-    # merge rather than on the pull request. This suite caught two real ones in
-    # the week before this change. When a PR touches SQL, a job handler or a
-    # fixture, put the `run-integration` label on it and this runs there too.
-    if: >-
-      github.event_name != 'pull_request'
-      || contains(github.event.pull_request.labels.*.name, 'run-integration')
-    # A STOPGAP, not a fix. This job grows about a minute per PR — 24m16s (#54),
-    # 27m24s (#60), then past 30 and cancelled on #67 — because every card adds
-    # integration tests and none are ever removed. 45 buys roughly fifteen
-    # minutes of headroom at that rate, which is a few weeks, and then this line
-    # gets raised again by whoever is unlucky.
+    # *Speed.* The same note found the cause: "~1,000 tests in 30 min is 1.8 s
+    # each against Neon in sa-east-1 where a round trip is ~200 ms, so most of
+    # it is per-test fixture setup rather than assertions." On localhost that
+    # round trip is gone rather than tuned.
     #
-    # The durable answer is a separate piece of work: ~1,000 tests in 30 min is
-    # 1.8 s each against Neon in sa-east-1 where a round trip is ~200 ms, so
-    # most of it is per-test fixture setup rather than assertions. See the
-    # `--durations` profile on the PR that raised this.
+    # *Safety that had been traded away.* Because it was slow and expensive,
+    # this stopped running on pull requests — "a database-level defect now
+    # surfaces at merge rather than on the pull request. This suite caught two
+    # real ones in the week before this change." It runs on every PR again,
+    # which is the point of making it cheap.
     #
-    # Note when reading a run: `gh pr checks` prints a **cancelled** job as
-    # `fail`, so a timeout here looks exactly like a test failure from the CLI.
-    # Check `conclusion` on the job before concluding a test broke.
+    # **What this does not cover.** Neon fronts Postgres with PgBouncer in
+    # transaction mode and a container does not. `pg_advisory_lock` is
+    # session-scoped and silently non-exclusive through that pooler — it cost a
+    # day here — and behaves correctly on a container. Anything asserting
+    # pooler semantics needs a Neon database and must say so at the test.
+    services:
+      postgres:
+        # Matches production: Neon reports `pg_version: 18`.
+        image: postgres:18
+        env:
+          POSTGRES_USER: licitaqui
+          POSTGRES_PASSWORD: licitaqui
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U licitaqui"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     timeout-minutes: 45
     defaults:
       run:
@@ -145,38 +157,21 @@ jobs:
       - name: Install worker with dev extras
         run: pip install -e '.[dev]'
 
-      # A missing secret makes these tests skip rather than fail, which is the
-      # blind spot this job exists to close. Fail loudly instead.
-      - name: Fail fast if the test databases are not configured
+      # The databases are created and migrated from `db/migrations` on every
+      # run, which is also why **B25 cannot happen here**: the Neon test
+      # databases had drifted three to six migrations behind, silently.
+      - name: Create and migrate the test databases
+        working-directory: .
         env:
-          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          CI_POSTGRES_URL: postgresql://licitaqui:licitaqui@localhost:5432/postgres
         run: |
-          if [ -z "$TEST_DATABASE_URL" ]; then
-            echo "::error::TEST_DATABASE_URL is not set, so every integration"
-            echo "test would skip and this job would pass without testing anything."
-            exit 1
-          fi
+          pip install psycopg[binary]
+          python db/ci_databases.py
+          python db/ci_databases.py --print >> "$GITHUB_ENV"
 
-      # One run, not two: each keeps the Neon compute awake and burns the Free
-      # plan's CU-hours. `-rs` reports skip reasons so the check below can read
-      # them from the same run.
       - name: Test (pytest, integration)
         env:
-          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-          TEST_DATABASE_URL_B2: ${{ secrets.TEST_DATABASE_URL_B2 }}
-          TEST_DATABASE_URL_B3: ${{ secrets.TEST_DATABASE_URL_B3 }}
-          TEST_DATABASE_URL_B5: ${{ secrets.TEST_DATABASE_URL_B5 }}
-          TEST_DATABASE_URL_B6: ${{ secrets.TEST_DATABASE_URL_B6 }}
-          TEST_DATABASE_URL_C1: ${{ secrets.TEST_DATABASE_URL_C1 }}
-          TEST_DATABASE_URL_O1: ${{ secrets.TEST_DATABASE_URL_O1 }}
-          TEST_DATABASE_URL_R1: ${{ secrets.TEST_DATABASE_URL_R1 }}
-          TEST_DATABASE_URL_B4: ${{ secrets.TEST_DATABASE_URL_B4 }}
-          TEST_DATABASE_URL_E2: ${{ secrets.TEST_DATABASE_URL_E2 }}
-          TEST_DATABASE_URL_D3: ${{ secrets.TEST_DATABASE_URL_D3 }}
-          TEST_DATABASE_URL_B8: ${{ secrets.TEST_DATABASE_URL_B8 }}
-          TEST_DATABASE_URL_FH: ${{ secrets.TEST_DATABASE_URL_FH }}
-          TEST_DATABASE_URL_DL: ${{ secrets.TEST_DATABASE_URL_DL }}
-          TEST_DATABASE_URL_E1: ${{ secrets.TEST_DATABASE_URL_E1 }}
+          CI_POSTGRES_URL: postgresql://licitaqui:licitaqui@localhost:5432/postgres
         run: |
           set -o pipefail
           pytest -p no:randomly -rs | tee /tmp/pytest.txt
