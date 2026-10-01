@@ -7,6 +7,8 @@ import { readCompany } from '@/lib/radar/company'
 import type { TenderResponse } from '@/lib/radar/contract'
 import { FEATURES, readLimit } from '@/lib/radar/quota'
 import { screeningAvailability } from '@/lib/radar/screening'
+import { parseScreening } from '@/lib/radar/screening-result'
+import { tenderChecklist } from '@/lib/radar/checklist'
 import { tenderOrRefresh } from '@/lib/radar/tender'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
@@ -113,7 +115,34 @@ export async function GET(
           updatedAt: cached.updatedAt?.toISOString() ?? null,
           ageSeconds: cached.ageSeconds,
         },
-        screening,
+        // **Rebuilt field by field, and that is the point.** `screening` now
+        // carries the analysis itself, and `screening,` would ship the whole
+        // reading to the browser — legal TypeScript, since excess-property
+        // checking does not apply to a variable reference, and green on every
+        // test that existed. `route.test.ts` asserts this shape now.
+        screening: { ready: screening.ready, spent: screening.spent, metered: screening.metered },
+        // D26. Built here and not on the client: the edital screen has no
+        // reading of its own — `ScreeningAvailability` is three booleans — and
+        // sending it the whole model would hand over an analysis this caller
+        // may not have paid for. The checklist is the part that is safe to
+        // show either way, because it says *that* a row was answered and never
+        // what the answer was.
+        checklist: tenderChecklist(
+          tender,
+          screening.analysis === null
+            ? null
+            : parseScreening(
+                screening.analysis.result,
+                screening.analysis.citationCheck,
+                screening.analysis.rules,
+              ),
+          // `spent`, never `ready`: §3.2 shares the reading and §10 allocates
+          // it per user, so a tender somebody else paid for is unread here —
+          // and its page numbers were bought with their triagem, not this
+          // caller's. `hasCompany` tells an unsearched CNAE apart from one we
+          // compared and did not match.
+          { spent: screening.spent, hasCompany: company !== null },
+        ),
       },
       { status: 200, headers },
     )

@@ -108,6 +108,25 @@ export type Finding = {
   pageUnverified: boolean
   /** The model's own sentence about the requirement, when it wrote one. */
   note: string | null
+  /**
+   * Whether the reading actually answered this row (D26).
+   *
+   * For five of the keys — `meEpp`, `technicalCertificate`, `minimumCapital`,
+   * `sample`, `guarantee` — an unanswered row still renders, with "não
+   * informado", so the reader can see it was asked and not answered, and
+   * `value` is the only thing distinguishing it from an answer. (The other
+   * three write `pick?.value ?? null` and `row()` drops a falsy value, so an
+   * unanswered `siteVisit`, `consortium` or `deliveryPlace` vanishes from the
+   * screen instead. Both shapes reach the checklist as `unknown`; they do not
+   * reach the *screen* the same way, which is worth knowing before reading the
+   * next sentence as covering all eight.)
+   *
+   * The checklist needs that distinction as data rather than as a string
+   * comparison against copy: a reworded `values.unknown` would silently start
+   * counting unanswered rows as conferidas, which is the shape of defect this
+   * repo keeps finding.
+   */
+  known: boolean
 }
 
 export type Blocker = {
@@ -185,6 +204,8 @@ export function citationSummary(citationCheck: unknown): CitationSummary | null 
 // ───────────────────────────────── the rows ──────────────────────────────────
 
 type RowInput = {
+  /** Overrides the `values.unknown` inference, for rows that have no pick. */
+  known?: boolean
   id: string
   label: string
   value: string | null
@@ -198,6 +219,18 @@ type RowInput = {
 function row(input: RowInput, check: Verdicts): Finding | null {
   if (!input.value) return null
   return {
+    // Derived from the same constant the callers fall back to, so the two can
+    // never drift where that fallback is used. **Thirteen of the twenty sites
+    // write `pick?.value ?? values.unknown`; seven do not**, and for those
+    // this is unconditionally `true` — harmless only because `row()` returns
+    // `null` on a falsy value, so an unanswered one is dropped rather than
+    // mislabelled. The exception to watch is `deliveryPlace`, which is free
+    // text (`str(delivery?.local)`): if a model ever writes the prompt's own
+    // `"nao_informado"` sentinel there, the row would count as conferido and
+    // the screen would print the token. Not seen in any of the 27 readings in
+    // production on 2026-10-01 — `entrega.local` is null 11× and real prose
+    // 16× — so it is latent, not live.
+    known: input.known ?? input.value !== values.unknown,
     id: input.id,
     label: input.label,
     value: input.value,

@@ -43,6 +43,7 @@ const MODEL: ScreeningModel = {
       tone: 'neutral',
       page: 35,
       pageUnverified: false,
+      known: true,
       note: null,
     },
     {
@@ -52,6 +53,7 @@ const MODEL: ScreeningModel = {
       tone: 'attention',
       page: 17,
       pageUnverified: false,
+      known: true,
       note: 'Patrimônio líquido mínimo de 10% do valor total estimado.',
     },
     {
@@ -61,6 +63,7 @@ const MODEL: ScreeningModel = {
       tone: 'good',
       page: null,
       pageUnverified: false,
+      known: true,
       note: null,
     },
   ],
@@ -72,6 +75,7 @@ const MODEL: ScreeningModel = {
       tone: 'neutral',
       page: 5,
       pageUnverified: false,
+      known: true,
       note: null,
     },
   ],

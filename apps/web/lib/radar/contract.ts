@@ -310,6 +310,15 @@ export type TenderOk = {
   tender: TenderDetail
   freshness: Freshness
   screening: ScreeningAvailability
+  /**
+   * The compatibility checklist (D26), computed server-side because the edital
+   * screen does not have the reading and must not be sent it.
+   *
+   * It is always present: before any triagem it is the three PNCP rows
+   * answered and seven `unknown`, which is the state that shows a reader what
+   * a triagem would buy.
+   */
+  checklist: Checklist
 }
 
 export type TenderResponse = TenderOk | Analyzing | ApiError
@@ -388,3 +397,90 @@ export type JobResponse =
       }
     }
   | ApiError
+
+// ─────────────────────────── the compatibility checklist ─────────────────────
+
+/**
+ * The fixed set of conditions a small company is judged on (D26).
+ *
+ * **Fixed, and that is the whole point.** The block canvas 11 draws says "N de
+ * M conferidos", and a denominator invented per tender is not a measurement —
+ * it would shrink on the editais that answer least, which is exactly backwards.
+ * So the set is declared here, the same for every tender, and a condition this
+ * product cannot read does not join it.
+ *
+ * The first three are answered by **PNCP's structured fields**, before anybody
+ * pays for anything. The rest need the edital read, which is what a triagem
+ * buys — and that is the honest answer to *"what did my R$ 75 get me"*: the
+ * same list, seven rows further on.
+ *
+ * `deliveryPlace` is here deliberately, and it is not the thing D26's card
+ * warns against. The card says not to invent a locality check, because
+ * `comparablesForItem` has no UF predicate and *"na sua região"* was removed
+ * from the price copy for that reason. This row is a different claim: the
+ * worker reads `entrega.local` out of the edital with a page citation, like
+ * any other finding. Where delivery happens is read; whether a company can
+ * serve it is not asserted by anybody.
+ */
+export const CHECKLIST_KEYS = [
+  'cnae',
+  'meEpp',
+  'deadline',
+  'technicalCertificate',
+  'minimumCapital',
+  'guarantee',
+  'sample',
+  'siteVisit',
+  'consortium',
+  'deliveryPlace',
+] as const
+
+export type ChecklistKey = (typeof CHECKLIST_KEYS)[number]
+
+/**
+ * Three states, never two — **and only two of them ship today.**
+ *
+ * `blocker` is declared because it is what this block means and D27 draws
+ * against it, and **nothing emits it yet**: joining a barrier to a row needs
+ * the worker to name which condition each barrier is about, and the prompt
+ * change that would do it was measured against the evaluation gate and failed
+ * it. `lib/radar/checklist.ts` has the numbers and **D35** carries the work.
+ * A test asserts no row is ever `blocker`, so the gap cannot quietly become
+ * "no edital has barriers".
+ *
+ * `unknown` is the one that has to exist. The board's own prose concedes it —
+ * *"o que daqui não dá para saber: sua regularidade fiscal e o que a comissão
+ * vai decidir"* — and a two-colour meter buries it, turning "we did not read
+ * this" into "this is fine". A row is `unknown` before a triagem and stays
+ * `unknown` if the reading could not answer it.
+ */
+export type ChecklistState = 'ok' | 'blocker' | 'unknown'
+
+/**
+ * Where a row's answer came from.
+ *
+ * A value read from a structured PNCP field and a sentence read out of a PDF
+ * with a page citation are not the same kind of true, and one fraction over
+ * both asserts that they are. The row carries which it is so the screen can
+ * say so.
+ */
+export type ChecklistSource = 'pncp' | 'ai'
+
+export type ChecklistRow = {
+  key: ChecklistKey
+  state: ChecklistState
+  source: ChecklistSource
+  /** The edital page this was read from. `null` for every `pncp` row. */
+  page: number | null
+  /** `true` when the worker's citation check could not confirm that page. */
+  pageUnverified: boolean
+}
+
+export type Checklist = {
+  /** Every key, always, in `CHECKLIST_KEYS` order. */
+  rows: ChecklistRow[]
+  /** Rows that are not `unknown`. The numerator. */
+  checked: number
+  /** `rows.length`. Constant, by design — see `CHECKLIST_KEYS`. */
+  total: number
+}
