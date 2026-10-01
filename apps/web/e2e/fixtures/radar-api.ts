@@ -15,6 +15,7 @@ import type {
   VisitorView,
 } from '@/lib/radar/contract'
 import { TENDER_GROUPS } from '@/lib/radar/contract'
+import { tenderChecklist } from '@/lib/radar/checklist'
 import { visitor as defaultVisitor, visitorQuota } from './world'
 
 /**
@@ -298,6 +299,10 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
           tender: row,
           freshness,
           screening: api.availability.get(id) ?? { ready: false, spent: false, metered: true },
+          // D26. Computed from the same function the route uses rather than
+          // hand-written: a fixture that invents a checklist would let the
+          // real one drift from what the journeys assert about it.
+          checklist: tenderChecklist(row, null),
         } satisfies TenderResponse)
       }
 

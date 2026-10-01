@@ -3,6 +3,7 @@ import { closeDb, db, pool } from '@/lib/db'
 import { testDatabaseUrl } from '@/lib/db/test-url'
 import { readLimit, FEATURES } from './quota'
 import { readScreening, requestScreening, screeningAvailability } from './screening'
+import { parseScreening } from './screening-result'
 
 /**
  * `readScreening` and an amended tender (spec §3.2).
@@ -199,6 +200,54 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
   const spender = { visitorId: VISITOR_ID }
   const limit = () => readLimit('visitor', FEATURES.screening, db())
 
+  /**
+   * D26 — the same statement now also carries the reading, because the
+   * checklist needs it and the route must not pay for a fourth round trip.
+   *
+   * **And they are not the same question**, which the first version of this
+   * comment got wrong by asserting `analysis` is null exactly when `ready` is
+   * false. `USABLE` is `['ok', 'no_text']`, and the worker returns a
+   * `no_text` row *before* any API call — a scanned PDF it could not read. So
+   * a `no_text` row is `ready: true` with `result` NULL, and production has
+   * one today: `00509018000113-1-002136/2026`.
+   *
+   * The behaviour is right — nothing was read, so every AI row stays
+   * `unknown` and the fraction does not move — but a reader can spend a
+   * triagem on a scanned edital and watch 3/10 stay 3/10, and D27 should draw
+   * that state knowing it exists.
+   */
+  it('is ready with no reading at all on a scanned edital', async () => {
+    // `no_text`: the worker looked, found a PDF with no text layer, and wrote
+    // the row without calling the model. Usable — it is the current answer —
+    // and empty.
+    const scanned = await givenTender(28)
+    await pool().query(
+      `insert into ai_analyses (tender_id, mode, model, prompt_version, extraction_version,
+                                files_hash, status, result)
+       values ($1, $2, 'test/model', 'lite-v2', 1, 'hash-no-text', 'no_text', null)`,
+      [scanned, MODE],
+    )
+    const state = await screeningAvailability(scanned, spender, await limit(), db())
+    expect(state.ready, 'it is the current answer').toBe(true)
+    expect(state.analysis, 'and there is nothing in it').toBeNull()
+  })
+
+  it('carries the reading when there is one, and nothing when there is not', async () => {
+    const empty = await givenTender(26)
+    await givenVisitor()
+    const none = await screeningAvailability(empty, spender, await limit(), db())
+    expect(none.ready).toBe(false)
+    expect(none.analysis).toBeNull()
+
+    const read = await givenTender(27)
+    await givenAnalysis(read, 'hash-d26', 'leitura')
+    const found = await screeningAvailability(read, spender, await limit(), db())
+    expect(found.ready).toBe(true)
+    expect(found.analysis).not.toBeNull()
+    expect(parseScreening(found.analysis!.result, found.analysis!.citationCheck, found.analysis!.rules))
+      .not.toBeNull()
+  })
+
   it('is neither ready nor spent on a tender nobody has read', async () => {
     const tender = await givenTender(20)
     await givenVisitor()
@@ -207,6 +256,9 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
       spent: false,
       // `visitor` is 2 per total, so this caller is metered.
       metered: true,
+      // D26 folded the reading into the same statement; it is `null`
+      // wherever there is no current analysis.
+      analysis: null,
     })
   })
 
@@ -226,6 +278,10 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
       spent: false,
       // `visitor` is 2 per total, so this caller is metered.
       metered: true,
+      // D26 folded the reading into the same statement; it is `null`
+      // wherever there is no current analysis.
+      // A reading exists, so the payload the checklist is built from is here.
+      analysis: expect.objectContaining({ result: expect.anything() }),
     })
   })
 
@@ -240,6 +296,10 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
       spent: true,
       // `visitor` is 2 per total, so this caller is metered.
       metered: true,
+      // D26 folded the reading into the same statement; it is `null`
+      // wherever there is no current analysis.
+      // A reading exists, so the payload the checklist is built from is here.
+      analysis: expect.objectContaining({ result: expect.anything() }),
     })
   })
 
@@ -259,6 +319,9 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
       spent: true,
       // `visitor` is 2 per total, so this caller is metered.
       metered: true,
+      // D26 folded the reading into the same statement; it is `null`
+      // wherever there is no current analysis.
+      analysis: null,
     })
     // …and it agrees with what the triagem screen would actually show.
     expect(await readScreening(tender, db())).toBeNull()
@@ -295,6 +358,10 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
       spent: false,
       // `visitor` is 2 per total, so this caller is metered.
       metered: true,
+      // D26 folded the reading into the same statement; it is `null`
+      // wherever there is no current analysis.
+      // A reading exists, so the payload the checklist is built from is here.
+      analysis: expect.objectContaining({ result: expect.anything() }),
     })
   })
 

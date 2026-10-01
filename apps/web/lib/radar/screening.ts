@@ -193,16 +193,50 @@ export async function readScreening(
 // not return what this function produced. Re-exported rather than redeclared.
 export type { ScreeningAvailability } from './contract'
 
+/**
+ * What `screeningAvailability` reads, which is the wire shape plus the reading.
+ *
+ * The analysis payload is **not** on `ScreeningAvailability`: that type crosses
+ * the wire, and shipping the whole model to the client would send a reading the
+ * caller may not have paid for. The route turns it into a `Checklist` and sends
+ * that instead.
+ */
+export type ScreeningState = ScreeningAvailability & {
+  analysis: { result: unknown; citationCheck: unknown; rules: unknown } | null
+}
+
 export async function screeningAvailability(
   tenderId: string,
   spender: Spender | null,
   limit: Limit,
   database: Executor = db(),
-): Promise<ScreeningAvailability> {
+): Promise<ScreeningState> {
   const since = spender ? periodStart(limit.period) : null
-  const found = await database.execute<{ ready: boolean; spent: boolean }>(sql`
+  const found = await database.execute<{
+    ready: boolean
+    spent: boolean
+    result: unknown
+    citation_check: unknown
+    rules: unknown
+  }>(sql`
     select
-      exists (select 1 ${currentAnalysis(tenderId)}) as ready,
+      -- D26: the reading itself, for the compatibility checklist, in the same
+      -- statement rather than a second round trip -- the whole reason these
+      -- are folded together is that this rides on the tender route and Neon
+      -- may have to wake up for it.
+      --
+      -- **One lateral, not four subqueries.** The first version asked
+      -- currentAnalysis once per column: four independent executions of an
+      -- ordering with no unique tiebreaker, so in principle result could
+      -- come from one row and citation_check from another and
+      -- parseScreening would parse the chimera without complaint. Measured
+      -- on production it cannot happen today (no tender has two usable lite
+      -- rows), but it costs nothing to make the question unaskable -- and the
+      -- lateral reads 6 shared buffers where the four subqueries read 24.
+      current.status is not null as ready,
+      current.result as result,
+      current.citation_check as citation_check,
+      current.rules as rules,
       ${
         spender
           ? sql`exists (
@@ -215,9 +249,18 @@ export async function screeningAvailability(
             )`
           : sql`false`
       } as spent
+      from (select 1) as always
+      left join lateral (
+        select a.status, a.result, a.citation_check, a.rules
+        ${currentAnalysis(tenderId)}
+      ) as current on true
   `)
   const row = found.rows[0]
   return {
+    analysis:
+      row?.result == null
+        ? null
+        : { result: row.result, citationCheck: row.citation_check, rules: row.rules },
     ready: Boolean(row?.ready),
     spent: Boolean(row?.spent),
     // `plan_limits.quantity` is null for the paid plans. Without this the
