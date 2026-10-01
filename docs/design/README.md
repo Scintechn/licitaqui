@@ -14,6 +14,11 @@ Exported from the approved "Wireframes LicitaQui" canvas on 2026-09-17. Claude C
   strip above the header (*"Fundadores: R$ 57/mês por 3 meses · restam N de M
   vagas · Ver oferta"*) was removed on Sci's request on 2026-10-01 (#206). Do not
   port it back. The seat count stays in the Essencial plan card and on `/fundadores`.
+  **The hero copy has also moved on from `Main.dc.html`** (Sci, 2026-10-01): the
+  badge reads *"Busca grátis · sem cadastro"* (was *"3 dias grátis sem conta · 2
+  triagens por IA"*) and the subtitle says *"Digite o CNPJ ou uma palavra-chave…"*,
+  because the search accepts a keyword alone. `messages.radar.landing` is the
+  source; do not restore the wireframe's wording.
 
 ## Design tokens (from `wireframes/DesignSystem.dc.html`)
 
