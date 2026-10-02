@@ -34,6 +34,7 @@ httpx, pdfplumber and every collector to do it.
 from __future__ import annotations
 
 from . import ai_screening as _ai_screening  # noqa: F401 - registers `ai_screening`
+from . import catalog_sync as _catalog_sync  # noqa: F401 - the two catalogue kinds
 from . import company as _company  # noqa: F401 - imported for its registration side effect
 from . import coverage_check as _coverage_check  # noqa: F401 - registers `coverage_check`
 from . import documents as _documents  # noqa: F401 - registers `extract_text`
