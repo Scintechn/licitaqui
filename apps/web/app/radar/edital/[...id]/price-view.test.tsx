@@ -423,3 +423,202 @@ describe('the action bar', () => {
     expect(bar(render({ showPlanCta: false }))).toBeNull()
   })
 })
+
+/**
+ * The evidence ladder (E22).
+ *
+ * These assert the **rungs**, not the arithmetic — `price-band.test.ts` owns
+ * that. What matters here is that each rung says something different, because
+ * one state saying "ainda sem dados de vencedores" to every item below the gate
+ * was the defect: measured 2026-10-01, it was wrong for ten items in every
+ * eleven it appeared on.
+ */
+describe('PriceView — the evidence ladder', () => {
+  const sample = (tenderId: string, value: number, description: string | null) => ({
+    tenderId,
+    value,
+    description,
+  })
+
+  const thin = (count: number) => ({
+    editais: count,
+    samples: Array.from({ length: Math.min(count, 4) }, (_unused, i) =>
+      sample(`9900000000000${i}-1-000001/2026`, 204 - i, `PERFURADOR DE PAPEL ${i} FUROS`),
+    ),
+  })
+
+  it('still says nothing was found when nothing was', () => {
+    // The rung that was always correct, and must stay reachable: no band and no
+    // evidence is genuinely "no number exists for anybody".
+    const html = render({ item: 1, bandLocked: false, evidence: null })
+    expect(html).toContain(page.noData)
+    expect(html).toContain(page.noDataHelp)
+  })
+
+  it('shows a single result as a result, and says why there is no faixa', () => {
+    const html = render({ item: 1, bandLocked: false, evidence: thin(1) })
+    expect(html).toContain('Encontramos 1 resultado parecido')
+    // The price, and the words it closed under — neither is evidence alone.
+    expect(html).toContain('R$ 204,00')
+    expect(html).toContain('PERFURADOR DE PAPEL 0 FUROS')
+    // The sentence that explains the absent faixa without promising one.
+    expect(html).toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).toContain('Neste item encontramos 1')
+    // **The rung is not a weaker band.**
+    expect(html).not.toContain(page.noData)
+  })
+
+  it('pluralises the thin rung and prints every result behind the count', () => {
+    const html = render({ item: 1, bandLocked: false, evidence: thin(3) })
+    expect(html).toContain('Encontramos 3 resultados parecidos')
+    expect(html).toContain('Neste item encontramos 3')
+    for (const i of [0, 1, 2]) {
+      expect(html).toContain(`PERFURADOR DE PAPEL ${i} FUROS`)
+    }
+  })
+
+  it('draws no faixa, median or preço-alvo on a thin rung', () => {
+    // A figure drawn through one or two prices is a confident-looking number
+    // with nothing behind it. `MIN_SAMPLE` and `MAX_SPREAD` are what earn one.
+    const html = render({ item: 1, bandLocked: false, evidence: thin(2) })
+    expect(html).not.toContain('–') // the en dash `bandRange` joins a band with
+    expect(html).not.toContain(page.ceilingLabel)
+    expect(html).not.toContain(page.marginLabel)
+  })
+
+  it('shows the count and what was matched at a lock, and no price at all', () => {
+    // **Sci, 2026-10-02.** The top rung withholds the values because four
+    // sampled prices rebuild the band. What stays is the count and the matched
+    // descriptions — the one thing the reader cannot otherwise check.
+    const html = render({
+      item: 1,
+      bandLocked: true,
+      evidence: { editais: 6, matched: ['PERFURADOR DE PAPEL 2 FUROS', 'PERFURADOR 2 FUROS AÇO'] },
+    })
+    expect(html).toContain('Encontramos 6 editais encerrados com o mesmo produto')
+    expect(html).toContain('PERFURADOR DE PAPEL 2 FUROS')
+    expect(html).toContain(page.lockedValue)
+    // **No winner price rendered**, asserted as the absence of the element that
+    // would carry one rather than as a money regex over the page. A regex was
+    // written first and failed on a correct render: "R$ 3,74" is the *edital's
+    // own* estimated value, which this screen has always shown and should. The
+    // question is whether a past winner's price appears, and the only thing
+    // that prints one is `EvidenceRow`.
+    expect(html).not.toContain('tabular-nums">R$')
+    expect(html).not.toContain(page.noData)
+  })
+
+  it('renders a lock with no evidence without inventing a count', () => {
+    // The in-flight case: `bandLocked` defaults to true before the answer
+    // lands, so this pair is reachable on every first paint.
+    const html = render({ item: 1, bandLocked: true, evidence: null })
+    expect(html).toContain(page.lockedValue)
+    expect(html).not.toContain('Encontramos')
+  })
+})
+
+describe('PriceView — the sentence that would contradict itself', () => {
+  /**
+   * Six editais, four results — the shape `priceEvidence` actually returns
+   * above the cap. The first fixture here carried `editais: 6` with **two**
+   * samples, which that function cannot produce, and it was the reason this
+   * block exercised the suppression without ever exercising the cap.
+   */
+  const scattered = {
+    editais: 6,
+    samples: [
+      { tenderId: 'a-1-000001/2026', value: 204, description: 'PERFURADOR DE PAPEL' },
+      { tenderId: 'b-1-000001/2026', value: 9.5, description: 'CADERNO BROCHURA' },
+      { tenderId: 'c-1-000001/2026', value: 188, description: 'PERFURADOR 2 FUROS' },
+      { tenderId: 'd-1-000001/2026', value: 12, description: 'CADERNO CAPA DURA' },
+    ],
+  }
+
+  it('never states a count larger than the results it draws', () => {
+    // **The defect this replaced.** `priceEvidence` caps `samples` at four and
+    // leaves `editais` uncapped, so the count was `editais` over at most four
+    // rows: at six editais the screen read "Encontramos 6 resultados
+    // parecidos" above four results — and `evidenceHelp`, the only string that
+    // would have reconciled them, is suppressed at exactly this rung because
+    // above the floor it is false. Reachable for an entitled reader too, since
+    // a spread failure sends everyone down this branch.
+    const html = render({
+      item: 1,
+      bandLocked: false,
+      evidence: {
+        editais: 6,
+        samples: [1, 2, 3, 4].map((n) => ({
+          tenderId: `t${n}-1-000001/2026`,
+          value: 100 + n,
+          description: `PERFURADOR ${n}`,
+        })),
+      },
+    })
+    expect(html).toContain('Encontramos 4 resultados parecidos')
+    expect(html).not.toContain('Encontramos 6')
+    // And it is four because four rows are drawn, not by coincidence.
+    expect(html.match(/PERFURADOR \d/g)).toHaveLength(4)
+  })
+
+  it('counts only the results it can draw as money', () => {
+    // `moneyExactNonZero` refuses below half a centavo while `priceEvidence`
+    // filters on `> 0`, so a row could print a description with no price —
+    // against `EvidenceRow`'s own rule that neither half is evidence alone.
+    // Not live (the corpus minimum is R$ 0,0300) and cheap to close.
+    const html = render({
+      item: 1,
+      bandLocked: false,
+      evidence: {
+        editais: 2,
+        samples: [
+          { tenderId: 'a-1-000001/2026', value: 204, description: 'PERFURADOR DE PAPEL' },
+          { tenderId: 'b-1-000001/2026', value: 0.004, description: 'PARAFUSO M3' },
+        ],
+      },
+    })
+    expect(html).toContain('Encontramos 1 resultado parecido')
+    expect(html).not.toContain('PARAFUSO M3')
+  })
+
+  it('falls back to the empty card when no result can be drawn', () => {
+    // A count of zero would print "1": `Intl.PluralRules('pt-BR').select(0)`
+    // is `one`, and none of these strings carries a `=0` branch.
+    const html = render({
+      item: 1,
+      bandLocked: false,
+      evidence: {
+        editais: 1,
+        samples: [{ tenderId: 'a-1-000001/2026', value: 0.004, description: 'PARAFUSO M3' }],
+      },
+    })
+    expect(html).toContain(page.noData)
+    expect(html).not.toContain('Encontramos')
+  })
+
+  it('does not promise a faixa at six editais while showing none', () => {
+    // `MIN_SAMPLE` is necessary, not sufficient: `MAX_SPREAD` must pass too. So
+    // `evidenceHelp` — "Mostramos a faixa quando encontramos pelo menos 5
+    // editais… Neste item encontramos 6" — would sit directly above no faixa.
+    // Reachable: ~1 in 5 of the items that reach five editais fails on spread.
+    const html = render({ item: 1, bandLocked: false, evidence: scattered })
+    expect(html).not.toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    // The count states the rows drawn, never `editais` — see the cap test above.
+    expect(html).toContain('Encontramos 4 resultados parecidos')
+    // The results themselves still render: suppressing the explanation must not
+    // suppress the evidence.
+    expect(html).toContain('PERFURADOR DE PAPEL')
+    expect(html).toContain('CADERNO BROCHURA')
+  })
+
+  it('still explains itself below the floor, where the sentence is true', () => {
+    // Below the floor `priceEvidence` returns one sample per edital, so the
+    // count, the rows and `editais` are all the same number by construction.
+    const html = render({
+      item: 1,
+      bandLocked: false,
+      evidence: { editais: 4, samples: scattered.samples },
+    })
+    expect(html).toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).toContain('Neste item encontramos 4')
+  })
+})

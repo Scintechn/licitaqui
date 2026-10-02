@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { getBand, getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
 import type { BandResponse, TenderDetail, TenderResponse } from '@/lib/radar/contract'
-import type { PriceBand } from '@/lib/radar/price-band'
+import type { LockedEvidence, PriceBand, PriceEvidence } from '@/lib/radar/price-band'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
 import { chooseItem, PriceView, type PriceStatus } from './price-view'
@@ -26,8 +26,23 @@ function aborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-/** What the screen holds after one band answer. Exported for its test. */
-export type BandState = { band: PriceBand | null; locked: boolean }
+/**
+ * What the screen holds after one band answer. Exported for its test.
+ *
+ * `evidence` (E22) rides beside the band rather than inside it, because the two
+ * answer different questions and are independently present: an item can have
+ * evidence and no band (the common case — 11.17% against 0.67%, measured
+ * 2026-10-01), or a band the reader may not see *and* the evidence under it.
+ */
+export type BandState =
+  // **A union, so the two rungs cannot be confused.** `locked` carries
+  // `LockedEvidence` — the count and what was matched, no prices — because at
+  // five editais the sampled prices rebuild the band the state exists to
+  // withhold (Sci, 2026-10-02). One object with `evidence: PriceEvidence | null`
+  // beside a boolean would let a price reach the locked branch by an ordinary
+  // mistake; this refuses it at compile time.
+  | { band: PriceBand | null; locked: false; evidence: PriceEvidence | null }
+  | { band: null; locked: true; evidence: LockedEvidence | null }
 
 /**
  * A `BandResponse` as the screen stores it.
@@ -46,10 +61,16 @@ export type BandState = { band: PriceBand | null; locked: boolean }
  */
 export function bandStateFrom(answer: BandResponse): BandState {
   if (answer.state === 'ready') {
-    return { band: answer.band, locked: false }
+    return { band: answer.band, locked: false, evidence: answer.evidence }
   }
   if (answer.state === 'locked') {
-    return { band: null, locked: true }
+    // **The evidence survives the lock, in its narrowed form.** Dropping it
+    // here is the client-side version of the defect the route's own comment
+    // describes — the ladder would go backwards at five editais, showing a
+    // visitor an empty card the moment the data got good enough to sell. What
+    // survives is the count and the matched descriptions; the route removed the
+    // prices, and `LockedEvidence` is why this line cannot put them back.
+    return { band: null, locked: true, evidence: answer.evidence }
   }
   // `envelope()` does not throw on a non-2xx — it parses the body — so a 429
   // or a 500 arrives here as `state: 'error'`. Falling through left `loaded`
@@ -59,7 +80,7 @@ export function bandStateFrom(answer: BandResponse): BandState {
   // no retry on this path. A failure must degrade to the honest empty card,
   // never to an advertisement for the plan they already bought.
   //
-  return { band: null, locked: false }
+  return { band: null, locked: false, evidence: null }
 }
 
 export function PriceScreen({ id, entitled }: { id: string; entitled: boolean }) {
@@ -141,12 +162,12 @@ export function PriceScreen({ id, entitled }: { id: string; entitled: boolean })
    * avoid. Keeping the item alongside the band makes a stale one unrenderable
    * by construction instead of by timing.
    */
-  const [loaded, setLoaded] = useState<{
-    id: string
-    item: number
-    band: PriceBand | null
-    locked: boolean
-  } | null>(null)
+  // `& BandState` rather than a hand-written copy of its fields: the spread at
+  // `setLoaded` below is exempt from excess-property checking, so when E22 added
+  // `evidence` to `BandState` it arrived here at runtime and was invisible to
+  // the type — `bandStateFrom`'s tested contract was not the contract this
+  // component stored, and nothing could read the new field.
+  const [loaded, setLoaded] = useState<({ id: string; item: number } & BandState) | null>(null)
 
   /**
    * **The item actually on screen, which is not the one in the URL.**
@@ -177,7 +198,7 @@ export function PriceScreen({ id, entitled }: { id: string; entitled: boolean })
         // Aborted, offline, or a network error: the same rule as the error
         // branch of `bandStateFrom`, and spelled the same way on purpose.
         if (!controller.signal.aborted) {
-          setLoaded({ id, item: chosen, band: null, locked: false })
+          setLoaded({ id, item: chosen, band: null, locked: false, evidence: null })
         }
       })
     return () => controller.abort()
@@ -223,6 +244,7 @@ export function PriceScreen({ id, entitled }: { id: string; entitled: boolean })
       search={search}
       band={band}
       bandLocked={bandLocked}
+      evidence={current?.evidence ?? null}
       showPlanCta={showPlanCta}
       onRetry={onRetry}
     />

@@ -4,7 +4,7 @@ import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { db } from '@/lib/db'
 import { comparablesForItem } from '@/lib/radar/comparables'
 import type { BandResponse } from '@/lib/radar/contract'
-import { priceBand } from '@/lib/radar/price-band'
+import { priceBand, priceEvidence, withoutPrices } from '@/lib/radar/price-band'
 import { hasPriceBand } from '@/lib/radar/quota'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
@@ -99,10 +99,31 @@ export async function GET(
     // The cost is the trigram query for unentitled callers. That is the price
     // of the claim being true, and it is why the rate limit below the gate
     // matters more than it did.
-    const band = priceBand(await comparablesForItem(id, item, executor))
+    // One read, both rungs. E22: the comparables that are not enough for a
+    // band are still the honest answer for ~10× as many items — measured
+    // 2026-10-01, 11.17% of open items have a past winner of the same product
+    // and 0.67% have a band — and they cost nothing extra here, because the
+    // query that found them has already run.
+    const comparables = await comparablesForItem(id, item, executor)
+    const band = priceBand(comparables)
+    const evidence = priceEvidence(comparables)
+
     if (band !== null && !entitled) {
       return NextResponse.json(
-        { state: 'locked' },
+        // **The count and what was matched ride along; the prices do not.**
+        //
+        // Sci, 2026-10-01: raw evidence free, computation paid. Then, 2026-10-02,
+        // the measurement that narrowed it: where a band exists the four
+        // sampled prices *are* the band, so the two halves of that ruling
+        // described the same numbers. Above `MIN_SAMPLE` the values are
+        // withheld and the count and descriptions are not — the reader can
+        // still judge whether we matched the right product, which is the thing
+        // they cannot otherwise check.
+        //
+        // `withoutPrices` narrows the same evidence an entitled caller gets, so
+        // there is one computation and one narrowing rather than a second
+        // query that could drift from the first.
+        { state: 'locked', evidence: evidence === null ? null : withoutPrices(evidence) },
         { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
       )
     }
@@ -113,7 +134,7 @@ export async function GET(
     // of the two, since this answer is 412 ms behind a trigram join. The gate
     // below still applies: an unentitled caller never receives a band.
     return NextResponse.json(
-      { state: 'ready', band: entitled ? band : null },
+      { state: 'ready', band: entitled ? band : null, evidence },
       { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
     )
   } catch (error) {

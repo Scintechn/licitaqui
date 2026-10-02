@@ -130,13 +130,105 @@ describe('GET /api/tenders/:id/band', () => {
   })
 
   it('never hands an unentitled caller the band itself', async () => {
-    // Computing first must not leak: the figure is gone from the payload, not
+    // Computing first must not leak: the figures are gone from the payload, not
     // merely hidden by the client.
+    //
+    // **This assertion was narrowed by E22, and the narrowing is a decision.**
+    // It used to be `not.toContain('100')` over the whole payload — no price,
+    // anywhere, for an unentitled caller. E22's ladder sends the matched
+    // results at every rung (Sci, 2026-10-01: raw evidence free, computation
+    // paid), so the raw value *does* appear now and that blanket assertion
+    // would have to fail for the ladder to work at all.
+    //
+    // So the rule it pins is the one that still holds: the **computation** is
+    // what Essencial buys. No median, no quartile, no sampleSize, no
+    // preço-alvo. A visitor may see that six editais closed and at what — the
+    // public record — and may not see the number drawn through them.
     comparablesForItem.mockResolvedValueOnce(priced(6))
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
 
-    expect(JSON.stringify(body)).not.toContain('100')
+    expect(body.state).toBe('locked')
+    expect(body).not.toHaveProperty('band')
+    // Asserted as **the exact key set, at both levels**. Two weaker versions
+    // of this check were written first and neither could fail: a substring
+    // search for `low`/`high` (which were the evidence range's own field names,
+    // so it broke on a *correct* payload), and then a loop over `'median'`,
+    // `'sampleSize'`, `'targetPurchasePrice'` — names the line above already
+    // makes unreachable, so the loop asserted nothing. An exhaustive key set is
+    // what constrains a future change, because anything added anywhere in this
+    // payload has to come here and be justified.
+    expect(Object.keys(body).sort()).toEqual(['evidence', 'state'])
+    expect(Object.keys(body.evidence).sort()).toEqual(['editais', 'matched'])
+  })
+
+  it('sends no price at all once a band exists (the reconstruction)', async () => {
+    // **Why the locked rung withholds values.** Sci, 2026-10-02. Four sampled
+    // prices rebuild the band: over five sorted values the quartiles are
+    // `sorted[1..3]`, so four give two figures exactly and bracket the third.
+    // This fixture is the verified case — five editais, the oldest also the
+    // cheapest — where `samples` plus a min/max returned the real low, median
+    // and high to the cent.
+    comparablesForItem.mockResolvedValueOnce([
+      { unitAwardedValue: 100, awardedOn: new Date('2026-01-01'), tenderId: 'a-1-000001/2026' },
+      { unitAwardedValue: 180, awardedOn: new Date('2026-09-01'), tenderId: 'b-1-000001/2026' },
+      { unitAwardedValue: 190, awardedOn: new Date('2026-08-01'), tenderId: 'c-1-000001/2026' },
+      { unitAwardedValue: 200, awardedOn: new Date('2026-07-01'), tenderId: 'd-1-000001/2026' },
+      { unitAwardedValue: 210, awardedOn: new Date('2026-06-01'), tenderId: 'e-1-000001/2026' },
+    ])
+    planOf.mockReturnValueOnce('visitor')
+    const body = await (await call()).json()
+    const wire = JSON.stringify(body)
+
+    expect(body.state).toBe('locked')
+    // Not one of the five prices, nor the band they would rebuild.
+    for (const leaked of ['100', '180', '190', '200', '210']) {
+      expect(wire, `price ${leaked} on the wire`).not.toContain(leaked)
+    }
+    expect(body.evidence.editais).toBe(5)
+    expect(body.evidence).not.toHaveProperty('samples')
+  })
+
+  it('still says how many editais and what was matched', async () => {
+    // The half that stays free. The reader cannot otherwise check whether we
+    // matched the right product, and at the top rung the spread gate has not
+    // been shown to them either — so the descriptions are the one thing they
+    // can judge, and they carry no price with them.
+    comparablesForItem.mockResolvedValueOnce(
+      [0, 1, 2, 3, 4, 5].map((i) => ({
+        unitAwardedValue: 100,
+        awardedOn: new Date(`2026-0${i + 1}-01`),
+        tenderId: `9900000000000${i}-1-000001/2026`,
+        description: i % 2 === 1 ? 'CANETA ESFEROGRAFICA AZUL' : 'CANETA ESFEROGRAF. AZUL CX 50',
+      })),
+    )
+    planOf.mockReturnValueOnce('visitor')
+    const body = await (await call()).json()
+
+    expect(body.evidence.editais).toBe(6)
+    // Deduplicated, and drawn from the same four newest samples an entitled
+    // reader sees: six editais alternate two descriptions, so the four newest
+    // carry both and the list is two lines, newest first. `matched.length` is
+    // not a second count of editais — see `LockedEvidence`.
+    expect(body.evidence.matched).toEqual([
+      'CANETA ESFEROGRAFICA AZUL',
+      'CANETA ESFEROGRAF. AZUL CX 50',
+    ])
+  })
+
+  it('hands an unentitled caller the evidence — the ladder is free at every rung', async () => {
+    // **The monotonicity the ladder rests on.** Withholding evidence behind the
+    // gate would show a visitor the matched results at four editais and nothing
+    // at five: crossing the threshold that makes the data *better* would make
+    // the screen emptier. Sci's ruling, 2026-10-01.
+    comparablesForItem.mockResolvedValueOnce(priced(6))
+    planOf.mockReturnValueOnce('visitor')
+    const body = await (await call()).json()
+
+    expect(body.evidence.editais).toBe(6)
+    // `priced()` carries no descriptions, so there is nothing to list — the
+    // count is what survives. The description case is its own test below.
+    expect(body.evidence.matched).toEqual([])
   })
 
   it.each(['visitor', 'basico'])('locks %s when a band exists', async (plan) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BandResponse } from '@/lib/radar/contract'
-import type { PriceBand } from '@/lib/radar/price-band'
+import type { LockedEvidence, PriceBand, PriceEvidence } from '@/lib/radar/price-band'
 import { bandStateFrom } from './price-screen'
 
 /**
@@ -31,22 +31,73 @@ const BAND: PriceBand = {
   sampleSize: 6,
 }
 
+/**
+ * Evidence as the route sends it beside a band (E22): same six editais the
+ * band rests on, four of them printed.
+ */
+const EVIDENCE: PriceEvidence = {
+  editais: 6,
+  samples: [
+    { tenderId: '99000000000001-1-000001/2026', value: 24, description: 'CANETA ESFEROGRAFICA AZUL' },
+    { tenderId: '99000000000002-1-000001/2026', value: 20.34, description: 'CANETA ESFEROGRAFICA AZUL' },
+    { tenderId: '99000000000003-1-000001/2026', value: 19, description: 'CANETA ESFEROGRAFICA, AZUL' },
+    { tenderId: '99000000000004-1-000001/2026', value: 18, description: 'CANETA ESFEROGRAFICA AZUL' },
+  ],
+}
+
 describe('bandStateFrom', () => {
+  it('carries the count and what was matched through a lock, never the prices', () => {
+    // **The client half of the ladder.** The route sends evidence on a `locked`
+    // answer on purpose; dropping it in this mapping would make the screen go
+    // backwards at five editais — a visitor would see the matched results at
+    // four and an empty card at six, the moment the data got good enough to
+    // sell. What it may carry is the narrowed form: Sci, 2026-10-02, because
+    // the sampled prices rebuild the band a lock exists to withhold.
+    const locked: LockedEvidence = {
+      editais: 6,
+      matched: ['CANETA ESFEROGRAFICA AZUL', 'CANETA ESFEROGRAFICA, AZUL'],
+    }
+    const state = bandStateFrom({ state: 'locked', evidence: locked })
+
+    expect(state).toEqual({ band: null, locked: true, evidence: locked })
+    // No price reaches this branch — asserted on the payload, not on the type,
+    // because the type is what a future change would have to defeat first.
+    expect(JSON.stringify(state)).not.toContain('value')
+  })
+
   it('keeps a band the caller may see', () => {
-    expect(bandStateFrom({ state: 'ready', band: BAND })).toEqual({
+    expect(bandStateFrom({ state: 'ready', band: BAND, evidence: EVIDENCE })).toEqual({
       band: BAND,
       locked: false,
+      evidence: EVIDENCE,
     })
   })
 
-  it('is ready-and-empty, not locked, when no number exists', () => {
-    // **The normal case**: measured 2026-09-28, roughly 1% of open items clear
-    // the gate. `locked: false` is what makes the screen say "ainda sem dados
-    // de vencedores" rather than draw a locked bar over a number that is not
+  it('is ready-and-empty, not locked, when nothing at all was found', () => {
+    // **`locked: false`** is what makes the screen say "ainda sem dados de
+    // vencedores" rather than draw a locked bar over a number that is not
     // there and imply one is being withheld.
-    expect(bandStateFrom({ state: 'ready', band: null })).toEqual({
+    //
+    // E22 narrowed what "empty" means. Both null is now the *only* empty case:
+    // measured 2026-10-01 over 600 open items, 11.17% have a past winner of
+    // the same product and 0.67% clear the band's gate, so for roughly ten
+    // items in every eleven that used to land here there is something to show.
+    expect(bandStateFrom({ state: 'ready', band: null, evidence: null })).toEqual({
       band: null,
       locked: false,
+      evidence: null,
+    })
+  })
+
+  it('is ready with evidence and no band — the rung E22 exists for', () => {
+    // The 10× case: `priceBand` refused (fewer than MIN_SAMPLE editais, or too
+    // wide a spread) and `priceEvidence` did not. `locked` stays false — there
+    // is no number being withheld, there is a thinner answer being shown.
+    const thin = { ...EVIDENCE, editais: 2, samples: EVIDENCE.samples.slice(0, 2) }
+    expect(bandStateFrom({ state: 'ready', band: null, evidence: thin })).toEqual({
+      band: null,
+      locked: false,
+      evidence: thin,
     })
   })
 
@@ -54,9 +105,10 @@ describe('bandStateFrom', () => {
     // The distinction the route exists to make: *locked* means a number is
     // there and this plan does not include it. The route never sends `locked`
     // unless `priceBand()` actually returned one.
-    expect(bandStateFrom({ state: 'locked' })).toEqual({
+    expect(bandStateFrom({ state: 'locked', evidence: null })).toEqual({
       band: null,
       locked: true,
+      evidence: null,
     })
   })
 
@@ -69,10 +121,12 @@ describe('bandStateFrom', () => {
     expect(bandStateFrom({ state: 'error', error: 'server_error' })).toEqual({
       band: null,
       locked: false,
+      evidence: null,
     })
     expect(bandStateFrom({ state: 'error', error: 'rate_limited' })).toEqual({
       band: null,
       locked: false,
+      evidence: null,
     })
   })
 
@@ -81,7 +135,12 @@ describe('bandStateFrom', () => {
     // `envelope<BandResponse>(...)` — a cast, not a parse — so an old server
     // during a rollout can put `entitled` on the wire and TypeScript will not
     // notice. It must change nothing: entitlement comes from the server render.
-    const legacy = { state: 'ready', band: BAND, entitled: false } as unknown as BandResponse
-    expect(bandStateFrom(legacy)).toEqual({ band: BAND, locked: false })
+    const legacy = {
+      state: 'ready',
+      band: BAND,
+      evidence: null,
+      entitled: false,
+    } as unknown as BandResponse
+    expect(bandStateFrom(legacy)).toEqual({ band: BAND, locked: false, evidence: null })
   })
 })

@@ -395,3 +395,51 @@ under rule 1 but did not flag it, so the ruling named two strings when three car
 phrasing. The ruling is about the pattern, so all three are fixed. Worth noting as a
 failure of the sweep rather than of the ruling: a list that matches loosely and triages
 silently can drop a real one.
+
+---
+
+## E22 — what the locked rung may send (2026-10-01)
+
+**The contradiction.** Sci's ruling of 2026-10-01 is *raw evidence free,
+computation paid*: the matched past results are free at every rung, the band's
+quartiles and the preço-alvo are Essencial. At the top rung those two halves
+describe the same numbers, so they cannot both hold.
+
+**Measured, not inferred.** At five editais the free payload sent four of the
+five per-edital prices. Feeding them back through `priceBand` returns the real
+`low`, `median` and `high` — exactly, when the fifth is recoverable, and
+two-of-three plus a bracket on the median when it is not. Over five sorted
+values the band *is* `sorted[1]`, `sorted[2]`, `sorted[3]`, so four known values
+leave almost nothing to buy. `state: 'locked'` is itself a second channel: it is
+sent if and only if the spread gate passed, so it reports the gate's verdict on
+a sample the caller already holds. Removing the `{low, high}` range (done)
+closed the widest channel; it did not close this one.
+
+**Why it is not urgent in reach, and is urgent in principle.** It applies only
+where a band exists: **0.67%** of open items, measured 2026-10-01 over 600. So
+whichever way it goes, the 11.17% of items the ladder was built for are
+unaffected — this is a decision about the top rung alone, seven days before
+paying founders arrive on 08/10.
+
+**The two coherent answers.**
+
+1. **Accept it.** The band at ≥5 editais is effectively free, and what Essencial
+   sells is the preço-alvo and the margin calculator — which are genuinely not
+   reconstructible from past prices, because they encode the subscriber's own
+   margin. Monotonicity holds perfectly. `plans.essential.feature3` would need
+   re-reading against this, since it currently sells the band itself.
+2. **Withhold the values at the top rung.** Send `editais` and the descriptions,
+   not the prices, once `priceBand` returns non-null. The reader still learns
+   that five editais closed on this product and what was matched; the numbers
+   are the thing behind the gate. This *is* an inversion — prices visible at
+   four editais, withheld at five — but it is confined to 0.67% of items and
+   runs in the direction readers already expect from a paywall.
+
+**My recommendation is (2)**, on the grounds that (1) quietly re-prices Essencial
+seven days before launch and would need `plans.essential.feature3` rewritten,
+which is copy and therefore Sci's anyway. But it is a pricing decision, not a
+defect, so nothing was changed either way: the code currently does (1), because
+that is what the ruling literally said.
+
+**Blocks**: the render half of E22, which is where a reader would see either
+answer. Nothing user-facing has shipped.

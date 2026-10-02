@@ -37,6 +37,13 @@ export type Comparable = {
   /** When it was awarded, for the recency bound. */
   awardedOn: Date | null
   /**
+   * The awarded item's own description (E22).
+   *
+   * Optional because the band never needed it: five editais and a tight spread
+   * were the argument. A thin rung has neither, so it shows this instead.
+   */
+  description?: string | null
+  /**
    * Which edital it came from. Carried so the sample floor can count
    * **editais**, not rows — see {@link MIN_SAMPLE}.
    */
@@ -99,6 +106,234 @@ function percentile(sorted: readonly number[], fraction: number): number {
   const upper = Math.ceil(position)
   if (lower === upper) return sorted[lower]
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower)
+}
+
+/**
+ * One past result, as the thin rungs print it (E22).
+ *
+ * `description` is the awarded item's own words, and it is the whole point: at
+ * one or two editais nothing checks the product-identity heuristic, so the
+ * screen hands the reader what it matched instead of asserting that it matched
+ * correctly.
+ */
+export type PriceSample = {
+  /**
+   * Which edital this price came from.
+   *
+   * **Read by no screen yet** — `price-view.tsx` uses it as a React key and
+   * nothing else, so a reader cannot follow a result back to its source. It is
+   * on the wire because the citation is the point of this rung; **D37** is the
+   * card that draws it, and that card exists because a "later" in a comment is
+   * not a task.
+   */
+  tenderId: string
+  /**
+   * **A price somebody actually closed at** — never a statistic.
+   *
+   * This started as the median of the edital's own rows, which interpolates on
+   * an even count: two lots at R$ 10 and R$ 20 printed *R$ 15,00*, a figure
+   * nobody awarded, carrying a third row's description. {@link priceBand} may
+   * interpolate because it never prints the intermediate; this rung prints it,
+   * so it picks a real row and shows that row's own words.
+   *
+   * **The screen does not link to the edital yet** — `tenderId` reaches it and
+   * serves only as a React key — so the earlier claim here that a reader could
+   * look the figure up was not true. **D37** is the card for drawing it.
+   */
+  value: number
+  description: string | null
+}
+
+/**
+ * What a past winner is worth saying when there is not enough for a band.
+ *
+ * ## Why this exists
+ *
+ * Measured 2026-10-01 over 600 open items, after the awards backfill took the
+ * priced corpus from 5 408 to 23 448: **11.17%** have at least one past winner
+ * of the same product, 4.83% have two or more — and **0.67%** show a band.
+ * {@link priceBand} returns `null` below {@link MIN_SAMPLE} and the count goes
+ * with it, so the screen could not tell *"one winner"* from *"nothing"* and
+ * said nothing to 94% of the items it had evidence for.
+ *
+ * ## What it may say, and what it may not
+ *
+ * Counts, the individual prices, and what each one was. **Never a median, a
+ * quartile or a preço-alvo** — those belong to the band, and the band is
+ * earned by five independent editais and a spread the gate checked. A single
+ * result with a median drawn through it is a confident-looking number with
+ * nothing behind it.
+ *
+ * ## There is deliberately no range
+ *
+ * A `{low, high}` over the matched editais was here and was removed on
+ * 2026-10-01, for three independent reasons found in one review:
+ *
+ * 1. **Its extremes could be invisible.** `samples` is capped at
+ *    {@link MAX_SAMPLES_SHOWN} and sorted newest-first, and an award with no
+ *    date sorts last, so the row driving the low was routinely the one the cap
+ *    dropped. A reader was shown *"R$ 1,00 – R$ 210,00 · 5 editais"* with the
+ *    R$ 1,00 row absent from the list and of unknown age — a span they could
+ *    not check, which is the shape this rung exists to avoid.
+ * 2. **It inherited none of {@link MAX_SPREAD}.** `priceBand` refuses an
+ *    incoherent sample outright; the range drew one anyway. A caderno at
+ *    R$ 9,50 beside a notebook at R$ 3 000 produced a range rather than
+ *    silence, which is exactly the wrong-product failure the product gate was
+ *    added for.
+ * 3. **It handed back the paid band.** Together with the four sampled values it
+ *    reconstructed the whole per-edital set at five editais, and `priceBand`
+ *    over that set returns the real `low`, `median` and `high` to the cent.
+ *
+ * The printed samples carry the span instead: every number shown is a price
+ * somebody closed at, beside the words it closed under, so nothing is stated
+ * that no row supports. The *edital* each one came from rides on
+ * {@link PriceSample.tenderId} and is **not on screen yet** (**D37**), so for
+ * now what the reader can check is the product, not the source.
+ *
+ * ## Free at every rung
+ *
+ * Sci's ruling, 2026-10-01: **raw evidence free, computation paid**. The
+ * matched results are public PNCP records of closed tenders; the band and the
+ * preço-alvo are the work. Drawn that way the ladder is monotonic — the
+ * alternative, free below five and locked at five, would show a non-subscriber
+ * *less* at four editais than at three.
+ */
+export type PriceEvidence = {
+  /** Distinct editais, counted the way {@link PriceBand.sampleSize} is. */
+  editais: number
+  /** One per edital, newest first, capped by {@link MAX_SAMPLES_SHOWN}. */
+  samples: PriceSample[]
+}
+
+/**
+ * How many matched results a thin rung prints.
+ *
+ * Four, because that is the most a rung below {@link MIN_SAMPLE} can hold, so
+ * the cap never truncates the rungs it exists for. At or above the floor the
+ * band speaks and this list is context rather than the argument.
+ */
+export const MAX_SAMPLES_SHOWN = 4
+
+/**
+ * What the top rung may say to a reader who has not paid for it (E22).
+ *
+ * ## Why this is a separate type and not a nullable price
+ *
+ * Sci's decision, 2026-10-02. At five editais the four sampled prices **rebuild
+ * the band**: over five sorted values the quartiles are `sorted[1..3]`, so four
+ * known values give two of the three figures exactly and bracket the third.
+ * Verified against `priceBand` — with the oldest edital also the cheapest, the
+ * free payload returned the real low, median and high to the cent. *Raw
+ * evidence free* and *the band is paid* cannot both hold where a band exists.
+ *
+ * So above {@link MIN_SAMPLE} the values are withheld and the **count and the
+ * matched descriptions** are not. The reader still learns that five editais
+ * closed on this product and what we matched — enough to judge whether the
+ * match is right, which is the thing they cannot otherwise check — and the
+ * numbers are what Essencial sells.
+ *
+ * Carrying this as `value: number | null` on {@link PriceSample} was the
+ * obvious alternative and is the one to avoid: it makes a leak a forgotten
+ * assignment at one call site. A type with **no price field at all** makes the
+ * locked payload unable to carry a price, so the gate is checked by `tsc` on
+ * every future change rather than by whoever remembers.
+ *
+ * The cost is a real inversion — prices at four editais, none at five — and it
+ * is bounded: measured 2026-10-01 over 600 open items, **0.67%** reach a band
+ * at all, and it runs in the direction a paywall normally runs.
+ */
+export type LockedEvidence = {
+  /** Distinct editais, the same count {@link PriceEvidence} reports. */
+  editais: number
+  /**
+   * What was matched, newest first and deduplicated.
+   *
+   * Deduplicated because several editais routinely carry the identical
+   * description, and four identical lines read as noise rather than as four
+   * sources. Rows with no description are dropped: nothing to show, and
+   * nothing for the reader to judge.
+   *
+   * **Drawn from the same capped {@link MAX_SAMPLES_SHOWN} newest samples an
+   * entitled reader sees**, not from every edital. So `matched.length` is not a
+   * second count — {@link LockedEvidence.editais} is the count — and the two
+   * readers are looking at the same editais, one of them with the prices. A
+   * reader can therefore see *"6 editais"* above two distinct descriptions
+   * without either being wrong.
+   */
+  matched: string[]
+}
+
+/**
+ * Strip the prices, keep the count and what was matched.
+ *
+ * Takes the same {@link PriceEvidence} an entitled caller receives, so there is
+ * one place where evidence is computed and one place where it is narrowed —
+ * rather than a second, thinner query that could drift from the first.
+ */
+export function withoutPrices(evidence: PriceEvidence): LockedEvidence {
+  const seen = new Set<string>()
+  for (const sample of evidence.samples) {
+    if (sample.description !== null) seen.add(sample.description)
+  }
+  return { editais: evidence.editais, matched: [...seen] }
+}
+
+export function priceEvidence(
+  comparables: readonly Comparable[],
+  now = new Date(),
+): PriceEvidence | null {
+  const cutoff = new Date(now)
+  cutoff.setMonth(cutoff.getMonth() - MAX_AGE_MONTHS)
+
+  // The band's own freshness and sanity filter, so a price it refused cannot
+  // reappear on a thinner rung with less around it to judge by.
+  const fresh = comparables.filter(
+    (c) =>
+      (c.awardedOn === null || c.awardedOn >= cutoff) &&
+      Number.isFinite(c.unitAwardedValue) &&
+      c.unitAwardedValue > 0,
+  )
+  if (fresh.length === 0) return null
+
+  // One price per edital. A registro de preços split into 40 lots is one
+  // decision, and printing it 40 times would be this rung's version of the
+  // defect `priceBand`'s own comment describes.
+  const byEdital = new Map<string, { value: number; description: string | null; at: Date | null }[]>()
+  for (const item of fresh) {
+    const rows = byEdital.get(item.tenderId) ?? []
+    rows.push({ value: item.unitAwardedValue, description: item.description ?? null, at: item.awardedOn })
+    byEdital.set(item.tenderId, rows)
+  }
+
+  // **One real row stands for the edital, chosen rather than computed.**
+  //
+  // `priceBand` takes each edital's median and may interpolate, because it only
+  // ever publishes the quartiles drawn across editais. Here the number is
+  // printed as an individual past result, so an interpolated R$ 15,00 between
+  // lots of R$ 10 and R$ 20 would be a price nobody awarded — and `description`
+  // would come from a third row, describing something other than the figure
+  // beside it. The lower-middle row by value is the same choice, made among
+  // rows that exist.
+  const perEdital = [...byEdital.entries()].map(([tenderId, rows]) => {
+    const sorted = [...rows].sort((a, b) => a.value - b.value)
+    const chosen = sorted[Math.floor((sorted.length - 1) / 2)]
+    return {
+      tenderId,
+      value: chosen.value,
+      // The chosen row's own words, so the description belongs to this price.
+      description: chosen.description,
+      at: rows.reduce<Date | null>((newest, r) => (r.at && (!newest || r.at > newest) ? r.at : newest), null),
+    }
+  })
+
+  const samples = [...perEdital]
+    // Newest first: the most recent closing is the most useful single data
+    // point, and an edital with no date sorts last rather than first.
+    .sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0))
+    .slice(0, MAX_SAMPLES_SHOWN)
+    .map(({ tenderId, value, description }) => ({ tenderId, value, description }))
+
+  return { editais: perEdital.length, samples }
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { PriceBand } from './price-band'
+import type { LockedEvidence, PriceBand, PriceEvidence } from './price-band'
 
 /**
  * The wire contract of the Radar routes (spec §8).
@@ -233,6 +233,21 @@ export type BandResponse =
   | {
       state: 'ready'
       band: PriceBand | null
+      /**
+       * What was found when it was not enough for a band (E22).
+       *
+       * **Free at every rung, and that is deliberate.** Sci's ruling,
+       * 2026-10-01: raw evidence free, computation paid. The matched results
+       * are public PNCP records of closed tenders; the band's quartiles and
+       * the preço-alvo are the work. It rides on `locked` as well, so the
+       * ladder is monotonic — gating it at five and not below would show a
+       * non-subscriber *less* at four editais than at three.
+       *
+       * Present whenever any comparable survives, including alongside a band:
+       * at five editais it is the context, and below five it is the whole
+       * message.
+       */
+      evidence: PriceEvidence | null
       /*
        * **There is deliberately no `entitled` here.**
        *
@@ -260,7 +275,24 @@ export type BandResponse =
    * something that is not there, or tell a visitor nothing is there when the
    * truth is that they have not paid for it.
    */
-  | { state: 'locked' }
+  | {
+      state: 'locked'
+      /**
+       * **`LockedEvidence`, not `PriceEvidence`** — the count and what was
+       * matched, with no price field at all (Sci, 2026-10-02).
+       *
+       * A `locked` answer is sent if and only if a band exists, and at five
+       * editais the four sampled prices rebuild it: the quartiles of five
+       * sorted values are `sorted[1..3]`, so four of them give two figures
+       * exactly and bracket the third. Sending `PriceEvidence` here handed back
+       * the thing the state exists to withhold.
+       *
+       * The narrower type is the enforcement. `value` is not a nullable field
+       * somebody must remember to clear — it does not exist on this branch, so
+       * a leak is a compile error rather than a review finding.
+       */
+      evidence: LockedEvidence | null
+    }
   | { state: 'error'; error: ErrorCode; fields?: Record<string, string> }
 
 export type TenderDetail = TenderCard & {

@@ -87,6 +87,8 @@ type Row = {
   unit_awarded_value: string | null
   awarded_on: Date | string | null
   tender_id: string
+  /** E22: what was matched, so a thin rung can show it rather than assert it. */
+  description: string | null
   /** Both descriptions, because `sameProduct` needs the pair. */
   subject_description: string | null
   candidate_description: string | null
@@ -113,7 +115,7 @@ export async function comparablesForItem(
         from tender_items
        where tender_id = ${tenderId} and number = ${itemNumber}
     )
-    select a.unit_awarded_value, a.awarded_on, j.tender_id,
+    select a.unit_awarded_value, a.awarded_on, j.tender_id, j.description,
            s.description as subject_description, j.description as candidate_description
       from subject s
       join tender_items j
@@ -145,5 +147,6 @@ export async function comparablesForItem(
       unitAwardedValue: Number(row.unit_awarded_value),
       awardedOn: row.awarded_on === null ? null : new Date(row.awarded_on),
       tenderId: row.tender_id,
+      description: row.description,
     }))
 }
