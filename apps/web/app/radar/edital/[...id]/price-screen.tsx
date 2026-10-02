@@ -244,6 +244,7 @@ export function PriceScreen({ id, entitled }: { id: string; entitled: boolean })
       search={search}
       band={band}
       bandLocked={bandLocked}
+      evidence={current?.evidence ?? null}
       showPlanCta={showPlanCta}
       onRetry={onRetry}
     />

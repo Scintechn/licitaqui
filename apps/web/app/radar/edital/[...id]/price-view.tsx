@@ -18,7 +18,8 @@ import { priceHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { moneyExact, moneyExactNonZero, trimObject } from '@/lib/radar/format'
-import type { PriceBand } from '@/lib/radar/price-band'
+import { MIN_SAMPLE } from '@/lib/radar/price-band'
+import type { LockedEvidence, PriceBand, PriceEvidence } from '@/lib/radar/price-band'
 import { MarginCeiling } from './margin-ceiling'
 import { TenderStatusBanner } from '../../tender-status-banner'
 
@@ -116,6 +117,25 @@ export type PriceViewProps = {
    */
   bandLocked?: boolean
   /**
+   * What was found when it was not enough for a band (E22).
+   *
+   * **The reason the third state is no longer one state.** `priceBand` returns
+   * `null` below `MIN_SAMPLE`, and the count went with it, so this screen could
+   * not tell *"one past winner"* from *"nothing found"* and said "ainda sem
+   * dados de vencedores" to both. Measured 2026-10-01 over 600 open items:
+   * 11.17% have a past winner of the same product, **0.67%** clear the band's
+   * gate — so that sentence was wrong for roughly ten items in every eleven it
+   * appeared on.
+   *
+   * Two shapes, because the rungs are not the same offer. Below the gate it is
+   * `PriceEvidence`: the count, the individual prices and what each one was.
+   * At or above it — where the band exists and this plan does not include it —
+   * it is `LockedEvidence`, which has no price field at all, because the
+   * sampled prices rebuild the band (Sci, 2026-10-02). `bandLocked` says which
+   * one arrived, and the union means a price cannot reach the locked branch.
+   */
+  evidence?: PriceEvidence | LockedEvidence | null
+  /**
    * Whether to offer the Essencial plan. Defaults to **true** so every render
    * that does not know — the loading fallback, the suspended screen, a test —
    * keeps the behaviour this screen had before the band existed.
@@ -134,6 +154,52 @@ export function bandRange(band: { low: number; high: number }): string | null {
   const low = moneyExactNonZero(String(band.low))
   const high = moneyExactNonZero(String(band.high))
   return low === null || high === null ? null : `${low} – ${high}`
+}
+
+/**
+ * The matched descriptions, as a list the reader judges (E22).
+ *
+ * This is not decoration. `MIN_SAMPLE` and `MAX_SPREAD` are what caught a wrong
+ * match — five editais outvote one caderno — and below the gate neither has
+ * run, so at one or two editais **nothing** has checked that the comparable is
+ * even the same product. A single clean number looks *more* authoritative for
+ * being one number, which is the failure this list exists to prevent: the top
+ * rung earns the right to hide its sources because the spread did the judging,
+ * and the thin rungs borrow the reader's judgement instead.
+ */
+function MatchedList({ items }: { items: readonly string[] }) {
+  if (items.length === 0) return null
+  return (
+    <ul className="m-0 flex list-none flex-col gap-1 p-0">
+      {items.map((description) => (
+        <li key={description} className="text-meta leading-relaxed text-muted">
+          {trimObject(description, 70)}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * One past result: a price somebody closed at, and the words it closed under.
+ *
+ * `value` is a real awarded row, never a statistic — see `PriceSample`. The two
+ * are rendered together because neither is worth much alone: the price without
+ * the description asserts a match the thin rungs have not verified, and the
+ * description without the price is not evidence about money.
+ */
+function EvidenceRow({ sample }: { sample: PriceEvidence['samples'][number] }) {
+  const money = moneyExactNonZero(String(sample.value))
+  return (
+    <div className="flex items-baseline justify-between gap-2.5 border-b border-line py-2 last:border-b-0">
+      <span className="text-meta leading-relaxed text-muted">
+        {sample.description === null ? page.won : trimObject(sample.description, 60)}
+      </span>
+      {money === null ? null : (
+        <strong className="shrink-0 font-display text-[15px] tabular-nums">{money}</strong>
+      )}
+    </div>
+  )
 }
 
 function LockedRow({ label, last = false }: { label: string; last?: boolean }) {
@@ -162,9 +228,25 @@ export function PriceView({
   search,
   band = null,
   bandLocked = false,
+  evidence = null,
   showPlanCta = true,
   onRetry,
 }: PriceViewProps) {
+  /**
+   * **Narrowed structurally, not by `bandLocked`.**
+   *
+   * `bandLocked` is supposed to say which shape arrived, but it is a separate
+   * prop and the two can disagree — a caller passing `PriceEvidence` with
+   * `bandLocked` would otherwise read `.matched` off an object that has none.
+   * Asking the object instead means a mismatched pair renders nothing rather
+   * than throwing, and no branch can reach a field its shape lacks.
+   *
+   * `thin` is also only ever rendered where `band === null`, so these two are
+   * mutually exclusive on screen even though the prop is one union.
+   */
+  const thin = evidence !== null && 'samples' in evidence ? evidence : null
+  const locked = evidence !== null && 'matched' in evidence ? evidence : null
+
   const bar = (
     <AppBar
       leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>}
@@ -325,6 +407,23 @@ export function PriceView({
                   </span>
                   <LockedValue width={110} height={30} label={page.lockedValue} />
                 </div>
+                {/* **The count and what was matched, never the prices** (Sci,
+                    2026-10-02). Withholding all of it would make the ladder go
+                    backwards — a visitor would see the matched results at four
+                    editais and an empty card at five, the moment the data got
+                    good enough to sell. Showing the prices would hand back the
+                    band: the quartiles of five sorted values are
+                    `sorted[1..3]`, so four sampled prices give two of the three
+                    figures exactly. `LockedEvidence` carries no price field, so
+                    this block cannot print one. */}
+                {locked === null ? null : (
+                  <>
+                    <p className="m-0 text-body">
+                      {format(page.lockedEvidence, { count: locked.editais })}
+                    </p>
+                    <MatchedList items={locked.matched} />
+                  </>
+                )}
                 <p className="m-0 text-meta leading-relaxed text-muted">{page.maxNote}</p>
               </Card>
             ) : band ? (
@@ -338,11 +437,55 @@ export function PriceView({
                  `lib/radar/price-band.ts` refused one because the comparable
                  awards were too few or too scattered to mean anything. Saying
                  that plainly keeps the Essencial feature visible without
-                 claiming something is being kept back. */
+                 claiming something is being kept back.
+
+                 **E22 split it in two.** The gate refusing a band is not the
+                 same as having found nothing, and this card said the same
+                 sentence to both. `thin` is the rung that was missing. */
               <Card className="flex flex-col gap-2.5">
                 <div className="text-body font-medium">{page.maxTitle}</div>
-                <p className="m-0 text-body text-muted">{page.noData}</p>
-                <p className="m-0 text-meta leading-relaxed text-muted">{page.noDataHelp}</p>
+                {thin === null ? (
+                  <>
+                    <p className="m-0 text-body text-muted">{page.noData}</p>
+                    <p className="m-0 text-meta leading-relaxed text-muted">{page.noDataHelp}</p>
+                  </>
+                ) : (
+                  <>
+                    {/* The count, then every result behind it. No median, no
+                        quartile, no preço-alvo: those are earned by five
+                        editais and a spread the gate checked, and a figure
+                        drawn through one or two prices would be a confident
+                        number with nothing behind it. */}
+                    <p className="m-0 text-body">
+                      {format(page.evidenceCount, { count: thin.editais })}
+                    </p>
+                    <div className="flex flex-col">
+                      {thin.samples.map((sample) => (
+                        <EvidenceRow key={sample.tenderId} sample={sample} />
+                      ))}
+                    </div>
+                    {/* **Only below the floor, because above it the sentence
+                        is false.** `evidenceHelp` says the faixa appears at
+                        five editais or more. `MIN_SAMPLE` is necessary and not
+                        sufficient — `MAX_SPREAD` must pass too — so an item
+                        with six scattered editais would read "Mostramos a faixa
+                        quando encontramos pelo menos 5 editais… Neste item
+                        encontramos 6" directly above no faixa at all. It is
+                        reachable, not hypothetical: measured 2026-10-01, 0.83%
+                        of open items reach five editais and 0.67% show a band,
+                        so about one in five of those fails on spread.
+
+                        Suppressing it leaves that case with the count and the
+                        results and no explanation, which is incomplete but
+                        true. Saying why would need a sentence about scatter,
+                        and the words are Sci's — recorded in `CLAIMS.md`. */}
+                    {thin.editais < MIN_SAMPLE ? (
+                      <p className="m-0 text-meta leading-relaxed text-muted">
+                        {format(page.evidenceHelp, { count: thin.editais })}
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </Card>
             )}
 
