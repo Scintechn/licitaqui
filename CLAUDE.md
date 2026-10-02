@@ -93,6 +93,12 @@
   `DEVELOPMENT_PLAN.md` conflict was resolved in favour of another lane's copy.
   Both had to be recovered from the branch. After a PR merges, `grep` `main` for
   the card ids it added: the code landing says nothing about whether the row did.
+- **`docs/PRICE_BAND.md` is the whole price band in one file** — the pipeline, every
+  gate and why it holds that value, the measured coverage and cost, the supply side,
+  and what a replacement data source would have to beat. Read it before touching
+  `comparables.ts`, `price-band.ts`, `product-key.ts`, the `awards` table or any
+  price copy. It exists because those facts were spread across six cards, three
+  docs and a measurement nobody could find twice.
 - AI prompt or extraction changes must run `worker/evaluation` and report the score diff.
 - **A "later" in a comment is not a task.** If your change leaves something for
   somebody else — a column nothing reads yet, a string nothing renders, an event
