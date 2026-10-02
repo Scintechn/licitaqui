@@ -191,14 +191,21 @@ function MatchedList({ items }: { items: readonly string[] }) {
 function EvidenceRow({ sample }: { sample: PriceEvidence['samples'][number] }) {
   const money = moneyExactNonZero(String(sample.value))
   return (
-    <div className="flex items-baseline justify-between gap-2.5 border-b border-line py-2 last:border-b-0">
-      <span className="text-meta leading-relaxed text-muted">
-        {sample.description === null ? page.won : trimObject(sample.description, 60)}
+    <li className="flex items-baseline justify-between gap-2.5 border-b border-line py-2 last:border-b-0">
+      {/* `min-w-0` and `break-words`: `trimObject` caps the *length*, not the
+          token count, and PNCP descriptions carry long unspaced codes — without
+          these the span's `min-width: auto` resolves to min-content and pushes
+          the price out of the row. `environment: 'node'` has no boxes, so this
+          is the kind of defect no assertion in that suite can fail on (§4c).
+          Truncated at 70, the same as `MatchedList`: the same content on two
+          rungs read at two lengths. */}
+      <span className="min-w-0 break-words text-meta leading-relaxed text-muted">
+        {sample.description === null ? page.won : trimObject(sample.description, 70)}
       </span>
       {money === null ? null : (
         <strong className="shrink-0 font-display text-[15px] tabular-nums">{money}</strong>
       )}
-    </div>
+    </li>
   )
 }
 
@@ -246,6 +253,30 @@ export function PriceView({
    */
   const thin = evidence !== null && 'samples' in evidence ? evidence : null
   const locked = evidence !== null && 'matched' in evidence ? evidence : null
+
+  /**
+   * **The results that will actually be drawn** — and therefore the number the
+   * count may state.
+   *
+   * Two bugs, one mechanism. `priceEvidence` caps `samples` at
+   * `MAX_SAMPLES_SHOWN` while `editais` stays uncapped, so the count was
+   * `editais` over at most four rows: at the spread-failure rung (five or more
+   * editais, no band) the screen read *"Encontramos 6 resultados parecidos"*
+   * above **four** results, and `evidenceHelp` — the only string that would
+   * have reconciled them — is suppressed exactly there, because above the floor
+   * it is false. A count a reader can count and find wrong is worse than a
+   * smaller true one. And `moneyExactNonZero` refuses a value below half a
+   * centavo while `priceEvidence` filters on `> 0`, so a row could render a
+   * description with no money beside it — against `EvidenceRow`'s own rule that
+   * neither half is evidence alone.
+   *
+   * Counting what renders fixes both and changes nothing below the floor, where
+   * `editais <= 4` makes `samples.length === editais` by construction. Every
+   * number on the rung is now one the reader can check against the rows.
+   */
+  const shown = (thin?.samples ?? []).filter(
+    (sample) => moneyExactNonZero(String(sample.value)) !== null,
+  )
 
   const bar = (
     <AppBar
@@ -444,8 +475,13 @@ export function PriceView({
                  sentence to both. `thin` is the rung that was missing. */
               <Card className="flex flex-col gap-2.5">
                 <div className="text-body font-medium">{page.maxTitle}</div>
-                {thin === null ? (
+                {thin === null || shown.length === 0 ? (
                   <>
+                    {/* `shown.length === 0` lands here too, and should: a rung
+                        with no drawable result has nothing to say that this
+                        sentence does not say better, and a count of zero would
+                        print "1" through `Intl.PluralRules`, which reads
+                        `select(0)` as `one` in pt-BR. */}
                     <p className="m-0 text-body text-muted">{page.noData}</p>
                     <p className="m-0 text-meta leading-relaxed text-muted">{page.noDataHelp}</p>
                   </>
@@ -457,13 +493,13 @@ export function PriceView({
                         drawn through one or two prices would be a confident
                         number with nothing behind it. */}
                     <p className="m-0 text-body">
-                      {format(page.evidenceCount, { count: thin.editais })}
+                      {format(page.evidenceCount, { count: shown.length })}
                     </p>
-                    <div className="flex flex-col">
-                      {thin.samples.map((sample) => (
+                    <ul className="m-0 flex list-none flex-col p-0">
+                      {shown.map((sample) => (
                         <EvidenceRow key={sample.tenderId} sample={sample} />
                       ))}
-                    </div>
+                    </ul>
                     {/* **Only below the floor, because above it the sentence
                         is false.** `evidenceHelp` says the faixa appears at
                         five editais or more. `MIN_SAMPLE` is necessary and not
@@ -481,7 +517,7 @@ export function PriceView({
                         and the words are Sci's — recorded in `CLAIMS.md`. */}
                     {thin.editais < MIN_SAMPLE ? (
                       <p className="m-0 text-meta leading-relaxed text-muted">
-                        {format(page.evidenceHelp, { count: thin.editais })}
+                        {format(page.evidenceHelp, { count: shown.length })}
                       </p>
                     ) : null}
                   </>

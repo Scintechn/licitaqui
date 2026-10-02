@@ -1,5 +1,6 @@
 import ptBR from '@/messages/pt-BR.json'
 import { brl, brlExact, FOUNDERS, NOTICE, PLAN_PRICES, PROMO } from './product'
+import { MIN_SAMPLE } from './radar/price-band'
 
 /**
  * **Product facts, substituted into the catalogue once at load.**
@@ -37,6 +38,13 @@ const PRODUCT_FACTS: Readonly<Record<string, string>> = Object.freeze({
   diasAvisoPreco: String(NOTICE.priceChangeDays),
   /** `2026-10-08` → `08/10`, the form Brazilian copy uses. */
   aberturaData: FOUNDERS.opensOn.split('-').slice(1).reverse().join('/'),
+  // **The floor the price band needs, and the copy quotes.**
+  // `radar.price.evidenceHelp` says the faixa appears at "pelo menos N
+  // editais", and `price-view.tsx` decides whether to show that sentence at
+  // all by comparing against `MIN_SAMPLE`. Two numbers that must agree, one of
+  // them previously typed into the catalogue by hand — the shape this whole
+  // block exists to prevent.
+  minEditais: String(MIN_SAMPLE),
 })
 
 /** `{$name}` → its value. An unknown name is **left in place**, never dropped. */

@@ -111,12 +111,49 @@ test.describe('E22 · the evidence ladder reaches the reader', () => {
     await expect(
       page.getByText('Encontramos 6 editais encerrados com o mesmo produto'),
     ).toBeVisible()
+    // Both descriptions, not just the first: a `MatchedList` rendering only
+    // `items[0]` would otherwise pass.
     await expect(page.getByText(/PERFURADOR DE PAPEL 02 FUROS/)).toBeVisible()
-    // **Still a lock.** No past winner's price is drawn anywhere — asserted on
-    // the element that would carry one, because the edital's own estimated
-    // value is money this screen has always shown and should.
-    await expect(page.locator('strong.tabular-nums')).toHaveCount(0)
+    await expect(page.getByText(/PERFURADOR 2 FUROS 100 FOLHAS/)).toBeVisible()
     await expect(page.getByText('Ainda sem dados de vencedores')).toHaveCount(0)
+  })
+
+  test('a locked answer carrying prices still shows none of them', async ({ page }) => {
+    await openPriceScreen(page)
+    /**
+     * **The drifted payload, and the only version of this check that can
+     * fail.**
+     *
+     * The first attempt asserted `strong.tabular-nums` had count 0 on an
+     * ordinary locked answer. That holds for free: the two elements carrying
+     * that class are the band row and `EvidenceRow`, and a `locked` body with
+     * no `samples` makes both unreachable by *any* implementation of those
+     * branches. An assertion that cannot fail is worse than none, because it
+     * reads as coverage.
+     *
+     * This body is what a route regression would actually produce — the server
+     * stopped calling `withoutPrices` and sent the entitled shape with
+     * `state: 'locked'`. `price-view.tsx` narrows **structurally**, not off
+     * `bandLocked`, so the prices must still not be drawn.
+     */
+    await serveBand(page, {
+      state: 'locked',
+      evidence: {
+        editais: 6,
+        samples: [
+          { tenderId: 'x-1-000001/2026', value: 204, description: 'PERFURADOR DE PAPEL LEAKED' },
+          { tenderId: 'y-1-000001/2026', value: 180.5, description: 'PERFURADOR 2 FUROS LEAKED' },
+        ],
+      },
+    })
+    await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible`)
+
+    // The lock itself is still drawn, so the screen is in the state we think.
+    await expect(page.getByLabel(/plano Essencial/).first()).toBeVisible()
+    // And not one figure from that payload reached the reader.
+    await expect(page.getByText('R$ 204,00')).toHaveCount(0)
+    await expect(page.getByText('R$ 180,50')).toHaveCount(0)
+    await expect(page.getByText(/LEAKED/)).toHaveCount(0)
   })
 
   test('nothing found still says nothing was found', async ({ page }) => {

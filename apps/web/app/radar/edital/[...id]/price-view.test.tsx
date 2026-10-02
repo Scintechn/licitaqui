@@ -518,13 +518,82 @@ describe('PriceView — the evidence ladder', () => {
 })
 
 describe('PriceView — the sentence that would contradict itself', () => {
+  /**
+   * Six editais, four results — the shape `priceEvidence` actually returns
+   * above the cap. The first fixture here carried `editais: 6` with **two**
+   * samples, which that function cannot produce, and it was the reason this
+   * block exercised the suppression without ever exercising the cap.
+   */
   const scattered = {
     editais: 6,
     samples: [
       { tenderId: 'a-1-000001/2026', value: 204, description: 'PERFURADOR DE PAPEL' },
       { tenderId: 'b-1-000001/2026', value: 9.5, description: 'CADERNO BROCHURA' },
+      { tenderId: 'c-1-000001/2026', value: 188, description: 'PERFURADOR 2 FUROS' },
+      { tenderId: 'd-1-000001/2026', value: 12, description: 'CADERNO CAPA DURA' },
     ],
   }
+
+  it('never states a count larger than the results it draws', () => {
+    // **The defect this replaced.** `priceEvidence` caps `samples` at four and
+    // leaves `editais` uncapped, so the count was `editais` over at most four
+    // rows: at six editais the screen read "Encontramos 6 resultados
+    // parecidos" above four results — and `evidenceHelp`, the only string that
+    // would have reconciled them, is suppressed at exactly this rung because
+    // above the floor it is false. Reachable for an entitled reader too, since
+    // a spread failure sends everyone down this branch.
+    const html = render({
+      item: 1,
+      bandLocked: false,
+      evidence: {
+        editais: 6,
+        samples: [1, 2, 3, 4].map((n) => ({
+          tenderId: `t${n}-1-000001/2026`,
+          value: 100 + n,
+          description: `PERFURADOR ${n}`,
+        })),
+      },
+    })
+    expect(html).toContain('Encontramos 4 resultados parecidos')
+    expect(html).not.toContain('Encontramos 6')
+    // And it is four because four rows are drawn, not by coincidence.
+    expect(html.match(/PERFURADOR \d/g)).toHaveLength(4)
+  })
+
+  it('counts only the results it can draw as money', () => {
+    // `moneyExactNonZero` refuses below half a centavo while `priceEvidence`
+    // filters on `> 0`, so a row could print a description with no price —
+    // against `EvidenceRow`'s own rule that neither half is evidence alone.
+    // Not live (the corpus minimum is R$ 0,0300) and cheap to close.
+    const html = render({
+      item: 1,
+      bandLocked: false,
+      evidence: {
+        editais: 2,
+        samples: [
+          { tenderId: 'a-1-000001/2026', value: 204, description: 'PERFURADOR DE PAPEL' },
+          { tenderId: 'b-1-000001/2026', value: 0.004, description: 'PARAFUSO M3' },
+        ],
+      },
+    })
+    expect(html).toContain('Encontramos 1 resultado parecido')
+    expect(html).not.toContain('PARAFUSO M3')
+  })
+
+  it('falls back to the empty card when no result can be drawn', () => {
+    // A count of zero would print "1": `Intl.PluralRules('pt-BR').select(0)`
+    // is `one`, and none of these strings carries a `=0` branch.
+    const html = render({
+      item: 1,
+      bandLocked: false,
+      evidence: {
+        editais: 1,
+        samples: [{ tenderId: 'a-1-000001/2026', value: 0.004, description: 'PARAFUSO M3' }],
+      },
+    })
+    expect(html).toContain(page.noData)
+    expect(html).not.toContain('Encontramos')
+  })
 
   it('does not promise a faixa at six editais while showing none', () => {
     // `MIN_SAMPLE` is necessary, not sufficient: `MAX_SPREAD` must pass too. So
@@ -532,8 +601,9 @@ describe('PriceView — the sentence that would contradict itself', () => {
     // editais… Neste item encontramos 6" — would sit directly above no faixa.
     // Reachable: ~1 in 5 of the items that reach five editais fails on spread.
     const html = render({ item: 1, bandLocked: false, evidence: scattered })
-    expect(html).toContain('Encontramos 6 resultados parecidos')
     expect(html).not.toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    // The count states the rows drawn, never `editais` — see the cap test above.
+    expect(html).toContain('Encontramos 4 resultados parecidos')
     // The results themselves still render: suppressing the explanation must not
     // suppress the evidence.
     expect(html).toContain('PERFURADOR DE PAPEL')
@@ -541,10 +611,12 @@ describe('PriceView — the sentence that would contradict itself', () => {
   })
 
   it('still explains itself below the floor, where the sentence is true', () => {
+    // Below the floor `priceEvidence` returns one sample per edital, so the
+    // count, the rows and `editais` are all the same number by construction.
     const html = render({
       item: 1,
       bandLocked: false,
-      evidence: { ...scattered, editais: 4 },
+      evidence: { editais: 4, samples: scattered.samples },
     })
     expect(html).toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
     expect(html).toContain('Neste item encontramos 4')

@@ -117,16 +117,28 @@ function percentile(sorted: readonly number[], fraction: number): number {
  * correctly.
  */
 export type PriceSample = {
+  /**
+   * Which edital this price came from.
+   *
+   * **Read by no screen yet** — `price-view.tsx` uses it as a React key and
+   * nothing else, so a reader cannot follow a result back to its source. It is
+   * on the wire because the citation is the point of this rung; **D37** is the
+   * card that draws it, and that card exists because a "later" in a comment is
+   * not a task.
+   */
   tenderId: string
   /**
    * **A price somebody actually closed at** — never a statistic.
    *
    * This started as the median of the edital's own rows, which interpolates on
    * an even count: two lots at R$ 10 and R$ 20 printed *R$ 15,00*, a figure
-   * nobody awarded, attributed to a `tenderId` where the reader can look it up
-   * and not find it. {@link priceBand} may interpolate because it never prints
-   * the intermediate; this rung is a citation, not a statistic, so it picks a
-   * real row and shows that row's own words.
+   * nobody awarded, carrying a third row's description. {@link priceBand} may
+   * interpolate because it never prints the intermediate; this rung prints it,
+   * so it picks a real row and shows that row's own words.
+   *
+   * **The screen does not link to the edital yet** — `tenderId` reaches it and
+   * serves only as a React key — so the earlier claim here that a reader could
+   * look the figure up was not true. **D37** is the card for drawing it.
    */
   value: number
   description: string | null
@@ -172,8 +184,11 @@ export type PriceSample = {
  *    reconstructed the whole per-edital set at five editais, and `priceBand`
  *    over that set returns the real `low`, `median` and `high` to the cent.
  *
- * The printed samples carry the span instead, where every number has an edital
- * and a description beside it. Anything the reader is told, they can check.
+ * The printed samples carry the span instead: every number shown is a price
+ * somebody closed at, beside the words it closed under, so nothing is stated
+ * that no row supports. The *edital* each one came from rides on
+ * {@link PriceSample.tenderId} and is **not on screen yet** (**D37**), so for
+ * now what the reader can check is the product, not the source.
  *
  * ## Free at every rung
  *
@@ -294,10 +309,10 @@ export function priceEvidence(
   //
   // `priceBand` takes each edital's median and may interpolate, because it only
   // ever publishes the quartiles drawn across editais. Here the number is
-  // printed beside a `tenderId` and a description, so an interpolated R$ 15,00
-  // between lots of R$ 10 and R$ 20 would be a price nobody awarded, cited to
-  // an edital that does not contain it — and `description` would come from a
-  // third row. The lower-middle row by value is the same choice, made among
+  // printed as an individual past result, so an interpolated R$ 15,00 between
+  // lots of R$ 10 and R$ 20 would be a price nobody awarded — and `description`
+  // would come from a third row, describing something other than the figure
+  // beside it. The lower-middle row by value is the same choice, made among
   // rows that exist.
   const perEdital = [...byEdital.entries()].map(([tenderId, rows]) => {
     const sorted = [...rows].sort((a, b) => a.value - b.value)
