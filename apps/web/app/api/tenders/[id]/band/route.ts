@@ -4,7 +4,7 @@ import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { db } from '@/lib/db'
 import { comparablesForItem } from '@/lib/radar/comparables'
 import type { BandResponse } from '@/lib/radar/contract'
-import { priceBand, priceEvidence } from '@/lib/radar/price-band'
+import { priceBand, priceEvidence, withoutPrices } from '@/lib/radar/price-band'
 import { hasPriceBand } from '@/lib/radar/quota'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
@@ -110,11 +110,20 @@ export async function GET(
 
     if (band !== null && !entitled) {
       return NextResponse.json(
-        // **The evidence rides along.** Sci's ruling, 2026-10-01: raw evidence
-        // free, computation paid. Withholding it here is what would make the
-        // ladder non-monotonic — a non-subscriber would see the matched
-        // results at four editais and nothing at five.
-        { state: 'locked', evidence },
+        // **The count and what was matched ride along; the prices do not.**
+        //
+        // Sci, 2026-10-01: raw evidence free, computation paid. Then, 2026-10-02,
+        // the measurement that narrowed it: where a band exists the four
+        // sampled prices *are* the band, so the two halves of that ruling
+        // described the same numbers. Above `MIN_SAMPLE` the values are
+        // withheld and the count and descriptions are not — the reader can
+        // still judge whether we matched the right product, which is the thing
+        // they cannot otherwise check.
+        //
+        // `withoutPrices` narrows the same evidence an entitled caller gets, so
+        // there is one computation and one narrowing rather than a second
+        // query that could drift from the first.
+        { state: 'locked', evidence: evidence === null ? null : withoutPrices(evidence) },
         { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
       )
     }

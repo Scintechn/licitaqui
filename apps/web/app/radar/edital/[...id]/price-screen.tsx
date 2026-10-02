@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { getBand, getJobStatus, getTender, readSearch, screeningHref } from '@/lib/radar/client'
 import type { BandResponse, TenderDetail, TenderResponse } from '@/lib/radar/contract'
-import type { PriceBand, PriceEvidence } from '@/lib/radar/price-band'
+import type { LockedEvidence, PriceBand, PriceEvidence } from '@/lib/radar/price-band'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
 import { waitForData } from '@/lib/radar/poll'
 import { chooseItem, PriceView, type PriceStatus } from './price-view'
@@ -34,11 +34,15 @@ function aborted(error: unknown): boolean {
  * evidence and no band (the common case — 11.17% against 0.67%, measured
  * 2026-10-01), or a band the reader may not see *and* the evidence under it.
  */
-export type BandState = {
-  band: PriceBand | null
-  locked: boolean
-  evidence: PriceEvidence | null
-}
+export type BandState =
+  // **A union, so the two rungs cannot be confused.** `locked` carries
+  // `LockedEvidence` — the count and what was matched, no prices — because at
+  // five editais the sampled prices rebuild the band the state exists to
+  // withhold (Sci, 2026-10-02). One object with `evidence: PriceEvidence | null`
+  // beside a boolean would let a price reach the locked branch by an ordinary
+  // mistake; this refuses it at compile time.
+  | { band: PriceBand | null; locked: false; evidence: PriceEvidence | null }
+  | { band: null; locked: true; evidence: LockedEvidence | null }
 
 /**
  * A `BandResponse` as the screen stores it.
@@ -60,11 +64,12 @@ export function bandStateFrom(answer: BandResponse): BandState {
     return { band: answer.band, locked: false, evidence: answer.evidence }
   }
   if (answer.state === 'locked') {
-    // **The evidence survives the lock.** Sci's ruling, 2026-10-01: raw
-    // evidence free, computation paid. Dropping it here is the client-side
-    // version of the defect the route's own comment describes — the ladder
-    // would go backwards at five editais, showing a visitor less the moment the
-    // data got good enough to be worth paying for.
+    // **The evidence survives the lock, in its narrowed form.** Dropping it
+    // here is the client-side version of the defect the route's own comment
+    // describes — the ladder would go backwards at five editais, showing a
+    // visitor an empty card the moment the data got good enough to sell. What
+    // survives is the count and the matched descriptions; the route removed the
+    // prices, and `LockedEvidence` is why this line cannot put them back.
     return { band: null, locked: true, evidence: answer.evidence }
   }
   // `envelope()` does not throw on a non-2xx — it parses the body — so a 429

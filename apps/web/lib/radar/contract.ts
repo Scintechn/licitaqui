@@ -1,4 +1,4 @@
-import type { PriceBand, PriceEvidence } from './price-band'
+import type { LockedEvidence, PriceBand, PriceEvidence } from './price-band'
 
 /**
  * The wire contract of the Radar routes (spec §8).
@@ -277,8 +277,21 @@ export type BandResponse =
    */
   | {
       state: 'locked'
-      /** Free at every rung — see `evidence` on `ready`. */
-      evidence: PriceEvidence | null
+      /**
+       * **`LockedEvidence`, not `PriceEvidence`** — the count and what was
+       * matched, with no price field at all (Sci, 2026-10-02).
+       *
+       * A `locked` answer is sent if and only if a band exists, and at five
+       * editais the four sampled prices rebuild it: the quartiles of five
+       * sorted values are `sorted[1..3]`, so four of them give two figures
+       * exactly and bracket the third. Sending `PriceEvidence` here handed back
+       * the thing the state exists to withhold.
+       *
+       * The narrower type is the enforcement. `value` is not a nullable field
+       * somebody must remember to clear — it does not exist on this branch, so
+       * a leak is a compile error rather than a review finding.
+       */
+      evidence: LockedEvidence | null
     }
   | { state: 'error'; error: ErrorCode; fields?: Record<string, string> }
 

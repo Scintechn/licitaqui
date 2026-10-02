@@ -159,11 +159,60 @@ describe('GET /api/tenders/:id/band', () => {
     // what constrains a future change, because anything added anywhere in this
     // payload has to come here and be justified.
     expect(Object.keys(body).sort()).toEqual(['evidence', 'state'])
-    expect(Object.keys(body.evidence).sort()).toEqual(['editais', 'samples'])
-    expect(Object.keys(body.evidence.samples[0]).sort()).toEqual([
-      'description',
-      'tenderId',
-      'value',
+    expect(Object.keys(body.evidence).sort()).toEqual(['editais', 'matched'])
+  })
+
+  it('sends no price at all once a band exists (the reconstruction)', async () => {
+    // **Why the locked rung withholds values.** Sci, 2026-10-02. Four sampled
+    // prices rebuild the band: over five sorted values the quartiles are
+    // `sorted[1..3]`, so four give two figures exactly and bracket the third.
+    // This fixture is the verified case — five editais, the oldest also the
+    // cheapest — where `samples` plus a min/max returned the real low, median
+    // and high to the cent.
+    comparablesForItem.mockResolvedValueOnce([
+      { unitAwardedValue: 100, awardedOn: new Date('2026-01-01'), tenderId: 'a-1-000001/2026' },
+      { unitAwardedValue: 180, awardedOn: new Date('2026-09-01'), tenderId: 'b-1-000001/2026' },
+      { unitAwardedValue: 190, awardedOn: new Date('2026-08-01'), tenderId: 'c-1-000001/2026' },
+      { unitAwardedValue: 200, awardedOn: new Date('2026-07-01'), tenderId: 'd-1-000001/2026' },
+      { unitAwardedValue: 210, awardedOn: new Date('2026-06-01'), tenderId: 'e-1-000001/2026' },
+    ])
+    planOf.mockReturnValueOnce('visitor')
+    const body = await (await call()).json()
+    const wire = JSON.stringify(body)
+
+    expect(body.state).toBe('locked')
+    // Not one of the five prices, nor the band they would rebuild.
+    for (const leaked of ['100', '180', '190', '200', '210']) {
+      expect(wire, `price ${leaked} on the wire`).not.toContain(leaked)
+    }
+    expect(body.evidence.editais).toBe(5)
+    expect(body.evidence).not.toHaveProperty('samples')
+  })
+
+  it('still says how many editais and what was matched', async () => {
+    // The half that stays free. The reader cannot otherwise check whether we
+    // matched the right product, and at the top rung the spread gate has not
+    // been shown to them either — so the descriptions are the one thing they
+    // can judge, and they carry no price with them.
+    comparablesForItem.mockResolvedValueOnce(
+      [0, 1, 2, 3, 4, 5].map((i) => ({
+        unitAwardedValue: 100,
+        awardedOn: new Date(`2026-0${i + 1}-01`),
+        tenderId: `9900000000000${i}-1-000001/2026`,
+        description: i % 2 === 1 ? 'CANETA ESFEROGRAFICA AZUL' : 'CANETA ESFEROGRAF. AZUL CX 50',
+      })),
+    )
+    planOf.mockReturnValueOnce('visitor')
+    const body = await (await call()).json()
+
+    expect(body.evidence.editais).toBe(6)
+    // Deduplicated, and drawn from the same four newest samples an entitled
+    // reader sees: six editais alternate two descriptions, so the four newest
+    // carry both and the list is two lines, newest first. `matched.length` is
+    // not a second count of editais — see `LockedEvidence`.
+    expect(body.evidence.matched).toEqual([
+      'CANETA ESFEROGRAFICA AZUL',
+      'CANETA ESFEROGRAF. AZUL CX 50',
     ])
   })
 
@@ -177,7 +226,9 @@ describe('GET /api/tenders/:id/band', () => {
     const body = await (await call()).json()
 
     expect(body.evidence.editais).toBe(6)
-    expect(body.evidence.samples).toHaveLength(4)
+    // `priced()` carries no descriptions, so there is nothing to list — the
+    // count is what survives. The description case is its own test below.
+    expect(body.evidence.matched).toEqual([])
   })
 
   it.each(['visitor', 'basico'])('locks %s when a band exists', async (plan) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BandResponse } from '@/lib/radar/contract'
-import type { PriceBand, PriceEvidence } from '@/lib/radar/price-band'
+import type { LockedEvidence, PriceBand, PriceEvidence } from '@/lib/radar/price-band'
 import { bandStateFrom } from './price-screen'
 
 /**
@@ -46,18 +46,23 @@ const EVIDENCE: PriceEvidence = {
 }
 
 describe('bandStateFrom', () => {
-  it('carries the evidence through a lock — the ladder is free at every rung', () => {
-    // **The client half of the monotonicity rule.** The route sends `evidence`
-    // on a `locked` answer on purpose (Sci, 2026-10-01: raw evidence free,
-    // computation paid); dropping it in this mapping would make the screen go
+  it('carries the count and what was matched through a lock, never the prices', () => {
+    // **The client half of the ladder.** The route sends evidence on a `locked`
+    // answer on purpose; dropping it in this mapping would make the screen go
     // backwards at five editais — a visitor would see the matched results at
     // four and an empty card at six, the moment the data got good enough to
-    // sell. The band itself must still be absent.
-    expect(bandStateFrom({ state: 'locked', evidence: EVIDENCE })).toEqual({
-      band: null,
-      locked: true,
-      evidence: EVIDENCE,
-    })
+    // sell. What it may carry is the narrowed form: Sci, 2026-10-02, because
+    // the sampled prices rebuild the band a lock exists to withhold.
+    const locked: LockedEvidence = {
+      editais: 6,
+      matched: ['CANETA ESFEROGRAFICA AZUL', 'CANETA ESFEROGRAFICA, AZUL'],
+    }
+    const state = bandStateFrom({ state: 'locked', evidence: locked })
+
+    expect(state).toEqual({ band: null, locked: true, evidence: locked })
+    // No price reaches this branch — asserted on the payload, not on the type,
+    // because the type is what a future change would have to defeat first.
+    expect(JSON.stringify(state)).not.toContain('value')
   })
 
   it('keeps a band the caller may see', () => {

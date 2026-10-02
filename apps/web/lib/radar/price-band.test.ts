@@ -7,6 +7,7 @@ import {
   priceBand,
   priceEvidence,
   targetPurchasePrice,
+  withoutPrices,
   type Comparable,
 } from './price-band'
 
@@ -370,5 +371,67 @@ describe('priceEvidence', () => {
     const five = ['a', 'b', 'c', 'd', 'e'].map((t, i) => one(t, 200 + i))
     expect(priceBand(five, NOW)).not.toBeNull()
     expect(priceEvidence(five, NOW)?.editais).toBe(5)
+  })
+})
+
+describe('withoutPrices', () => {
+  // Local copy: the `one` above is scoped to its own describe block.
+  const one = (
+    tenderId: string,
+    value: number,
+    description: string | null = 'Perfurador Papel material: ferro fundido',
+  ): Comparable => ({
+    tenderId,
+    unitAwardedValue: value,
+    awardedOn: new Date('2026-06-01T00:00:00.000Z'),
+    description,
+  })
+
+  /**
+   * The narrowing the top rung rests on (Sci, 2026-10-02). It exists because
+   * the prices a reader was being given **are** the band they were not:
+   * the quartiles of five sorted values are `sorted[1..3]`, so four of the five
+   * give two figures exactly and bracket the third.
+   */
+  it('carries no price, and no field that could hold one', () => {
+    const found = priceEvidence(
+      [one('a', 204, 'PERFURADOR DE PAPEL'), one('b', 180, 'PERFURADOR DE PAPEL 2 FUROS')],
+      NOW,
+    )
+    const locked = withoutPrices(found!)
+
+    expect(Object.keys(locked).sort()).toEqual(['editais', 'matched'])
+    expect(JSON.stringify(locked)).not.toContain('204')
+    expect(JSON.stringify(locked)).not.toContain('180')
+  })
+
+  it('cannot be used to rebuild the band it withholds', () => {
+    // The verified reconstruction, as a test. Five editais, the oldest also the
+    // cheapest: from the free payload alone there must be no number at all to
+    // feed back into `priceBand`.
+    const rows: Comparable[] = [
+      { unitAwardedValue: 100, awardedOn: new Date('2026-01-01'), tenderId: 'a' },
+      { unitAwardedValue: 180, awardedOn: new Date('2026-09-01'), tenderId: 'b' },
+      { unitAwardedValue: 190, awardedOn: new Date('2026-08-01'), tenderId: 'c' },
+      { unitAwardedValue: 200, awardedOn: new Date('2026-07-01'), tenderId: 'd' },
+      { unitAwardedValue: 210, awardedOn: new Date('2026-06-01'), tenderId: 'e' },
+    ]
+    const band = priceBand(rows, new Date('2026-09-28T12:00:00Z'))
+    expect(band).not.toBeNull()
+
+    const locked = withoutPrices(priceEvidence(rows, new Date('2026-09-28T12:00:00Z'))!)
+    const wire = JSON.stringify(locked)
+    for (const value of [100, 180, 190, 200, 210, band!.low, band!.median, band!.high]) {
+      expect(wire, `${value} reachable`).not.toContain(String(value))
+    }
+    // The count survives: the reader still learns five editais closed on this.
+    expect(locked.editais).toBe(5)
+  })
+
+  it('keeps the count honest when every description is missing', () => {
+    // `awards` rows can carry no description. The list is then empty and the
+    // count is all there is — which must not read as "nothing found".
+    const locked = withoutPrices(priceEvidence([one('a', 10, null), one('b', 12, null)], NOW)!)
+    expect(locked).toEqual({ editais: 2, matched: [] })
   })
 })

@@ -199,6 +199,70 @@ export type PriceEvidence = {
  */
 export const MAX_SAMPLES_SHOWN = 4
 
+/**
+ * What the top rung may say to a reader who has not paid for it (E22).
+ *
+ * ## Why this is a separate type and not a nullable price
+ *
+ * Sci's decision, 2026-10-02. At five editais the four sampled prices **rebuild
+ * the band**: over five sorted values the quartiles are `sorted[1..3]`, so four
+ * known values give two of the three figures exactly and bracket the third.
+ * Verified against `priceBand` — with the oldest edital also the cheapest, the
+ * free payload returned the real low, median and high to the cent. *Raw
+ * evidence free* and *the band is paid* cannot both hold where a band exists.
+ *
+ * So above {@link MIN_SAMPLE} the values are withheld and the **count and the
+ * matched descriptions** are not. The reader still learns that five editais
+ * closed on this product and what we matched — enough to judge whether the
+ * match is right, which is the thing they cannot otherwise check — and the
+ * numbers are what Essencial sells.
+ *
+ * Carrying this as `value: number | null` on {@link PriceSample} was the
+ * obvious alternative and is the one to avoid: it makes a leak a forgotten
+ * assignment at one call site. A type with **no price field at all** makes the
+ * locked payload unable to carry a price, so the gate is checked by `tsc` on
+ * every future change rather than by whoever remembers.
+ *
+ * The cost is a real inversion — prices at four editais, none at five — and it
+ * is bounded: measured 2026-10-01 over 600 open items, **0.67%** reach a band
+ * at all, and it runs in the direction a paywall normally runs.
+ */
+export type LockedEvidence = {
+  /** Distinct editais, the same count {@link PriceEvidence} reports. */
+  editais: number
+  /**
+   * What was matched, newest first and deduplicated.
+   *
+   * Deduplicated because several editais routinely carry the identical
+   * description, and four identical lines read as noise rather than as four
+   * sources. Rows with no description are dropped: nothing to show, and
+   * nothing for the reader to judge.
+   *
+   * **Drawn from the same capped {@link MAX_SAMPLES_SHOWN} newest samples an
+   * entitled reader sees**, not from every edital. So `matched.length` is not a
+   * second count — {@link LockedEvidence.editais} is the count — and the two
+   * readers are looking at the same editais, one of them with the prices. A
+   * reader can therefore see *"6 editais"* above two distinct descriptions
+   * without either being wrong.
+   */
+  matched: string[]
+}
+
+/**
+ * Strip the prices, keep the count and what was matched.
+ *
+ * Takes the same {@link PriceEvidence} an entitled caller receives, so there is
+ * one place where evidence is computed and one place where it is narrowed —
+ * rather than a second, thinner query that could drift from the first.
+ */
+export function withoutPrices(evidence: PriceEvidence): LockedEvidence {
+  const seen = new Set<string>()
+  for (const sample of evidence.samples) {
+    if (sample.description !== null) seen.add(sample.description)
+  }
+  return { editais: evidence.editais, matched: [...seen] }
+}
+
 export function priceEvidence(
   comparables: readonly Comparable[],
   now = new Date(),
