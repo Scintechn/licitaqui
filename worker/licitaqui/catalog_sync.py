@@ -39,6 +39,7 @@ from .catalog_match import (
     MATCHER_VERSION,
     CatalogEntry,
     CatalogIndex,
+    Resolution,
     all_words,
     product_head,
     resolve_description,
@@ -269,10 +270,30 @@ def map_item_codes(ctx: JobContext) -> None:
         cur.execute(sql)
         batch: list[tuple] = []
         for tender_id, number, kind, description in cur:
-            k = kind if kind in ("M", "S") else "M"
-            r = resolve_description(index[k], description)
+            # `tender_items.kind` is nullable. Coercing an unknown kind to 'M'
+            # would match a service against the materials vocabulary, where
+            # `exact` is more than twice as likely (18.5% against 7.6%,
+            # re-measured 2026-10-03) -- so the coercion would make a *wrong*
+            # band more likely, not less, under a column a reader believes was
+            # copied from `tender_items`. It gets its own rule, carries no
+            # code, and is never band-eligible.
+            if kind in ("M", "S"):
+                r = resolve_description(index[kind], description)
+                row = (
+                    tender_id,
+                    number,
+                    kind,
+                    r.code,
+                    r.rule,
+                    r.matched_words,
+                    r.candidates,
+                    MATCHER_VERSION,
+                )
+            else:
+                r = Resolution(None, "unknown_kind", 0, 0)
+                row = (tender_id, number, "M", None, r.rule, 0, 0, MATCHER_VERSION)
             by_rule[r.rule] = by_rule.get(r.rule, 0) + 1
-            batch.append((tender_id, number, k, r.code, r.rule, r.matched_words, r.candidates))
+            batch.append(row)
             if len(batch) >= BATCH:
                 mapped += _flush(conn, batch)
                 batch = []
