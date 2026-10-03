@@ -1,0 +1,1425 @@
+{
+ "generated_from": "apps/web/lib/radar/price-band.ts",
+ "source_sha": "e52c146e1cf65196fae623ae386669164714aa94",
+ "generated_at": "2026-10-03",
+ "note": "Expected values were produced BY the TypeScript. If the Python port disagrees, fix the port -- or, if the TypeScript was deliberately changed, regenerate with worker/scripts/gen_price_band_conformance.py.",
+ "constants": {
+  "MIN_SAMPLE": 5,
+  "MAX_SPREAD": 0.5,
+  "MAX_AGE_MONTHS": 18,
+  "MAX_SAMPLES_SHOWN": 4
+ },
+ "cases": [
+  {
+   "name": "two_lots",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 0"
+    },
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 1"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 0"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 1"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 0"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 1"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 0"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 1"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 0"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 1"
+    }
+   ],
+   "band": {
+    "low": 15,
+    "median": 15,
+    "high": 15,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "t0",
+      "value": 10,
+      "description": "t0 lot 0"
+     },
+     {
+      "tenderId": "t1",
+      "value": 10,
+      "description": "t1 lot 0"
+     },
+     {
+      "tenderId": "t2",
+      "value": 10,
+      "description": "t2 lot 0"
+     },
+     {
+      "tenderId": "t3",
+      "value": 10,
+      "description": "t3 lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "even_lots",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 0"
+    },
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 12,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 1"
+    },
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 18,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 2"
+    },
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 3"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 0"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 12,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 1"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 18,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 2"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 3"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 0"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 12,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 1"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 18,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 2"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 3"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 0"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 12,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 1"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 18,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 2"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 3"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 0"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 12,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 1"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 18,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 2"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 3"
+    }
+   ],
+   "band": {
+    "low": 15,
+    "median": 15,
+    "high": 15,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "t0",
+      "value": 12,
+      "description": "t0 lot 1"
+     },
+     {
+      "tenderId": "t1",
+      "value": 12,
+      "description": "t1 lot 1"
+     },
+     {
+      "tenderId": "t2",
+      "value": 12,
+      "description": "t2 lot 1"
+     },
+     {
+      "tenderId": "t3",
+      "value": 12,
+      "description": "t3 lot 1"
+     }
+    ]
+   }
+  },
+  {
+   "name": "odd_lots",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 0"
+    },
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 15,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 1"
+    },
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 2"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 0"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 15,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 1"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 2"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 0"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 15,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 1"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 2"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 0"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 15,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 1"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 2"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 0"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 15,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 1"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 20,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 2"
+    }
+   ],
+   "band": {
+    "low": 15,
+    "median": 15,
+    "high": 15,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "t0",
+      "value": 15,
+      "description": "t0 lot 1"
+     },
+     {
+      "tenderId": "t1",
+      "value": 15,
+      "description": "t1 lot 1"
+     },
+     {
+      "tenderId": "t2",
+      "value": 15,
+      "description": "t2 lot 1"
+     },
+     {
+      "tenderId": "t3",
+      "value": 15,
+      "description": "t3 lot 1"
+     }
+    ]
+   }
+  },
+  {
+   "name": "ties",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 0"
+    },
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 1"
+    },
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 2"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 0"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 1"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 2"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 0"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 1"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 2"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 0"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 1"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 2"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 0"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 1"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 2"
+    }
+   ],
+   "band": {
+    "low": 10,
+    "median": 10,
+    "high": 10,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "t0",
+      "value": 10,
+      "description": "t0 lot 1"
+     },
+     {
+      "tenderId": "t1",
+      "value": 10,
+      "description": "t1 lot 1"
+     },
+     {
+      "tenderId": "t2",
+      "value": 10,
+      "description": "t2 lot 1"
+     },
+     {
+      "tenderId": "t3",
+      "value": 10,
+      "description": "t3 lot 1"
+     }
+    ]
+   }
+  },
+  {
+   "name": "cutoff",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "old1",
+     "unitAwardedValue": 10,
+     "awardedOn": "2024-01-01",
+     "description": "old1 lot 0"
+    },
+    {
+     "tenderId": "edge",
+     "unitAwardedValue": 11,
+     "awardedOn": "2025-04-03",
+     "description": "edge lot 0"
+    },
+    {
+     "tenderId": "edge2",
+     "unitAwardedValue": 12,
+     "awardedOn": "2025-04-02",
+     "description": "edge2 lot 0"
+    },
+    {
+     "tenderId": "f1",
+     "unitAwardedValue": 13,
+     "awardedOn": "2026-09-01",
+     "description": "f1 lot 0"
+    },
+    {
+     "tenderId": "f2",
+     "unitAwardedValue": 14,
+     "awardedOn": "2026-09-01",
+     "description": "f2 lot 0"
+    },
+    {
+     "tenderId": "f3",
+     "unitAwardedValue": 15,
+     "awardedOn": "2026-09-01",
+     "description": "f3 lot 0"
+    },
+    {
+     "tenderId": "f4",
+     "unitAwardedValue": 16,
+     "awardedOn": "2026-09-01",
+     "description": "f4 lot 0"
+    },
+    {
+     "tenderId": "f5",
+     "unitAwardedValue": 17,
+     "awardedOn": "2026-09-01",
+     "description": "f5 lot 0"
+    }
+   ],
+   "band": {
+    "low": 14,
+    "median": 15,
+    "high": 16,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "f1",
+      "value": 13,
+      "description": "f1 lot 0"
+     },
+     {
+      "tenderId": "f2",
+      "value": 14,
+      "description": "f2 lot 0"
+     },
+     {
+      "tenderId": "f3",
+      "value": 15,
+      "description": "f3 lot 0"
+     },
+     {
+      "tenderId": "f4",
+      "value": 16,
+      "description": "f4 lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "null_dates",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": null,
+     "description": "t0 lot 0"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 11,
+     "awardedOn": null,
+     "description": "t1 lot 0"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 12,
+     "awardedOn": null,
+     "description": "t2 lot 0"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 13,
+     "awardedOn": null,
+     "description": "t3 lot 0"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 14,
+     "awardedOn": null,
+     "description": "t4 lot 0"
+    }
+   ],
+   "band": {
+    "low": 11,
+    "median": 12,
+    "high": 13,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "t0",
+      "value": 10,
+      "description": "t0 lot 0"
+     },
+     {
+      "tenderId": "t1",
+      "value": 11,
+      "description": "t1 lot 0"
+     },
+     {
+      "tenderId": "t2",
+      "value": 12,
+      "description": "t2 lot 0"
+     },
+     {
+      "tenderId": "t3",
+      "value": 13,
+      "description": "t3 lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "month_overflow",
+   "now": "2026-03-31T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "a",
+     "unitAwardedValue": 10,
+     "awardedOn": "2024-10-01",
+     "description": "a lot 0"
+    },
+    {
+     "tenderId": "b",
+     "unitAwardedValue": 11,
+     "awardedOn": "2024-09-30",
+     "description": "b lot 0"
+    },
+    {
+     "tenderId": "c",
+     "unitAwardedValue": 12,
+     "awardedOn": "2025-01-01",
+     "description": "c lot 0"
+    },
+    {
+     "tenderId": "d",
+     "unitAwardedValue": 13,
+     "awardedOn": "2025-06-01",
+     "description": "d lot 0"
+    },
+    {
+     "tenderId": "e",
+     "unitAwardedValue": 14,
+     "awardedOn": "2026-01-01",
+     "description": "e lot 0"
+    },
+    {
+     "tenderId": "f",
+     "unitAwardedValue": 15,
+     "awardedOn": "2026-03-01",
+     "description": "f lot 0"
+    }
+   ],
+   "band": null,
+   "evidence": {
+    "editais": 4,
+    "samples": [
+     {
+      "tenderId": "f",
+      "value": 15,
+      "description": "f lot 0"
+     },
+     {
+      "tenderId": "e",
+      "value": 14,
+      "description": "e lot 0"
+     },
+     {
+      "tenderId": "d",
+      "value": 13,
+      "description": "d lot 0"
+     },
+     {
+      "tenderId": "c",
+      "value": 12,
+      "description": "c lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "spread_edge",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "a",
+     "unitAwardedValue": 5,
+     "awardedOn": "2026-09-01",
+     "description": "a lot 0"
+    },
+    {
+     "tenderId": "b",
+     "unitAwardedValue": 7.5,
+     "awardedOn": "2026-09-01",
+     "description": "b lot 0"
+    },
+    {
+     "tenderId": "c",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "c lot 0"
+    },
+    {
+     "tenderId": "d",
+     "unitAwardedValue": 12.5,
+     "awardedOn": "2026-09-01",
+     "description": "d lot 0"
+    },
+    {
+     "tenderId": "e",
+     "unitAwardedValue": 15,
+     "awardedOn": "2026-09-01",
+     "description": "e lot 0"
+    }
+   ],
+   "band": {
+    "low": 7.5,
+    "median": 10,
+    "high": 12.5,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "a",
+      "value": 5,
+      "description": "a lot 0"
+     },
+     {
+      "tenderId": "b",
+      "value": 7.5,
+      "description": "b lot 0"
+     },
+     {
+      "tenderId": "c",
+      "value": 10,
+      "description": "c lot 0"
+     },
+     {
+      "tenderId": "d",
+      "value": 12.5,
+      "description": "d lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "spread_over",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "a",
+     "unitAwardedValue": 1,
+     "awardedOn": "2026-09-01",
+     "description": "a lot 0"
+    },
+    {
+     "tenderId": "b",
+     "unitAwardedValue": 5,
+     "awardedOn": "2026-09-01",
+     "description": "b lot 0"
+    },
+    {
+     "tenderId": "c",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "c lot 0"
+    },
+    {
+     "tenderId": "d",
+     "unitAwardedValue": 50,
+     "awardedOn": "2026-09-01",
+     "description": "d lot 0"
+    },
+    {
+     "tenderId": "e",
+     "unitAwardedValue": 100,
+     "awardedOn": "2026-09-01",
+     "description": "e lot 0"
+    }
+   ],
+   "band": null,
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "a",
+      "value": 1,
+      "description": "a lot 0"
+     },
+     {
+      "tenderId": "b",
+      "value": 5,
+      "description": "b lot 0"
+     },
+     {
+      "tenderId": "c",
+      "value": 10,
+      "description": "c lot 0"
+     },
+     {
+      "tenderId": "d",
+      "value": 50,
+      "description": "d lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "floor_four",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 0"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10.5,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 0"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 11,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 0"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 11.5,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 0"
+    }
+   ],
+   "band": null,
+   "evidence": {
+    "editais": 4,
+    "samples": [
+     {
+      "tenderId": "t0",
+      "value": 10,
+      "description": "t0 lot 0"
+     },
+     {
+      "tenderId": "t1",
+      "value": 10.5,
+      "description": "t1 lot 0"
+     },
+     {
+      "tenderId": "t2",
+      "value": 11,
+      "description": "t2 lot 0"
+     },
+     {
+      "tenderId": "t3",
+      "value": 11.5,
+      "description": "t3 lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "floor_five",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2026-09-01",
+     "description": "t0 lot 0"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10.5,
+     "awardedOn": "2026-09-01",
+     "description": "t1 lot 0"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 11,
+     "awardedOn": "2026-09-01",
+     "description": "t2 lot 0"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 11.5,
+     "awardedOn": "2026-09-01",
+     "description": "t3 lot 0"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 12,
+     "awardedOn": "2026-09-01",
+     "description": "t4 lot 0"
+    }
+   ],
+   "band": {
+    "low": 10.5,
+    "median": 11,
+    "high": 11.5,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "t0",
+      "value": 10,
+      "description": "t0 lot 0"
+     },
+     {
+      "tenderId": "t1",
+      "value": 10.5,
+      "description": "t1 lot 0"
+     },
+     {
+      "tenderId": "t2",
+      "value": 11,
+      "description": "t2 lot 0"
+     },
+     {
+      "tenderId": "t3",
+      "value": 11.5,
+      "description": "t3 lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "empty",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [],
+   "band": null,
+   "evidence": null
+  },
+  {
+   "name": "all_stale",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "t0",
+     "unitAwardedValue": 10,
+     "awardedOn": "2023-01-01",
+     "description": "t0 lot 0"
+    },
+    {
+     "tenderId": "t1",
+     "unitAwardedValue": 10,
+     "awardedOn": "2023-01-01",
+     "description": "t1 lot 0"
+    },
+    {
+     "tenderId": "t2",
+     "unitAwardedValue": 10,
+     "awardedOn": "2023-01-01",
+     "description": "t2 lot 0"
+    },
+    {
+     "tenderId": "t3",
+     "unitAwardedValue": 10,
+     "awardedOn": "2023-01-01",
+     "description": "t3 lot 0"
+    },
+    {
+     "tenderId": "t4",
+     "unitAwardedValue": 10,
+     "awardedOn": "2023-01-01",
+     "description": "t4 lot 0"
+    },
+    {
+     "tenderId": "t5",
+     "unitAwardedValue": 10,
+     "awardedOn": "2023-01-01",
+     "description": "t5 lot 0"
+    }
+   ],
+   "band": null,
+   "evidence": null
+  },
+  {
+   "name": "lot_heavy",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 0"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2001,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 1"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2002,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 2"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2003,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 3"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2004,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 4"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2005,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 5"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2006,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 6"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2006999999999999,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 7"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2007999999999999,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 8"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2008999999999999,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 9"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2009999999999998,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 10"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2011,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 11"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2012,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 12"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2013,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 13"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2014,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 14"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2015,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 15"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2016,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 16"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2017,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 17"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2018,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 18"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2019,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 19"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.202,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 20"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2021,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 21"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2022,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 22"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2023,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 23"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2024,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 24"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2025,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 25"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2026,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 26"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2026999999999999,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 27"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2027999999999999,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 28"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2028999999999999,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 29"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2029999999999998,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 30"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2031,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 31"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2032,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 32"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2033,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 33"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2034,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 34"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2035,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 35"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2036,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 36"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2037,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 37"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2038,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 38"
+    },
+    {
+     "tenderId": "rp",
+     "unitAwardedValue": 1.2039,
+     "awardedOn": "2026-09-01",
+     "description": "rp lot 39"
+    },
+    {
+     "tenderId": "a",
+     "unitAwardedValue": 2.4,
+     "awardedOn": "2026-09-01",
+     "description": "a lot 0"
+    },
+    {
+     "tenderId": "b",
+     "unitAwardedValue": 2.5,
+     "awardedOn": "2026-09-01",
+     "description": "b lot 0"
+    },
+    {
+     "tenderId": "c",
+     "unitAwardedValue": 2.55,
+     "awardedOn": "2026-09-01",
+     "description": "c lot 0"
+    },
+    {
+     "tenderId": "d",
+     "unitAwardedValue": 2.6,
+     "awardedOn": "2026-09-01",
+     "description": "d lot 0"
+    }
+   ],
+   "band": {
+    "low": 2.4,
+    "median": 2.5,
+    "high": 2.55,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "rp",
+      "value": 1.2019,
+      "description": "rp lot 19"
+     },
+     {
+      "tenderId": "a",
+      "value": 2.4,
+      "description": "a lot 0"
+     },
+     {
+      "tenderId": "b",
+      "value": 2.5,
+      "description": "b lot 0"
+     },
+     {
+      "tenderId": "c",
+      "value": 2.55,
+      "description": "c lot 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "split_windows",
+   "now": "2026-10-03T12:00:00.000Z",
+   "comparables": [
+    {
+     "tenderId": "split",
+     "unitAwardedValue": 200,
+     "awardedOn": "2026-09-01",
+     "description": "split lot 0"
+    },
+    {
+     "tenderId": "split",
+     "unitAwardedValue": 1000,
+     "awardedOn": "2026-09-01",
+     "description": "split lot 1"
+    },
+    {
+     "tenderId": "split",
+     "unitAwardedValue": 250,
+     "awardedOn": "2026-09-01",
+     "description": "split lot 2"
+    },
+    {
+     "tenderId": "a",
+     "unitAwardedValue": 240,
+     "awardedOn": "2026-09-01",
+     "description": "a lot 0"
+    },
+    {
+     "tenderId": "b",
+     "unitAwardedValue": 250,
+     "awardedOn": "2026-09-01",
+     "description": "b lot 0"
+    },
+    {
+     "tenderId": "c",
+     "unitAwardedValue": 255,
+     "awardedOn": "2026-09-01",
+     "description": "c lot 0"
+    },
+    {
+     "tenderId": "d",
+     "unitAwardedValue": 260,
+     "awardedOn": "2026-09-01",
+     "description": "d lot 0"
+    }
+   ],
+   "band": {
+    "low": 250,
+    "median": 250,
+    "high": 255,
+    "sampleSize": 5
+   },
+   "evidence": {
+    "editais": 5,
+    "samples": [
+     {
+      "tenderId": "split",
+      "value": 250,
+      "description": "split lot 2"
+     },
+     {
+      "tenderId": "a",
+      "value": 240,
+      "description": "a lot 0"
+     },
+     {
+      "tenderId": "b",
+      "value": 250,
+      "description": "b lot 0"
+     },
+     {
+      "tenderId": "c",
+      "value": 255,
+      "description": "c lot 0"
+     }
+    ]
+   }
+  }
+ ]
+}

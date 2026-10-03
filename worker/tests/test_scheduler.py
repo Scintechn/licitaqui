@@ -71,6 +71,12 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
         # call — measured, the whole open corpus resolves in minutes of CPU.
         "sync_catalog_vocabulary",
         "map_item_codes",
+        # B35's price refresh, half an hour behind the map it reads: the sweep
+        # orders codes by how many open items point at them, from
+        # `tender_item_codes`. Daily although a code only falls due weekly —
+        # the per-code cadence lives in `catalog_prices` and a daily sweep
+        # spreads the pass instead of bursting it.
+        "refresh_catalog_prices",
         "sync_awards",
         # B17's inventory sweep. It sits beside `sync_open_tenders` rather than
         # replacing it because the two ask different questions: that one reads

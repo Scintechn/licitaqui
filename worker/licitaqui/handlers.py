@@ -23,7 +23,8 @@ So: **importing this module is what makes the registry complete.**
 needs to reason about the whole queue — a test, a script, an operator REPL —
 rather than importing handler modules one at a time and hoping the list is
 current. New handler kinds belong here the moment they exist — B8's ``sync_awards``
-and ``sync_tender_awards`` are wired in below.
+and ``sync_tender_awards`` are wired in below, and so is B35's
+``refresh_catalog_prices``.
 
 It stays a separate module rather than moving into ``licitaqui/__init__.py``
 because importing the package must stay cheap: ``db/`` tooling and the tests'
@@ -34,6 +35,7 @@ httpx, pdfplumber and every collector to do it.
 from __future__ import annotations
 
 from . import ai_screening as _ai_screening  # noqa: F401 - registers `ai_screening`
+from . import catalog_prices as _catalog_prices  # noqa: F401 - `refresh_catalog_prices`
 from . import catalog_sync as _catalog_sync  # noqa: F401 - the two catalogue kinds
 from . import company as _company  # noqa: F401 - imported for its registration side effect
 from . import coverage_check as _coverage_check  # noqa: F401 - registers `coverage_check`
