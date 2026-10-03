@@ -45,6 +45,7 @@ def _entry(code: int, name: str) -> CatalogEntry:
 
 # --------------------------------------------------------------- conformance
 
+
 def _cases() -> list[dict]:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))["cases"]
 
@@ -66,6 +67,7 @@ def test_port_matches_the_typescript(case: dict) -> None:
 
 
 # ------------------------------------------------------------------ folding
+
 
 def test_fold_strips_accents_and_punctuation_but_keeps_digits() -> None:
     assert fold("CAFÉ TORRADO E MOÍDO") == "cafe torrado e moido"
@@ -92,6 +94,7 @@ def test_single_letters_and_stopwords_are_not_head_words() -> None:
 
 
 # ------------------------------------------------------- resolution rules
+
 
 def test_exact_beats_prefix_even_when_a_prefix_is_longer_in_the_index() -> None:
     index = CatalogIndex([_entry(1, "PAPEL"), _entry(2, "PAPEL ALCALINO")])
@@ -143,6 +146,7 @@ def test_an_empty_index_resolves_nothing_rather_than_raising() -> None:
 
 
 # ------------------------------------------- the rule that gates the band
+
 
 def test_only_an_exact_match_may_feed_a_band() -> None:
     """Sci's decision, 2026-10-02, on measured evidence.
