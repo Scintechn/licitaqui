@@ -342,8 +342,8 @@ def test_the_mapper_builds_a_row_the_insert_can_actually_take() -> None:
         were passed
     """
     from licitaqui import catalog_sync
-    from licitaqui.registry import JobContext
     from licitaqui.queue import Job
+    from licitaqui.registry import JobContext
 
     captured: list = []
     # Two items: one material that will resolve, one with a NULL kind.
