@@ -6,7 +6,7 @@ preheader: "Coloque o CNPJ da sua empresa e veja os editais abertos que combinam
 status: approved
 placeholders: [email_contato, link_acesso, nome, numero_vaga, preco_essencial, preco_promocional, vagas]
 partials: [partial-footer]
-notes: Opening email, 08/10 at 19:00. Pairs with whatsapp/founders-opening.
+notes: Opening email, 17/10 at 12:00. Pairs with whatsapp/founders-opening.
 ---
 
 Oi, {{nome}}.

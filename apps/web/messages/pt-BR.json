@@ -147,7 +147,7 @@
       "cta": "Garantir minha vaga"
     },
     "hero": {
-      "badge": "Lista de fundadores · {$vagas} vagas · abertura 08/10",
+      "badge": "Lista de fundadores · {$vagas} vagas · abertura {$aberturaData}",
       "title": "Ache o edital que você consegue atender. Saiba até quanto ofertar com lucro",
       "subtitle": "O LicitaQui é uma ferramenta de licitações feita para MEI e pequena empresa. Ela lê os editais abertos, mostra o que combina com o seu CNPJ, explica o que pedem e avisa antes do prazo.",
       "promises": [
@@ -386,7 +386,7 @@
           "body": "Com a conta grátis, você recebe 1 aviso por semana no Telegram, com 1 palavra-chave e 1 estado."
         },
         {
-          "when": "08/10 às 19h",
+          "when": "{$aberturaData} às {$aberturaHora}",
           "title": "Abertura do Essencial",
           "body": "Saiba quanto pagar para manter sua margem, nos editais em que já temos dados de vencedores. Experiência exclusiva."
         }

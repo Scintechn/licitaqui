@@ -36,8 +36,32 @@ const PRODUCT_FACTS: Readonly<Record<string, string>> = Object.freeze({
   // numbers that eventually do not.
   mesPosPromo: `${PROMO.months + 1}º`,
   diasAvisoPreco: String(NOTICE.priceChangeDays),
-  /** `2026-10-08` → `08/10`, the form Brazilian copy uses. */
+  /**
+   * `2026-10-17` → `17/10`, the form Brazilian copy uses.
+   *
+   * **This existed and was used by nothing.** Two strings carried the date by
+   * hand instead -- the founders badge and the opening `when` -- so the fact
+   * was derived, correct and ignored, and changing `product.json` alone left
+   * both sentences wrong. Both now read the token.
+   */
   aberturaData: FOUNDERS.opensOn.split('-').slice(1).reverse().join('/'),
+  /**
+   * `12:00` → `12h`, the form the copy uses for a whole hour.
+   *
+   * Only whole hours: `opensAtBrt` has been `19:00` and is now `12:00`, and a
+   * half-hour opening would need a decision about the wording rather than a
+   * `.replace`, so this throws rather than inventing `12h30`.
+   */
+  aberturaHora: (() => {
+    const [hour, minute] = FOUNDERS.opensAtBrt.split(':')
+    if (minute !== '00') {
+      throw new Error(
+        `founders.opensAtBrt is ${FOUNDERS.opensAtBrt}; the copy form "Nh" only ` +
+          'fits a whole hour, so this needs a wording decision, not a format',
+      )
+    }
+    return `${Number(hour)}h`
+  })(),
   // **The floor the price band needs, and the copy quotes.**
   // `radar.price.evidenceHelp` says the faixa appears at "pelo menos N
   // editais", and `price-view.tsx` decides whether to show that sentence at

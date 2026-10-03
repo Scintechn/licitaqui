@@ -25,8 +25,8 @@
   "founders": {
     "seatsTotal": 25,
     "seatsOpenDefault": 17,
-    "opensOn": "2026-10-08",
-    "opensAtBrt": "19:00",
+    "opensOn": "2026-10-17",
+    "opensAtBrt": "12:00",
     "$seatsComment": [
       "Two numbers, because the offer opens in two lots and they are not the",
       "same kind of fact.",
@@ -47,10 +47,10 @@
       "they had already accepted.",
       "",
       "A seat is RESERVED, not bought. Reserving costs nothing and happens now;",
-      "the charge starts on 08/10 when the plan opens. So `seat` on",
+      "the charge starts on 17/10 when the plan opens. So `seat` on",
       "`founders_list` records a booking, and a subscription is a separate",
       "thing that does not exist yet (E8). Sci opens lot 2 only if the 17 are",
-      "still not taken by 08/10 — a decision, never a schedule."
+      "still not taken by 17/10 — a decision, never a schedule."
     ]
   },
 
