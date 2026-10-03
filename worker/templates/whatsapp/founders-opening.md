@@ -3,7 +3,7 @@ id: founders-opening
 channel: whatsapp
 status: approved
 placeholders: [link_acesso, nome, vagas]
-notes: Opening broadcast, 08/10 at 19:00, fired from the /admin button. Opt-in only, ~1 message every 20-30 s.
+notes: Opening broadcast, 17/10 at 12:00, fired from the /admin button. Opt-in only, ~1 message every 20-30 s.
 ---
 
 {{nome}}, chegou a hora: a LicitaQui está no ar para os {{vagas}} fundadores.

@@ -249,6 +249,34 @@ describe('the product facts, against every file that quotes them', () => {
       seatPhrases.filter((phrase) => source.includes(phrase)),
       'the seat count is typed into pt-BR.json — use {$vagas}',
     ).toEqual([])
+
+    /**
+     * **The opening date and hour, added 2026-10-03 because this is the class
+     * that actually bit.** `aberturaData` was derived, correct, and read by
+     * nothing: two strings carried `08/10` by hand, so moving the opening to
+     * 17/10 in `docs/product.json` would have left the founders badge and the
+     * opening `when` advertising a date that had passed.
+     *
+     * Scoped to the **opening date's own value**, exactly as the price guard
+     * above is scoped to the actual plan prices. A first attempt refused any
+     * `DD/MM` and immediately flagged `16/09` and `30/09` — the sample edital
+     * from Campinas on the landing page. Those are copy about the world, which
+     * this block's own reasoning says to leave alone, so the wider rule was
+     * wrong rather than the copy.
+     */
+    const [, month, day] = FOUNDERS.opensOn.split('-')
+    const openingDate = `${day}/${month}`
+    expect(
+      source.includes(openingDate) ? [openingDate] : [],
+      `the opening date (${openingDate}) is typed into pt-BR.json — use ` +
+        '{$aberturaData} so one edit to docs/product.json reaches every string',
+    ).toEqual([])
+
+    const openingHour = `${Number(FOUNDERS.opensAtBrt.split(':')[0])}h`
+    expect(
+      source.includes(openingHour) ? [openingHour] : [],
+      `the opening hour (${openingHour}) is typed into pt-BR.json — use {$aberturaHora}`,
+    ).toEqual([])
   })
 
   it('resolves every token it is given, leaving none on screen', () => {
