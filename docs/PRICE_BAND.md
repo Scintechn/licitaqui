@@ -11,6 +11,47 @@ part of this. §8 is written for exactly that.
 
 ---
 
+## 0. Status, 2026-10-03 — the source is changing underneath this document
+
+**Everything below describes what *renders* today, and it is still accurate for
+that.** The band on screen is still built from `awards` by `comparablesForItem`,
+because the read path has not changed. What has changed is the decision about
+where the numbers will come from.
+
+A back-test over 1 350 items from closed tenders where the winning price is
+known, every band computed by the real `priceBand()`, each source asked only
+what it could have known strictly before the award date:
+
+| | this document's source (`awards`) | the Compras.gov.br catalogue |
+|---|---|---|
+| hit rate | 14% / 31% | **56%** |
+| against the ~50% a correct quartile band scores *by construction* | **below it: p=0.001, p=0.002** | indistinguishable, p=0.45–1.00 |
+| median signed bias | **−10% to −30%** | **+0.2%** |
+| band width | 27% (narrower — more confident, more wrong) | 34% |
+
+So §3's gates and §4's coverage figures remain true of the shipped path, and
+§7's supply argument is now historical: the feed this document calls "the real
+constraint" is being replaced rather than fixed.
+
+**What is built already** (B36, B35's write half): the vocabulary is mirrored,
+**477 746 open items are mapped** (17.1% to an exact code), and 41 362 catalogue
+price rows are stored. **What is not built is the read path** — so none of it
+reaches a screen yet, and this document's §5 is still what a reader sees.
+
+**The measured reach of the new source, which is the number that matters:**
+roughly **1 edital in 23** will show a band (4.3%, inferred from a 4% per-code
+band rate on demand-ordered codes), against 7.3% if the random-sample rate of
+8.8% holds. Either way it is rare, and *"cada item"* in
+`radar.landing.opportunity.body` is further from true than this document's §4
+already said.
+
+The decision, its evidence and the open questions live in
+`docs/catalogue-price-band-approach.md`. **C4 is measuring whether `MAX_SPREAD`
+is the right threshold**, because 27 of the first 28 codes ever refreshed were
+refused by it while holding 29 to 3 572 purchases each.
+
+---
+
 ## 1. What the product promises
 
 Two sentences, both live on `/`:

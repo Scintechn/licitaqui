@@ -19,6 +19,40 @@
 > never match exactly — which made 41.1% of active CATSER unreachable. They want
 > re-measuring with the shipped matcher.
 >
+> ---
+>
+> **2026-10-03, later the same day: the write half shipped and ran, and four of
+> this document's numbers are now superseded by live measurement.**
+>
+> | this document said | the live measurement |
+> |---|---|
+> | exact share was a **floor**, likely to rise after the cap fix | **it did not move**: 17.1% over all 477 746 open items, against the 16.8–17.1% measured before. Materials 18.5–19.5%, services 6.5–7.6% — services came out *lower*. The cap fix was right in principle and bought nothing measurable. **1.50% coverage is the number, not a floor.** |
+> | **7 109** distinct codes to cache | **5 596** referenced by open items (5 049 material + 657 CATSER, of which the services are deliberately never asked). A full pass is ~22% cheaper than §5 budgets. |
+> | a full pass ≈ **6.5 h** at 0.55 calls/s | **20.8 s per code measured** on the deepest codes → 29.2 h if every code were that deep. The median code is one page, so the honest range is **8–12 h [I]**, and §5's figure was optimistic. |
+> | the band would appear on some share of items | **roughly 1 edital in 23**. Measured: **26.6%** of open editais have ≥1 band-*eligible* item; applying the per-code band rate gives **4.3%** at the demand-ordered 4%, or 7.3% at the random-sample 8.8%. |
+>
+> **And one finding this document did not anticipate.** The refresh is
+> demand-ordered, and the first 28 codes ever refreshed produced **1 band and 27
+> `spread_too_wide` refusals**, holding **29 to 3 572 purchases** each. The one
+> that worked: code 30247, R$ 16,49 / 19,36 / 22,62 from 2 154 compras.
+>
+> A code is demanded *because* it is generic, and generic is what `MAX_SPREAD`
+> refuses — so **demand-ordering spends the API budget at the worst end of the
+> curve**: 4% band rate on the top codes against 8.8% on a random sample (wide
+> CIs, 1/25 against 16/181, so the mechanism is clearer than the magnitude).
+> Ordering by demand maximises items-covered-per-code and minimises
+> bands-found-per-code, and those are not the same objective.
+>
+> **So the binding constraint was never supply, cost, or matching.** It is that a
+> PDM mixes products, so prices inside one code disagree. §11.5 already rejected
+> finer identity on measured grounds (CATMAT: 33% hit, p<0.001 below the
+> benchmark). What is left is the threshold itself, and **C4 is now measuring it**
+> — `MAX_SPREAD = 0.5` was chosen before any hit rate existed, which
+> `price-band.ts` says in its own docstring, and it is refusing codes with
+> thousands of purchases.
+>
+> ---
+>
 > Every number is labelled **[M]** measured, with its date, or **[I]** inferred,
 > with its assumption. `CLAUDE.md` §4d is why: a previous session reported a
 > remembered Neon limit as if measured.
