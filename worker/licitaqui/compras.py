@@ -175,6 +175,27 @@ PRICE_ROW_FIELDS = (
 #: handful and not a page — at 500 the check could not see a lost page at all.
 WALK_DRIFT_TOLERANCE = 5
 
+#: Proportional slack on `totalRegistros`, because the feed moves under a walk.
+#:
+#: A deep code takes minutes to page through and `total` is read from page 1.
+#: Measured 2026-10-03: one code reported 6 938 rows and then 6 942 twenty
+#: minutes later. A flat tolerance that is right for 700 rows is wrong for
+#: 35 000, so the floor above is kept and this is the part that scales.
+WALK_DRIFT_FRACTION = 0.005
+
+
+def _page_identities(rows: list[dict[str, Any]]) -> frozenset[tuple]:
+    """The `(idCompra, numeroItemCompra)` pairs on one page.
+
+    Used **only** to compare consecutive pages. It is deliberately not summed
+    across the walk: the pair is not unique per row — two suppliers may be
+    awarded one item (*cadastro de reserva*, measured) — so a global distinct
+    count is smaller than the row count in healthy data and says nothing about
+    whether a page repeated.
+    """
+    return frozenset((row.get("idCompra"), row.get("numeroItemCompra")) for row in rows)
+
+
 #: Safety ceiling on one code's page walk, and the reason it is this high.
 #:
 #: There is no cap in the design — the measurement is that codes read to full
@@ -509,6 +530,7 @@ class ComprasClient:
             )
 
         last_page = min(pages, max_pages)
+        previous = _page_identities(rows)
         for page in range(2, last_page + 1):
             more, page_total, _pages, _nf = self._price_page(path, window, page)
             if page_total is None:
@@ -516,6 +538,24 @@ class ComprasClient:
                     f"{kind}/{code}: page {page} returned an unreadable "
                     "totalRegistros — refusing rather than walking on"
                 )
+            # **The pagination fault, caught where it happens.** If a page
+            # serves the previous page's rows again, the walk reaches `total`
+            # with duplicates standing in for purchases never read, and the
+            # collapse would quietly dedupe them into a halved sample with
+            # `refused_reason` null.
+            #
+            # Measured 2026-10-03 against the live API on codes 13798 and 8751:
+            # consecutive pages share **zero** identities, so an overlap is a
+            # fault and not a feature. Compared page-to-page rather than as a
+            # global distinct count, because that count is not a fault signal —
+            # see `_page_identities`.
+            current = _page_identities(more)
+            if more and current and current == previous:
+                raise ComprasError(
+                    f"{kind}/{code}: page {page} served the same rows as page "
+                    f"{page - 1} — a repeating read, not a live feed"
+                )
+            previous = current
             rows.extend(more)
 
         complete = pages <= max_pages
@@ -524,19 +564,29 @@ class ComprasClient:
                 f"{kind}/{code}: API reported {total} rows and the walk "
                 "collected none — a broken run, not a finding"
             )
-        # **Distinct identities, not row count.** A pagination fault that served
-        # page 1's rows again for page 2 gives `len(rows) == total` and would
-        # pass — with 500 duplicates standing in for 500 purchases that were
-        # never read. The collapse would then quietly dedupe them and the band
-        # would be computed over a halved sample with `refused_reason` null,
-        # which is the same consequence the one-page tolerance had.
-        seen = {(row.get("idCompra"), row.get("numeroItemCompra")) for row in rows}
-        if complete and len(seen) < total - WALK_DRIFT_TOLERANCE:
+        # **Rows against `total`, not distinct identities.**
+        #
+        # This compared `len({(idCompra, numeroItemCompra)})` against `total`,
+        # on the premise that the pair is unique per row. **It is not**, and the
+        # guard failed 16 of the first 16 deep codes ever refreshed — every one
+        # of them a correct walk. Measured 2026-10-03 on the live API: code 8751
+        # page 1 carries two rows for purchase `92930605900002025` item 59, from
+        # suppliers `45778439000188` and `26363190000103` at R$ 5,10 and R$ 5,00.
+        # That is the *cadastro de reserva* — two suppliers awarded one item —
+        # and it is data, not a fault. Duplicate rates ran 0.08–1.6% and scale
+        # with volume, so no constant tolerance could have worked.
+        #
+        # The fault that check was reaching for is a repeating page, and that is
+        # now caught page-to-page in the loop above, where it is observable.
+        # What remains here is the honest question: did the walk collect roughly
+        # what the API said it had. `total` itself drifts — 6 938 then 6 942 on
+        # one code twenty minutes apart — so the tolerance is proportional.
+        drift = max(WALK_DRIFT_TOLERANCE, int(total * WALK_DRIFT_FRACTION))
+        if complete and len(rows) < total - drift:
             raise ComprasError(
-                f"{kind}/{code}: walked {len(rows)} rows ({len(seen)} distinct "
-                f"items), API reported {total} — short by more than "
-                f"{WALK_DRIFT_TOLERANCE}, so a truncated or repeating read "
-                "rather than a live feed shifting under us"
+                f"{kind}/{code}: walked {len(rows)} rows, API reported {total} "
+                f"— short by more than {drift}, so a truncated read rather than "
+                "a live feed shifting under us"
             )
         self._assert_window(kind, code, rows, start, end)
         _log.info(

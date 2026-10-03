@@ -827,17 +827,66 @@ def test_the_page_cap_reports_the_walk_incomplete_rather_than_pretending() -> No
 def test_a_repeating_page_does_not_pass_as_a_complete_walk() -> None:
     """`len(rows) == total` with 500 duplicates standing in for 500 unread
     purchases. The collapse would dedupe them and the band would be computed
-    over a halved sample with `refused_reason` null — the same consequence the
-    one-page tolerance had, reached a different way, so the check counts
-    `(idCompra, numeroItemCompra)` identities and not rows."""
+    over a halved sample with `refused_reason` null.
+
+    **Caught page-to-page now, not by a global distinct count.** The first
+    version compared `len({(idCompra, numeroItemCompra)})` against `total`,
+    which is a different claim and a false one — see the test below.
+    """
     repeated = _rows(PAGE_SIZE)
 
     def handler(request: httpx.Request) -> httpx.Response:
         return _price_page(repeated, 1000)  # the same 500 rows for both pages
 
     client = _client(handler)
-    with pytest.raises(ComprasError, match="distinct items"):
+    with pytest.raises(ComprasError, match="served the same rows as page"):
         client.walk_prices("M", 1, start=date(2026, 9, 1), end=TODAY)
+    client.close()
+
+
+def test_two_suppliers_on_one_item_is_data_and_not_a_short_walk() -> None:
+    """The defect this replaces: 16 of the first 16 deep codes ever refreshed
+    failed, every one of them a correct walk.
+
+    The old guard assumed `(idCompra, numeroItemCompra)` is unique per row.
+    Measured 2026-10-03 on the live API, it is not: code 8751 page 1 carries two
+    rows for purchase `92930605900002025` item 59, from suppliers
+    `45778439000188` and `26363190000103` at R$ 5,10 and R$ 5,00 — the
+    *cadastro de reserva*, two suppliers awarded one item. Observed duplicate
+    rates ran 0.08–1.6% and scale with volume, so no constant tolerance could
+    have worked.
+
+    The scale matters and the first version of this test got it wrong: with 100
+    rows and 2 duplicates the flat 5-row floor absorbs them, so a mutation
+    restoring the old check left the suite green. Measured rates were 0.08-1.6%
+    of thousands of rows, where no tolerance can absorb them -- so the fixture
+    is 1 000 rows with 1.6% duplicated, which is what the live API served.
+    """
+    rows = _rows(1000)
+    # 16 duplicated pairs -- the 1.6% measured on code 13798 (6 938 rows,
+    # 6 830 distinct). Two suppliers awarded one item, each with its own price.
+    for i in range(16):
+        rows[500 + i] = {
+            **rows[500 + i],
+            "idCompra": rows[i]["idCompra"],
+            "numeroItemCompra": rows[i]["numeroItemCompra"],
+            "niFornecedor": "26363190000103",
+            "precoUnitario": 5.0 + i / 10,
+        }
+    distinct = len({(r["idCompra"], r["numeroItemCompra"]) for r in rows})
+    assert distinct == len(rows) - 16, "the fixture must actually carry duplicates"
+    # And the old check would have refused this: 984 < 1000 - max(5, 5).
+    assert distinct < len(rows) - max(5, int(len(rows) * 0.005))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params["pagina"])
+        half = rows[:500] if page == 1 else rows[500:]
+        return _price_page(half, len(rows))
+
+    client = _client(handler)
+    walk = client.walk_prices("M", 8751, start=date(2026, 9, 1), end=TODAY)
+    assert len(walk.rows) == len(rows)
+    assert walk.complete is True
     client.close()
 
 
