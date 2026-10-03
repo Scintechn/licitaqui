@@ -62,6 +62,15 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
 
     assert [entry.kind for entry in DEFAULT_SCHEDULE] == [
         "sync_open_tenders",
+        # B36's two. They are on the clock **in the same change as their
+        # handlers**, because B32 is the alternative: a handler that works, no
+        # enqueuer, and a price feed that stopped growing for two days with
+        # nobody noticing. The vocabulary is weekly because `statusPdm` flips
+        # on the scale of months; the map is daily because new editais arrive
+        # daily and an unmapped item shows no price at all, and it makes no API
+        # call — measured, the whole open corpus resolves in minutes of CPU.
+        "sync_catalog_vocabulary",
+        "map_item_codes",
         "sync_awards",
         # B17's inventory sweep. It sits beside `sync_open_tenders` rather than
         # replacing it because the two ask different questions: that one reads

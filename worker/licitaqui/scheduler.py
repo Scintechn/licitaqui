@@ -128,6 +128,25 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # makes. Revisit on the evening of 08/10, when `WORKER_POLL_INTERVAL_SECONDS`
     # is meant to be shortened anyway.
     ScheduleEntry(kind="sync_open_tenders", every_seconds=60 * 60, priority=5),
+    # **The catalogue vocabulary and the item→code map (B36).** Carded and
+    # scheduled in the same change as the handlers, because B32 is what happens
+    # otherwise: a handler that works, no enqueuer, and a feed that "stopped
+    # growing on 2026-09-29 and nobody noticed for two days". A registered
+    # handler nothing enqueues can never be claimed.
+    #
+    # Weekly, not daily: `statusPdm` flips on the scale of months and the walk
+    # is ~48 pages, so a daily pass would spend the API budget B35's price
+    # refresh needs. Sunday, before the map that depends on it.
+    #
+    # The map runs daily because new editais arrive daily and an unmapped item
+    # shows no price at all. It makes **no API call** -- measured, the whole open
+    # corpus resolves in ~2-4 minutes of CPU -- so its only cost is the job slot.
+    #
+    # Alarm on "0 codes refreshed in N days", **never on "0 queued"**: B32's
+    # lesson is that a feed which never enqueues also never fails, which is
+    # precisely why it was invisible.
+    ScheduleEntry(kind="sync_catalog_vocabulary", daily_at="03:20", weekday=6, priority=9),
+    ScheduleEntry(kind="map_item_codes", daily_at="04:10", priority=9),
     ScheduleEntry(kind="sync_awards", daily_at="03:00", priority=9),
     # B17, and the reason it is daily rather than half-hourly like the change
     # feed above: this is an **inventory**, not a feed. It asks PNCP what is
