@@ -147,6 +147,29 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # precisely why it was invisible.
     ScheduleEntry(kind="sync_catalog_vocabulary", daily_at="03:20", weekday=6, priority=9),
     ScheduleEntry(kind="map_item_codes", daily_at="04:10", priority=9),
+    # **B35's price refresh, and it is a sweep that only enqueues.** 04:40 BRT
+    # is half an hour behind `map_item_codes` on purpose: the sweep orders codes
+    # by how many open items point at them, reading `tender_item_codes`, so it
+    # must run after the map that writes them or the first sweep of a new
+    # edital's codes is a day late.
+    #
+    # **Daily, not weekly, although a code only falls due weekly.** The cadence
+    # that matters is per code and lives in `catalog_prices` — thin codes
+    # weekly, deep ones monthly, codes no open item references never. A weekly
+    # sweep would put the whole ~2 000-call pass in one burst; a daily one
+    # spreads it over seven, which at the only throughput measured clean
+    # (0.55 calls/s over 2 668 calls, zero 429) is about an hour of calling a
+    # day in ~1 000 short jobs rather than six hours in one.
+    #
+    # Priority 9, and the per-code jobs it creates inherit it: each one is a
+    # couple of API pages, so `sync_open_tenders` waits behind at most one of
+    # them. A single long job on a concurrency-2 worker is what B32 cost, and
+    # it is the shape this entry exists to avoid.
+    #
+    # The alarm is "0 codes refreshed in N days" — the `events` row this run
+    # writes — and **never** "0 queued": a feed that never enqueues also never
+    # fails, which is exactly why B32 was invisible for two days.
+    ScheduleEntry(kind="refresh_catalog_prices", daily_at="04:40", priority=9),
     ScheduleEntry(kind="sync_awards", daily_at="03:00", priority=9),
     # B17, and the reason it is daily rather than half-hourly like the change
     # feed above: this is an **inventory**, not a feed. It asks PNCP what is
