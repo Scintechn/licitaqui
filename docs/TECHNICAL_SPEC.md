@@ -383,6 +383,8 @@ create table events (user_id bigint, visitor_id uuid, name text, props jsonb, cr
 | `weekly_alerts` | Monday 07:00 BRT | Free: one message with up to 3 compatible tenders | new |
 | `daily_alerts` | every day 07:00 BRT | Essencial: keywords + compatible CNAE | new |
 | `cleanup` | daily | PDFs of tenders closed > 90 days, old jobs, visitors > 30 days | new |
+| `sync_catalog_vocabulary` | Sunday 03:20 BRT | Mirrors the two Compras.gov.br closed vocabularies (PDM ≈ 20 440 rows, CATSER ≈ 3 100) into `catalog_pdm` / `catalog_service`. **Raises on an empty or short walk**, and refuses a walk where every code came back active — the status field discriminates (15 039 of 20 440 active, measured 2026-10-02), so an all-active result is a parse bug, not a finding | B36 |
+| `map_item_codes` | daily 04:10 BRT | Resolves each open item's description to a catalogue code and records **how** it matched (`exact` / `prefix` / `prefix_rev` / `no_match` / `no_head` / `unknown_kind`) in `tender_item_codes`. **No external call at all** — pure string work against the mirrored vocabulary; the whole open corpus (450 445 items) resolves in minutes of CPU. Only `exact` may feed a price band: measured over 1 350 back-tested items, a prefix match's band is biased **+18.6%** against the real winning price where an exact match's is **−3.6%** | B36 |
 
 ### 7.2 Robustness rules (learned in the POCs)
 
@@ -390,6 +392,16 @@ create table events (user_id bigint, visitor_id uuid, name text, props jsonb, cr
 - Exponential backoff retries (2, 8, 30 min), max 4 attempts; then `failed` with the error stored.
 - **Circuit breaker per endpoint:** 2 consecutive failures on the `/api/consulta` detail → skip detail for 15 min and continue with search + items.
 - Throttle PNCP calls (e.g. 4 req/s per worker) and run heavy jobs off-peak.
+- **`dadosabertos.compras.gov.br` is a second external host with its own breaker**
+  (`compras-catalogo`) and its own throttle, because a breaker is per endpoint:
+  `pncp-resultados` was open for a morning on 2026-09-30 while PNCP search was
+  healthy, and sharing one would let either feed close the other's circuit. Its
+  rate ceiling is measured, not assumed — 3 workers at 0.40 s spacing ran 2 668
+  calls with zero 429, while 6 workers at the same spacing reached 1.90 calls/s
+  over a short burst but took 4 × 429 on a sustained walk. Page size is 500 (the
+  maximum; 1 000 is a 400 and the minimum is 10), and latency is server-side —
+  page size does not change it, so fewer calls is the only lever. A **400 is
+  retryable** on this host: measured transient.
 - AI call plans: no reasoning + JSON → low reasoning + JSON → low reasoning without JSON; stop on 401/402/404; stop after 2 hangs.
 - Never send a scanned PDF to the AI (cost without result). OCR comes later.
 - Arithmetic (minimum capital, term in months) always in code, never by the AI.
