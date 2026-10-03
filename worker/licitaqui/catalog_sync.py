@@ -76,9 +76,12 @@ def _active(value: Any, field: str) -> bool:
 def _pdm_entry(row: dict[str, Any]) -> tuple:
     name = (row.get("nomePdm") or "").strip()
     return (
-        int(row["codigoPdm"]), name,
-        row.get("codigoClasse"), row.get("nomeClasse"),
-        row.get("codigoGrupo"), row.get("nomeGrupo"),
+        int(row["codigoPdm"]),
+        name,
+        row.get("codigoClasse"),
+        row.get("nomeClasse"),
+        row.get("codigoGrupo"),
+        row.get("nomeGrupo"),
         _active(row.get("statusPdm"), "statusPdm"),
     )
 
@@ -86,14 +89,17 @@ def _pdm_entry(row: dict[str, Any]) -> tuple:
 def _service_entry(row: dict[str, Any]) -> tuple:
     name = (row.get("nomeServico") or "").strip()
     return (
-        int(row["codigoServico"]), name,
-        row.get("codigoClasse"), row.get("nomeClasse"),
+        int(row["codigoServico"]),
+        name,
+        row.get("codigoClasse"),
+        row.get("nomeClasse"),
         _active(row.get("statusServico"), "statusServico"),
     )
 
 
-def _assert_discriminating(pdm: list[dict[str, Any]],
-                           service: list[dict[str, Any]]) -> tuple[int, int]:
+def _assert_discriminating(
+    pdm: list[dict[str, Any]], service: list[dict[str, Any]]
+) -> tuple[int, int]:
     """Count the active codes, and refuse a walk where everything is active.
 
     Measured 2026-10-02: **15 039 of 20 440** PDM and **3 023 of 3 103** CATSER
@@ -155,16 +161,28 @@ def sync_catalog_vocabulary(ctx: JobContext) -> None:
         )
 
     active_pdm, active_svc = _assert_discriminating(pdm, service)
-    _log.info("catalogue mirrored", extra={
-        "pdm": len(pdm), "pdm_active": active_pdm,
-        "service": len(service), "service_active": active_svc,
-    })
+    _log.info(
+        "catalogue mirrored",
+        extra={
+            "pdm": len(pdm),
+            "pdm_active": active_pdm,
+            "service": len(service),
+            "service_active": active_svc,
+        },
+    )
     conn.cursor().execute(
         "insert into events (name, props) values (%s, %s)",
-        ("catalog_vocabulary_synced", Jsonb({
-            "pdm": len(pdm), "pdm_active": active_pdm,
-            "service": len(service), "service_active": active_svc,
-        })),
+        (
+            "catalog_vocabulary_synced",
+            Jsonb(
+                {
+                    "pdm": len(pdm),
+                    "pdm_active": active_pdm,
+                    "service": len(service),
+                    "service_active": active_svc,
+                }
+            ),
+        ),
     )
 
 
@@ -190,12 +208,17 @@ def load_index(conn: Connection, kind: str) -> CatalogIndex:
             "An empty index would mark every item `no_match`, which is a broken "
             "run recorded as a finding."
         )
-    return CatalogIndex([
-        CatalogEntry(code=code, name=name,
-                     head=tuple(product_head(name, MATCH_CAP)),
-                     words=tuple(all_words(name)))
-        for code, name in rows
-    ])
+    return CatalogIndex(
+        [
+            CatalogEntry(
+                code=code,
+                name=name,
+                head=tuple(product_head(name, MATCH_CAP)),
+                words=tuple(all_words(name)),
+            )
+            for code, name in rows
+        ]
+    )
 
 
 @REGISTRY.job("map_item_codes")
@@ -232,7 +255,7 @@ def map_item_codes(ctx: JobContext) -> None:
           join tenders t on t.id = i.tender_id
           left join tender_item_codes c
             on c.tender_id = i.tender_id and c.item_number = i.number
-         where {' and '.join(where)}
+         where {" and ".join(where)}
     """  # noqa: S608 - `where` is assembled from fixed fragments only
 
     mapped = 0
@@ -249,8 +272,7 @@ def map_item_codes(ctx: JobContext) -> None:
             k = kind if kind in ("M", "S") else "M"
             r = resolve_description(index[k], description)
             by_rule[r.rule] = by_rule.get(r.rule, 0) + 1
-            batch.append((tender_id, number, k, r.code, r.rule,
-                          r.matched_words, r.candidates))
+            batch.append((tender_id, number, k, r.code, r.rule, r.matched_words, r.candidates))
             if len(batch) >= BATCH:
                 mapped += _flush(conn, batch)
                 batch = []
@@ -260,9 +282,18 @@ def map_item_codes(ctx: JobContext) -> None:
     _log.info("items mapped", extra={"mapped": mapped, **by_rule})
     conn.cursor().execute(
         "insert into events (name, props) values (%s, %s)",
-        ("item_codes_mapped", Jsonb({"mapped": mapped, "by_rule": by_rule,
-                                     "remap": remap, "only_open": only_open,
-                                     "matcher": MATCHER_VERSION})),
+        (
+            "item_codes_mapped",
+            Jsonb(
+                {
+                    "mapped": mapped,
+                    "by_rule": by_rule,
+                    "remap": remap,
+                    "only_open": only_open,
+                    "matcher": MATCHER_VERSION,
+                }
+            ),
+        ),
     )
 
 

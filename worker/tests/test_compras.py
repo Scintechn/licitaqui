@@ -37,11 +37,13 @@ def _fresh_breakers():
 
 def _client(handler) -> ComprasClient:
     """Real retry logic, collapsed delays — the waits are measured in seconds."""
-    return ComprasClient(transport=httpx.MockTransport(handler), attempts=2,
-                         sleep=lambda _seconds: None)
+    return ComprasClient(
+        transport=httpx.MockTransport(handler), attempts=2, sleep=lambda _seconds: None
+    )
 
 
 # --------------------------------------------------- the breaker must open
+
 
 def test_repeated_http_5xx_opens_the_breaker() -> None:
     """A 503 is a failure. It used not to be, and that was the defect."""
@@ -100,8 +102,11 @@ def test_a_404_is_an_answer_and_never_a_failure() -> None:
 
 
 def test_a_genuine_empty_200_is_not_marked_not_found() -> None:
-    client = _client(lambda r: httpx.Response(
-        200, json={"resultado": [], "totalRegistros": 0, "totalPaginas": 0}))
+    client = _client(
+        lambda r: httpx.Response(
+            200, json={"resultado": [], "totalRegistros": 0, "totalPaginas": 0}
+        )
+    )
     body = client.get("/x", {}, client.catalogue_breaker)
     assert body["resultado"] == []
     assert "notFound" not in body
@@ -116,8 +121,9 @@ def test_a_400_is_retried_because_it_is_transient_here() -> None:
         seen["n"] += 1
         if seen["n"] == 1:
             return httpx.Response(400, json={})
-        return httpx.Response(200, json={"resultado": [{"ok": 1}],
-                                         "totalRegistros": 1, "totalPaginas": 1})
+        return httpx.Response(
+            200, json={"resultado": [{"ok": 1}], "totalRegistros": 1, "totalPaginas": 1}
+        )
 
     client = _client(handler)
     body = client.get("/x", {}, client.catalogue_breaker)
@@ -135,7 +141,7 @@ def test_a_429_widens_the_spacing_even_from_zero() -> None:
     """
     from licitaqui import compras
 
-    assert compras.MIN_INTERVAL[0] == 0.0   # the fixture zeroed it
+    assert compras.MIN_INTERVAL[0] == 0.0  # the fixture zeroed it
     client = _client(lambda r: httpx.Response(429, json={}))
     with pytest.raises((ComprasError, CircuitOpen)):
         client.get("/x", {}, client.catalogue_breaker)
@@ -145,9 +151,11 @@ def test_a_429_widens_the_spacing_even_from_zero() -> None:
 
 # ------------------------------------------------------ the vocabulary walk
 
+
 def _page(rows: list[dict], total: int, pages: int) -> httpx.Response:
-    return httpx.Response(200, json={"resultado": rows, "totalRegistros": total,
-                                     "totalPaginas": pages})
+    return httpx.Response(
+        200, json={"resultado": rows, "totalRegistros": total, "totalPaginas": pages}
+    )
 
 
 def test_walk_raises_on_an_empty_vocabulary() -> None:

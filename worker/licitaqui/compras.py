@@ -104,10 +104,8 @@ def _widen() -> None:
         # `max(DEFAULT_INTERVAL, ...)` because multiplying is not widening when
         # the interval is zero: 0 * 1.5 is 0, so a client configured without
         # spacing could take 429s forever and never slow down. A test pins it.
-        MIN_INTERVAL[0] = min(MAX_INTERVAL,
-                              max(DEFAULT_INTERVAL, MIN_INTERVAL[0] * 1.5))
-    _log.warning("rate limited, widening interval",
-                 extra={"interval_s": MIN_INTERVAL[0]})
+        MIN_INTERVAL[0] = min(MAX_INTERVAL, max(DEFAULT_INTERVAL, MIN_INTERVAL[0] * 1.5))
+    _log.warning("rate limited, widening interval", extra={"interval_s": MIN_INTERVAL[0]})
 
 
 @dataclass
@@ -125,8 +123,7 @@ class ComprasClient:
     def __post_init__(self) -> None:
         self._client = httpx.Client(
             base_url=BASE_URL,
-            timeout=httpx.Timeout(connect=15.0, read=self.timeout_s,
-                                  write=15.0, pool=15.0),
+            timeout=httpx.Timeout(connect=15.0, read=self.timeout_s, write=15.0, pool=15.0),
             headers={"Accept": "application/json"},
             transport=self.transport,
         )
@@ -169,13 +166,15 @@ class ComprasClient:
                     try:
                         response = self._client.get(path, params=params)
                     except httpx.HTTPError as exc:
-                        raise ComprasError(
-                            f"GET {path} -> {type(exc).__name__}: {exc}") from exc
+                        raise ComprasError(f"GET {path} -> {type(exc).__name__}: {exc}") from exc
                     # A 404 is an answer -- this code has no rows -- so it must not
                     # count as a failure. Raised outside the guard, below.
                     if response.status_code != 404 and response.status_code >= 400:
-                        retry_after = (response.headers.get("Retry-After")
-                                       if response.status_code == 429 else None)
+                        retry_after = (
+                            response.headers.get("Retry-After")
+                            if response.status_code == 429
+                            else None
+                        )
                         raise ComprasError(
                             f"GET {path} -> HTTP {response.status_code}",
                         )
@@ -183,8 +182,11 @@ class ComprasClient:
                 last = exc
                 if "HTTP 429" in str(exc):
                     _widen()
-                    delay = (float(retry_after) if retry_after and retry_after.isdigit()
-                             else min(60.0, 8.0 * (attempt + 1)))
+                    delay = (
+                        float(retry_after)
+                        if retry_after and retry_after.isdigit()
+                        else min(60.0, 8.0 * (attempt + 1))
+                    )
                 else:
                     # 400 is included deliberately: measured transient on this API
                     # (PDM 4915 returned 400 once and 200 on three retries).
@@ -192,8 +194,7 @@ class ComprasClient:
                 self.sleep(delay)
                 continue
             if response.status_code == 404:
-                return {"resultado": [], "totalRegistros": 0, "totalPaginas": 0,
-                        "notFound": True}
+                return {"resultado": [], "totalRegistros": 0, "totalPaginas": 0, "notFound": True}
             return response.json()
         raise ComprasError(f"{path} failed after {self.attempts} attempts: {last}")
 
@@ -206,14 +207,14 @@ class ComprasClient:
         mapped items into unmapped ones with no record of why.
         """
         path = CATALOGUE_PATHS[which]
-        first = self.get(path, {"pagina": 1, "tamanhoPagina": PAGE_SIZE},
-                         self.catalogue_breaker)
+        first = self.get(path, {"pagina": 1, "tamanhoPagina": PAGE_SIZE}, self.catalogue_breaker)
         total = int(first.get("totalRegistros") or 0)
         pages = int(first.get("totalPaginas") or 0)
         rows = list(first.get("resultado") or [])
         for page in range(2, pages + 1):
-            body = self.get(path, {"pagina": page, "tamanhoPagina": PAGE_SIZE},
-                            self.catalogue_breaker)
+            body = self.get(
+                path, {"pagina": page, "tamanhoPagina": PAGE_SIZE}, self.catalogue_breaker
+            )
             rows.extend(body.get("resultado") or [])
         if not rows:
             raise ComprasError(f"{which}: empty walk — a broken run, not a finding")
