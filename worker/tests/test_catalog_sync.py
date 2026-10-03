@@ -15,6 +15,8 @@ No network and no database in this file.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from licitaqui.catalog_match import (
@@ -131,3 +133,84 @@ def test_a_long_catalogue_name_can_still_match_exactly() -> None:
     r = resolve_description(CatalogIndex([entry]), name)
     assert (r.rule, r.code) == ("exact", 500)
     assert r.band_eligible is True
+
+# ----------------------------------- the SQL matches the tuples it is given
+
+def _statements(source: str) -> list[str]:
+    """Every `insert into … values (…)` in the module, as text."""
+    import re
+
+    return re.findall(r"insert into\s+\w+.*?values\s*\([^)]*\)", source,
+                      re.S | re.I)
+
+
+@pytest.mark.parametrize(
+    ("entry_fn", "table", "row"),
+    [
+        (_pdm_entry, "catalog_pdm",
+         {"codigoPdm": 1, "nomePdm": "X", "statusPdm": True, "codigoClasse": 1,
+          "nomeClasse": "c", "codigoGrupo": 2, "nomeGrupo": "g"}),
+        (_service_entry, "catalog_service",
+         {"codigoServico": 1, "nomeServico": "X", "statusServico": True,
+          "codigoClasse": 1, "nomeClasse": "c"}),
+    ],
+)
+def test_each_insert_has_exactly_as_many_placeholders_as_its_tuple(
+    entry_fn, table, row
+) -> None:
+    """The defect this exists for, found by Sci running the job on 2026-10-03:
+
+        psycopg.ProgrammingError: the query has 7 placeholders but 5 parameters
+        were passed
+
+    `catalog_service`'s INSERT still named `head, words` after those columns were
+    dropped from the migration, because the edit that removed them from the
+    `catalog_pdm` INSERT was asserted and the twin edit was not -- so it silently
+    matched nothing. `CLAUDE.md` §4b: assert the mutation applied.
+
+    No database: the SQL text is read out of the module and counted against what
+    the row builder actually returns, so a column list and its tuple can never
+    drift apart again.
+    """
+    from licitaqui import catalog_sync
+
+    source = Path(catalog_sync.__file__).read_text(encoding="utf-8")
+    stmt = next((x for x in _statements(source) if f"insert into {table}" in x), None)
+    assert stmt is not None, f"no INSERT found for {table}"
+
+    placeholders = stmt.count("%s")
+    columns = stmt[stmt.index("(") + 1:stmt.index(")")].split(",")
+    values = len(entry_fn(row))
+
+    # `updated_at` is written as `now()`, not as a placeholder, so the column
+    # list is one longer than both of the others.
+    assert placeholders == values, (
+        f"{table}: {placeholders} placeholders, {values} values from "
+        f"{entry_fn.__name__} -- they must match or psycopg raises at runtime"
+    )
+    assert len([c for c in columns if c.strip()]) == values + 1, (
+        f"{table}: {len(columns)} columns against {values} values + now()"
+    )
+
+
+def test_no_insert_in_the_module_mentions_a_dropped_column() -> None:
+    """`head` and `words` were removed from the schema; nothing may name them.
+
+    They were dropped because a stored fold would be computed by whichever
+    matcher was deployed when the row was written, and a `remap` -- whose whole
+    purpose is to re-resolve after a matcher correction -- would then resolve
+    against stale heads and report success.
+    """
+    import re
+
+    from licitaqui import catalog_sync
+
+    source = Path(catalog_sync.__file__).read_text(encoding="utf-8")
+    for stmt in _statements(source):
+        columns = stmt[stmt.index("(") + 1:stmt.index(")")]
+        named = {c.strip() for c in columns.split(",")}
+        # Whole column names only: `matched_words` legitimately contains "words",
+        # and a substring check would fail on it -- which it did, first run.
+        assert "head" not in named, stmt[:140]
+        assert "words" not in named, stmt[:140]
+        assert not re.search(r"excluded\.(head|words)\b", stmt), stmt[:140]
