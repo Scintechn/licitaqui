@@ -46,16 +46,65 @@ STOPWORDS = frozenset(
     ["de", "da", "do", "das", "dos", "e", "em", "com", "para", "a", "o", "as", "os", "no", "na"]
 )
 
-ATTRIBUTE_KEYS = frozenset([
-    "material", "tipo", "aplicacao", "dosagem", "concentracao", "especificacao",
-    "especificacoes", "composicao", "apresentacao", "adicionais", "adicional", "modelo",
-    "fisico", "minimas", "minima", "referencia", "altura", "embalagem", "capacidade", "cor",
-    "tamanho", "dimensoes", "uso", "corpo", "caracteristicas", "estrutura", "descricao",
-    "aproximadas", "ativo", "componentes", "prima", "grau", "ingredientes", "comprimento",
-    "basica", "catmat", "cabo", "fio", "produto", "largura", "gramatura", "formato",
-    "quantidade", "funcionamento", "acabamento", "espessura", "peso", "volume", "tensao",
-    "potencia", "unidade", "finalidade", "conteudo", "validade", "classe"
-])
+ATTRIBUTE_KEYS = frozenset(
+    [
+        "material",
+        "tipo",
+        "aplicacao",
+        "dosagem",
+        "concentracao",
+        "especificacao",
+        "especificacoes",
+        "composicao",
+        "apresentacao",
+        "adicionais",
+        "adicional",
+        "modelo",
+        "fisico",
+        "minimas",
+        "minima",
+        "referencia",
+        "altura",
+        "embalagem",
+        "capacidade",
+        "cor",
+        "tamanho",
+        "dimensoes",
+        "uso",
+        "corpo",
+        "caracteristicas",
+        "estrutura",
+        "descricao",
+        "aproximadas",
+        "ativo",
+        "componentes",
+        "prima",
+        "grau",
+        "ingredientes",
+        "comprimento",
+        "basica",
+        "catmat",
+        "cabo",
+        "fio",
+        "produto",
+        "largura",
+        "gramatura",
+        "formato",
+        "quantidade",
+        "funcionamento",
+        "acabamento",
+        "espessura",
+        "peso",
+        "volume",
+        "tensao",
+        "potencia",
+        "unidade",
+        "finalidade",
+        "conteudo",
+        "validade",
+        "classe",
+    ]
+)
 
 HEAD_WORDS = 4
 CANDIDATE_WORDS = 12
@@ -208,8 +257,9 @@ class CatalogIndex:
     def __len__(self) -> int:
         return sum(len(v) for v in self._by_head.values())
 
-    def _pick(self, candidates: list[CatalogEntry], desc_words: set[str]
-              ) -> tuple[CatalogEntry, int]:
+    def _pick(
+        self, candidates: list[CatalogEntry], desc_words: set[str]
+    ) -> tuple[CatalogEntry, int]:
         """Among codes sharing a head, the one the description actually supports.
 
         Measured 2026-10-02: **4 026 active PDM names are a single word** and
@@ -247,8 +297,9 @@ class CatalogIndex:
 
         # The item's head as a leading prefix of a longer catalogue head: a
         # broadening match, kept separate because it is a weaker claim again.
-        wider = [e for k in self._heads if len(t) < len(k) and k[: len(t)] == t
-                 for e in self._by_head[k]]
+        wider = [
+            e for k in self._heads if len(t) < len(k) and k[: len(t)] == t for e in self._by_head[k]
+        ]
         if wider:
             entry, n = self._pick(wider, desc_words)
             return Resolution(entry.code, "prefix_rev", len(t), n)
@@ -263,5 +314,4 @@ def resolve_description(index: CatalogIndex, description: str | None) -> Resolut
     uses, so ``exact`` means the two names reduce to the same words rather than
     "the same words, unless the catalogue's name happened to be longer".
     """
-    return index.resolve(product_head(description, MATCH_CAP),
-                         set(all_words(description)))
+    return index.resolve(product_head(description, MATCH_CAP), set(all_words(description)))

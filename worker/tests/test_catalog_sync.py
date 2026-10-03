@@ -39,6 +39,7 @@ from licitaqui.compras import ComprasError
 
 # ------------------------------------------------- the status field
 
+
 def test_a_boolean_status_is_read_as_itself() -> None:
     assert _active(True, "statusPdm") is True
     assert _active(False, "statusPdm") is False
@@ -57,8 +58,15 @@ def test_a_non_boolean_status_stops_the_run_rather_than_being_guessed(value) -> 
 
 def test_entries_carry_no_folded_head(request) -> None:
     """Heads are recomputed at load time, never stored — see `load_index`."""
-    row = {"codigoPdm": 7, "nomePdm": "PAPEL ALCALINO", "statusPdm": True,
-           "codigoClasse": 1, "nomeClasse": "c", "codigoGrupo": 2, "nomeGrupo": "g"}
+    row = {
+        "codigoPdm": 7,
+        "nomePdm": "PAPEL ALCALINO",
+        "statusPdm": True,
+        "codigoClasse": 1,
+        "nomeClasse": "c",
+        "codigoGrupo": 2,
+        "nomeGrupo": "g",
+    }
     entry = _pdm_entry(row)
     assert entry[0] == 7
     assert entry[1] == "PAPEL ALCALINO"
@@ -72,6 +80,7 @@ def test_a_service_entry_refuses_a_non_boolean_status() -> None:
 
 
 # ------------------------------------------------- the walk-level guard
+
 
 def test_a_walk_where_everything_is_active_is_refused() -> None:
     pdm = [{"statusPdm": True}, {"statusPdm": True}]
@@ -96,6 +105,7 @@ def test_the_guard_fires_on_either_vocabulary() -> None:
 
 # ------------------------------------------------- the unknown kind
 
+
 @pytest.mark.parametrize("kind", [None, "", "X", "m", "s"])
 def test_an_unknown_kind_is_recorded_rather_than_coerced_to_material(kind) -> None:
     """`tender_items.kind` is nullable, and coercion would make a wrong band
@@ -117,6 +127,7 @@ def test_the_matcher_version_is_recorded_and_names_its_cap() -> None:
 
 # ------------------------------- the cap symmetry this file's sibling broke
 
+
 def test_a_long_catalogue_name_can_still_match_exactly() -> None:
     """The regression that made 41.1% of active CATSER unreachable.
 
@@ -126,38 +137,55 @@ def test_a_long_catalogue_name_can_still_match_exactly() -> None:
     catalogue name resolved as `prefix_rev` and was not band-eligible.
     """
     name = "SERVICO MANUTENCAO PREVENTIVA CORRETIVA ELEVADOR"
-    entry = CatalogEntry(code=500, name=name,
-                         head=tuple(product_head(name, MATCH_CAP)),
-                         words=tuple(all_words(name)))
-    assert len(entry.head) == 5          # longer than HEAD_WORDS, deliberately
+    entry = CatalogEntry(
+        code=500, name=name, head=tuple(product_head(name, MATCH_CAP)), words=tuple(all_words(name))
+    )
+    assert len(entry.head) == 5  # longer than HEAD_WORDS, deliberately
     r = resolve_description(CatalogIndex([entry]), name)
     assert (r.rule, r.code) == ("exact", 500)
     assert r.band_eligible is True
 
+
 # ----------------------------------- the SQL matches the tuples it is given
+
 
 def _statements(source: str) -> list[str]:
     """Every `insert into … values (…)` in the module, as text."""
     import re
 
-    return re.findall(r"insert into\s+\w+.*?values\s*\([^)]*\)", source,
-                      re.S | re.I)
+    return re.findall(r"insert into\s+\w+.*?values\s*\([^)]*\)", source, re.S | re.I)
 
 
 @pytest.mark.parametrize(
     ("entry_fn", "table", "row"),
     [
-        (_pdm_entry, "catalog_pdm",
-         {"codigoPdm": 1, "nomePdm": "X", "statusPdm": True, "codigoClasse": 1,
-          "nomeClasse": "c", "codigoGrupo": 2, "nomeGrupo": "g"}),
-        (_service_entry, "catalog_service",
-         {"codigoServico": 1, "nomeServico": "X", "statusServico": True,
-          "codigoClasse": 1, "nomeClasse": "c"}),
+        (
+            _pdm_entry,
+            "catalog_pdm",
+            {
+                "codigoPdm": 1,
+                "nomePdm": "X",
+                "statusPdm": True,
+                "codigoClasse": 1,
+                "nomeClasse": "c",
+                "codigoGrupo": 2,
+                "nomeGrupo": "g",
+            },
+        ),
+        (
+            _service_entry,
+            "catalog_service",
+            {
+                "codigoServico": 1,
+                "nomeServico": "X",
+                "statusServico": True,
+                "codigoClasse": 1,
+                "nomeClasse": "c",
+            },
+        ),
     ],
 )
-def test_each_insert_has_exactly_as_many_placeholders_as_its_tuple(
-    entry_fn, table, row
-) -> None:
+def test_each_insert_has_exactly_as_many_placeholders_as_its_tuple(entry_fn, table, row) -> None:
     """The defect this exists for, found by Sci running the job on 2026-10-03:
 
         psycopg.ProgrammingError: the query has 7 placeholders but 5 parameters
@@ -179,7 +207,7 @@ def test_each_insert_has_exactly_as_many_placeholders_as_its_tuple(
     assert stmt is not None, f"no INSERT found for {table}"
 
     placeholders = stmt.count("%s")
-    columns = stmt[stmt.index("(") + 1:stmt.index(")")].split(",")
+    columns = stmt[stmt.index("(") + 1 : stmt.index(")")].split(",")
     values = len(entry_fn(row))
 
     # `updated_at` is written as `now()`, not as a placeholder, so the column
@@ -207,7 +235,7 @@ def test_no_insert_in_the_module_mentions_a_dropped_column() -> None:
 
     source = Path(catalog_sync.__file__).read_text(encoding="utf-8")
     for stmt in _statements(source):
-        columns = stmt[stmt.index("(") + 1:stmt.index(")")]
+        columns = stmt[stmt.index("(") + 1 : stmt.index(")")]
         named = {c.strip() for c in columns.split(",")}
         # Whole column names only: `matched_words` legitimately contains "words",
         # and a substring check would fail on it -- which it did, first run.

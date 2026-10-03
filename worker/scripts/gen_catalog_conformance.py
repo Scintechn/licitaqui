@@ -65,39 +65,53 @@ process.stdin.on('end', () => {
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--descriptions", required=True,
-                    help="file of REAL item descriptions, one per line")
+    ap.add_argument(
+        "--descriptions", required=True, help="file of REAL item descriptions, one per line"
+    )
     ap.add_argument("--out", default=str(DEFAULT_OUT))
-    ap.add_argument("--sha", default=None,
-                    help="the product-key.ts commit these values describe "
-                         "(default: HEAD of this checkout)")
+    ap.add_argument(
+        "--sha",
+        default=None,
+        help="the product-key.ts commit these values describe (default: HEAD of this checkout)",
+    )
     args = ap.parse_args()
 
     if not TS_SOURCE.exists():
         print(f"missing {TS_SOURCE}", file=sys.stderr)
         return 1
 
-    lines = [ln.rstrip("\n") for ln in Path(args.descriptions).read_text(
-        encoding="utf-8").splitlines()]
+    lines = [
+        ln.rstrip("\n") for ln in Path(args.descriptions).read_text(encoding="utf-8").splitlines()
+    ]
     cases = [ln for ln in dict.fromkeys(lines)]
     if len(cases) < 100:
-        print(f"only {len(cases)} descriptions — too few to be a conformance "
-              f"fixture; the point is coverage of real PNCP shapes",
-              file=sys.stderr)
+        print(
+            f"only {len(cases)} descriptions — too few to be a conformance "
+            f"fixture; the point is coverage of real PNCP shapes",
+            file=sys.stderr,
+        )
         return 1
 
-    sha = args.sha or subprocess.run(
-        ["git", "-C", str(REPO), "rev-parse", "HEAD"],
-        capture_output=True, text=True, check=True).stdout.strip()
+    sha = (
+        args.sha
+        or subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    )
 
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp)
-        (d / "product-key.ts").write_text(TS_SOURCE.read_text(encoding="utf-8"),
-                                          encoding="utf-8")
+        (d / "product-key.ts").write_text(TS_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
         (d / "driver.ts").write_text(DRIVER, encoding="utf-8")
         proc = subprocess.run(
             ["node", "--experimental-strip-types", "driver.ts"],
-            cwd=d, input=json.dumps(cases), capture_output=True, text=True,
+            cwd=d,
+            input=json.dumps(cases),
+            capture_output=True,
+            text=True,
         )
     if proc.returncode != 0:
         print(proc.stderr[-3000:], file=sys.stderr)
@@ -105,16 +119,24 @@ def main() -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({
-        "generated_from": "apps/web/lib/radar/product-key.ts",
-        "source_sha": sha,
-        "generated_at": datetime.now(UTC).date().isoformat(),
-        "note": "Expected values were produced BY the TypeScript. If the Python "
+    out.write_text(
+        json.dumps(
+            {
+                "generated_from": "apps/web/lib/radar/product-key.ts",
+                "source_sha": sha,
+                "generated_at": datetime.now(UTC).date().isoformat(),
+                "note": "Expected values were produced BY the TypeScript. If the Python "
                 "port disagrees, fix the port -- or, if the TypeScript was "
                 "deliberately changed, regenerate with "
                 "worker/scripts/gen_catalog_conformance.py.",
-        "cases": json.loads(proc.stdout),
-    }, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+                "cases": json.loads(proc.stdout),
+            },
+            ensure_ascii=False,
+            indent=1,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     print(f"wrote {out} — {len(cases)} cases from product-key.ts at {sha[:12]}")
     return 0
 
