@@ -523,7 +523,7 @@ select d.code, d.items
    -- because the join kept the row whatever the expression said.
    and (last.computed_at is null
      or last.computed_at < now() - make_interval(hours => case
-          -- A code with no usable purchases is not worth asking weekly: ~6% of
+          -- A code with no usable purchases is not worth asking weekly: ~6%% of
           -- needed codes genuinely have none in 18 months, and the answer does
           -- not change often. Treated as deep, so ~400 codes stop costing a
           -- page a week each to re-learn the same nothing.

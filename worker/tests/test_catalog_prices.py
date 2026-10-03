@@ -2125,3 +2125,49 @@ def test_the_fixture_would_have_caught_the_defect() -> None:
     assert everything == [101, 102, 103, 105, 106, 107]
     # And the fixed statement, on the same data, filters.
     assert _due(db) == [102, 103]
+
+
+# ------------------------------------- every statement must survive psycopg
+
+
+def test_no_sql_constant_carries_an_unescaped_percent() -> None:
+    """`stale_codes` could not execute at all, and no test could see it.
+
+    `STALE_CODES_SQL` carried `~6% of` inside a **SQL comment**. psycopg's
+    placeholder scanner does not care that a `%` is commented out, so every call
+    raised before reaching Postgres:
+
+        psycopg.ProgrammingError: incomplete placeholder: '%'; if you want to
+        use '%' as an operator you can double it up, i.e. use '%%'
+
+    So the whole refresh sweep was dead on arrival, and the suite was green
+    because nothing in it executes a statement -- the review that preceded this
+    said exactly that: *"Nothing in the SQL has executed against Postgres."*
+
+    This is the cheapest guard for the class: a literal percent must be `%%`,
+    and the module's own text is the thing checked, so a new statement with a
+    `50%` in its comment fails here rather than in production.
+    """
+    import re
+    from pathlib import Path as _Path
+
+    from licitaqui import catalog_prices
+
+    source = _Path(catalog_prices.__file__).read_text(encoding="utf-8")
+    offenders: list[str] = []
+    for match in re.finditer(r'(\w*SQL\w*)\s*=\s*"""(.*?)"""', source, re.S):
+        name, sql = match.group(1), match.group(2)
+        for lineno, line in enumerate(sql.split("\n"), 1):
+            for hit in re.finditer("%", line):
+                col = hit.start()
+                if line[col : col + 2] == "%%" or (col and line[col - 1] == "%"):
+                    continue
+                if re.match(r"%\(\w+\)s", line[col:]) or re.match(r"%s", line[col:]):
+                    continue
+                offenders.append(f"{name} line {lineno}: {line.strip()[:70]}")
+
+    assert offenders == [], (
+        "an unescaped % in a SQL constant — psycopg reads it as a placeholder "
+        "even inside a comment, and the statement raises before it reaches "
+        f"Postgres. Double it to %%: {offenders}"
+    )
