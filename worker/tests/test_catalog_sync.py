@@ -15,6 +15,8 @@ No network and no database in this file.
 
 from __future__ import annotations
 
+import contextlib
+import logging
 from pathlib import Path
 
 import pytest
@@ -242,3 +244,165 @@ def test_no_insert_in_the_module_mentions_a_dropped_column() -> None:
         assert "head" not in named, stmt[:140]
         assert "words" not in named, stmt[:140]
         assert not re.search(r"excluded\.(head|words)\b", stmt), stmt[:140]
+
+
+def test_every_insert_in_the_module_is_covered_by_a_placeholder_test() -> None:
+    """The test above checked two of the module's three INSERTs.
+
+    `_flush`'s INSERT into `tender_item_codes` was the third, its values are
+    built as an inline tuple rather than by a named row builder, and it shipped
+    with **8 placeholders against 7 values** -- the same defect as
+    `catalog_service`'s, found the same way, by Sci running the job:
+
+        psycopg.ProgrammingError: the query has 8 placeholders but 7 parameters
+        were passed
+
+    So this test does not check an INSERT. It checks that **no INSERT in the
+    module is missing from the checks**, which is the thing that was actually
+    wrong: a test written for "the class" and scoped to part of it.
+    """
+    from licitaqui import catalog_sync
+
+    source = Path(catalog_sync.__file__).read_text(encoding="utf-8")
+    tables = {stmt.split("insert into ")[1].split()[0].strip("\n ") for stmt in _statements(source)}
+    # `events` is the fourth, and this test found that my own enumeration had
+    # missed it -- which is the point: the set is asserted, not remembered.
+    assert tables == {"catalog_pdm", "catalog_service", "tender_item_codes", "events"}, (
+        f"the module's INSERT set changed: {sorted(tables)}. Every one of them "
+        f"needs a placeholder-count test, or the next mismatch ships."
+    )
+
+
+class _FakeCursor:
+    """Enough cursor for `map_item_codes`: iterate rows, capture executemany."""
+
+    def __init__(self, rows, captured):
+        self._rows = rows
+        self._captured = captured
+        self.itersize = 0
+
+    def execute(self, *_a, **_k):
+        return self
+
+    def executemany(self, sql, batch):
+        self._captured.append((sql, list(batch)))
+
+    def fetchall(self):
+        return self._rows
+
+    def __iter__(self):
+        return iter(self._rows)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+class _FakeConn:
+    """`ctx.conn` and `ctx.connect()`'s reader in one, with a captured batch."""
+
+    def __init__(self, item_rows, vocab_rows, captured):
+        self._item_rows = item_rows
+        self._vocab_rows = vocab_rows
+        self.captured = captured
+
+    def execute(self, sql, *_a, **_k):
+        # `load_index` reads the vocabulary; everything else is the events write.
+        if "from catalog_pdm" in sql or "from catalog_service" in sql:
+            return _FakeCursor(self._vocab_rows, self.captured)
+        return _FakeCursor([], self.captured)
+
+    def cursor(self, name=None):
+        return _FakeCursor(self._item_rows if name else [], self.captured)
+
+    @contextlib.contextmanager
+    def transaction(self):
+        yield self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def test_the_mapper_builds_a_row_the_insert_can_actually_take() -> None:
+    """Runs `map_item_codes` and counts what `executemany` really receives.
+
+    The previous version of this test compared the statement's placeholders
+    against tuples **written in the test**, so reintroducing the defect left it
+    green -- verified by mutation. `CLAUDE.md` §4b: the test exercised the unit,
+    not the path. This one lets the mapper build the tuple.
+
+    The defect it pins shipped and was found by Sci running the job:
+
+        psycopg.ProgrammingError: the query has 8 placeholders but 7 parameters
+        were passed
+    """
+    from licitaqui import catalog_sync
+    from licitaqui.registry import JobContext
+    from licitaqui.queue import Job
+
+    captured: list = []
+    # Two items: one material that will resolve, one with a NULL kind.
+    items = [("t1", 1, "M", "PAPEL ALCALINO, Gramatura: 75"), ("t2", 2, None, "SERVICO QUALQUER")]
+    vocab = [(99, "PAPEL ALCALINO")]
+    conn = _FakeConn(items, vocab, captured)
+
+    ctx = JobContext(
+        job=Job(
+            id=0,
+            kind="map_item_codes",
+            key="k",
+            priority=9,
+            payload={"only_open": True},
+            attempts=0,
+        ),
+        conn=conn,
+        connect=lambda: _FakeConn(items, vocab, captured),
+        log=logging.getLogger("test"),
+    )
+    catalog_sync.map_item_codes(ctx)
+
+    inserts = [(sql, batch) for sql, batch in captured if "insert into tender_item_codes" in sql]
+    assert inserts, "the mapper wrote no rows"
+    sql, batch = inserts[0]
+    placeholders = sql.count("%s")
+    assert batch, "the batch was empty"
+    for row in batch:
+        assert len(row) == placeholders, (
+            f"the mapper built {len(row)} values for {placeholders} placeholders: {row}"
+        )
+
+    # And the unknown kind really took the branch rather than being coerced.
+    rules = {row[4] for row in batch}
+    assert "unknown_kind" in rules, rules
+    for row in batch:
+        if row[4] == "unknown_kind":
+            assert row[3] is None, "an unknown kind must carry no code"
+
+
+def test_the_events_insert_matches_its_two_values() -> None:
+    """The fourth INSERT. Two placeholders, two values, both call sites."""
+    from licitaqui import catalog_sync
+
+    source = Path(catalog_sync.__file__).read_text(encoding="utf-8")
+    for stmt in (x for x in _statements(source) if "insert into events" in x):
+        assert stmt.count("%s") == 2, stmt
+
+
+def test_an_unknown_kind_is_recorded_and_carries_no_code() -> None:
+    """The branch that did not exist until Sci's run exposed its absence.
+
+    The edit adding it silently matched nothing -- `CLAUDE.md` §4b -- so the
+    column said `kind = 'M'` for a row that was never matched against the
+    materials vocabulary at all.
+    """
+    r = Resolution(None, "unknown_kind", 0, 0)
+    assert r.band_eligible is False
+    assert r.code is None
+    assert "unknown_kind" in Path(
+        __import__("licitaqui.catalog_sync", fromlist=["x"]).__file__
+    ).read_text(encoding="utf-8"), "the mapper must have the unknown-kind branch"
