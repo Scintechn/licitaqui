@@ -144,10 +144,10 @@ def sync_catalog_vocabulary(ctx: JobContext) -> None:
         conn.cursor().executemany(
             """
             insert into catalog_service
-              (code, name, head, words, class_code, class_name, active, updated_at)
-            values (%s, %s, %s, %s, %s, %s, %s, now())
+              (code, name, class_code, class_name, active, updated_at)
+            values (%s, %s, %s, %s, %s, now())
             on conflict (code) do update set
-              name = excluded.name, head = excluded.head, words = excluded.words,
+              name = excluded.name,
               class_code = excluded.class_code, class_name = excluded.class_name,
               active = excluded.active, updated_at = now()
             """,
