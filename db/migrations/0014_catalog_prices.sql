@@ -107,10 +107,13 @@ create table if not exists catalog_prices (
   -- `numeroItemCompra`. In the key because the API can return several items of
   -- the same code under one `idCompra` (measured worst case 47.8 rows per
   -- purchase), so without it the ingest would silently overwrite lots.
-  -- **Note what this means: the -47% above is the job's discipline, not the
-  -- schema's** -- this key permits the uncollapsed row set. Correctness does
-  -- not depend on it, because `priceBand` collapses by its own key, but the
-  -- storage figure does.
+  -- `numeroItemCompra` of the row that **represents** this purchase, and a
+  -- plain column rather than part of the key.
+  --
+  -- It was briefly in the primary key, which permitted the uncollapsed row set
+  -- and left the measured -47% as the job's discipline rather than the
+  -- schema's. One row per purchase is now **structural**: a second lot of the
+  -- same `idCompra` cannot be inserted, so the collapse cannot be forgotten.
   item_number       integer  not null,
   -- `precoUnitario`. `numeric(16,4)` to match `awards.unit_awarded_value` and
   -- `tender_items.unit_estimated_value`, so no scale is lost moving a price
@@ -122,6 +125,30 @@ create table if not exists catalog_prices (
   -- turn one strange API row into a failed walk of a whole page, and a failed
   -- walk writes no band at all.
   unit_price        numeric(16,4) not null,
+  -- **The same purchase's MEDIAN, and the band is computed from this one.**
+  --
+  -- `price-band.ts` has two per-purchase rules and they are not the same rule:
+  --
+  --   * `priceBand` (line 382) takes `percentile(rows, 0.5)` -- the purchase's
+  --     **median**, which may interpolate, because the band only ever publishes
+  --     the quartiles drawn across purchases and never an individual figure;
+  --   * `priceEvidence` (line 319) takes `sorted[floor((n-1)/2)]` -- the
+  --     **lower-middle real row**, because that rung prints the number beside
+  --     the words it closed under, and an interpolated R$ 15,00 between lots of
+  --     R$ 10 and R$ 20 would be a price nobody awarded.
+  --
+  -- Collapsing to only the real row would feed the band the wrong one of the
+  -- two. For a two-row purchase of R$ 10 and R$ 20 that is 10 against 15, and
+  -- at the measured **1.87 rows per purchase** [M 2026-10-02] the two-row
+  -- purchase is the modal multi-row case -- so every quartile would sit *below*
+  -- the arithmetic the back-test measured, on top of the exact-match
+  -- population's own -3.6% bias. Low is the dangerous direction for a number
+  -- somebody bids against.
+  --
+  -- It is also **unrecoverable after ingest**, because the lots are discarded.
+  -- Hence both numbers, 8 bytes apart: `unit_price` is what a thin rung may
+  -- print, `unit_price_median` is what the band is computed from.
+  unit_price_median numeric(16,4) not null,
   -- `dataCompra`, a **calendar date with no timezone** -- see the clocks note
   -- above. `MAX_AGE_MONTHS` (18) is counted off this.
   purchased_on      date     not null,
@@ -162,7 +189,7 @@ create table if not exists catalog_prices (
   -- is a `group by` over 3.9 M rows here and one row per code in
   -- `catalog_bands`, which is where the refresh reads it (see below).
   fetched_at        timestamptz not null default now(),
-  primary key (kind, code, id_compra, item_number)
+  primary key (kind, code, id_compra)
 );
 
 -- **No index beyond the primary key, and each read says why.**
@@ -234,16 +261,17 @@ create table if not exists catalog_bands (
   refused_reason text,
   -- UTC.
   computed_at    timestamptz not null default now(),
-  -- Which matcher selected the rows this band rests on. Stored for the reason
-  -- 0013 stores it on `tender_item_codes`: the measured accuracy (56% hit,
-  -- +0.2% bias) is a property of the population the matcher selects, and that
-  -- population is defined by the comparison and its word cap. Change either and
-  -- the figure no longer describes what ships, so a later run can tell whether
-  -- it is reading the rows a number was measured on. The cap fix in #212 is
-  -- exactly this happening once already: it moved 41.1% of active CATSER from
-  -- unmatchable to matchable, which makes every exact-match figure taken before
-  -- it a floor.
-  matcher        text    not null,
+  -- Which **band** function produced this row: the three gate constants and
+  -- the per-purchase representative rule, not an item matcher.
+  --
+  -- It was `matcher` first, which a band row cannot honestly carry: a band is
+  -- per catalogue *code* and no item-to-code match takes part in computing it.
+  -- What does determine the number is `MIN_SAMPLE` / `MAX_SPREAD` /
+  -- `MAX_AGE_MONTHS` and which of the two per-purchase rules fed it, and that
+  -- is what a stored band has to be attributable to -- the measured 56% hit and
+  -- +0.2% bias are properties of `priceBand`'s arithmetic, so a row computed by
+  -- different arithmetic must say so rather than inherit the figure.
+  band_version   text    not null,
   primary key (kind, code, window_end),
   -- A row that contradicts itself cannot exist: either all three quartiles and
   -- no reason, or a reason and no quartiles. Same shape as 0013's
