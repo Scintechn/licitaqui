@@ -256,9 +256,20 @@ create table if not exists catalog_bands (
   -- the vocabulary belongs to the job that writes it (B35's ingest and refresh,
   -- in flight in a sibling PR) and pinning it from this side would be guessing
   -- at another lane's strings. The cost of that is real and worth naming -- a
-  -- typo splits a count silently -- so whichever change writes the first reason
-  -- owns closing the set.
-  refused_reason text,
+  -- typo splits a count silently. **The set is now closed**: the ingest job's
+  -- `Refusal` type can produce exactly these four and refuses anything else in
+  -- its constructor, so the check below is the same boundary expressed twice --
+  -- once where the row is built and once where it is stored.
+  --
+  -- **`truncated_walk` is deliberately NOT a reason.** A truncated walk knows
+  -- nothing about the code, so a refusal row at today's `window_end` would
+  -- assert something false *and* supersede yesterday's correct band for any
+  -- reader taking the newest window. Truncation is counted in `events`
+  -- (`catalog_prices_truncated`) and writes no band row at all.
+  refused_reason text
+    constraint catalog_bands_refused_reason_check
+      check (refused_reason is null or refused_reason in
+             ('no_rows', 'too_old', 'too_few_purchases', 'spread_too_wide')),
   -- UTC.
   computed_at    timestamptz not null default now(),
   -- Which **band** function produced this row: the three gate constants and
