@@ -99,6 +99,19 @@
   `comparables.ts`, `price-band.ts`, `product-key.ts`, the `awards` table or any
   price copy. It exists because those facts were spread across six cards, three
   docs and a measurement nobody could find twice.
+- **`docs/COST.md` is the whole infrastructure cost picture in one file** — the
+  plan and what it charges for, what we actually spend, every measurement with
+  its date, what has already been tried and banked, what is **not** knowable
+  from Neon's API, and the standing decision rule with its next review date.
+  **Read it before measuring anything about Neon, compute, storage or CI cost,
+  and before proposing a card that reduces any of them.** It exists because cost
+  was investigated from scratch three times — 2026-09-27, 2026-09-30 and
+  2026-10-05 — and the third one's "discovery" that the test databases share
+  production's compute was a re-derivation of **H3**, which had already measured
+  it, costed it, fixed it on 01/10 and carded the remainder as B31. The same
+  shape as the runbook rule above, widened by one word: before measuring, ask
+  **what already measured this**. A number you had to derive twice belongs in
+  that file the first time.
 - AI prompt or extraction changes must run `worker/evaluation` and report the score diff.
 - **A "later" in a comment is not a task.** If your change leaves something for
   somebody else — a column nothing reads yet, a string nothing renders, an event
