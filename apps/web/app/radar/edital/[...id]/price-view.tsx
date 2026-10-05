@@ -157,6 +157,80 @@ export function bandRange(band: { low: number; high: number }): string | null {
 }
 
 /**
+ * A description the reader can open in full (D38).
+ *
+ * ## Why this screen needed it most
+ *
+ * Every description here was truncated with no way to reach the rest, and on
+ * this screen the text **is** the instrument. Sci, 2026-10-05, on a software
+ * licence item whose four results ran R$ 339,99 to R$ 6.363,00: *"they can be
+ * a good comparison, because of that I request to see the whole
+ * description."* A 19× spread is either four unlike things or one volatile
+ * market, and the only way a reader tells those apart is by reading what each
+ * one actually bought. Truncating it leaves them the prices alone — which is
+ * the half that cannot be judged.
+ *
+ * ## The idiom is `tender-items.tsx`'s, deliberately
+ *
+ * `<details>` with real truncation, **never `line-clamp`** — D25(1), Sci
+ * 2026-09-29. A clamp hides that there is more and leaves the whole string in
+ * the accessibility tree, so a screen-reader user hears 500 characters while a
+ * sighted one sees two lines. This is a keyboard stop with its expanded state
+ * announced, it is searchable by find-in-page, and it works before React has
+ * hydrated — which matters because `environment: 'node'` cannot run the effect
+ * that a JavaScript toggle would need (§4c).
+ *
+ * The label is `radar.opportunity.items.more`/`.less` — *"Ver descrição
+ * completa"* — reused rather than duplicated. It is a control label, not a
+ * claim, so one set of words for one gesture across the app is the honest
+ * choice and not a copy decision.
+ *
+ * This is the **third** copy of the shape (`opportunity-view.tsx`,
+ * `tender-items.tsx`, here). Extracting it is D39, carded in this PR rather
+ * than left as a comment.
+ */
+function LongText({
+  text,
+  max,
+  className,
+  summaryPrefix = null,
+}: {
+  text: string
+  max: number
+  className?: string
+  /** Rendered inside the collapsed summary, before the trimmed text. */
+  summaryPrefix?: string | null
+}) {
+  // The agency's own line breaks survive in the expanded text; the collapsed
+  // summary is flattened, because a trimmed fragment of a multi-line block
+  // reads as a mistake. Same reasoning as `ItemDescription`.
+  const full = text.replace(/[ \t]+/g, ' ').trim()
+  const flat = full.replace(/\s+/g, ' ')
+
+  if (flat.length <= max) {
+    return <span className={className}>{summaryPrefix === null ? flat : summaryPrefix + flat}</span>
+  }
+
+  return (
+    <details className="group">
+      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <span className={cn('group-open:hidden', className)}>
+          {summaryPrefix === null ? trimObject(flat, max) : summaryPrefix + trimObject(flat, max)}
+        </span>
+        <span className="flex min-h-touch items-center gap-1.5 text-meta font-medium text-blue">
+          <Icon name="chevronRight" size={14} className="transition-transform group-open:rotate-90" />
+          <span className="group-open:hidden">{copy.opportunity.items.more}</span>
+          <span className="hidden group-open:inline">{copy.opportunity.items.less}</span>
+        </span>
+      </summary>
+      <p className={cn('m-0 pb-1 whitespace-pre-line', className)}>
+        {summaryPrefix === null ? full : summaryPrefix + full}
+      </p>
+    </details>
+  )
+}
+
+/**
  * The matched descriptions, as a list the reader judges (E22).
  *
  * This is not decoration. `MIN_SAMPLE` and `MAX_SPREAD` are what caught a wrong
@@ -172,8 +246,8 @@ function MatchedList({ items }: { items: readonly string[] }) {
   return (
     <ul className="m-0 flex list-none flex-col gap-1 p-0">
       {items.map((description) => (
-        <li key={description} className="text-meta leading-relaxed text-muted">
-          {trimObject(description, 70)}
+        <li key={description}>
+          <LongText text={description} max={70} className="text-meta leading-relaxed text-muted" />
         </li>
       ))}
     </ul>
@@ -199,8 +273,16 @@ function EvidenceRow({ sample }: { sample: PriceEvidence['samples'][number] }) {
           is the kind of defect no assertion in that suite can fail on (§4c).
           Truncated at 70, the same as `MatchedList`: the same content on two
           rungs read at two lengths. */}
-      <span className="min-w-0 break-words text-meta leading-relaxed text-muted">
-        {sample.description === null ? page.won : trimObject(sample.description, 70)}
+      <span className="min-w-0 break-words">
+        {sample.description === null ? (
+          <span className="text-meta leading-relaxed text-muted">{page.won}</span>
+        ) : (
+          <LongText
+            text={sample.description}
+            max={70}
+            className="text-meta leading-relaxed text-muted"
+          />
+        )}
       </span>
       {money === null ? null : (
         <strong className="shrink-0 font-display text-[15px] tabular-nums">{money}</strong>
@@ -352,12 +434,20 @@ export function PriceView({
         ) : (
           <>
             <div className="text-body font-semibold">
-              {chosen.description
-                ? format(page.item, {
-                    numero: chosen.number,
-                    descricao: trimObject(chosen.description, 90),
-                  })
-                : format(copy.card.items, { count: chosen.number })}
+              {chosen.description ? (
+                // The identity of the thing being priced. `page.item` is
+                // "Item {numero} · {descricao}", so the prefix is formatted
+                // with an empty description and handed to `LongText`, which
+                // keeps the whole line in one disclosure rather than leaving
+                // "Item 1 ·" stranded above an opening block.
+                <LongText
+                  text={chosen.description}
+                  max={90}
+                  summaryPrefix={format(page.item, { numero: chosen.number, descricao: '' })}
+                />
+              ) : (
+                format(copy.card.items, { count: chosen.number })
+              )}
             </div>
 
             {tender.items.length > 1 ? (
