@@ -3,10 +3,12 @@ import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { AppBar, Card, Logo, StateCard } from '@/components'
 import { authorizeAdmin } from '@/lib/admin/auth'
+import { readCoverage, type Coverage } from '@/lib/admin/coverage'
 import { countFounders, listFounders, type FounderRow } from '@/lib/admin/founders'
 import { readFeeds, type Feed } from '@/lib/admin/feeds'
 import { readGates, type Gate } from '@/lib/admin/gates'
 import { readNeonUsage, type NeonUsage } from '@/lib/admin/neon'
+import { CoverageCard } from './coverage-card'
 import { FoundersTable } from './founders-table'
 import { FeedCards } from './feed-cards'
 import { GateCards } from './gate-cards'
@@ -16,9 +18,14 @@ import { UsageCard } from './usage-card'
  * `/admin` — the internal board (task O1; plan gap G11 lists it as a screen
  * with no canvas, to be built from the design system).
  *
- * Three things, in the order Sci needs them: the Phase 0 gate numbers (§14),
- * how close the Neon Free plan is to its limits (§5.1), and the founders list
- * with its CSV export.
+ * In the order Sci needs them: the Phase 0 gate numbers (§14), whether the
+ * Radar still holds the open editais the product promises (B17), when each
+ * price feed last did real work (B37), how close the Neon plan is to costing
+ * more than it should (§5.1), and the founders list with its CSV export.
+ *
+ * The two watchdogs sit next to each other on purpose. They answer the same
+ * question about different feeds — *is this still working, or has it merely
+ * stopped failing?* — and B32 is what it costs when nothing asks.
  *
  * ## Access
  *
@@ -55,6 +62,7 @@ const FULL_DATE = new Intl.DateTimeFormat('pt-BR', {
 
 type Board = {
   gates: Gate[]
+  coverage: Coverage
   feeds: Feed[]
   usage: NeonUsage
   founders: FounderRow[]
@@ -67,14 +75,15 @@ type Board = {
  */
 async function readBoard(): Promise<Board | { error: string }> {
   try {
-    const [gates, feeds, usage, founders, total] = await Promise.all([
+    const [gates, coverage, feeds, usage, founders, total] = await Promise.all([
       readGates(),
+      readCoverage(),
       readFeeds(),
       readNeonUsage(),
       listFounders(),
       countFounders(),
     ])
-    return { gates, feeds, usage, founders, total }
+    return { gates, coverage, feeds, usage, founders, total }
   } catch (error) {
     const code = (error as { code?: string } | null)?.code ?? 'unknown'
     // A code, never the connection string and never a row (§12).
@@ -109,6 +118,7 @@ export default async function AdminPage() {
         ) : (
           <>
             <GateCards gates={board.gates} gateDate={GATE_DATE} />
+            <CoverageCard coverage={board.coverage} />
             <FeedCards feeds={board.feeds} />
             <UsageCard usage={board.usage} />
             <FoundersTable rows={board.founders} total={board.total} />
