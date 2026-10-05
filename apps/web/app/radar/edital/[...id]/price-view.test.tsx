@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { PLAN_HREF } from '@/lib/routes'
 import { priceHref, tenderHref } from '@/lib/radar/client'
-import { messages } from '@/lib/messages'
+import { format, messages } from '@/lib/messages'
 import type { TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { PriceView, chooseItem, unitPrice, type PriceViewProps } from './price-view'
 
@@ -308,6 +308,46 @@ describe('PriceView', () => {
   it('lets the reader move between the tender’s items', () => {
     expect(html).toContain(`/radar/edital/${TENDER.id}/preco?`)
     expect(html).toContain('item=2')
+    expect(html).toContain('aria-current="page"')
+  })
+
+  /**
+   * **D34, and it is a reachability test rather than a second copy of
+   * `item-picker.test.tsx`.** §4b's recurring defect is a test that exercises
+   * the unit and never asks whether anything can reach it — a menu whose own
+   * test rendered the component while nothing rendered the trigger. The picker
+   * has its own file; what this asserts is that *this screen* draws it on a
+   * long edital, and still draws the plain list on a short one.
+   */
+  it('collapses the item list once the edital is long enough to scroll', () => {
+    const long = {
+      ...TENDER,
+      items: Array.from({ length: 31 }, (_, index) => ({
+        ...ITEMS[0],
+        number: index + 1,
+        description: `Item de teste ${index + 1}`,
+      })),
+    } as unknown as TenderDetail
+    const out = render({ tender: long })
+    /**
+     * **Scoped to the picker's own markup, not to the page.** `toContain(
+     * '<summary')` was the first version and it is the #190/D30 defect — a
+     * substring relation wearing an ancestor relation's clothes: this screen
+     * has three other `<details>` producers (`LongText` for the item,
+     * `MatchedList`, `EvidenceRow`), so swapping the picker back for a flat
+     * list and leaving one long description anywhere would have passed.
+     */
+    expect(out).toContain('<details class="group rounded-card')
+    expect(out).toContain(copy.opportunity.items.showMore)
+    expect(out).toContain(format(copy.opportunity.items.showing, { shown: 1, total: 31 }))
+    expect(out).toContain('type="search"')
+  })
+
+  it('leaves a two-item edital the plain list it has always had', () => {
+    // The other half of the boundary, asserted about its own render rather
+    // than about the long one's: `html` is the two-item fixture.
+    expect(html).not.toContain('<details class="group rounded-card')
+    expect(html).not.toContain('type="search"')
     expect(html).toContain('aria-current="page"')
   })
 
