@@ -247,8 +247,17 @@ describe('parseCompraId · what it refuses', () => {
     // identical reason.
     expect(parseCompraId('00000100000002026')).toBeNull()
     expect(parseCompraId('100000002026')).toBeNull()
-    // …but a high number is ordinary and must survive: `90000` and `98365` are
-    // both real (`92930605900002025`, `98621905983652025`).
+    // …but a high number is ordinary and must survive. `90000` is real:
+    // `92930605900002025`, measured 2026-10-03 — purchase, item 59, two
+    // suppliers at R$ 5,10 and R$ 5,00 (a cadastro de reserva, which is why
+    // `(idCompra, numeroItemCompra)` is not unique).
+    //
+    // **This comment previously cited a second id as real and it was the
+    // invented one.** The docstring above records that a review caught the
+    // fabrication; the correction then missed this line, because a claim in a
+    // comment is not an assertion and no test could fail on it. That is the
+    // same shape one layer down, and it is why the claim is now a single id
+    // with the measurement that backs it.
     expect(parseCompraId('92930605900002025')?.number).toBe('90000')
   })
 
