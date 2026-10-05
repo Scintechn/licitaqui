@@ -507,8 +507,17 @@ describe('PriceView — the evidence ladder', () => {
    */
   const compraId = (i: number) => `92990906${String(i + 1).padStart(5, '0')}2026`
 
+
+  /**
+   * The **catalogue** rung, which is what every assertion below is about: its
+   * wording is the identity wording, and it is earned by an exact code match.
+   * D40 added `source`, and spelling it out here turns these from fixtures into
+   * regression guards — a change that gave the catalogue rung the fallback's
+   * heading or dropped `evidenceHelp` from it fails in this block.
+   */
   const thin = (count: number) => ({
     editais: count,
+    source: 'catalog' as const,
     samples: Array.from({ length: Math.min(count, 4) }, (_unused, i) =>
       sample(compraId(i), 204 - i, `PERFURADOR DE PAPEL ${i} FUROS`),
     ),
@@ -604,6 +613,12 @@ describe('PriceView — the evidence ladder', () => {
       bandLocked: false,
       evidence: {
         editais: 1,
+        // `source` is D40's, and `'catalog'` is the right value here rather
+        // than a cast: the citation D37 added is drawn on the catalogue rung,
+        // so an unparseable id is a *catalogue* row we cannot name. tsc found
+        // this fixture during the rebase — the field is required, and that is
+        // the point of it being required.
+        source: 'catalog' as const,
         samples: [sample('not-an-id', 204, 'PERFURADOR DE PAPEL 2 FUROS')],
       },
     })
@@ -696,6 +711,8 @@ describe('PriceView — the sentence that would contradict itself', () => {
    */
   const scattered = {
     editais: 6,
+    // D40: the catalogue rung, so this block keeps pinning the identity copy.
+    source: 'catalog' as const,
     samples: [
       { tenderId: 'a-1-000001/2026', value: 204, description: 'PERFURADOR DE PAPEL' },
       { tenderId: 'b-1-000001/2026', value: 9.5, description: 'CADERNO BROCHURA' },
@@ -716,6 +733,7 @@ describe('PriceView — the sentence that would contradict itself', () => {
       item: 1,
       bandLocked: false,
       evidence: {
+        source: 'catalog',
         editais: 6,
         samples: [1, 2, 3, 4].map((n) => ({
           tenderId: `t${n}-1-000001/2026`,
@@ -739,6 +757,7 @@ describe('PriceView — the sentence that would contradict itself', () => {
       item: 1,
       bandLocked: false,
       evidence: {
+        source: 'catalog',
         editais: 2,
         samples: [
           { tenderId: 'a-1-000001/2026', value: 204, description: 'PERFURADOR DE PAPEL' },
@@ -757,6 +776,7 @@ describe('PriceView — the sentence that would contradict itself', () => {
       item: 1,
       bandLocked: false,
       evidence: {
+        source: 'catalog',
         editais: 1,
         samples: [{ tenderId: 'a-1-000001/2026', value: 0.004, description: 'PARAFUSO M3' }],
       },
@@ -786,7 +806,7 @@ describe('PriceView — the sentence that would contradict itself', () => {
     const html = render({
       item: 1,
       bandLocked: false,
-      evidence: { editais: 4, samples: scattered.samples },
+      evidence: { editais: 4, source: 'catalog', samples: scattered.samples },
     })
     expect(html).toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
     expect(html).toContain('Neste item encontramos 4')
@@ -848,5 +868,250 @@ describe('PriceView — the full description (D38)', () => {
     const html = render({ item: 1, tender: { ...TENDER, items: [longItem] } })
     const summary = html.slice(html.indexOf('<details'), html.indexOf('</summary>'))
     expect(summary).toContain('Item 1 ·')
+  })
+})
+
+/**
+ * **D40 — the fallback rung's words**, pinned as the *mechanism* (§4c).
+ *
+ * `renderToStaticMarkup` can say which strings are in the markup and nothing
+ * about whether a reader reaches them, so the *result* half is
+ * `e2e/journeys/service-evidence.spec.ts`. What this block owns is the join
+ * that produced the defect: the rung's wording is decided by
+ * `PriceEvidence.source` and by the item's `kind`, and those two come from
+ * different files.
+ *
+ * Every assertion here has a positive and a negative half on purpose. "The
+ * identity sentence is gone" passes for free on an empty render, so each test
+ * also proves the rung itself drew.
+ */
+describe('PriceView — the awards fallback rung (D40)', () => {
+  const SERVICE_ITEM: TenderItemView = {
+    ...ITEMS[0],
+    number: 1,
+    description: 'Licença de uso de software de gestão, por 12 meses',
+    kind: 'S',
+  }
+
+  const MATERIAL_ITEM: TenderItemView = { ...ITEMS[0], number: 1, kind: 'M' }
+
+  function screen(item: TenderItemView, overrides: Partial<PriceViewProps> = {}): string {
+    return renderToStaticMarkup(
+      <PriceView
+        tenderId={TENDER.id}
+        tender={{ ...TENDER, items: [item] } as unknown as TenderDetail}
+        item={1}
+        status={{ kind: 'ready' }}
+        backHref={`/radar/edital/${TENDER.id}/triagem`}
+        search={SEARCH}
+        bandLocked={false}
+        {...overrides}
+      />,
+    )
+  }
+
+  /**
+   * Sci's own screen, 2026-10-05: four past results on a software-licence
+   * item, R$ 339,99 to R$ 6.363,00. A 19× spread is exactly why no band may be
+   * drawn over it and exactly why the full description has to be reachable.
+   */
+  const AWARDS_RUNG = {
+    editais: 4,
+    source: 'awards' as const,
+    samples: [
+      { tenderId: 'a-1-000001/2026', value: 6363, description: 'LICENCA ANUAL ERP CORPORATIVO' },
+      { tenderId: 'b-1-000001/2026', value: 2400, description: 'CESSAO DE USO DE SISTEMA WEB' },
+      { tenderId: 'c-1-000001/2026', value: 890.5, description: 'LOCACAO DE SOFTWARE DE GESTAO' },
+      { tenderId: 'd-1-000001/2026', value: 339.99, description: 'LICENCA DE USO ANTIVIRUS' },
+    ],
+  }
+
+  it('draws the results and drops the preço-máximo heading, on a service', () => {
+    const html = screen(SERVICE_ITEM, { band: null, evidence: AWARDS_RUNG })
+
+    // It drew: the rung is here, so the negatives below mean something.
+    expect(html).toContain('Encontramos 4 resultados parecidos')
+    expect(html).toContain('R$ 6.363,00')
+    expect(html).toContain('R$ 339,99')
+    expect(html).toContain('LICENCA ANUAL ERP CORPORATIVO')
+
+    // The heading Sci approved for this rung, and the one it replaces.
+    expect(html).toContain(page.fallbackTitle)
+    expect(html).not.toContain(page.maxTitle)
+  })
+
+  it('says "da mesma área" and never "o mesmo produto", on a service', () => {
+    const html = screen(SERVICE_ITEM, { band: null, evidence: AWARDS_RUNG })
+
+    expect(html).toContain(page.fallbackHelp)
+    // `evidenceHelp` promises the faixa at five editais. The fallback never
+    // draws one at any count, so the sentence is false here regardless.
+    expect(html).not.toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).not.toContain('o mesmo produto')
+    // The locked rung's identity sentence is unreachable without a band, and
+    // this asserts it rather than assuming it.
+    expect(html).not.toContain('do mesmo item')
+  })
+
+  it('draws no band, no range and no margin control on the fallback rung', () => {
+    const html = screen(SERVICE_ITEM, { band: null, evidence: AWARDS_RUNG })
+
+    expect(html).not.toContain(page.ceilingLabel)
+    expect(html).not.toContain(page.marginLabel)
+    // **The rendered form, not the ICU source.** `page.lockedEvidence` begins
+    // `{count, plural, one {` — a literal no markup can contain, so asserting
+    // a slice of the raw string could not fail and would read as coverage
+    // (§4b). This is the sentence `format` would actually produce.
+    expect(html).not.toContain('compras públicas do mesmo item')
+    // `bandRange` joins a band with an en dash; nothing else on this rung
+    // prints one.
+    expect(html).not.toContain(' – ')
+  })
+
+  it('shows the same heading to a material the catalogue could not match, and no sentence', () => {
+    // The scope widened on 2026-10-05: the open materials the catalogue cannot
+    // match take this rung too (counts in `docs/PRICE_BAND.md` §0.2, kept in
+    // one place on purpose)
+    // open materials take this rung too. `fallbackHelp` names serviços, so it
+    // must NOT appear here — and no sentence is written in its place, because
+    // the words are Sci's. Tracked in docs/CLAIMS.md.
+    const html = screen(MATERIAL_ITEM, { band: null, evidence: AWARDS_RUNG })
+
+    expect(html).toContain('Encontramos 4 resultados parecidos')
+    expect(html).toContain(page.fallbackTitle)
+    expect(html).not.toContain(page.maxTitle)
+    expect(html).not.toContain(page.fallbackHelp)
+    expect(html).not.toContain('Serviços raramente')
+    expect(html).not.toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+  })
+
+  it('keeps the catalogue rung exactly as B35 left it', () => {
+    // The regression guard. Same four results, same item, `source: 'catalog'`
+    // — the identity wording and the preço-máximo heading are earned there by
+    // an exact code match, and D40 must not have taken them away.
+    const html = screen(MATERIAL_ITEM, {
+      band: null,
+      evidence: { ...AWARDS_RUNG, source: 'catalog' as const },
+    })
+
+    expect(html).toContain('Encontramos 4 resultados parecidos')
+    expect(html).toContain(page.maxTitle)
+    expect(html).toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).not.toContain(page.fallbackTitle)
+    expect(html).not.toContain(page.fallbackHelp)
+  })
+
+  it('does not promise a faixa to a service that has nothing', () => {
+    // `noDataHelp` — "A faixa aparece quando já houver compras públicas
+    // suficientes do mesmo item" — is two promises a service cannot keep:
+    // `catalog_prices` holds no `kind = 'S'` row and the comparison available
+    // is same-area, not same-item.
+    const html = screen(SERVICE_ITEM, { band: null, evidence: null })
+
+    expect(html).toContain(page.noData)
+    expect(html).not.toContain(page.noDataHelp)
+    // **And no heading at all.** `fallbackTitle` announces a list of similar
+    // contracts; over "Ainda sem dados de vencedores" it would announce one
+    // that is not there, and that is the common state — 92% of open service
+    // items return no comparable. `maxTitle` is equally wrong, for the reason
+    // this whole block exists.
+    expect(html).not.toContain(page.fallbackTitle)
+    expect(html).not.toContain(page.maxTitle)
+  })
+
+  it('refuses to draw a band over fallback evidence, even when handed both', () => {
+    /**
+     * **The forbidden pair, which the types permit and the route prevents.**
+     *
+     * `route.ts` makes a band and the fallback rung mutually exclusive on one
+     * line. But `BandState`'s unlocked variant is
+     * `{ band: PriceBand | null; evidence: PriceEvidence | null }` and
+     * `PriceView` takes the two as independent props, so this combination
+     * **compiles** — and before the `drawable` guard this component rendered
+     * it: *"Venceu em compras do mesmo item"* with a `bandRange`, plus the
+     * margin control, over a same-area comparison. That is the one failure the
+     * card says a reader could not possibly detect.
+     *
+     * **This test exists because a mutation proved it was missing.** Reverting
+     * `drawable` to `band` left the whole suite green; the guard was
+     * defence-in-depth with nothing pinning it, which is the shape CLAUDE.md
+     * calls a "later" in a comment.
+     */
+    const html = screen(SERVICE_ITEM, {
+      band: { low: 100, median: 110, high: 120, sampleSize: 6 },
+      evidence: AWARDS_RUNG,
+    })
+
+    // The band is refused in all three of the places it is drawn from.
+    expect(html).not.toContain(page.won)
+    expect(html).not.toContain(' – ') // the en dash `bandRange` joins with
+    expect(html).not.toContain(page.marginLabel)
+    expect(html).not.toContain(page.ceilingLabel)
+    // And the rung it was handed alongside still draws, so this is not an
+    // assertion about an empty page.
+    expect(html).toContain(page.fallbackTitle)
+    expect(html).toContain('Encontramos 4 resultados parecidos')
+    expect(html).toContain('R$ 6.363,00')
+  })
+
+  it('still draws a band over CATALOGUE evidence, which is the whole point', () => {
+    // The other half, so `drawable` cannot be a blanket refusal: the same band,
+    // the same four results, `source: 'catalog'` — and the band must appear.
+    const html = screen(MATERIAL_ITEM, {
+      band: { low: 100, median: 110, high: 120, sampleSize: 6 },
+      evidence: { ...AWARDS_RUNG, source: 'catalog' as const },
+    })
+
+    expect(html).toContain(page.won)
+    expect(html).toContain(page.marginLabel)
+  })
+
+  it('never draws a service locked, not even while the request is in flight', () => {
+    /**
+     * **The in-flight state, which is every first paint.**
+     *
+     * `price-screen.tsx` sets `bandLocked = current === null || current.locked`,
+     * so `true` is what this view is handed for the whole round trip — and D40
+     * makes that round trip longer by adding a trigram query to it. Before the
+     * fix this render drew *"Venceu em compras do mesmo item"* as a locked row
+     * and *"Seu preço máximo de compra"* over a locked value, on an item where
+     * no band can exist for anybody: `price-band.ts`'s own words, *"a locked
+     * value tells a person a number exists and is being withheld from them."*
+     *
+     * Found by probing this exact prop combination, not by the tests that
+     * existed — every D40 fixture above passes `bandLocked: false`.
+     */
+    const html = screen(SERVICE_ITEM, { bandLocked: true, band: null, evidence: null })
+
+    expect(html).not.toContain(page.won)
+    expect(html).not.toContain(page.maxTitle)
+    // It rendered the honest card instead, so this is not an empty page: the
+    // screen is up, the item is named, and the card says nothing was found —
+    // with no heading over it, since there is no list to announce.
+    expect(html).toContain(page.noData)
+    expect(html).toContain('Licença de uso de software de gestão')
+    expect(html).not.toContain(page.fallbackTitle)
+  })
+
+  it('still draws a MATERIAL locked in flight, which is the deliberate choice', () => {
+    // The default is argued in `price-screen.tsx`: a locked bar replaced by a
+    // band is an upgrade the reader watches happen. That argument needs a band
+    // to be possible, which it is for a material — so D40 must not have
+    // changed this.
+    const html = screen(MATERIAL_ITEM, { bandLocked: true, band: null, evidence: null })
+
+    expect(html).toContain(page.won)
+    expect(html).toContain(page.maxTitle)
+  })
+
+  it('still explains itself to a material that has nothing, where the sentence is true', () => {
+    // An unmapped material may yet be matched to an exact code and get a real
+    // band, so `noDataHelp` and the preço-máximo heading both still describe
+    // something that can happen.
+    const html = screen(MATERIAL_ITEM, { band: null, evidence: null })
+
+    expect(html).toContain(page.noData)
+    expect(html).toContain(page.noDataHelp)
+    expect(html).toContain(page.maxTitle)
   })
 })

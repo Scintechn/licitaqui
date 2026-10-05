@@ -4,6 +4,7 @@ import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { db } from '@/lib/db'
 import { catalogBandForItem, catalogEvidenceForItem } from '@/lib/radar/catalog-band'
 import type { BandResponse } from '@/lib/radar/contract'
+import { fallbackEvidenceForItem } from '@/lib/radar/fallback-evidence'
 import { withoutPrices } from '@/lib/radar/price-band'
 import { hasPriceBand } from '@/lib/radar/quota'
 import { rateLimitRequest } from '@/lib/rate-limit'
@@ -97,10 +98,12 @@ export async function GET(
     // nothing, pay, and find "ainda sem dados de vencedores" behind it — the
     // exact sentence-that-is-not-true this card exists to stop.
     //
-    // The cost used to be a trigram query for unentitled callers. Since B35 it
-    // is two primary-key reads, so the claim stays true and is now cheap —
-    // which is the one part of this reasoning the new source improved.
-    // **Two reads, two rungs, both by primary key** (B35).
+    // The cost is a trigram query for every caller on an item the catalogue
+    // misses, which is most of them. B35 had briefly made this cheap — two
+    // primary-key reads — and **D40 gave the cost back deliberately**, because
+    // the thing it bought was blank screens. The claim is unchanged either way:
+    // what is computed before the plan is consulted is whether a number exists.
+    // **The band is still two primary-key reads** (B35).
     //
     // They were one read when both came from the same trigram join. They are
     // separate now because the band is *stored per catalogue code* while the
@@ -110,11 +113,45 @@ export async function GET(
     // and a reader should see what we found on every one of those items.
     //
     // Neither statement uses `similarity()` and neither calls an API, which is
-    // B35's acceptance criterion. `comparablesForItem` is off this path; it is
-    // deleted a release later rather than here, so one PR changes one thing.
+    // B35's acceptance criterion — and that criterion is about **the band**,
+    // which is why it still holds below.
     const reading = await catalogBandForItem(id, item, executor)
     const band = reading === null ? null : reading.band
-    const evidence = await catalogEvidenceForItem(id, item, executor)
+    const catalogue = await catalogEvidenceForItem(id, item, executor)
+
+    /**
+     * **The fallback rung, and the one line that makes a band over it
+     * impossible** (D40).
+     *
+     * Sci, 2026-10-05: *"the application should present the data from previous
+     * won tenders, for Services or Product."* The catalogue reaches an item
+     * only through `rule = 'exact'` **and** `kind = 'M'`, and most open items
+     * fail one of those — every service, because `refresh_catalog_prices`
+     * gives services no budget and `catalog_prices` holds no `kind = 'S'` row
+     * at all, plus the 143 506 `no_match` and 156 013 `prefix` materials. All
+     * of them showed past winners before B35 and nothing after it.
+     * `fallback-evidence.ts` carries the measurement and the reasoning.
+     *
+     * **`band === null` is the guard, and it is the whole guarantee.** The
+     * fallback is only consulted where the catalogue produced neither a band
+     * nor prices, so there is no state in which the band on the wire was
+     * computed from one corpus and the results under it came from another —
+     * which is the failure a reader could not possibly detect, because the
+     * screen would be drawing a catalogue band over trigram evidence and
+     * calling it the same number. `fallbackEvidenceForItem` returns a type
+     * with no band field and never calls `priceBand`, so it cannot create one
+     * either; this line stops it from ever standing beside one.
+     *
+     * The cost is `comparablesForItem` back on the request path — median
+     * 412 ms, worst 2 715 ms, measured 2026-09-28 — for the large majority of
+     * items, and still before the plan is consulted, because evidence is free
+     * at every rung. **B21** (the trigram index and the caching decision) is
+     * load-bearing again rather than an optimisation.
+     */
+    const evidence =
+      band === null && catalogue === null
+        ? await fallbackEvidenceForItem(id, item, executor)
+        : catalogue
 
     if (band !== null && !entitled) {
       return NextResponse.json(
@@ -131,7 +168,14 @@ export async function GET(
         // `withoutPrices` narrows the same evidence an entitled caller gets, so
         // there is one computation and one narrowing rather than a second
         // query that could drift from the first.
-        { state: 'locked', evidence: evidence === null ? null : withoutPrices(evidence) },
+        //
+        // **`catalogue`, not `evidence`** (D40). This branch is reached only
+        // where a band exists, and `evidence` is `catalogue` there by the guard
+        // above — so the two are equal today and naming the narrower one keeps
+        // them equal. `LockedEvidence` drops `source`, so a fallback rung
+        // reaching here would arrive labelled as nothing and read as the
+        // identity claim this card exists to stop.
+        { state: 'locked', evidence: catalogue === null ? null : withoutPrices(catalogue) },
         { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
       )
     }

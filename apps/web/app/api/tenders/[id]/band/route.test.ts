@@ -1,10 +1,24 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { catalogBandForItem as CatalogBand, catalogEvidenceForItem as CatalogEvidence } from '@/lib/radar/catalog-band'
+import type { fallbackEvidenceForItem as FallbackEvidence } from '@/lib/radar/fallback-evidence'
 
-const catalogBandForItem = vi.hoisted(() => vi.fn(async () => null))
-const catalogEvidenceForItem = vi.hoisted(() => vi.fn(async () => null))
+/**
+ * **Typed mocks, so the fixtures are checked too** (D40).
+ *
+ * These were `vi.fn(async () => null)`, which types the return as `null` — so
+ * every fixture had to enter through `as never` and `tsc` could not see them at
+ * all. D40 made `PriceEvidence.source` required precisely so the compiler would
+ * force every producer to name its corpus, and in this file, which stands in
+ * for both producers, it was forcing nothing: one fixture below had no `source`
+ * field and compiled. Typing the mock is what makes that claim true here.
+ */
+const catalogBandForItem = vi.hoisted(() => vi.fn<typeof CatalogBand>(async () => null))
+const catalogEvidenceForItem = vi.hoisted(() => vi.fn<typeof CatalogEvidence>(async () => null))
+const fallbackEvidenceForItem = vi.hoisted(() => vi.fn<typeof FallbackEvidence>(async () => null))
 const rateLimitRequest = vi.hoisted(() => vi.fn(async () => ({ ok: true })))
 
 vi.mock('@/lib/radar/catalog-band', () => ({ catalogBandForItem, catalogEvidenceForItem }))
+vi.mock('@/lib/radar/fallback-evidence', () => ({ fallbackEvidenceForItem }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimitRequest }))
 /**
  * `plan_limits`, as a table rather than as a stub of `hasPriceBand` (F5).
@@ -82,6 +96,9 @@ function seen(editais: number, value = 100, descriptions: (string | null)[] = []
   const shown = Math.min(editais, 4)
   return {
     editais,
+    // D40: which corpus answered. `catalogEvidenceForItem` only ever says
+    // `catalog`, and the screen's wording depends on it.
+    source: 'catalog' as const,
     samples: Array.from({ length: shown }, (_unused, index) => ({
       tenderId: `9900000000000${index}`,
       value,
@@ -92,8 +109,8 @@ function seen(editais: number, value = 100, descriptions: (string | null)[] = []
 
 describe('GET /api/tenders/:id/band', () => {
   it('answers ready with a band when the evidence clears the gate', async () => {
-    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
-    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
     const body = await (await call()).json()
 
     expect(body.state).toBe('ready')
@@ -107,7 +124,7 @@ describe('GET /api/tenders/:id/band', () => {
     // ordinary outcome as a failure and retry it, and would push the screen
     // into an error card for an item that is simply new.
     catalogBandForItem.mockResolvedValueOnce(null)
-    catalogEvidenceForItem.mockResolvedValueOnce(seen(2) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(2))
     const response = await call()
     const body = await response.json()
 
@@ -122,8 +139,8 @@ describe('GET /api/tenders/:id/band', () => {
     // Collapsing them would tell a visitor the data is missing when the truth
     // is that the feature is sold, which is the inverse of E9's own complaint
     // that "a paying subscriber sees exactly what an anonymous visitor sees".
-    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
-    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
     planOf.mockReturnValueOnce('basico')
     const response = await call()
     const body = await response.json()
@@ -143,7 +160,7 @@ describe('GET /api/tenders/:id/band', () => {
     // sem dados de vencedores" behind it.
     return (async () => {
       catalogBandForItem.mockResolvedValueOnce(null)
-      catalogEvidenceForItem.mockResolvedValueOnce(seen(2) as never)
+      catalogEvidenceForItem.mockResolvedValueOnce(seen(2))
       planOf.mockReturnValueOnce('basico')
       const body = await (await call()).json()
 
@@ -173,8 +190,8 @@ describe('GET /api/tenders/:id/band', () => {
     // what Essencial buys. No median, no quartile, no sampleSize, no
     // preço-alvo. A visitor may see that six editais closed and at what — the
     // public record — and may not see the number drawn through them.
-    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
-    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
 
@@ -199,16 +216,17 @@ describe('GET /api/tenders/:id/band', () => {
     // This fixture is the verified case — five editais, the oldest also the
     // cheapest — where `samples` plus a min/max returned the real low, median
     // and high to the cent.
-    catalogBandForItem.mockResolvedValueOnce(banded(5, 190) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(5, 190))
     catalogEvidenceForItem.mockResolvedValueOnce({
       editais: 5,
+      source: 'catalog',
       samples: [
         { tenderId: 'b', value: 180, description: null },
         { tenderId: 'c', value: 190, description: null },
         { tenderId: 'd', value: 200, description: null },
         { tenderId: 'e', value: 210, description: null },
       ],
-    } as never)
+    })
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
     const wire = JSON.stringify(body)
@@ -227,14 +245,14 @@ describe('GET /api/tenders/:id/band', () => {
     // matched the right product, and at the top rung the spread gate has not
     // been shown to them either — so the descriptions are the one thing they
     // can judge, and they carry no price with them.
-    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
     catalogEvidenceForItem.mockResolvedValueOnce(
       seen(6, 100, [
         'CANETA ESFEROGRAFICA AZUL',
         'CANETA ESFEROGRAF. AZUL CX 50',
         'CANETA ESFEROGRAFICA AZUL',
         'CANETA ESFEROGRAF. AZUL CX 50',
-      ]) as never,
+      ]),
     )
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
@@ -255,8 +273,8 @@ describe('GET /api/tenders/:id/band', () => {
     // gate would show a visitor the matched results at four editais and nothing
     // at five: crossing the threshold that makes the data *better* would make
     // the screen emptier. Sci's ruling, 2026-10-01.
-    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
-    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
 
@@ -268,16 +286,16 @@ describe('GET /api/tenders/:id/band', () => {
 
   it.each(['visitor', 'basico'])('locks %s when a band exists', async (plan) => {
     catalogBandForItem.mockClear()
-    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
-    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
     planOf.mockReturnValueOnce(plan)
     expect((await (await call()).json()).state).toBe('locked')
   })
 
   it.each(['promocional', 'essencial', 'pro'])('serves %s', async (plan) => {
     catalogBandForItem.mockClear()
-    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
-    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
     planOf.mockReturnValueOnce(plan)
     // `promocional` is included because 0002 gives founders "same entitlements
     // as Essencial" — the whole of what they are buying on 08/10.
@@ -324,9 +342,188 @@ describe('GET /api/tenders/:id/band', () => {
   })
 
   it('never caches: a band changes as awards land', async () => {
-    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
-    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
     const response = await call()
     expect(response.headers.get('cache-control')).toContain('no-store')
+  })
+})
+
+/**
+ * **D40 — the fallback rung, and that a band can never stand over it.**
+ *
+ * The card's single most important assertion is negative, and a negative
+ * assertion is where §4b's "a test that cannot fail" hides. So each one here
+ * arms the failure first: the catalogue mock is made to return a **real band**,
+ * or the fallback mock a **real rung**, and the test then asserts the route
+ * refused to combine them. Deleting the `band === null && catalogue === null`
+ * guard in `route.ts` fails three of these.
+ */
+function fallback(editais: number, value = 339.99) {
+  return {
+    editais,
+    source: 'awards' as const,
+    samples: Array.from({ length: Math.min(editais, 4) }, (_unused, index) => ({
+      tenderId: `9800000000000${index}`,
+      value: value + index,
+      description: `LICENCA DE USO DE SOFTWARE ${index}`,
+    })),
+  }
+}
+
+describe('GET /api/tenders/:id/band — the awards fallback (D40)', () => {
+  beforeEach(() => {
+    // **`mockReset`, not `mockClear`.** Several tests below prime a `once`
+    // value the route is asserted *not* to consume, and `mockClear` leaves
+    // that value queued — so the next test silently inherited the previous
+    // one's rung and "stays silent when neither corpus has anything" failed
+    // holding `editais: 8`. `mockReset` empties the queue and restores the
+    // `vi.fn(async () => null)` implementation.
+    catalogBandForItem.mockReset()
+    catalogEvidenceForItem.mockReset()
+    fallbackEvidenceForItem.mockReset()
+    planOf.mockReset()
+    planOf.mockReturnValue('essencial')
+  })
+
+  it('is consulted when the catalogue has neither a band nor prices', async () => {
+    catalogBandForItem.mockResolvedValueOnce(null)
+    catalogEvidenceForItem.mockResolvedValueOnce(null)
+    fallbackEvidenceForItem.mockResolvedValueOnce(fallback(4))
+
+    const body = await (await call()).json()
+
+    expect(fallbackEvidenceForItem).toHaveBeenCalledWith(ID, 1, expect.anything())
+    expect(body.state).toBe('ready')
+    expect(body.evidence.editais).toBe(4)
+    expect(body.evidence.source).toBe('awards')
+    // The prices are on the wire, because raw evidence is free at every rung
+    // (Sci, 2026-10-01) and here there is no band for them to reconstruct.
+    expect(body.evidence.samples[0].value).toBeCloseTo(339.99)
+  })
+
+  it('gives an ENTITLED caller no band on the fallback rung — the card’s core claim', async () => {
+    catalogBandForItem.mockResolvedValueOnce(null)
+    catalogEvidenceForItem.mockResolvedValueOnce(null)
+    // Eight editais, which is well past `MIN_SAMPLE`, so the rung is as rich as
+    // this path ever gets. **The arming is not here**: `fallbackEvidenceForItem`
+    // is mocked, so `priceBand` could not run either way. That the rung cannot
+    // compute a band *even from a set `priceBand` accepts* is armed and asserted
+    // in `fallback-evidence.test.ts`. What this test pins is the route: a rich
+    // fallback rung, an entitled caller, and still no band on the wire.
+    fallbackEvidenceForItem.mockResolvedValueOnce(fallback(8))
+    planOf.mockReturnValue('essencial')
+
+    const body = await (await call()).json()
+
+    expect(body.state).toBe('ready')
+    // `state: 'ready'` above already excludes `locked`, which is the other way
+    // a band could be claimed to exist; asserting both would be one assertion
+    // and one decoration (§4b).
+    expect(body.band).toBeNull()
+  })
+
+  it('gives an UNENTITLED caller the same rung, unnarrowed and still bandless', async () => {
+    catalogBandForItem.mockResolvedValueOnce(null)
+    catalogEvidenceForItem.mockResolvedValueOnce(null)
+    fallbackEvidenceForItem.mockResolvedValueOnce(fallback(8))
+    planOf.mockReturnValue('visitor')
+
+    const body = await (await call()).json()
+
+    expect(body.state).toBe('ready')
+    expect(body.band).toBeNull()
+    // `withoutPrices` is the band's paywall. There is no band here, so there is
+    // nothing the four prices could rebuild and nothing to withhold.
+    expect(body.evidence.samples).toHaveLength(4)
+    expect(body.evidence).not.toHaveProperty('matched')
+  })
+
+  it('is NOT consulted where a band exists, so the two corpora never mix', async () => {
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
+    fallbackEvidenceForItem.mockResolvedValueOnce(fallback(8))
+
+    const body = await (await call()).json()
+
+    expect(fallbackEvidenceForItem).not.toHaveBeenCalled()
+    expect(body.evidence.source).toBe('catalog')
+    expect(body.band.median).toBe(100)
+  })
+
+  it('is NOT consulted where the catalogue has prices but no band', async () => {
+    /**
+     * **The most common evidence state there is, and it had no test.**
+     *
+     * 947 of 1 028 catalogue codes are refused for `spread_too_wide` — the
+     * purchases exist and disagree with each other — so by this card's own
+     * census roughly **49 461** open materials have catalogue evidence and no
+     * band (53 592 − 4 131). Mutating the guard to `band === null` alone left
+     * the whole suite green, because the one test that reaches this state
+     * (`answers ready with null — not an error`) asserts `state` and `band` and
+     * never `evidence`. Under that regression the catalogue's real same-item
+     * results would be silently replaced by same-area ones on all 49 461, and
+     * `comparablesForItem` would run on every one of them.
+     *
+     * Found by the independent review of this diff, not by me.
+     */
+    catalogBandForItem.mockResolvedValueOnce(null)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6))
+    fallbackEvidenceForItem.mockResolvedValueOnce(fallback(8))
+
+    const body = await (await call()).json()
+
+    expect(fallbackEvidenceForItem).not.toHaveBeenCalled()
+    expect(body.state).toBe('ready')
+    expect(body.band).toBeNull()
+    expect(body.evidence.source).toBe('catalog')
+    expect(body.evidence.editais).toBe(6)
+  })
+
+  it('is NOT consulted for a band whose catalogue prices aged out', async () => {
+    // The one state where the guard does real work: `catalog_bands` holds a
+    // band and `catalog_prices` has nothing inside `MAX_AGE_MONTHS`. Falling
+    // back here would draw a catalogue band over trigram results — a number
+    // and a list of sources that have nothing to do with each other, which no
+    // reader could detect.
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(null)
+    fallbackEvidenceForItem.mockResolvedValueOnce(fallback(8))
+
+    const body = await (await call()).json()
+
+    expect(fallbackEvidenceForItem).not.toHaveBeenCalled()
+    expect(body.state).toBe('ready')
+    expect(body.evidence).toBeNull()
+  })
+
+  it('never narrows a fallback rung into a locked payload', async () => {
+    // Locked requires a band, a band requires the catalogue, and the guard
+    // means the fallback was never called — so `withoutPrices` cannot receive
+    // trigram results. Armed: the fallback mock is primed with a full rung.
+    catalogBandForItem.mockResolvedValueOnce(banded(6))
+    catalogEvidenceForItem.mockResolvedValueOnce(null)
+    fallbackEvidenceForItem.mockResolvedValueOnce(fallback(8))
+    planOf.mockReturnValue('visitor')
+
+    const body = await (await call()).json()
+
+    expect(body.state).toBe('locked')
+    // One assertion, not two: `evidence: null` already means no description
+    // from the fallback rung reached the wire, so a `JSON.stringify` scan for
+    // its text could not fail and would read as coverage (§4b).
+    expect(body.evidence).toBeNull()
+  })
+
+  it('stays silent when neither corpus has anything', async () => {
+    catalogBandForItem.mockResolvedValueOnce(null)
+    catalogEvidenceForItem.mockResolvedValueOnce(null)
+    fallbackEvidenceForItem.mockResolvedValueOnce(null)
+
+    const body = await (await call()).json()
+
+    expect(body.state).toBe('ready')
+    expect(body.band).toBeNull()
+    expect(body.evidence).toBeNull()
   })
 })

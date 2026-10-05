@@ -219,7 +219,31 @@ export type PriceEvidence = {
   editais: number
   /** One per edital, newest first, capped by {@link MAX_SAMPLES_SHOWN}. */
   samples: PriceSample[]
+  /** Which corpus these results came from — see {@link EvidenceSource}. */
+  source: EvidenceSource
 }
+
+/**
+ * Which corpus a rung's results came from, and therefore **what may be said
+ * about them** (D40).
+ *
+ * This is on the wire because the two sources support different claims, and
+ * the screen has no other way to tell them apart:
+ *
+ * - **`catalog`** — Compras.gov.br purchases under the item's own catalogue
+ *   code, reached only by an exact head match (`rule = 'exact'`). Product
+ *   identity is as close to established as this product gets, so the existing
+ *   *"do mesmo item"* copy holds, and a band may exist alongside.
+ * - **`awards`** — `comparablesForItem`'s trigram path over closed PNCP
+ *   tenders: same segment, same canonical unit, similar description, same
+ *   product by `product-key.ts`. It is a **same-area** comparison, not an
+ *   identity one, and **a band is never drawn over it** (see
+ *   `fallback-evidence.ts`).
+ *
+ * A boolean would have done the same job and said less; the next source gets a
+ * name here rather than a second flag.
+ */
+export type EvidenceSource = 'catalog' | 'awards'
 
 /**
  * How many matched results a thin rung prints.
@@ -349,7 +373,14 @@ export function priceEvidence(
     .slice(0, MAX_SAMPLES_SHOWN)
     .map(({ tenderId, value, description }) => ({ tenderId, value, description }))
 
-  return { editais: perEdital.length, samples }
+  // **`awards` is the only corpus this function is ever given** (D40). It takes
+  // {@link Comparable}s, and the only producer of those is
+  // `comparablesForItem`; the catalogue rung has its own query and its own
+  // `source: 'catalog'`. Hard-coding it here rather than taking it as an
+  // argument means a future caller cannot label trigram results as catalogue
+  // ones — which is the one mislabel that would put *"do mesmo item"* over a
+  // same-area comparison.
+  return { editais: perEdital.length, samples, source: 'awards' }
 }
 
 /**

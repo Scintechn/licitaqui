@@ -479,6 +479,112 @@ export function PriceView({
   const estimate = unitPrice(chosen?.unitEstimatedValue)
   const aiNotice = `${messages.ai.disclaimer} ${messages.ai.notLegalAdvice}`
 
+  /**
+   * **Which rung's words apply** (D40).
+   *
+   * `fromAwards` is read off the payload, not guessed from the item: the
+   * fallback rung is a *same-area* comparison over `awards` and the catalogue
+   * rung is an item-identity one, and only the server knows which answered.
+   * `PriceEvidence.source` exists for this; inferring it from `kind` would
+   * have been wrong for the **327 539** open materials the catalogue cannot
+   * match (measured 2026-10-05: 381 131 open materials, 53 592 with catalogue
+   * prices), which take the same fallback.
+   *
+   * `isService` is a narrower question and a different one: whether the
+   * approved sentence that names *serviços* may be shown. `kind` is already on
+   * the wire (`TenderItemView.kind`), so this needs no new prop.
+   *
+   * Both are read on the chosen item, because every claim on this screen is
+   * about that one item — the chips switch it, and a tender routinely mixes
+   * materials and services.
+   */
+  const isService = chosen?.kind === 'S'
+  const fromAwards = thin !== null && thin.source === 'awards'
+  /**
+   * **No band can exist for this item, so no sentence may promise one.**
+   *
+   * Two ways to be here, and the reasoning is the same for both: the fallback
+   * rung answered (`fromAwards`), where a band is never drawn; or the item is a
+   * service, where the catalogue holds no price row at all and
+   * `refresh_catalog_prices` gives services no budget, so none can arrive.
+   *
+   * Found by this card's own test rather than reasoned about in advance:
+   * `page.intro` — *"Veja o preço que venceu em compras públicas **do mesmo
+   * item** e o máximo que dá para pagar ao fornecedor com a sua margem"* — is
+   * the **first** sentence on the screen, and on this rung both halves are
+   * false. It is suppressed, not reworded: the words are Sci's (legal brief
+   * §5) and he approved no replacement for the screen-level sentence. The gap
+   * is in `docs/CLAIMS.md`.
+   */
+  const areaFramed = fromAwards || isService
+  /**
+   * **A service can never be `locked`, so it must never be drawn locked.**
+   *
+   * `locked` means *a number exists and this plan does not include it*, and
+   * `price-band.ts` says what the alternative costs: *"a locked value tells a
+   * person a number exists and is being withheld from them."* For a service no
+   * number exists for anybody — `catalog_prices` holds no `kind = 'S'` row and
+   * the fallback refuses to compute one — so both halves of that bar are false.
+   *
+   * **This is reachable on every first paint**, not a corner case.
+   * `price-screen.tsx` sets `bandLocked = current === null || current.locked`,
+   * so it is `true` for the whole round trip; measured in this suite, a service
+   * item with `bandLocked` drew *"Venceu em compras do mesmo item"* as a locked
+   * row **and** *"Seu preço máximo de compra"* over a locked value. D40 makes
+   * that window **longer**, because the fallback adds a trigram query to the
+   * request it is waiting on.
+   *
+   * Left as `bandLocked` for materials on purpose, and that is a decision with
+   * a number attached rather than a principle. The default is argued in
+   * `price-screen.tsx` — a locked bar replaced by a band is an upgrade the
+   * reader watches happen, where "ainda sem dados" replaced by a price tells
+   * them something false first — and the argument needs a band to be
+   * *possible*. For a service it is impossible. For a material it is possible
+   * and **rare**: measured 2026-10-05, **4 131 of 381 131** open materials have
+   * one, which is **1.08%**. So ~99 materials in 100 also see a locked bar for
+   * a number that will not arrive, for the length of a trigram query rather
+   * than two primary-key reads. That is the same sentence D40 just removed for
+   * services, at 1.08% instead of 0%, and changing it is `price-screen.tsx`'s
+   * decision and Sci's: carded on D40 and in `docs/CLAIMS.md`, not changed
+   * here.
+   */
+  const lockedBand = bandLocked && !isService
+  /**
+   * **The band the screen may actually draw** (D40, from the review of this
+   * diff).
+   *
+   * The route makes a band and the fallback rung mutually exclusive, and I
+   * traced every path and found none that pairs them. But that guarantee lives
+   * on **one line in one file**, and both boundaries beneath it *type-check*
+   * the forbidden pair: `BandState`'s unlocked variant is
+   * `{ band: PriceBand | null; evidence: PriceEvidence | null }`, and here
+   * `band` and `evidence` are independent props. If the pair ever arrived, this
+   * component would render it — *"Venceu em compras do mesmo item"* over a
+   * same-area comparison, plus a preço-alvo — which is the one failure the card
+   * says a reader could not possibly detect.
+   *
+   * So the refusal is repeated where the drawing happens. `fromAwards` is a
+   * fact about the evidence and `band` is a separate field, so this line is the
+   * cheapest place to make "no band over trigram results" true no matter what
+   * the route does. The structural version is a discriminated `BandState` pair,
+   * the way `LockedEvidence` already refuses a leaked price by having no field
+   * for one; that is a bigger change than this card, and it is noted on D40.
+   */
+  const drawable = fromAwards ? null : band
+  /**
+   * *"Seu preço máximo de compra"* is only honest where a band can exist.
+   *
+   * It is the heading of the card that would hold the preço-alvo, and on the
+   * fallback rung no band is ever drawn — so nothing below it will ever
+   * compute that figure. Same for a service with nothing found at all: the
+   * catalogue holds no `kind = 'S'` price row, so the heading would be
+   * promising a number that cannot arrive by any route we have.
+   *
+   * A material with nothing found keeps it: its item may still be mapped to an
+   * exact code later and get a real band, which is what the heading describes.
+   */
+  const noBandTitle = areaFramed ? page.fallbackTitle : page.maxTitle
+
   return (
     <div className="flex min-h-dvh flex-col">
       {bar}
@@ -489,7 +595,11 @@ export function PriceView({
             the public results; what it must not do is imply there is a bid to
             place today. */}
         <TenderStatusBanner tender={tender} />
-        <p className="m-0 text-body leading-relaxed text-muted">{page.intro}</p>
+        {/* D40: suppressed where no band can exist — `areaFramed`'s note says
+            why. Both of this sentence's halves are false there. */}
+        {areaFramed ? null : (
+          <p className="m-0 text-body leading-relaxed text-muted">{page.intro}</p>
+        )}
 
         {chosen === null ? (
           <StateCard kind="empty" title={page.itemsLabel} description={page.noItems} />
@@ -533,9 +643,10 @@ export function PriceView({
                 <span>{page.estimated}</span>
                 <strong className="font-display text-[16px]">{estimate ?? page.noEstimate}</strong>
               </div>
-              {bandLocked ? (
+              {/* D40: `lockedBand`, not `bandLocked` — see its note. */}
+              {lockedBand ? (
                 <LockedRow label={page.won} />
-              ) : band ? (
+              ) : drawable ? (
                 <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
                   <span>{page.won}</span>
                   <strong className="font-display text-[16px] tabular-nums">
@@ -554,7 +665,7 @@ export function PriceView({
                         guard stays because "both ends or neither" only means
                         something if an end can be refused, and
                         `moneyExactNonZero` is what actually refuses one. */}
-                    {bandRange(band) ?? page.noEstimate}
+                    {bandRange(drawable) ?? page.noEstimate}
                   </strong>
                 </div>
               ) : null}
@@ -569,7 +680,8 @@ export function PriceView({
               <LockedRow label={page.market} last />
             </Card>
 
-            {bandLocked ? (
+            {/* D40: `lockedBand`, not `bandLocked` — see its note. */}
+            {lockedBand ? (
               /* The honest use of a locked value: a number does exist for this
                  item and this plan does not include it. */
               <Card accent className="flex flex-col gap-2.5">
@@ -599,10 +711,10 @@ export function PriceView({
                 )}
                 <p className="m-0 text-meta leading-relaxed text-muted">{page.maxNote}</p>
               </Card>
-            ) : band ? (
+            ) : drawable ? (
               /* The only interactive part of this screen, so the only part
                  that is a Client Component. The rest stays server-rendered. */
-              <MarginCeiling band={band} />
+              <MarginCeiling band={drawable} />
             ) : (
               /* **The third state, and why it is not a locked bar.** A locked
                  value tells a person a number exists and is being withheld from
@@ -616,19 +728,46 @@ export function PriceView({
                  same as having found nothing, and this card said the same
                  sentence to both. `thin` is the rung that was missing. */
               <Card className="flex flex-col gap-2.5">
-                <div className="text-body font-medium">{page.maxTitle}</div>
+                {/* **The heading names the card's contents, so an empty card
+                    gets none** (D40, from the review of this diff).
+
+                    `fallbackTitle` — *"Contratações parecidas"* — announces a
+                    list. Over *"Ainda sem dados de vencedores para este item"*
+                    it announced a list that is not there, and that state is the
+                    common one: measured 2026-10-05, 92% of open service items
+                    return no comparable. `maxTitle` is still drawn on the empty
+                    card for a **material**, where a band remains possible and
+                    the heading describes something that can arrive.
+
+                    No sentence is invented for the empty service card: it keeps
+                    `noData`, which is true, and nothing else. */}
                 {thin === null || shown.length === 0 ? (
                   <>
+                    {areaFramed ? null : (
+                      <div className="text-body font-medium">{page.maxTitle}</div>
+                    )}
                     {/* `shown.length === 0` lands here too, and should: a rung
                         with no drawable result has nothing to say that this
                         sentence does not say better, and a count of zero would
                         print "1" through `Intl.PluralRules`, which reads
                         `select(0)` as `one` in pt-BR. */}
                     <p className="m-0 text-body text-muted">{page.noData}</p>
-                    <p className="m-0 text-meta leading-relaxed text-muted">{page.noDataHelp}</p>
+                    {/* **Not for a service** (D40). `noDataHelp` says the faixa
+                        appears once there are enough compras públicas *do
+                        mesmo item* — two promises a service item cannot keep:
+                        `catalog_prices` holds no `kind = 'S'` row and
+                        `refresh_catalog_prices` gives services no budget, so
+                        the faixa will not arrive; and the comparison available
+                        for a service is same-area, never same-item. Suppressed
+                        rather than reworded: the sentence is Sci's (legal brief
+                        §5) and he approved no replacement for this state. */}
+                    {isService ? null : (
+                      <p className="m-0 text-meta leading-relaxed text-muted">{page.noDataHelp}</p>
+                    )}
                   </>
                 ) : (
                   <>
+                    <div className="text-body font-medium">{noBandTitle}</div>
                     {/* The count, then every result behind it. No median, no
                         quartile, no preço-alvo: those are earned by five
                         editais and a spread the gate checked, and a figure
@@ -657,7 +796,30 @@ export function PriceView({
                         results and no explanation, which is incomplete but
                         true. Saying why would need a sentence about scatter,
                         and the words are Sci's — recorded in `CLAIMS.md`. */}
-                    {thin.editais < MIN_SAMPLE ? (
+                    {/* **The fallback rung gets a different sentence, or
+                        none** (D40).
+
+                        `evidenceHelp` is wrong there twice over: it promises
+                        the faixa at five editais — the fallback never draws
+                        one, at any count, so the count gate above is not the
+                        question — and it says *"o mesmo produto"*, while this
+                        rung matched the same *area*.
+
+                        `fallbackHelp` is Sci's replacement, approved
+                        2026-10-05, and it names *serviços*. So it renders on a
+                        service and **nothing renders on a material that
+                        reached the same rung** — incomplete but true, which is
+                        the choice this branch already makes above `MIN_SAMPLE`
+                        for the same reason. The missing sentence is in
+                        `docs/CLAIMS.md`; writing one here would be writing
+                        copy. */}
+                    {fromAwards ? (
+                      isService ? (
+                        <p className="m-0 text-meta leading-relaxed text-muted">
+                          {page.fallbackHelp}
+                        </p>
+                      ) : null
+                    ) : thin.editais < MIN_SAMPLE ? (
                       <p className="m-0 text-meta leading-relaxed text-muted">
                         {format(page.evidenceHelp, { count: shown.length })}
                       </p>
