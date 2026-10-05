@@ -4,9 +4,11 @@ import { notFound } from 'next/navigation'
 import { AppBar, Card, Logo, StateCard } from '@/components'
 import { authorizeAdmin } from '@/lib/admin/auth'
 import { countFounders, listFounders, type FounderRow } from '@/lib/admin/founders'
+import { readFeeds, type Feed } from '@/lib/admin/feeds'
 import { readGates, type Gate } from '@/lib/admin/gates'
 import { readNeonUsage, type NeonUsage } from '@/lib/admin/neon'
 import { FoundersTable } from './founders-table'
+import { FeedCards } from './feed-cards'
 import { GateCards } from './gate-cards'
 import { UsageCard } from './usage-card'
 
@@ -53,6 +55,7 @@ const FULL_DATE = new Intl.DateTimeFormat('pt-BR', {
 
 type Board = {
   gates: Gate[]
+  feeds: Feed[]
   usage: NeonUsage
   founders: FounderRow[]
   total: number
@@ -64,13 +67,14 @@ type Board = {
  */
 async function readBoard(): Promise<Board | { error: string }> {
   try {
-    const [gates, usage, founders, total] = await Promise.all([
+    const [gates, feeds, usage, founders, total] = await Promise.all([
       readGates(),
+      readFeeds(),
       readNeonUsage(),
       listFounders(),
       countFounders(),
     ])
-    return { gates, usage, founders, total }
+    return { gates, feeds, usage, founders, total }
   } catch (error) {
     const code = (error as { code?: string } | null)?.code ?? 'unknown'
     // A code, never the connection string and never a row (§12).
@@ -105,6 +109,7 @@ export default async function AdminPage() {
         ) : (
           <>
             <GateCards gates={board.gates} gateDate={GATE_DATE} />
+            <FeedCards feeds={board.feeds} />
             <UsageCard usage={board.usage} />
             <FoundersTable rows={board.founders} total={board.total} />
           </>
