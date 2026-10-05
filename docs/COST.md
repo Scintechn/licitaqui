@@ -124,6 +124,37 @@ Plus 16 `licitaqui_test_*` databases holding **182.6 MB** (B31).
 
 ---
 
+## 3b. The one query we pay for on purpose (2026-10-05)
+
+`comparablesForItem` costs **494 ms median** (p90 620, worst 914; 20 random open
+items, measured 2026-10-05 — up from B21's 412 ms because `tender_items` grew
+from 421 202 rows to **784 875**). Since D40 it is on the request path for ~88%
+of items, and it runs **before the plan is consulted**, so an anonymous
+visitor's item view costs it too.
+
+**That is a decision, not an oversight**, and the reasoning is here so nobody
+re-derives it from the code:
+
+- The **prices** are paid (Sci, 2026-10-05, superseding 01/10 and 02/10). The
+  **count and the descriptions are free**, because they are the only way a
+  reader can judge whether we matched the right product *before* paying.
+- Hiding the descriptions alone would **save nothing**: the count is a
+  `count(*) over ()` in the same statement. The only version that skips the
+  query shows an unentitled reader *nothing at all* — and then the screen must
+  either say "ainda sem dados", which is **false** on the ~12% of items that do
+  have results, or carry a new sentence nobody has written.
+- Computing before gating is what makes `locked` honest: it means *a number
+  exists and you have not paid for it*, never a paywall over an empty set.
+
+**And it is demand-driven, which is what makes it affordable.** `getBand` has
+exactly one caller — a `useEffect` in `price-screen.tsx` that fires only when an
+item is selected. Browsing the Radar, opening a tender, or holding 447 000 open
+items costs **nothing**. Only an item somebody actually looks at costs anything,
+and at ~0.5 s each, **1 000 item-views is ~8 minutes of database time**.
+
+So the cost scales with people using the feature, which is the cost worth
+having. Revisit if §5's reading says otherwise — not before.
+
 ## 4. What is **not** knowable, and why
 
 **Neon's CU-hour consumption cannot be read from the API on this plan.** On
