@@ -49,7 +49,7 @@ describe('priceBand', () => {
     // Five rows from one procurement is **one price wearing five hats**: one
     // órgão, one day, one decision. Counting rows would let it clear a floor
     // whose docstring claims five independent prices, and the copy beneath the
-    // figure says "N editais encerrados" — so the number has to be editais.
+    // figure says "N compras públicas" — so the number has to be procurements.
     expect(priceBand(fromOneEdital([100, 100, 100, 100, 100]), NOW)).toBeNull()
 
     // The same five prices from five editais do pass, and report five.

@@ -109,7 +109,7 @@ test.describe('E22 · the evidence ladder reaches the reader', () => {
     await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible`)
 
     await expect(
-      page.getByText('Encontramos 6 editais encerrados com o mesmo produto'),
+      page.getByText('Encontramos 6 compras públicas do mesmo item'),
     ).toBeVisible()
     // Both descriptions, not just the first: a `MatchedList` rendering only
     // `items[0]` would otherwise pass.
