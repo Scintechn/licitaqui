@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from licitaqui import whatsapp
+from licitaqui import product, whatsapp
 from licitaqui.templates import MissingPlaceholder
 
 
@@ -239,11 +239,17 @@ def test_opening_link_is_overridable_without_a_deploy(monkeypatch: pytest.Monkey
     assert whatsapp.opening_link() == "https://preview.licitaquiapp.com.br/entrar"
 
 
-def test_broadcast_at_is_19h_brt_converted_to_utc() -> None:
-    """08/10 19:00 BRT (UTC-3) is 08/10 22:00 UTC — `docs/DEVELOPMENT_PLAN.md` M3."""
-    when = whatsapp.broadcast_at(day=date(2026, 10, 8))
+def test_broadcast_at_is_12h_brt_converted_to_utc() -> None:
+    """17/10 12:00 BRT (UTC-3) is 17/10 15:00 UTC — `docs/product.json`.
 
-    assert when == datetime(2026, 10, 8, 22, 0, tzinfo=UTC)
+    The day is the real opening day on purpose. This test read 08/10 while the
+    product read 17/10 and still passed, because it passed the day in itself
+    and only ever asserted the conversion — so the one test named after the
+    broadcast hour could not see that the broadcast hour was wrong.
+    """
+    when = whatsapp.broadcast_at(day=product.OPENING_DATE)
+
+    assert when == datetime(2026, 10, 17, 15, 0, tzinfo=UTC)
 
 
 def test_broadcast_hour_is_overridable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -260,7 +266,9 @@ def test_broadcast_at_follows_the_opening_date_override(monkeypatch: pytest.Monk
 
     when = whatsapp.broadcast_at()
 
-    assert when == datetime(2026, 11, 1, 22, 0, tzinfo=UTC)
+    # 12:00 BRT, not 19:00: Sci moved the opening to 2026-10-17 12:00 on
+    # 2026-10-03 and the hour moved with it. BRT is UTC-3, so 12:00 is 15:00Z.
+    assert when == datetime(2026, 11, 1, 15, 0, tzinfo=UTC)
 
 
 def test_broadcast_key_is_fixed_per_opening_day() -> None:

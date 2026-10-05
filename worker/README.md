@@ -402,7 +402,7 @@ delivery row, neither records an error. Verify against `whatsapp.sent` in
 | `EVOLUTION_API_URL` | to send | — | Instance base URL. Resolved lazily: a dry run needs none of these three |
 | `EVOLUTION_API_KEY` | to send | — | Sent as the `apikey` header |
 | `EVOLUTION_INSTANCE` | to send | — | Instance name in the `POST /message/sendText/{instance}` path |
-| `FOUNDERS_OPENING_DATE` | no | `2026-10-08` | Fills `{{data_abertura}}`, so a slipped opening is an env change |
+| `FOUNDERS_OPENING_DATE` | no | `2026-10-17` (`product.OPENING_DATE`) | Fills `{{data_abertura}}`, so a slipped opening is an env change |
 
 ### Cloudflare blocks default HTTP clients
 

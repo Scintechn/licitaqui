@@ -111,7 +111,7 @@ whole string as a single placeholder (e.g. `{{lista_editais}}`).
 | `email/founders-welcome.md` | email | idem, for founders who gave an email | M1 |
 | `whatsapp/founders-waitlist.md` | WhatsApp | signup after the last seat is gone | M1 |
 | `email/founders-waitlist.md` | email | idem | M1 |
-| `whatsapp/founders-opening.md` | WhatsApp | opening broadcast, 08/10 at 19:00 | M3 |
+| `whatsapp/founders-opening.md` | WhatsApp | opening broadcast, 17/10 at 12:00 | M3 |
 | `email/founders-opening.md` | email | idem | M3 |
 | `whatsapp/optout-confirmation.md` | WhatsApp | reply to `SAIR` | M1 |
 | `telegram/start-linked.md` | Telegram | `/start <token>` with a valid token | M3 |
