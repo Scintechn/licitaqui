@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { PLAN_HREF } from '@/lib/routes'
 import { priceHref, tenderHref } from '@/lib/radar/client'
-import { messages } from '@/lib/messages'
+import { format, messages } from '@/lib/messages'
 import type { TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { PriceView, chooseItem, unitPrice, type PriceViewProps } from './price-view'
 
@@ -329,13 +329,26 @@ describe('PriceView', () => {
       })),
     } as unknown as TenderDetail
     const out = render({ tender: long })
-    // The disclosure, the count, and the field that makes 251 items navigable.
-    expect(out).toContain('<summary')
+    /**
+     * **Scoped to the picker's own markup, not to the page.** `toContain(
+     * '<summary')` was the first version and it is the #190/D30 defect — a
+     * substring relation wearing an ancestor relation's clothes: this screen
+     * has three other `<details>` producers (`LongText` for the item,
+     * `MatchedList`, `EvidenceRow`), so swapping the picker back for a flat
+     * list and leaving one long description anywhere would have passed.
+     */
+    expect(out).toContain('<details class="group rounded-card')
     expect(out).toContain(copy.opportunity.items.showMore)
-    expect(out).toContain('de 31 itens')
+    expect(out).toContain(format(copy.opportunity.items.showing, { shown: 1, total: 31 }))
     expect(out).toContain('type="search"')
-    // Two items: no disclosure, no search box, the list this screen had.
+  })
+
+  it('leaves a two-item edital the plain list it has always had', () => {
+    // The other half of the boundary, asserted about its own render rather
+    // than about the long one's: `html` is the two-item fixture.
+    expect(html).not.toContain('<details class="group rounded-card')
     expect(html).not.toContain('type="search"')
+    expect(html).toContain('aria-current="page"')
   })
 
   it('says so when the items have not been synced yet', () => {

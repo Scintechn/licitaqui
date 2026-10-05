@@ -26,15 +26,36 @@ const COUNT = 31
 /** Item 31: the row a reader can reach by typing and not by looking. */
 const NEEDLE = 'GRAMPEADOR DE MESA para até 100 folhas'
 
-async function openPriceScreen(page: Page): Promise<void> {
+/**
+ * The real tender's length, past `LIST_CAP`, for the two cases the cap owns.
+ *
+ * 251 is Sci's own edital. It matters that it is **more than 50**: the first
+ * version of the picker capped the rows with a plain `slice`, so opening the
+ * list on a high-numbered item drew fifty chips that did not include it — and
+ * no fixture in either suite was long enough to notice.
+ */
+const LONG = 251
+/** A 70-character unbroken run, which PNCP item text really does carry. */
+const CODE = 'CATMAT390124ELEMENTOFILTRANTECOALESCENTE0750MMX0120MMREF12345678'
+
+async function openPriceScreen(page: Page, count = COUNT, atItem?: number): Promise<void> {
   const edital = tender({
     id: TENDER_ID,
     object: `AQUISIÇÃO DE MATERIAL DE EXPEDIENTE, PROCESSO ${processo(34)}`,
-    itemCount: COUNT,
-    items: Array.from({ length: COUNT }, (_, index) =>
+    itemCount: count,
+    items: Array.from({ length: count }, (_, index) =>
       item(index + 1, {
+        // Item 1 — the one the screen opens on, so the one whose chip rides in
+        // the `<summary>` — carries an unbroken 70-character code, because
+        // that is the worst case PNCP actually publishes and the one a
+        // string assertion cannot judge. The last item is the needle only a
+        // search can reach.
         description:
-          index + 1 === COUNT ? NEEDLE : `Resma de papel A4 75 g/m², pacote com 500 folhas`,
+          index === 0
+            ? CODE
+            : index + 1 === count
+              ? NEEDLE
+              : `Resma de papel A4 75 g/m², pacote com 500 folhas`,
       }),
     ),
   })
@@ -48,7 +69,8 @@ async function openPriceScreen(page: Page): Promise<void> {
       body: JSON.stringify({ state: 'ready', band: null, evidence: null }),
     }),
   )
-  await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible`)
+  const at = atItem === undefined ? '' : `&item=${atItem}`
+  await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible${at}`)
 }
 
 /** The chip for one item, inside the picker's own list. */
@@ -66,7 +88,11 @@ test.describe('D34 · the item list collapses, counts and searches', () => {
     // the summary, because the screen also prints the item above the picker
     // and an unscoped match would pass with the chip gone.
     await expect(page.locator('summary').getByText(/Item 1 ·/)).toBeVisible()
-    // And item 31 is in the DOM (find-in-page, screen readers) and not shown.
+    // And item 31 is in the DOM — which is what makes it findable by
+    // find-in-page in current Chrome — and not shown. **Not** "and screen
+    // readers": the content of a closed `<details>` is not exposed to
+    // assistive technology, which is why the summary chip carries
+    // `aria-current` of its own.
     await expect(chip(page, COUNT)).toBeHidden()
   })
 
@@ -92,9 +118,14 @@ test.describe('D34 · the item list collapses, counts and searches', () => {
       scroll: node.scrollHeight,
     }))
     expect(box.scroll, 'the list is longer than the box it is drawn in').toBeGreaterThan(box.client)
-    // 44px is `--spacing-touch`, the floor for one chip, so this says the box
-    // does not hold all 31 of them — which is the whole point of the bound.
-    expect(box.client, 'and the box is a readable height, not 31 rows').toBeLessThan(COUNT * 44)
+    // Against the **viewport**, not against 31 × 44px: that number is 1 364px,
+    // larger than any viewport this suite runs at, so it would have gone on
+    // passing if the fixture ever shrank. `60dvh` of 844 is ~506.
+    const viewport = page.viewportSize()
+    expect(viewport, 'the journeys project pins a viewport').not.toBeNull()
+    expect(box.client, 'and the box is a fraction of the screen').toBeLessThan(
+      (viewport as { height: number }).height * 0.7,
+    )
   })
 
   test('typing finds the one item a reader could not have scrolled to', async ({ page }) => {
@@ -147,6 +178,68 @@ test.describe('D34 · the item list collapses, counts and searches', () => {
     await expect(chip(page, COUNT)).toBeHidden()
     // The one thing a collapse must never hide: which item you are reading.
     await expect(page.locator('summary').getByText(/Item 1 ·/)).toBeVisible()
+  })
+
+  /**
+   * **The defect the first version shipped and neither suite could see.**
+   *
+   * Both suites chose item 1 and the browser fixture had 31 items, so the cap
+   * was never exercised in a browser at all. With 251 items and `?item=251`,
+   * `matched.slice(0, 50)` drew fifty chips that did not include item 251 —
+   * and the summary chip is hidden while the list is open, so nothing on the
+   * screen was marked as the page the reader was on.
+   */
+  test('an item past the cap is still in the list it opens', async ({ page }) => {
+    await openPriceScreen(page, LONG, LONG)
+
+    await expect(page.getByText(`Mostrando 1 de ${LONG} itens`)).toBeVisible()
+    await page.getByText('Ver mais itens').click()
+
+    // Drawn, visible, and the row the reader is on.
+    const current = page.locator('details nav a[aria-current="page"]')
+    await expect(current).toHaveCount(1)
+    await expect(current).toBeVisible()
+    await expect(current).toHaveAttribute('href', new RegExp(`item=${LONG}$`))
+    // Still a capful, not 251 rows.
+    await expect(page.locator('details nav a')).toHaveCount(50)
+  })
+
+  /**
+   * **`EvidenceRow`'s class of defect, one screen over.** `trimObject` caps
+   * the *length*, not the token count, and PNCP item text carries long
+   * unspaced catalogue codes — so a 70-character chip label can be one
+   * unbreakable run. `CHIP` is a flex container, so without `min-w-0
+   * break-words` the label's min-content width pushes the chip past its
+   * column, and the chip inside the `<summary>` has no scrolling ancestor to
+   * contain it. `environment: 'node'` has no boxes, so only this can fail.
+   *
+   * The assertion is against **the picker's own right edge** rather than the
+   * document's, and deliberately: writing it as "no horizontal page scroll"
+   * made it fail on a defect that is not this card's. `price-view.tsx`'s item
+   * heading — `LongText`'s short branch, inside a `div.text-body` with no
+   * `break-words` — really does overflow on the same text, measured here at
+   * **561px inside a 390px viewport**. That is **D48**, carded, not absorbed:
+   * a test that passes once somebody else's bug is fixed would have proven
+   * nothing about this one.
+   */
+  test('a 70-character code stays inside the picker, collapsed and open', async ({ page }) => {
+    await openPriceScreen(page)
+    await expect(page.locator('summary')).toBeVisible()
+
+    const overflow = () =>
+      page.evaluate(() => {
+        const picker = document.querySelector('details')
+        if (picker === null) throw new Error('no picker on the screen')
+        const edge = picker.getBoundingClientRect().right
+        const worst = [...picker.querySelectorAll('*')]
+          .map((node) => node.getBoundingClientRect().right)
+          .reduce((a, b) => Math.max(a, b), 0)
+        return Math.round(worst - edge)
+      })
+
+    expect(await overflow(), 'nothing sticks out of the collapsed picker').toBeLessThanOrEqual(1)
+    await page.getByText('Ver mais itens').click()
+    expect(await overflow(), 'nor out of the open one').toBeLessThanOrEqual(1)
   })
 
   test('choosing another item moves the screen to it', async ({ page }) => {

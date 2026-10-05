@@ -71,13 +71,13 @@ const itemCopy = copy.opportunity.items
 /**
  * Above this many items the list collapses; at or below it, it is just a list.
  *
- * Eight chips at `min-h-touch` plus their gaps is about **384px** — roughly one
- * phone's worth of list, and the point past which the list stops being
- * something you read and starts being something you scroll. (Inferred from the
- * token values, not measured in a browser: `--spacing-touch` is 44px and the
- * gap is 4px. §4d — say which is which.) Below the line the disclosure would
- * cost a tap and buy nothing, which is `LongText`'s rule for a short
- * description applied to a short list.
+ * Eight chips at `min-h-touch` plus the seven gaps between them is **380px**
+ * — roughly one phone's worth of list, and the point past which the list stops
+ * being something you read and starts being something you scroll. (Inferred
+ * from the token values, not measured in a browser: 8 × 44px + 7 × 4px, with
+ * `--spacing-touch: 44px`. §4d — say which is which.) Below the line the
+ * disclosure would cost a tap and buy nothing, which is `LongText`'s rule for
+ * a short description applied to a short list.
  */
 export const COLLAPSE_FROM = 8
 
@@ -101,7 +101,21 @@ export const LIST_CAP = 50
 const DESCRIPTION_MAX = 70
 
 /**
- * Lower-case and accent-fold, so typing `cafe` finds `CAFÉ`.
+ * Lower-case and fold, so typing `cafe` finds `CAFÉ` and `g/m2` finds `g/m²`.
+ *
+ * **NFKD rather than NFD**, which is the whole of this function's judgement.
+ * NFD decomposes `É` into `E` + U+0301 and the range below strips the mark;
+ * it leaves `nº`, `3ª`, `m²`, `m³` and `½` exactly as they were, and all five
+ * are everywhere in PNCP item text — so a reader typing `no 12`, `3a via` or
+ * `g/m2`, which is what a keyboard makes easy, would find nothing. NFKD maps
+ * them to `no`, `3a`, `m2`, `m3` and `1⁄2`. The compatibility mappings it also
+ * applies (ligatures, full-width forms) are all in the same direction: more
+ * spellings of one word reach the same row.
+ *
+ * The range is written as escapes on purpose. U+0300–U+036F are invisible
+ * combining marks, and spelled literally they attach themselves to the
+ * brackets around them in every editor — one normalisation or one careless
+ * paste and the regex means something else with no test able to notice.
  *
  * Deliberately **not** `product-key.ts`'s `fold`, which exists to decide
  * whether two purchases are the same product and is tuned against the band's
@@ -112,29 +126,44 @@ const DESCRIPTION_MAX = 70
  */
 function fold(raw: string): string {
   return raw
-    .normalize('NFD')
+    .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
 }
 
 /**
- * Whether an item answers the text in the box.
+ * The box's text as the words it is asking for — folded, split, empties gone.
  *
- * Every whitespace-separated token must appear, so `papel a4` narrows instead
- * of widening, and the item **number** is part of the haystack: on a 251-item
- * edital the reader often knows the number from the edital PDF and nothing
- * else, and `trimObject` has cut whatever else they might have recognised.
- *
- * An empty or whitespace-only box matches everything rather than nothing — the
- * list's resting state is the whole list, not an empty one.
+ * Separate from the match so it runs **once per keystroke** instead of once
+ * per item: on the widest tender we hold that is 1 124 times a letter, for an
+ * answer that is the same every time.
  */
-export function matchesQuery(item: TenderItemView, query: string): boolean {
-  const tokens = fold(query)
+export function queryTokens(query: string): string[] {
+  return fold(query)
     .split(/\s+/)
     .filter((token) => token !== '')
+}
+
+/**
+ * Whether an item answers the words in the box.
+ *
+ * **Every** token must appear, so `papel a4` narrows instead of widening, and
+ * the item **number** is part of the haystack: on a 251-item edital the reader
+ * often knows the number from the edital PDF and nothing else, and
+ * `trimObject` has cut whatever else they might have recognised.
+ *
+ * No tokens matches everything rather than nothing — the list's resting state
+ * is the whole list, not an empty one.
+ */
+export function matchesTokens(item: TenderItemView, tokens: readonly string[]): boolean {
   if (tokens.length === 0) return true
   const haystack = fold(`${item.number} ${item.description ?? ''}`)
   return tokens.every((token) => haystack.includes(token))
+}
+
+/** The two above, composed — the shape the tests ask questions in. */
+export function matchesQuery(item: TenderItemView, query: string): boolean {
+  return matchesTokens(item, queryTokens(query))
 }
 
 /** A predicate over an item, so the ordering hook below can be tested at all. */
@@ -183,8 +212,39 @@ export function priceableFirst(
   return [...first, ...rest]
 }
 
+/**
+ * **The rows to draw: at most `cap`, and never without the chosen one.**
+ *
+ * `matched.slice(0, cap)` was wrong and the tests could not see it, because
+ * both suites chose item 1. Open the 251-item edital on `?item=251` — which is
+ * reachable only *through this picker*, since no other caller puts an `item` in
+ * the URL — and item 251 is not among the first 50: the chip is not drawn, the
+ * summary chip is hidden while the list is open, and `aria-current="page"` is
+ * then **nowhere on the screen**. The card's own criterion is that the chosen
+ * item stays visible when the list opens.
+ *
+ * So the chosen row is moved to the front of the matches rather than merely
+ * kept: it is the one row guaranteed to be interesting, and at the front it
+ * cannot fall off the end of the cap.
+ *
+ * It is **not forced in when it does not match** the box. A filtered list is
+ * the reader's own question, and a row they did not ask for inside the answer
+ * is noise — in that state the item they are on is still named at the top of
+ * the screen, by the heading `price-view.tsx` draws above this block.
+ */
+export function rowsToDraw(
+  matched: readonly TenderItemView[],
+  chosen: TenderItemView,
+  cap = LIST_CAP,
+): TenderItemView[] {
+  const index = matched.findIndex((item) => item.number === chosen.number)
+  if (index <= 0) return matched.slice(0, cap)
+  const rest = matched.filter((item) => item.number !== chosen.number)
+  return [matched[index], ...rest].slice(0, cap)
+}
+
 /** `Item 12 · resma de papel A4…` — one chip's words, cut at 70. */
-export function itemLabel(item: TenderItemView): string {
+function itemLabel(item: TenderItemView): string {
   return item.description
     ? format(page.item, {
         numero: item.number,
@@ -196,6 +256,23 @@ export function itemLabel(item: TenderItemView): string {
 const CHIP = 'flex min-h-touch items-center rounded-control border px-3 text-body no-underline'
 const CHIP_CURRENT = 'border-blue-line bg-blue-soft text-blue'
 const CHIP_OTHER = 'border-line-strong bg-surface text-ink'
+
+/**
+ * A chip's words, in a box that can be narrower than they are.
+ *
+ * `min-w-0` and `break-words`, for `EvidenceRow`'s reason one screen over:
+ * `trimObject` caps the *length*, not the token count, and PNCP descriptions
+ * carry long unspaced codes — so a 70-character chip label can be one
+ * unbreakable run. `CHIP` is a flex container, so without these the text is an
+ * anonymous flex item whose `min-width: auto` resolves to min-content and the
+ * chip grows past its column. Nothing in this app sets `overflow-x: hidden`,
+ * and the chip inside the `<summary>` has no scrolling ancestor, so the
+ * overflow would reach the document and put a phone into horizontal scroll.
+ * `environment: 'node'` has no boxes, so only the browser suite can fail on it.
+ */
+function ChipLabel({ item }: { item: TenderItemView }) {
+  return <span className="min-w-0 break-words">{itemLabel(item)}</span>
+}
 
 export type ItemPickerProps = {
   tenderId: string
@@ -229,16 +306,23 @@ export function ItemPicker({ tenderId, search, list, chosen }: ItemPickerProps) 
     )
   }
 
-  const matched = ordered.filter((item) => matchesQuery(item, query))
-  const shown = matched.slice(0, LIST_CAP)
+  // Folded and split once, not once per item (1 124 of them on the widest
+  // tender we hold), then the cap — which cannot drop the chosen row.
+  const tokens = queryTokens(query)
+  const matched = ordered.filter((item) => matchesTokens(item, tokens))
+  const shown = rowsToDraw(matched, chosen)
 
   return (
     <details className="group rounded-card border border-line-strong bg-surface">
       <summary className="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
         {/* No width breakpoint — see the note at the top of this file. The row
             wraps on a narrow column and sits on one line on a wide one, with
-            no number for a future editor to get wrong. */}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            no number for a future editor to get wrong.
+
+            A `<span>` and not a `<div>`: `<summary>`'s content model is
+            phrasing content, which is also why `LongText` and
+            `ItemDescription` are built out of spans. */}
+        <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <span id={headingId} className="text-meta font-medium text-ink">
             {page.itemsLabel}
           </span>
@@ -268,14 +352,20 @@ export function ItemPicker({ tenderId, search, list, chosen }: ItemPickerProps) 
             <span className="group-open:hidden">{itemCopy.showMore}</span>
             <span className="hidden group-open:inline">{itemCopy.less}</span>
           </span>
-        </div>
+        </span>
 
         {/* **The chosen item survives the collapse.** It is a `<span>` and not
             the `<a>` the list draws: it is the page you are on, and an anchor
-            inside `<summary>` is a control inside a control. The real
-            `aria-current="page"` link is in the list below. */}
-        <span className={cn(CHIP, CHIP_CURRENT, 'mt-1.5 group-open:hidden')}>
-          {itemLabel(chosen)}
+            inside `<summary>` is a control inside a control. It carries
+            `aria-current="page"` all the same — valid on any element, and
+            without it a screen-reader user hears the item's words with nothing
+            saying it is the page they are on, because the real link is inside
+            a closed `<details>` and so out of the accessibility tree. */}
+        <span
+          aria-current="page"
+          className={cn(CHIP, CHIP_CURRENT, 'mt-1.5 group-open:hidden')}
+        >
+          <ChipLabel item={chosen} />
         </span>
       </summary>
 
@@ -294,6 +384,10 @@ export function ItemPicker({ tenderId, search, list, chosen }: ItemPickerProps) 
             aria-labelledby={headingId}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            // No `name`, and autofill off: this box filters what is already on
+            // screen, it submits nothing, and a browser offering a saved
+            // address here would be answering a question nobody asked.
+            autoComplete="off"
             className="min-h-control w-full border-0 bg-transparent pr-3 text-base text-ink outline-none"
           />
         </div>
@@ -301,10 +395,17 @@ export function ItemPicker({ tenderId, search, list, chosen }: ItemPickerProps) 
         {/* Bounded, so a long edital cannot push the price card off the screen
             again: the list scrolls inside itself and the page does not grow
             with the number of items. A height, so no breakpoint — the rail
-            takes width, never height. */}
+            takes width, never height.
+
+            **`dvh` and not `vh`**, like every other viewport height in this
+            app (`min-h-dvh` here, in `radar-view.tsx` and in `not-found.tsx`).
+            On mobile Safari and Chrome `vh` is the *large* viewport — measured
+            with the URL bar retracted — so with the bar showing, 60vh is more
+            than 60% of what the reader can see, which is the defect this bound
+            exists to prevent, one notch quieter. */}
         <nav
           aria-label={page.itemsLabel}
-          className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto"
+          className="flex max-h-[60dvh] flex-col gap-1 overflow-y-auto"
         >
           {shown.map((item) => (
             <ItemChip key={item.number} {...{ tenderId, search, item, chosen }} />
@@ -333,7 +434,7 @@ function ItemChip({
       aria-current={current ? 'page' : undefined}
       className={cn(CHIP, current ? CHIP_CURRENT : CHIP_OTHER)}
     >
-      {itemLabel(item)}
+      <ChipLabel item={item} />
     </a>
   )
 }
