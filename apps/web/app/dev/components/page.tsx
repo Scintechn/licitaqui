@@ -400,7 +400,7 @@ function Surfaces() {
           label={
             <span className="flex items-center gap-1.5">
               <Icon name="locked" size={14} className="text-muted" />
-              Venceu em editais parecidos
+              Venceu em compras do mesmo item
             </span>
           }
           value={<LockedValue label="Disponível no plano Essencial" />}

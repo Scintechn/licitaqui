@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-const comparablesForItem = vi.hoisted(() => vi.fn())
+const catalogBandForItem = vi.hoisted(() => vi.fn(async () => null))
+const catalogEvidenceForItem = vi.hoisted(() => vi.fn(async () => null))
 const rateLimitRequest = vi.hoisted(() => vi.fn(async () => ({ ok: true })))
 
-vi.mock('@/lib/radar/comparables', () => ({ comparablesForItem }))
+vi.mock('@/lib/radar/catalog-band', () => ({ catalogBandForItem, catalogEvidenceForItem }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimitRequest }))
 /**
  * `plan_limits`, as a table rather than as a stub of `hasPriceBand` (F5).
@@ -49,25 +50,50 @@ function call(id = ID, query = '?item=1') {
 }
 
 /**
- * Identical prices from *different* editais: enough to clear the gate, tight
- * enough to pass it.
+ * **The gate moved, so the fixtures moved with it** (B35).
  *
- * The distinct `tenderId` matters. The first version of this helper gave every
- * comparable the same (absent) one, and once the gate started counting editais
- * rather than rows it correctly read six rows as a single procurement and
- * refused the band — the fixture, not the code, was wrong.
+ * These tests used to hand the route comparables and let it compute a band,
+ * which meant every one of them also exercised `priceBand`'s thresholds. The
+ * band is computed by the worker and stored now, so the route's job is the
+ * part these tests were always about: the **plan gate** — ready vs locked,
+ * what a non-subscriber may see, and that the computation never leaks.
+ *
+ * `MIN_SAMPLE` and `MAX_SPREAD` are therefore not asserted here any more. They
+ * are the worker's, pinned by its own conformance fixtures, and
+ * `catalog-band.db.test.ts` pins that a refusal never reaches this route as a
+ * band. Keeping them here would have meant a fixture that could not fail.
  */
-function priced(count: number, value = 100) {
-  return Array.from({ length: count }, (_unused, index) => ({
-    unitAwardedValue: value,
-    awardedOn: new Date(),
-    tenderId: `9900000000000${index}-1-000001/2026`,
-  }))
+function banded(sampleSize: number, value = 100) {
+  return {
+    band: { low: value, median: value, high: value, sampleSize },
+    code: 123456,
+    windowEnd: '2026-10-01',
+    bandVersion: 'price-band-v1:test',
+  }
+}
+
+/**
+ * The evidence rung, as `catalogEvidenceForItem` returns it: the full count
+ * plus at most `MAX_SAMPLES_SHOWN` newest rows. The cap is applied in SQL
+ * there, so a fixture that returned more than four would be testing a payload
+ * the database cannot produce.
+ */
+function seen(editais: number, value = 100, descriptions: (string | null)[] = []) {
+  const shown = Math.min(editais, 4)
+  return {
+    editais,
+    samples: Array.from({ length: shown }, (_unused, index) => ({
+      tenderId: `9900000000000${index}`,
+      value,
+      description: descriptions[index] ?? null,
+    })),
+  }
 }
 
 describe('GET /api/tenders/:id/band', () => {
   it('answers ready with a band when the evidence clears the gate', async () => {
-    comparablesForItem.mockResolvedValueOnce(priced(6))
+    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
     const body = await (await call()).json()
 
     expect(body.state).toBe('ready')
@@ -80,7 +106,8 @@ describe('GET /api/tenders/:id/band', () => {
     // the gate. A 404 or an error state here would make the client treat the
     // ordinary outcome as a failure and retry it, and would push the screen
     // into an error card for an item that is simply new.
-    comparablesForItem.mockResolvedValueOnce(priced(2))
+    catalogBandForItem.mockResolvedValueOnce(null)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(2) as never)
     const response = await call()
     const body = await response.json()
 
@@ -95,7 +122,8 @@ describe('GET /api/tenders/:id/band', () => {
     // Collapsing them would tell a visitor the data is missing when the truth
     // is that the feature is sold, which is the inverse of E9's own complaint
     // that "a paying subscriber sees exactly what an anonymous visitor sees".
-    comparablesForItem.mockResolvedValueOnce(priced(6))
+    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
     planOf.mockReturnValueOnce('basico')
     const response = await call()
     const body = await response.json()
@@ -114,7 +142,8 @@ describe('GET /api/tenders/:id/band', () => {
     // it". A visitor would meet a paywall over nothing, pay, and find "ainda
     // sem dados de vencedores" behind it.
     return (async () => {
-      comparablesForItem.mockResolvedValueOnce(priced(2))
+      catalogBandForItem.mockResolvedValueOnce(null)
+      catalogEvidenceForItem.mockResolvedValueOnce(seen(2) as never)
       planOf.mockReturnValueOnce('basico')
       const body = await (await call()).json()
 
@@ -144,7 +173,8 @@ describe('GET /api/tenders/:id/band', () => {
     // what Essencial buys. No median, no quartile, no sampleSize, no
     // preço-alvo. A visitor may see that six editais closed and at what — the
     // public record — and may not see the number drawn through them.
-    comparablesForItem.mockResolvedValueOnce(priced(6))
+    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
 
@@ -169,13 +199,16 @@ describe('GET /api/tenders/:id/band', () => {
     // This fixture is the verified case — five editais, the oldest also the
     // cheapest — where `samples` plus a min/max returned the real low, median
     // and high to the cent.
-    comparablesForItem.mockResolvedValueOnce([
-      { unitAwardedValue: 100, awardedOn: new Date('2026-01-01'), tenderId: 'a-1-000001/2026' },
-      { unitAwardedValue: 180, awardedOn: new Date('2026-09-01'), tenderId: 'b-1-000001/2026' },
-      { unitAwardedValue: 190, awardedOn: new Date('2026-08-01'), tenderId: 'c-1-000001/2026' },
-      { unitAwardedValue: 200, awardedOn: new Date('2026-07-01'), tenderId: 'd-1-000001/2026' },
-      { unitAwardedValue: 210, awardedOn: new Date('2026-06-01'), tenderId: 'e-1-000001/2026' },
-    ])
+    catalogBandForItem.mockResolvedValueOnce(banded(5, 190) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce({
+      editais: 5,
+      samples: [
+        { tenderId: 'b', value: 180, description: null },
+        { tenderId: 'c', value: 190, description: null },
+        { tenderId: 'd', value: 200, description: null },
+        { tenderId: 'e', value: 210, description: null },
+      ],
+    } as never)
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
     const wire = JSON.stringify(body)
@@ -194,13 +227,14 @@ describe('GET /api/tenders/:id/band', () => {
     // matched the right product, and at the top rung the spread gate has not
     // been shown to them either — so the descriptions are the one thing they
     // can judge, and they carry no price with them.
-    comparablesForItem.mockResolvedValueOnce(
-      [0, 1, 2, 3, 4, 5].map((i) => ({
-        unitAwardedValue: 100,
-        awardedOn: new Date(`2026-0${i + 1}-01`),
-        tenderId: `9900000000000${i}-1-000001/2026`,
-        description: i % 2 === 1 ? 'CANETA ESFEROGRAFICA AZUL' : 'CANETA ESFEROGRAF. AZUL CX 50',
-      })),
+    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(
+      seen(6, 100, [
+        'CANETA ESFEROGRAFICA AZUL',
+        'CANETA ESFEROGRAF. AZUL CX 50',
+        'CANETA ESFEROGRAFICA AZUL',
+        'CANETA ESFEROGRAF. AZUL CX 50',
+      ]) as never,
     )
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
@@ -221,26 +255,29 @@ describe('GET /api/tenders/:id/band', () => {
     // gate would show a visitor the matched results at four editais and nothing
     // at five: crossing the threshold that makes the data *better* would make
     // the screen emptier. Sci's ruling, 2026-10-01.
-    comparablesForItem.mockResolvedValueOnce(priced(6))
+    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
     planOf.mockReturnValueOnce('visitor')
     const body = await (await call()).json()
 
     expect(body.evidence.editais).toBe(6)
-    // `priced()` carries no descriptions, so there is nothing to list — the
+    // `seen()` carries no descriptions, so there is nothing to list — the
     // count is what survives. The description case is its own test below.
     expect(body.evidence.matched).toEqual([])
   })
 
   it.each(['visitor', 'basico'])('locks %s when a band exists', async (plan) => {
-    comparablesForItem.mockClear()
-    comparablesForItem.mockResolvedValueOnce(priced(6))
+    catalogBandForItem.mockClear()
+    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
     planOf.mockReturnValueOnce(plan)
     expect((await (await call()).json()).state).toBe('locked')
   })
 
   it.each(['promocional', 'essencial', 'pro'])('serves %s', async (plan) => {
-    comparablesForItem.mockClear()
-    comparablesForItem.mockResolvedValueOnce(priced(6))
+    catalogBandForItem.mockClear()
+    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
     planOf.mockReturnValueOnce(plan)
     // `promocional` is included because 0002 gives founders "same entitlements
     // as Essencial" — the whole of what they are buying on 08/10.
@@ -253,21 +290,23 @@ describe('GET /api/tenders/:id/band', () => {
     const response = await call('not-a-tender')
     expect(response.status).toBe(400)
     expect((await response.json()).fields.id).toBe('tenderIdInvalid')
-    expect(comparablesForItem).not.toHaveBeenCalled()
+    expect(catalogBandForItem).not.toHaveBeenCalled()
   })
 
   it.each(['?item=0', '?item=-1', '?item=abc', ''])('refuses item %s', async (query) => {
-    comparablesForItem.mockClear()
+    catalogBandForItem.mockClear()
     const response = await call(ID, query)
     expect(response.status).toBe(400)
     expect((await response.json()).fields.item).toBe('itemInvalid')
     // Never reaches the database: an unparseable item would otherwise become
     // `NaN` in the query and scan for nothing at the cost of a full join.
-    expect(comparablesForItem).not.toHaveBeenCalled()
+    expect(catalogBandForItem).not.toHaveBeenCalled()
   })
 
   it('does not leak the driver error when the read fails', async () => {
-    comparablesForItem.mockRejectedValueOnce(Object.assign(new Error('relation x'), { code: '42P01' }))
+    catalogBandForItem.mockRejectedValueOnce(
+      Object.assign(new Error('relation x'), { code: '42P01' }) as never,
+    )
     const response = await call()
     const body = await response.json()
 
@@ -285,7 +324,8 @@ describe('GET /api/tenders/:id/band', () => {
   })
 
   it('never caches: a band changes as awards land', async () => {
-    comparablesForItem.mockResolvedValueOnce(priced(6))
+    catalogBandForItem.mockResolvedValueOnce(banded(6) as never)
+    catalogEvidenceForItem.mockResolvedValueOnce(seen(6) as never)
     const response = await call()
     expect(response.headers.get('cache-control')).toContain('no-store')
   })

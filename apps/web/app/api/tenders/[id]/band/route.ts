@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server'
 import { planOf, readViewer } from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { db } from '@/lib/db'
-import { comparablesForItem } from '@/lib/radar/comparables'
+import { catalogBandForItem, catalogEvidenceForItem } from '@/lib/radar/catalog-band'
 import type { BandResponse } from '@/lib/radar/contract'
-import { priceBand, priceEvidence, withoutPrices } from '@/lib/radar/price-band'
+import { withoutPrices } from '@/lib/radar/price-band'
 import { hasPriceBand } from '@/lib/radar/quota'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
@@ -14,11 +14,12 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  * ## Why this is its own route
  *
  * `GET /api/tenders/:id` is the Opportunity screen's read, and the price
- * screen is not the only caller. Folding the band into it would make every
- * opportunity view pay for a trigram join across `tender_items` — a scan today,
- * since no `gin (description gin_trgm_ops)` index exists yet — to compute a
- * number that screen never shows. One item, one request, only when the price
- * block is open.
+ * screen is not the only caller. The original reason was cost — folding the
+ * band in made every opportunity view pay for a trigram join to compute a
+ * number that screen never shows — and **since B35 that reason is gone**: both
+ * rungs are primary-key reads now. What remains is shape: the band is *per
+ * item*, the Opportunity read is *per tender*, and a tender carries hundreds of
+ * items. One item, one request, only when the price block is open.
  *
  * ## `band: null` is the answer, not an error
  *
@@ -96,17 +97,24 @@ export async function GET(
     // nothing, pay, and find "ainda sem dados de vencedores" behind it — the
     // exact sentence-that-is-not-true this card exists to stop.
     //
-    // The cost is the trigram query for unentitled callers. That is the price
-    // of the claim being true, and it is why the rate limit below the gate
-    // matters more than it did.
-    // One read, both rungs. E22: the comparables that are not enough for a
-    // band are still the honest answer for ~10× as many items — measured
-    // 2026-10-01, 11.17% of open items have a past winner of the same product
-    // and 0.67% have a band — and they cost nothing extra here, because the
-    // query that found them has already run.
-    const comparables = await comparablesForItem(id, item, executor)
-    const band = priceBand(comparables)
-    const evidence = priceEvidence(comparables)
+    // The cost used to be a trigram query for unentitled callers. Since B35 it
+    // is two primary-key reads, so the claim stays true and is now cheap —
+    // which is the one part of this reasoning the new source improved.
+    // **Two reads, two rungs, both by primary key** (B35).
+    //
+    // They were one read when both came from the same trigram join. They are
+    // separate now because the band is *stored per catalogue code* while the
+    // evidence is *the rows it was computed from*, and the rung exists
+    // precisely where the band does not: 947 of 1 028 codes are refused for
+    // `spread_too_wide` — the purchases exist and disagree with each other —
+    // and a reader should see what we found on every one of those items.
+    //
+    // Neither statement uses `similarity()` and neither calls an API, which is
+    // B35's acceptance criterion. `comparablesForItem` is off this path; it is
+    // deleted a release later rather than here, so one PR changes one thing.
+    const reading = await catalogBandForItem(id, item, executor)
+    const band = reading === null ? null : reading.band
+    const evidence = await catalogEvidenceForItem(id, item, executor)
 
     if (band !== null && !entitled) {
       return NextResponse.json(
@@ -130,8 +138,9 @@ export async function GET(
 
     // No `entitled` on the wire: the screen reads entitlement on the server
     // before it renders (`readPriceBandEntitlement`), so carrying it here
-    // would be a second source of truth for the same question — and the slower
-    // of the two, since this answer is 412 ms behind a trigram join. The gate
+    // would be a second source of truth for the same question. It was also the
+    // slower of the two when this answer sat behind a trigram join; B35 made it
+    // two index reads, so only the one-source-of-truth reason is left. The gate
     // below still applies: an unentitled caller never receives a band.
     return NextResponse.json(
       { state: 'ready', band: entitled ? band : null, evidence },

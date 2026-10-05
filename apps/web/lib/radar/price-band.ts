@@ -60,7 +60,9 @@ export type PriceBand = {
   /**
    * How many **distinct editais** the band rests on — not how many rows.
    *
-   * The copy renders this as *"N editais encerrados"*, so it has to be that.
+   * The copy renders this as a count of **distinct procurements** — *"N
+   * compras públicas"* since B35, *"N editais encerrados"* before it — so it
+   * has to be that, and the rename did not change the arithmetic.
    * `awards` is keyed `(tender_id, item_number, sequence)` and one item
    * routinely carries several rows — lot splits, the ME/EPP quota, a
    * re-homologation — so 126 items in the corpus have more than one. Counting
@@ -366,7 +368,7 @@ export function priceBand(comparables: readonly Comparable[], now = new Date()):
   // Concretely: a registro de preços split into 40 lots at R$ 1,20, beside four
   // editais at R$ 2,40–2,60. Five editais clears the floor; p25, median and p75
   // are all 1,20; spread is zero; and the screen shows "R$ 1,20 – R$ 1,20 ·
-  // 5 editais encerrados" while four of the five paid roughly double.
+  // 5 compras públicas" while four of the five paid roughly double.
   //
   // The median of each edital's own rows, because one edital's lots are
   // repeated measurements of one decision — their middle is that decision.
