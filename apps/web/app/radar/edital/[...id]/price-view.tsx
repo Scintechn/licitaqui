@@ -14,7 +14,7 @@ import { cn } from '@/lib/cn'
 import { PLAN_HREF } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
 import { ActionBar } from '@/components/action-bar'
-import { priceHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
+import { tenderHref, type RadarSearch } from '@/lib/radar/client'
 import { compraIdLabel } from '@/lib/radar/compra'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
@@ -22,6 +22,7 @@ import { moneyExact, moneyExactNonZero, trimObject } from '@/lib/radar/format'
 import { MIN_SAMPLE } from '@/lib/radar/price-band'
 import type { LockedEvidence, PriceBand, PriceEvidence } from '@/lib/radar/price-band'
 import { CopyCompra } from './copy-compra'
+import { ItemPicker } from './item-picker'
 import { MarginCeiling } from './margin-ceiling'
 import { TenderStatusBanner } from '../../tender-status-banner'
 
@@ -511,29 +512,19 @@ export function PriceView({
               )}
             </div>
 
+            {/* D34. 251 items on `77817476000144-1-000034/2026`, 91 on
+                FIOCRUZ's: the chips used to be one flat column, so the two
+                rows worth reading were somewhere below the card they lead to.
+                `ItemPicker` collapses it, counts it and lets the reader search
+                inside it — and carries the ordering hook D33 will fill.
+                Unchanged for a short list, which is still just a list. */}
             {tender.items.length > 1 ? (
-              <nav aria-label={page.itemsLabel} className="flex flex-col gap-1">
-                {tender.items.map((other) => (
-                  <a
-                    key={other.number}
-                    href={priceHref(tenderId, search, other.number)}
-                    aria-current={other.number === chosen.number ? 'page' : undefined}
-                    className={cn(
-                      'flex min-h-touch items-center rounded-control border px-3 text-body no-underline',
-                      other.number === chosen.number
-                        ? 'border-blue-line bg-blue-soft text-blue'
-                        : 'border-line-strong bg-surface text-ink',
-                    )}
-                  >
-                    {other.description
-                      ? format(page.item, {
-                          numero: other.number,
-                          descricao: trimObject(other.description, 70),
-                        })
-                      : format(copy.card.items, { count: other.number })}
-                  </a>
-                ))}
-              </nav>
+              <ItemPicker
+                tenderId={tenderId}
+                search={search}
+                list={tender.items}
+                chosen={chosen}
+              />
             ) : null}
 
             <Card className="flex flex-col">

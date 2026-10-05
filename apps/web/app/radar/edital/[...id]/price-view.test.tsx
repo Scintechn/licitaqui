@@ -311,6 +311,33 @@ describe('PriceView', () => {
     expect(html).toContain('aria-current="page"')
   })
 
+  /**
+   * **D34, and it is a reachability test rather than a second copy of
+   * `item-picker.test.tsx`.** §4b's recurring defect is a test that exercises
+   * the unit and never asks whether anything can reach it — a menu whose own
+   * test rendered the component while nothing rendered the trigger. The picker
+   * has its own file; what this asserts is that *this screen* draws it on a
+   * long edital, and still draws the plain list on a short one.
+   */
+  it('collapses the item list once the edital is long enough to scroll', () => {
+    const long = {
+      ...TENDER,
+      items: Array.from({ length: 31 }, (_, index) => ({
+        ...ITEMS[0],
+        number: index + 1,
+        description: `Item de teste ${index + 1}`,
+      })),
+    } as unknown as TenderDetail
+    const out = render({ tender: long })
+    // The disclosure, the count, and the field that makes 251 items navigable.
+    expect(out).toContain('<summary')
+    expect(out).toContain(copy.opportunity.items.showMore)
+    expect(out).toContain('de 31 itens')
+    expect(out).toContain('type="search"')
+    // Two items: no disclosure, no search box, the list this screen had.
+    expect(html).not.toContain('type="search"')
+  })
+
   it('says so when the items have not been synced yet', () => {
     const empty = render({ tender: { ...TENDER, items: [] } as unknown as TenderDetail })
     expect(empty).toContain(page.noItems)
