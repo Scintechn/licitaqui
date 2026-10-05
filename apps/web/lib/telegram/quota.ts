@@ -20,13 +20,19 @@ import { db, type Executor } from '@/lib/db'
  *
  * ## Absence
  *
- * `plan_limits` today has `alert`, `keywords` and `states` rows for **basico**
- * and nothing else, because §10 gives the paid plans *daily* alerts, which are
- * the `daily_alerts` job and not this feature. A missing row therefore means
- * "§10 grants this plan more, and nobody has written down how much" — not
- * zero. `lib/radar/quota.ts` reads a missing row as zero and is right to, for a
- * feature that costs money; reading it as zero here would take the weekly
- * digest away from every founder on `promocional` during opening week.
+ * **Only `states` is still basico-only.** This paragraph used to say all three
+ * features were, and it was already false when it was written: `0002_plan_limits`
+ * gives `keywords` to all four plans (1 to `basico`, 10 to the rest), and
+ * `0006_alert_limits` gave `alert` a row for every paid plan. Corrected
+ * 2026-10-05 — it is the docblock anyone debugging `keyword-limits.db.test.ts`
+ * reads first, and it contradicted the table that test asserts against.
+ *
+ * So a missing row still means "§10 grants this plan more, and nobody has
+ * written down how much" — not zero — and in practice that is now only
+ * `states` on a paid plan. `lib/radar/quota.ts` reads a missing row as zero and
+ * is right to, for a feature that costs money; reading it as zero here would
+ * take the weekly digest away from every founder on `promocional` during
+ * opening week.
  *
  * The worker reaches the same conclusion in `telegram_alerts.alert_limit`, and
  * logs when it does, so the missing rows stay visible until a migration adds

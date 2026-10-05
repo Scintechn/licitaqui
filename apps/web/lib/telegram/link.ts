@@ -277,12 +277,17 @@ export async function saveAlert(
    * `value` is written alongside `keywords` and is **not** the source of
    * truth any more.
    *
-   * `0010_alert_keywords` deliberately kept the column: the worker reads it
-   * until its half of E18 deploys, and a write that stopped filling it would
-   * silence every digest in the window between the two deploys. The first
-   * keyword is the best single answer for a reader that can only take one.
+   * `0010_alert_keywords` deliberately kept the column so the worker could
+   * keep reading it across the two deploys. **That window closed**: the
+   * worker's half shipped in #165 and as of 2026-10-05 nothing anywhere reads
+   * `value` — grep finds only comments. So every save now writes a column no
+   * reader consults, which is a dead column and not a transition any more.
    *
-   * Dropping `value` is a later card, once nothing reads it.
+   * Dropping it is card **E24**, with `kind` (also read by nothing) and the
+   * stale note on `telegram_alerts.py`'s `Recipient.keywords`. It needs a
+   * migration, so it is its own PR per CLAUDE.md — the write stays until that
+   * lands, because a write removed before the column is would be the same
+   * mid-deploy gap in the other direction.
    */
   const first = keywords[0] ?? null
   // `active` is deliberately untouched. Saving a keyword is not the same
