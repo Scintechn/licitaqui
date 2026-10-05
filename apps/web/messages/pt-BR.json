@@ -1164,7 +1164,6 @@
       "estimated": "Edital paga (estimado)",
       "noEstimate": "não informado",
       "won": "Venceu em compras do mesmo item",
-      "market": "Preço de mercado + frete",
       "maxTitle": "Seu preço máximo de compra",
       "maxNote": "Calculado com a margem que você escolher. Não inclui imposto nem frete.",
       "lockedValue": "valor disponível no plano Essencial",

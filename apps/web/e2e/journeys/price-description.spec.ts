@@ -117,3 +117,43 @@ test.describe('D38 · the whole description is reachable', () => {
     await expect(page.getByText(new RegExp(TAIL)).first()).toBeHidden()
   })
 })
+
+/**
+ * D48 — the item heading must not push the page sideways.
+ *
+ * Found by D34's overflow journey against code **D38 had just shipped**: the
+ * heading's `LongText` call site was given no `className`, so it carried
+ * neither `min-w-0` nor `break-words`, while `EvidenceRow`'s site carried both.
+ * `trimObject` caps the *length*, not the token count, and PNCP descriptions
+ * routinely contain long unspaced codes — measured in a browser, a
+ * 70-character unbroken token rendered **561px inside a 390px viewport**, and
+ * nothing on this page sets `overflow-x: hidden`.
+ *
+ * This assertion is here and not in vitest because `environment: 'node'` has
+ * no boxes: it can prove the class string is in the markup and nothing about
+ * whether a box overflowed (§4c). The unit test pins the mechanism; this pins
+ * the result.
+ */
+test.describe('D48 · a long unbroken code does not widen the page', () => {
+  const CODE = 'CESSAODEDIREITOSDEUSODESOFTWAREDEGESTAOINTEGRADAREF20260110XYZ9876543'
+
+  test('the item heading wraps instead of overflowing at 390px', async ({ page }) => {
+    const edital = tender({
+      id: TENDER_ID,
+      object: `CESSÃO DE DIREITO DE USO DE SOFTWARE, PROCESSO ${processo(81)}`,
+      items: [{ ...item(1), description: CODE }],
+      itemCount: 1,
+    })
+    await installRadarApi(page, { companies: [{ company: MARTA.company, tenders: [edital] }] })
+    await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible`)
+
+    // The code is short enough that `LongText` takes its **short branch** —
+    // no disclosure — which is exactly the branch that was missing the class.
+    await expect(page.getByText(new RegExp(CODE.slice(0, 30)))).toBeVisible()
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow, 'the page scrolls sideways').toBeLessThanOrEqual(0)
+  })
+})
