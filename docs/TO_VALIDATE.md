@@ -23,6 +23,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 8 | Spec still calls the Telegram bot temporary | nothing | low |
 | 9 | Knowledge base and repo disagree on who owns legal copy | future edits | low |
 | 10 | What separates a triagem from an análise completa — depth or breadth | **C2**, and a live sentence on `/` | **high** |
+| 11 | Whether a **closed** tender is ever re-read for its value, and the attempt bound | **B38** | medium |
 
 ---
 
@@ -443,3 +444,32 @@ that is what the ruling literally said.
 
 **Blocks**: the render half of E22, which is where a reader would see either
 answer. Nothing user-facing has shipped.
+---
+
+## 11. Whether a closed tender is ever re-read for its value (2026-10-05)
+
+**What was found.** `refresh_tender_value` runs ~15 408 jobs/day — about half of
+all job volume — and settles **148** of them. A tender valued from the item sum
+is marked `items` and stays eligible for re-read **forever**, because the sum
+over-counts on ~5 % of tenders. Measured on 2026-10-05: **52 113 of 54 513
+tenders (95.6 %)** are permanently eligible, **22 090 of them already closed**,
+another 5 055 with no deadline. Conversion is 1.6 % per pass and falling
+(334/day → 73/day). `due_tenders`' docstring says the backlog "drains in well
+under a day"; at 150/day against 52 113 it needs ~347 days.
+
+**Why it is here and not simply fixed.** Both halves of the fix are product
+rules, not engineering:
+
+1. **Is a closed tender ever re-read?** Its estimated value can no longer inform
+   a bid, but it still appears on historical screens, so "never again" may be
+   wrong. If it should be re-read, on what trigger?
+2. **What is the attempt bound for an `items` row?** The refinement it chases is
+   real (~5 % of tenders are over-counted) but it currently has no stopping
+   condition at all.
+
+**What it would take to close.** Sci answers both; B38 then changes `DUE_SQL`
+and `PARK_SQL` in `worker/licitaqui/tender_value.py` only.
+
+**Not a cost item.** It would reduce compute as a side effect — see
+`docs/COST.md` §6 — but it should be judged on whether the behaviour is right.
+
