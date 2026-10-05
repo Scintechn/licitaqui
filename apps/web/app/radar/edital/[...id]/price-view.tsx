@@ -120,6 +120,14 @@ export type PriceViewProps = {
    */
   bandLocked?: boolean
   /**
+   * The band request has not answered yet (claim 2).
+   *
+   * Distinct from `bandLocked` and from `band === null`: both of those are
+   * verdicts, and this is the absence of one. The view draws nothing where the
+   * answer will go rather than guessing which verdict to show first.
+   */
+  bandPending?: boolean
+  /**
    * What was found when it was not enough for a band (E22).
    *
    * **The reason the third state is no longer one state.** `priceBand` returns
@@ -334,8 +342,18 @@ function EvidenceRow({ sample }: { sample: PriceEvidence['samples'][number] }) {
                     it: a drag inside a `<button>` selects nothing, and hand
                     selection is the fallback wherever the Clipboard API is not
                     available. `CopyId` made the same call for the same reason. */}
+                {/* **D43, closed.** The number rendered with no label at all
+                    and its accessible name was the bare digits. The existing
+                    `radar.opportunity.copyIdContext` says *"o Id PNCP"*, which
+                    would be **false** here — this is a Compras.gov.br purchase
+                    key, not a PNCP control number, and a test asserts "PNCP"
+                    never appears on this screen. Sci approved both strings on
+                    2026-10-05. The visible word is short because it sits in a
+                    dense row; the screen-reader name is the full sentence. */}
+                <span className="text-caption text-muted">{page.compraLabel}</span>
                 <span
                   data-testid="compra-id"
+                  aria-label={`${page.compraContext}: ${compra}`}
                   className="font-mono text-caption tabular-nums text-muted"
                 >
                   {compra}
@@ -379,6 +397,7 @@ export function PriceView({
   search,
   band = null,
   bandLocked = false,
+  bandPending = false,
   evidence = null,
   showPlanCta = true,
   onRetry,
@@ -518,6 +537,14 @@ export function PriceView({
    */
   const areaFramed = fromAwards || isService
   /**
+   * Offer the plan only where the thing it sells can arrive (claim 4).
+   *
+   * `showPlanCta` is `!entitled` and has never depended on the item. On a
+   * service that is a **definite** mismatch, not a probable one, so the offer
+   * is withheld there and the bar keeps its "Edital" slot instead.
+   */
+  const offerPlan = showPlanCta && !isService
+  /**
    * **A service can never be `locked`, so it must never be drawn locked.**
    *
    * `locked` means *a number exists and this plan does not include it*, and
@@ -548,7 +575,22 @@ export function PriceView({
    * decision and Sci's: carded on D40 and in `docs/CLAIMS.md`, not changed
    * here.
    */
-  const lockedBand = bandLocked && !isService
+  /**
+   * **Claim 2, closed by Sci on 2026-10-05: no locked bar on first paint.**
+   *
+   * The note above argued the default was a decision with a number attached,
+   * and the number decided it: **4 131 of 381 131** open materials can ever
+   * have a band — **1.08%** — so ~99 readers in 100 were told a number was
+   * being withheld that would never arrive, for the length of a trigram query.
+   *
+   * `bandPending` is a third input rather than `bandLocked = false`, because
+   * those are not the same claim: false would fall through to *"ainda sem
+   * dados de vencedores"*, which is the other wrong answer the original
+   * docstring rejected — telling the reader something false **first**. While
+   * the request is in flight the honest render is **neither**: no lock, no
+   * verdict, nothing where the answer will go.
+   */
+  const lockedBand = bandLocked && !isService && !bandPending
   /**
    * **The band the screen may actually draw** (D40, from the review of this
    * diff).
@@ -597,9 +639,16 @@ export function PriceView({
         <TenderStatusBanner tender={tender} />
         {/* D40: suppressed where no band can exist — `areaFramed`'s note says
             why. Both of this sentence's halves are false there. */}
-        {areaFramed ? null : (
-          <p className="m-0 text-body leading-relaxed text-muted">{page.intro}</p>
-        )}
+        {/* **Claim 1, closed: the rung has its own opening sentence now.**
+            D40 suppressed `intro` here and put nothing in its place, so the
+            screen opened with no introduction at all — true, and silent.
+            `fallbackIntro` is a **new key** rather than a reworded `intro`,
+            deliberately: `messages.test.ts` pins `intro` equal to
+            `foundersPage.founderValue.benefits[1].body`, so rewording it would
+            have edited the live `/fundadores`. Approved by Sci 2026-10-05. */}
+        <p className="m-0 text-body leading-relaxed text-muted">
+          {areaFramed ? page.fallbackIntro : page.intro}
+        </p>
 
         {chosen === null ? (
           <StateCard kind="empty" title={page.itemsLabel} description={page.noItems} />
@@ -697,8 +746,13 @@ export function PriceView({
                   under it. */}
             </Card>
 
-            {/* D40: `lockedBand`, not `bandLocked` — see its note. */}
-            {lockedBand ? (
+            {/* D40: `lockedBand`, not `bandLocked` — see its note.
+                Claim 2: `bandPending` short-circuits to **nothing**, because
+                while the request is in flight neither verdict is true yet and
+                both wrong guesses mislead — a lock promises a number that
+                usually never arrives (98.9% of materials), and *"ainda sem
+                dados"* denies one that sometimes does. */}
+            {bandPending ? null : lockedBand ? (
               /* The honest use of a locked value: a number does exist for this
                  item and this plan does not include it. */
               <Card accent className="flex flex-col gap-2.5">
@@ -883,7 +937,17 @@ export function PriceView({
           subscriber's only way back is the AppBar's "Voltar", and on this
           screen that goes to the triagem rather than to the edital. Carded,
           not fixed here. */}
-      {showPlanCta ? (
+      {/* **Claim 4, closed by Sci on 2026-10-05.**
+          *"Ver plano Essencial"* was offered on items where the band it sells
+          **can never exist** — any service, since `catalog_prices` holds no
+          `kind='S'` row and the fallback refuses to compute one. The claim
+          recorded why it was left: hiding the bar also hid the only "Edital"
+          link back, because `ActionBar` requires a primary action.
+          So the bar now always renders, and **"Edital" is promoted to primary**
+          where the plan offer is not honest. That also closes a gap nobody had
+          carded: an **entitled** reader had `showPlanCta === false` and
+          therefore no bar at all, so they had no link to the edital either. */}
+      {offerPlan ? (
         <ActionBar
           primary={{ href: PLAN_HREF, label: page.cta }}
           // **Not `backHref`.** On this screen that is `screeningHref` — the
@@ -892,7 +956,11 @@ export function PriceView({
           // that names a destination has to go to it.
           secondary={{ href: tenderHref(tenderId, search), label: messages.common.tender }}
         />
-      ) : null}
+      ) : (
+        <ActionBar
+          primary={{ href: tenderHref(tenderId, search), label: messages.common.tender }}
+        />
+      )}
     </div>
   )
 }

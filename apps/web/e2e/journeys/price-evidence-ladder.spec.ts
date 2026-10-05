@@ -100,7 +100,7 @@ test.describe('E22 · the evidence ladder reaches the reader', () => {
     await expect(page.getByText(/PERFURADOR 2 FUROS/)).toBeVisible()
     // The sentence that explains the missing faixa without promising one.
     await expect(
-      page.getByText(/Mostramos a faixa quando encontramos pelo menos 5 editais/),
+      page.getByText(/A faixa aparece quando encontramos ao menos 5 compras públicas/),
     ).toBeVisible()
     // And the sentence it replaced is gone.
     await expect(page.getByText('Ainda sem dados de vencedores')).toHaveCount(0)

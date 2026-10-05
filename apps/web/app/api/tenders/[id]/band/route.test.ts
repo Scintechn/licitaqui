@@ -150,7 +150,7 @@ describe('GET /api/tenders/:id/band', () => {
     expect(body.band).toBeUndefined()
   })
 
-  it('says ready-empty, not locked, when there is no number to lock', () => {
+  it('locks the prices, and still never paywalls an empty set', () => {
     // **This assertion replaced one that required the defect.** The first
     // version returned `locked` before computing anything and the test pinned
     // that with `expect(comparablesForItem).not.toHaveBeenCalled()` — cheaper,
@@ -159,13 +159,20 @@ describe('GET /api/tenders/:id/band', () => {
     // it". A visitor would meet a paywall over nothing, pay, and find "ainda
     // sem dados de vencedores" behind it.
     return (async () => {
+      // **Sci, 2026-10-05: the prices are the paid thing.** Two comparables
+      // with prices IS something to lock, so this case is now `locked` — the
+      // reader gets the count and the descriptions and not the money. The
+      // property the test was written to protect is unchanged and is asserted
+      // below: a paywall must never be shown over an **empty** set.
       catalogBandForItem.mockResolvedValueOnce(null)
       catalogEvidenceForItem.mockResolvedValueOnce(seen(2))
       planOf.mockReturnValueOnce('basico')
       const body = await (await call()).json()
 
-      expect(body.state).toBe('ready')
-      expect(body.band).toBeNull()
+      expect(body.state).toBe('locked')
+      expect(body).not.toHaveProperty('band')
+      expect(body.evidence.editais).toBe(2)
+      expect(JSON.stringify(body)).not.toContain('100')
       // **No `entitled` on the wire.** It rode here briefly, and the screen
       // drove its plan CTA off it — which put entitlement 412 ms behind a
       // trigram join and made the CTA flicker on every item chip and never
@@ -423,7 +430,19 @@ describe('GET /api/tenders/:id/band — the awards fallback (D40)', () => {
     expect(body.band).toBeNull()
   })
 
-  it('gives an UNENTITLED caller the same rung, unnarrowed and still bandless', async () => {
+  it('gives an UNENTITLED caller the descriptions and withholds the prices', async () => {
+    // **Reversed by Sci on 2026-10-05**, one day after D40 shipped it. This
+    // test asserted the opposite — that the fallback rung went out unnarrowed,
+    // because `withoutPrices` existed to stop four prices rebuilding a band
+    // and there is no band here to rebuild.
+    //
+    //   > "The description, ok, all plan can have access. But the price (Won)
+    //   > must be hide."
+    //
+    // So the prices are the paid thing in their own right, not only as band
+    // inputs. The descriptions stay free, which is what lets a reader judge
+    // whether we matched the right product before paying — the argument that
+    // kept the rung visible at all.
     catalogBandForItem.mockResolvedValueOnce(null)
     catalogEvidenceForItem.mockResolvedValueOnce(null)
     fallbackEvidenceForItem.mockResolvedValueOnce(fallback(8))
@@ -431,12 +450,13 @@ describe('GET /api/tenders/:id/band — the awards fallback (D40)', () => {
 
     const body = await (await call()).json()
 
-    expect(body.state).toBe('ready')
-    expect(body.band).toBeNull()
-    // `withoutPrices` is the band's paywall. There is no band here, so there is
-    // nothing the four prices could rebuild and nothing to withhold.
-    expect(body.evidence.samples).toHaveLength(4)
-    expect(body.evidence).not.toHaveProperty('matched')
+    expect(body.state).toBe('locked')
+    expect(body).not.toHaveProperty('band')
+    expect(body.evidence.editais).toBe(8)
+    // The descriptions survive; `LockedEvidence` has no price field at all, so
+    // a leak here would be a compile error rather than this assertion.
+    expect(body.evidence.matched.length).toBeGreaterThan(0)
+    expect(body.evidence).not.toHaveProperty('samples')
   })
 
   it('is NOT consulted where a band exists, so the two corpora never mix', async () => {
