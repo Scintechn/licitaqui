@@ -473,3 +473,47 @@ and `PARK_SQL` in `worker/licitaqui/tender_value.py` only.
 **Not a cost item.** It would reduce compute as a side effect — see
 `docs/COST.md` §6 — but it should be judged on whether the behaviour is right.
 
+
+---
+
+## 12. What the cited purchase id is called, and whether `awards` still feeds the rungs (2026-10-05)
+
+**Raised by D37**, which put a citation on E22's thin rungs and then could not
+name it.
+
+**What shipped.** Each past result on a thin rung now prints the
+Compras.gov.br purchase it came from — a bare 17-digit identifier, selectable,
+with a *"Copiar"* control reusing `common.copy`. It is **not** a link: the
+reasons are measured and recorded on the D37 card and in `lib/radar/compra.ts`.
+
+**What is waiting on Sci — two sentences** (legal brief §5, so nothing was
+written in their place):
+
+1. A **visible label** naming the identifier. It must say *compra*, not
+   *edital*: since B35 the evidence rests on `id_compra`, a purchase record.
+2. The **screen-reader context** for the copy control. The one string already
+   approved for this job is `radar.opportunity.copyIdContext` — *"o Id PNCP"* —
+   and it is **false here**, so the accessible name is currently the digits
+   themselves and a test asserts *"PNCP"* never appears on this screen.
+
+This is the same drift as `CLAIMS.md`'s B35 row (the *"editais parecidos" / "editais encerrados"* row, due 17/10), where three live
+strings still say *editais* about a mechanism that now reads *compras* — and
+**D37 makes that drift visible rather than latent**: an unlabelled *purchase*
+identifier now sits directly under `radar.price.evidenceHelp`, which is one of
+the sentences that row names. No new claim was created, because no new
+Portuguese string was written, so that row needs no companion — but it is now
+something a reader can see on one screen rather than a wording mismatch only we
+knew about. Worth answering together; the card is **D43**.
+
+**And one older question this re-opens**, from
+`docs/catalogue-price-band-approach.md` §12 open question 4, which B35 left for
+Sci and which D37 is the first thing to actually need answered:
+
+> Whether `awards` keeps feeding the thin rungs alongside the catalogue, for the
+> PNCP edital citation D37 wants. Catalogue rows cite a *compra* instead.
+
+D37 answers it *for now* by citing the compra, which costs nothing and keeps the
+rung honest. The question Sci still owns is whether a **PNCP edital** citation is
+worth keeping the `awards` path alive for — it is the only source that can
+produce one, and the approach doc already recommends keeping the table because it
+"costs nothing to keep".

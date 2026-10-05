@@ -25,6 +25,20 @@ import { item, MARTA, processo, tender } from '../fixtures/world'
 
 const TENDER_ID = '51885242000140-1-000081/2026'
 
+/**
+ * **Compras.gov.br purchase keys, not PNCP control numbers.**
+ *
+ * `PriceSample.tenderId` has carried `catalog_prices.id_compra` since B35, and
+ * since D37 the screen *prints* it — so a fixture still in the old
+ * `…-1-000001/2026` shape would render no citation at all and every assertion
+ * below it would pass on a row that lost half its content.
+ *
+ * `929909 · 06 · 00107 · 2026`, from the one real price row the repo holds
+ * (`worker/tests/test_catalog_prices.py`'s `RAW_ROW`).
+ */
+const COMPRA_A = '92990906001072026'
+const COMPRA_B = '92990906001082026'
+
 /** The band answer for the item on screen, whatever item that turns out to be. */
 async function serveBand(page: Page, body: unknown): Promise<void> {
   // Registered after `installRadarApi`, so it wins: Playwright matches the
@@ -62,12 +76,12 @@ test.describe('E22 · the evidence ladder reaches the reader', () => {
         editais: 2,
         samples: [
           {
-            tenderId: '99000000000001-1-000001/2026',
+            tenderId: COMPRA_A,
             value: 204,
             description: 'PERFURADOR DE PAPEL 02 FUROS ACO FUNDIDO 100 FOLHAS',
           },
           {
-            tenderId: '99000000000002-1-000001/2026',
+            tenderId: COMPRA_B,
             value: 180.5,
             description: 'PERFURADOR 2 FUROS CAPACIDADE 100 FOLHAS',
           },
@@ -90,6 +104,242 @@ test.describe('E22 · the evidence ladder reaches the reader', () => {
     ).toBeVisible()
     // And the sentence it replaced is gone.
     await expect(page.getByText('Ainda sem dados de vencedores')).toHaveCount(0)
+  })
+
+  /**
+   * D37 — the half `environment: 'node'` cannot reach (§4c).
+   *
+   * `price-view.test.tsx` pins the *mechanism*: the identifier is in the
+   * markup, an unreadable one renders nothing, the breakpoint is a container
+   * query. None of that can fail on a click that does nothing, a clipboard that
+   * receives the wrong string, or a row drawn 264px too wide — there are no
+   * events and no boxes in that suite. These three tests are the result.
+   */
+  test('a reader can take the purchase id away with them', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await openPriceScreen(page)
+    await serveBand(page, {
+      state: 'ready',
+      band: null,
+      evidence: {
+        editais: 1,
+        samples: [
+          { tenderId: COMPRA_A, value: 204, description: 'PERFURADOR DE PAPEL 02 FUROS' },
+        ],
+      },
+    })
+    await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible`)
+
+    // **The citation is on screen**, which is the card's whole acceptance
+    // criterion: before D37 this value reached the component and was a React
+    // key and nothing else.
+    //
+    // By test id, not by text: the id is deliberately in the markup **twice** —
+    // once as the selectable number and once inside the button's accessible
+    // name, which is what distinguishes four otherwise identical "Copiar"
+    // controls. `getByText` is a strict-mode violation on that, and the first
+    // version of this test failed exactly there.
+    await expect(page.getByTestId('compra-id')).toHaveText(COMPRA_A)
+
+    /**
+     * **By accessible name, which is the assertion that matters.** Four of
+     * these render at once and the visible label on all four is just
+     * *"Copiar"*; what distinguishes them is the id in the button's accessible
+     * name, and that is a user-visible property no string assertion in
+     * `price-view.test.tsx` can confirm — it would pass on an `sr-only` span
+     * that the accessibility tree never joins to the button. Only a browser
+     * computes a name.
+     *
+     * (The `data-testid`s on this row are a deliberate exception to this
+     * suite's "select what a person sees" rule, and they are the only two in
+     * the app: the identifier is in the markup **twice** by design, so
+     * `getByText` is a strict-mode violation, and the layout wrapper below has
+     * no user-visible handle at all.)
+     */
+    const copy = page.getByRole('button', { name: new RegExp(`Copiar\\s+${COMPRA_A}`) })
+    await expect(copy).toBeVisible()
+    await copy.click()
+
+    /**
+     * **Polled, because the click does not wait for the write.** `onCopy` is
+     * `async` and React does not await it, so `click()` resolves while
+     * `navigator.clipboard.writeText` is still in flight — a bare `evaluate`
+     * straight after can read the clipboard as it was before. It passed every
+     * run here, which is exactly what makes it worth fixing rather than
+     * leaving: a flake that only appears in CI is a flake nobody can reproduce.
+     *
+     * Still read before looking for the "Copiado" swap: that state reverts on a
+     * 2 400 ms timer, so asserting the label first races its own timeout —
+     * `fundadores.spec.ts` learned that the same way.
+     */
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(COMPRA_A)
+
+    // And the reader was *shown* what they copied — asserted against the
+    // constant, not against the clipboard value, which would compare two things
+    // this test has already pinned to each other and could never fail.
+    await expect(page.getByTestId('compra-id')).toHaveText(COMPRA_A)
+  })
+
+  test('the id and its price stay in the column when the desktop rail appears', async ({
+    page,
+  }) => {
+    /**
+     * **D29's width, exactly.** At 1024px the shell puts a 264px rail in the
+     * layout flow and `main` takes 40px of gutter, so this row is drawn in
+     * 1024 − 264 − 40 = **720px** — the width at which a viewport breakpoint
+     * above 720 is wrong by up to 264px. The row gained an identifier and a
+     * control at D37, so this is the moment it could overflow.
+     */
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await openPriceScreen(page)
+    await serveBand(page, {
+      state: 'ready',
+      band: null,
+      evidence: {
+        editais: 2,
+        samples: [
+          {
+            tenderId: COMPRA_A,
+            value: 204,
+            description: 'PERFURADOR DE PAPEL 02 FUROS ACO FUNDIDO 100 FOLHAS CABO LONGO',
+          },
+          { tenderId: COMPRA_B, value: 180.5, description: 'PERFURADOR 2 FUROS 100 FOLHAS' },
+        ],
+      },
+    })
+    await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible`)
+
+    await expect(page.getByTestId('compra-id').first()).toHaveText(COMPRA_A)
+    await expect(page.getByText('R$ 204,00')).toBeVisible()
+
+    /**
+     * **Measured on the row, not on the page.** The defect this width exists to
+     * catch is the price being *pushed out of its row*, and because the
+     * description wraps (`min-w-0 break-words`) that need not move the page at
+     * all — a page-level check can stay green straight through the regression
+     * it was placed against. So both: the row does not overflow itself, and the
+     * price's right edge is inside the row's.
+     */
+    const rowOverflow = await page
+      .getByTestId('evidence-row-layout')
+      .first()
+      .evaluate((node) => node.scrollWidth - node.clientWidth)
+    expect(rowOverflow, 'the row overflowed its own box').toBeLessThanOrEqual(0)
+
+    const row = await page.getByTestId('evidence-row-layout').first().boundingBox()
+    const price = await page.getByText('R$ 204,00').first().boundingBox()
+    expect(row).not.toBeNull()
+    expect(price).not.toBeNull()
+    expect(price!.x + price!.width, 'the price escaped the row').toBeLessThanOrEqual(
+      row!.x + row!.width + 1,
+    )
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    /**
+     * **And the breakpoint actually fired.** Without this the test is
+     * vacuous in the quietest way: if Tailwind emitted no rule for
+     * `@min-[520px]:flex-row` the row would stay a column at every width,
+     * nothing would overflow, and both layout tests here would still pass.
+     * `flex-direction` is the one observable that separates "the container
+     * query applied" from "the class string is in the markup", and only a
+     * browser can read it.
+     */
+    const direction = await page
+      .getByTestId('evidence-row-layout')
+      .first()
+      .evaluate((node) => getComputedStyle(node).flexDirection)
+    expect(direction, 'a 720px column is above the 520px breakpoint').toBe('row')
+  })
+
+  test('the citation survives a phone, where it has to stack', async ({ page }) => {
+    // 390px: below the 520px container breakpoint, so the description takes its
+    // own line and the price and its source sit together underneath.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await openPriceScreen(page)
+    await serveBand(page, {
+      state: 'ready',
+      band: null,
+      evidence: {
+        editais: 1,
+        samples: [
+          {
+            tenderId: COMPRA_A,
+            value: 204,
+            description: 'PERFURADOR DE PAPEL 02 FUROS ACO FUNDIDO 100 FOLHAS CABO LONGO',
+          },
+        ],
+      },
+    })
+    await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible`)
+
+    await expect(page.getByTestId('compra-id')).toHaveText(COMPRA_A)
+    await expect(page.getByTestId('copy-compra')).toBeVisible()
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    // The other side of the breakpoint, for the reason given above: at 390px
+    // the row must stack. A pair that reads `row` here and `row` at 1024 would
+    // mean the query never ran.
+    const direction = await page
+      .getByTestId('evidence-row-layout')
+      .first()
+      .evaluate((node) => getComputedStyle(node).flexDirection)
+    expect(direction, 'a phone is below the 520px breakpoint').toBe('column')
+  })
+
+  test('at 560px the container is narrower than the window, and the row knows it', async ({
+    page,
+  }) => {
+    /**
+     * **The width that tells a container query from a viewport one** — and the
+     * only one here that can. The 1024px and 390px cases above are *both*
+     * satisfied by a plain `min-[520px]` **viewport** query: at 1024 the window
+     * is also above 520, at 390 also below it. D29, D30 and D32 are every one
+     * of them container-vs-viewport, so a pair that cannot separate those is
+     * not testing the rule.
+     *
+     * Arithmetic, and it is why 560: below `lg` there is no rail, `main` is
+     * `px-gutter` at **20px** a side and the Card adds `p-4` at **16px**, so the
+     * row's container is 560 − 40 − 32 = **488px**. That is below the 520px
+     * breakpoint while the *window* is above it — so a container query stacks
+     * here and a viewport query would not.
+     */
+    await page.setViewportSize({ width: 560, height: 900 })
+    await openPriceScreen(page)
+    await serveBand(page, {
+      state: 'ready',
+      band: null,
+      evidence: {
+        editais: 1,
+        samples: [
+          { tenderId: COMPRA_A, value: 204, description: 'PERFURADOR DE PAPEL 02 FUROS' },
+        ],
+      },
+    })
+    await page.goto(`/radar/edital/${TENDER_ID}/preco?cnpj=${MARTA.cnpj}&group=compatible`)
+    await expect(page.getByTestId('compra-id')).toHaveText(COMPRA_A)
+
+    const width = await page
+      .getByTestId('evidence-row-layout')
+      .first()
+      .evaluate((node) => node.clientWidth)
+    expect(width, 'the container must be below 520 for this test to discriminate').toBeLessThan(520)
+
+    const direction = await page
+      .getByTestId('evidence-row-layout')
+      .first()
+      .evaluate((node) => getComputedStyle(node).flexDirection)
+    expect(direction, 'a 560px window holds a sub-520px column — a viewport query would say row').toBe(
+      'column',
+    )
   })
 
   test('the top rung shows the count and what was matched, and no winner price', async ({

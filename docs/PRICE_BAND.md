@@ -407,7 +407,11 @@ that we hold 0% of everything.
 | **B34** | 47 future-dated awards sort first on the thin rungs | — |
 | **D33** | a precomputed per-item "has a band" flag | C3, B21 |
 | **D34** | a 251-item list is not navigable (arrangement half is unblocked) | — / D33 for ordering |
-| **D37** | a thin rung's results cannot be looked up | — |
+| ~~**D37**~~ | ~~a thin rung's results cannot be looked up~~ **done 2026-10-05**: each result **on a thin rung** (the top rung draws `MatchedList`, descriptions with no ids) cites its Compras.gov.br purchase id, copyably. **Not a link** — the price payload carries no `numeroControlePNCP` [M] and the one candidate URL answered with a CAPTCHA [M]. See `lib/radar/compra.ts` | — |
+| **D41** | `id_compra` arrives as a JSON *number*, so a leading-zero UASG is already truncated in `catalog_prices`'s primary key | — (one `select length(id_compra)` settles it) |
+| **D42** | the link-out D37 declined to build | a human opening the Comprasnet URL once |
+| **D43** | the cited identifier has no label, because the words are Sci's | **Sci** |
+| **D44** | `PriceSample.tenderId` is a purchase id wearing a tender id's name | — |
 | **D25 (2)** | the preço-alvo block on the edital screen | **parked** — C3 (§6) |
 
 Open for Sci, in `docs/TO_VALIDATE.md`: whether the top rung keeps withholding

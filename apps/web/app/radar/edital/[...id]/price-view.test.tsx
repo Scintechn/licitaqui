@@ -433,6 +433,14 @@ describe('the action bar', () => {
  * was the defect: measured 2026-10-01, it was wrong for ten items in every
  * eleven it appeared on.
  */
+/**
+ * The markup of each evidence row, bounded by the next row — so an assertion
+ * about "this row" cannot reach the rest of the document.
+ */
+function evidenceRows(html: string): string[] {
+  return html.split('data-testid="evidence-row-layout"').slice(1)
+}
+
 describe('PriceView — the evidence ladder', () => {
   const sample = (tenderId: string, value: number, description: string | null) => ({
     tenderId,
@@ -440,10 +448,29 @@ describe('PriceView — the evidence ladder', () => {
     description,
   })
 
+  /**
+   * **The ids are Compras.gov.br purchase keys, not PNCP control numbers.**
+   * They used to be `9900000000000i-1-000001/2026` here, which was already
+   * wrong when B35 moved the evidence to the catalogue: `PriceSample.tenderId`
+   * now carries `catalog_prices.id_compra`. The shape matters to this file
+   * since D37, because the screen prints it — a fixture in the old shape would
+   * render no citation and the assertions below would pass on an empty row.
+   *
+   * `929909 · 06 · 0000(i+1) · 2026`, built from the one real row we hold
+   * (`test_catalog_prices.py`'s `RAW_ROW`).
+   *
+   * **`i + 1` because no real purchase number is `00000`** — 0 of the 31
+   * measured ids have one. (A guard refusing that shape briefly existed in
+   * `compra.ts` and was removed as an unmeasured constraint whose justifying
+   * case was unreachable; this helper keeps counting from 1 because that is
+   * what the data looks like, not because anything forces it.)
+   */
+  const compraId = (i: number) => `92990906${String(i + 1).padStart(5, '0')}2026`
+
   const thin = (count: number) => ({
     editais: count,
     samples: Array.from({ length: Math.min(count, 4) }, (_unused, i) =>
-      sample(`9900000000000${i}-1-000001/2026`, 204 - i, `PERFURADOR DE PAPEL ${i} FUROS`),
+      sample(compraId(i), 204 - i, `PERFURADOR DE PAPEL ${i} FUROS`),
     ),
   })
 
@@ -474,6 +501,109 @@ describe('PriceView — the evidence ladder', () => {
     expect(html).toContain('Neste item encontramos 3')
     for (const i of [0, 1, 2]) {
       expect(html).toContain(`PERFURADOR DE PAPEL ${i} FUROS`)
+    }
+  })
+
+  /**
+   * D37 — the citation.
+   *
+   * **What these can prove**: that the identifier is on the wire *and in the
+   * markup*, that it is not a React key any more, and that an unreadable id
+   * degrades to the row as it was. **What they cannot**: that a reader can
+   * click it, that the clipboard receives it, or that the row is drawn
+   * correctly in a 720px column — `environment: 'node'` has no events and no
+   * boxes (§4c). `e2e/journeys/price-evidence-ladder.spec.ts` carries those.
+   */
+  it('prints the purchase each result came from, beside its price', () => {
+    const html = render({ item: 1, bandLocked: false, evidence: thin(3) })
+
+    /**
+     * **Per row, because "beside its price" is a structural claim.** Asserting
+     * `toContain(id)` three times over the whole document passes just as
+     * happily when all three ids land in one row, or when row 0's id is drawn
+     * next to row 1's price — which is the defect the title names. The id also
+     * appears **twice per row** (the visible span and the button's accessible
+     * name), so a document-wide count cannot separate those either.
+     */
+    // **Split on the row's own marker, not on `<li`.** `html.split('<li')` is
+    // document-wide — `MatchedList` emits `<li>`s on the top rung — and its
+    // final chunk runs to the end of the page, so the "no other row's id" and
+    // "has its price" checks on the last row were being made over the footer
+    // and the action bar as well.
+    const rows = evidenceRows(html)
+    expect(rows).toHaveLength(3)
+    rows.forEach((row, i) => {
+      expect(row, `row ${i} lost its identifier`).toContain(compraId(i))
+      expect(row, `row ${i} lost its price`).toContain(`R$ ${204 - i},00`)
+      // …and carries no other row's identifier.
+      for (const other of [0, 1, 2].filter((n) => n !== i)) {
+        expect(row, `row ${i} carried row ${other}'s identifier`).not.toContain(compraId(other))
+      }
+    })
+
+    // The control that carries it off the page, with the copy already approved.
+    expect(html).toContain(messages.common.copy)
+    expect((html.match(/data-testid="copy-compra"/g) ?? []).length).toBe(3)
+  })
+
+  it('names no false provenance for the identifier', () => {
+    // **The defect this card could most easily have shipped.** The id is a
+    // Compras.gov.br purchase key, so reusing the opportunity screen's approved
+    // "o Id PNCP" would have put an authoritative sentence on screen saying the
+    // wrong thing about where a number came from.
+    const html = render({ item: 1, bandLocked: false, evidence: thin(2) })
+    expect(html).not.toContain(messages.radar.opportunity.copyIdContext)
+    expect(html).not.toContain('PNCP')
+  })
+
+  it('renders the result unchanged when the identifier cannot be read', () => {
+    // A stored value we cannot parse is shown as no identifier at all, never a
+    // half-repaired one — `pncp.ts`'s contract, for `pncp.ts`'s reason.
+    const html = render({
+      item: 1,
+      bandLocked: false,
+      evidence: {
+        editais: 1,
+        samples: [sample('not-an-id', 204, 'PERFURADOR DE PAPEL 2 FUROS')],
+      },
+    })
+    expect(html).toContain('R$ 204,00')
+    expect(html).toContain('PERFURADOR DE PAPEL 2 FUROS')
+    expect(html).not.toContain('data-testid="copy-compra"')
+    expect(html).not.toContain('not-an-id')
+  })
+
+  /**
+   * The breakpoint is pinned as a string because the numbers *are* the fix, the
+   * way `radar-view.test.tsx` pins D30's. A later `@min-[900px]:` added here
+   * would be D29 again — a question about the window asked by a block that
+   * lives in a 720px column — and this assertion is what would fail.
+   */
+  it('asks the container about its width, never the viewport', () => {
+    const html = render({ item: 1, bandLocked: false, evidence: thin(2) })
+    expect(html).toContain('@container')
+    expect(html).toContain('@min-[520px]:flex-row')
+    const breakpoints = html.match(/@min-\[\d+px\]:/g) ?? []
+    expect(new Set(breakpoints), 'one breakpoint, and it is below 720').toEqual(
+      new Set(['@min-[520px]:']),
+    )
+    /**
+     * **The spelling, not the utility.** Listing `md:flex-row` and friends
+     * guards one property and waves through `lg:grid-cols-2` or
+     * `md:justify-between` — and a named breakpoint on an unrelated utility is
+     * exactly what the D30 sweep missed in `tender-items.tsx`, which is D32.
+     * So: no Tailwind viewport prefix anywhere in this row, in any spelling.
+     */
+    const rows = evidenceRows(html)
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      // **The whole row, not up to the first `</span>`.** Slicing there covered
+      // the `<li>` and the layout `<div>` only, so a `md:` on the right-hand
+      // group, the identifier, the price or inside `CopyCompra` sailed through
+      // the check whose comment promised "anywhere in this row".
+      expect(row, 'a viewport breakpoint inside the app shell').not.toMatch(
+        /\b(sm|md|lg|xl|2xl):/,
+      )
     }
   })
 

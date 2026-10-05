@@ -15,11 +15,13 @@ import { PLAN_HREF } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
 import { ActionBar } from '@/components/action-bar'
 import { priceHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
+import { compraIdLabel } from '@/lib/radar/compra'
 import type { ErrorCode, TenderDetail, TenderItemView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
 import { moneyExact, moneyExactNonZero, trimObject } from '@/lib/radar/format'
 import { MIN_SAMPLE } from '@/lib/radar/price-band'
 import type { LockedEvidence, PriceBand, PriceEvidence } from '@/lib/radar/price-band'
+import { CopyCompra } from './copy-compra'
 import { MarginCeiling } from './margin-ceiling'
 import { TenderStatusBanner } from '../../tender-status-banner'
 
@@ -255,38 +257,97 @@ function MatchedList({ items }: { items: readonly string[] }) {
 }
 
 /**
- * One past result: a price somebody closed at, and the words it closed under.
+ * One past result: a price somebody closed at, the words it closed under, and
+ * **where it came from** (D37).
  *
  * `value` is a real awarded row, never a statistic — see `PriceSample`. The two
  * are rendered together because neither is worth much alone: the price without
  * the description asserts a match the thin rungs have not verified, and the
  * description without the price is not evidence about money.
+ *
+ * ## The citation, and why it is an identifier rather than a link
+ *
+ * Until D37 `sample.tenderId` reached this component and was used as a **React
+ * key and nothing else**, so a reader who doubted a result could see the
+ * mismatch and not look it up — which is most of the argument for drawing the
+ * rung at all. Since B35 that field carries `catalog_prices.id_compra`, a
+ * Compras.gov.br purchase key, **not** a PNCP edital id, so the deep link the
+ * D37 card originally proposed is not available: the price payload carries no
+ * `numeroControlePNCP` (measured — it is absent from the endpoint's own schema
+ * and from the one real row we hold). The full reasoning, with what is measured
+ * and what is inferred, is in `lib/radar/compra.ts`; the short version is that
+ * the one candidate URL could not be verified because it answers with a CAPTCHA,
+ * and an unverifiable link on the trust screen is worse than none. **D42**
+ * carries the link if the evidence ever arrives.
+ *
+ * `compraIdLabel` answers `null` for anything it cannot read, and then this row
+ * renders exactly what it rendered before — no empty slot, no bare dash.
  */
 function EvidenceRow({ sample }: { sample: PriceEvidence['samples'][number] }) {
   const money = moneyExactNonZero(String(sample.value))
+  const compra = compraIdLabel(sample.tenderId)
   return (
-    <li className="flex items-baseline justify-between gap-2.5 border-b border-line py-2 last:border-b-0">
-      {/* `min-w-0` and `break-words`: `trimObject` caps the *length*, not the
-          token count, and PNCP descriptions carry long unspaced codes — without
-          these the span's `min-width: auto` resolves to min-content and pushes
-          the price out of the row. `environment: 'node'` has no boxes, so this
-          is the kind of defect no assertion in that suite can fail on (§4c).
-          Truncated at 70, the same as `MatchedList`: the same content on two
-          rungs read at two lengths. */}
-      <span className="min-w-0 break-words">
-        {sample.description === null ? (
-          <span className="text-meta leading-relaxed text-muted">{page.won}</span>
-        ) : (
-          <LongText
-            text={sample.description}
-            max={70}
-            className="text-meta leading-relaxed text-muted"
-          />
+    /* **`@container`, not a viewport query** (CLAUDE.md, D29/D30/D32). This
+       block lives in the content column, not in the window: from `lg` the shell
+       puts a 264px rail in the layout flow and `main` takes 40px of gutter, so
+       at 1024px of *window* this row is drawn in 1024 − 264 − 40 = **720px** —
+       and less again inside the Card's padding. The rail is also collapsible to
+       56px into `localStorage`, which no media query can observe at all.
+
+       The breakpoint is where the citation can share the description's line.
+       Right-hand group at its widest: 17 tabular digits ≈ 122px + the copy
+       control ≈ 69px + "R$ 1.830,00" ≈ 86px + two 10px gaps = ~297px [I, from
+       the type scale]. Leaving ≥200px for a description truncated at 70
+       characters, plus the 10px gap, puts the fit at ~507px — so **520px**,
+       rounded up. Below it the description takes its own line and the price and
+       its source sit together underneath. */
+    <li className="@container border-b border-line py-2 last:border-b-0">
+      <div
+        data-testid="evidence-row-layout"
+        className="flex flex-col gap-1 @min-[520px]:flex-row @min-[520px]:items-baseline @min-[520px]:justify-between @min-[520px]:gap-2.5"
+      >
+        {/* `min-w-0` and `break-words`: `trimObject` caps the *length*, not the
+            token count, and PNCP descriptions carry long unspaced codes —
+            without these the span's `min-width: auto` resolves to min-content
+            and pushes the price out of the row. `environment: 'node'` has no
+            boxes, so this is the kind of defect no assertion in that suite can
+            fail on (§4c), which is why `price-evidence-ladder.spec.ts` carries
+            the rendered half. Truncated at 70, the same as `MatchedList`: the
+            same content on two rungs read at two lengths. */}
+        <span className="min-w-0 break-words">
+          {sample.description === null ? (
+            <span className="text-meta leading-relaxed text-muted">{page.won}</span>
+          ) : (
+            <LongText
+              text={sample.description}
+              max={70}
+              className="text-meta leading-relaxed text-muted"
+            />
+          )}
+        </span>
+        {compra === null && money === null ? null : (
+          <span className="flex shrink-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+            {compra === null ? null : (
+              <span className="inline-flex items-center gap-1.5">
+                {/* Plain, selectable text beside the control rather than inside
+                    it: a drag inside a `<button>` selects nothing, and hand
+                    selection is the fallback wherever the Clipboard API is not
+                    available. `CopyId` made the same call for the same reason. */}
+                <span
+                  data-testid="compra-id"
+                  className="font-mono text-caption tabular-nums text-muted"
+                >
+                  {compra}
+                </span>
+                <CopyCompra id={compra} />
+              </span>
+            )}
+            {money === null ? null : (
+              <strong className="shrink-0 font-display text-[15px] tabular-nums">{money}</strong>
+            )}
+          </span>
         )}
-      </span>
-      {money === null ? null : (
-        <strong className="shrink-0 font-display text-[15px] tabular-nums">{money}</strong>
-      )}
+      </div>
     </li>
   )
 }
