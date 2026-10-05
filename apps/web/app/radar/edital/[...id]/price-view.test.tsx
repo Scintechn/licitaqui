@@ -283,7 +283,7 @@ describe('PriceView', () => {
       expect(withBand).toContain(page.ceilingLabel)
       expect(withBand).toContain(page.inputsLabel)
       expect(withBand).toContain(page.bandEstimate)
-      expect(withBand).toContain('7 editais encerrados')
+      expect(withBand).toContain('7 compras públicas')
     })
 
     it('offers the margin as an input, because the copy promises one', () => {
@@ -495,7 +495,7 @@ describe('PriceView — the evidence ladder', () => {
       bandLocked: true,
       evidence: { editais: 6, matched: ['PERFURADOR DE PAPEL 2 FUROS', 'PERFURADOR 2 FUROS AÇO'] },
     })
-    expect(html).toContain('Encontramos 6 editais encerrados com o mesmo produto')
+    expect(html).toContain('Encontramos 6 compras públicas do mesmo item')
     expect(html).toContain('PERFURADOR DE PAPEL 2 FUROS')
     expect(html).toContain(page.lockedValue)
     // **No winner price rendered**, asserted as the absence of the element that

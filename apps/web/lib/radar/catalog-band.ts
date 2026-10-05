@@ -1,6 +1,11 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
-import type { PriceBand } from './price-band'
+import {
+  MAX_AGE_MONTHS,
+  MAX_SAMPLES_SHOWN,
+  type PriceBand,
+  type PriceEvidence,
+} from './price-band'
 
 /**
  * The price band, read from the Compras.gov.br catalogue (B35).
@@ -136,4 +141,81 @@ export async function catalogBandForItem(
 /** `YYYY-MM-DD` in UTC — `window_end` is a `date`, and the database is UTC. */
 function isoDate(value: Date): string {
   return value.toISOString().slice(0, 10)
+}
+
+/**
+ * The evidence rung, read from the same catalogue rows the band rests on (E22).
+ *
+ * ## Why this is a second query and not a by-product of the band
+ *
+ * The band is **stored per code**; the evidence is **the rows it was computed
+ * from**, and the rung exists precisely where the band does not. 947 of 1 028
+ * codes are refused for `spread_too_wide` — the purchases exist, they simply
+ * disagree with each other — and on every one of those items a reader should
+ * still see what we found. Deriving evidence from `catalog_bands` would make it
+ * appear only where it is least needed.
+ *
+ * ## `unit_price`, not `unit_price_median`
+ *
+ * {@link PriceSample} is documented as *"a price somebody actually closed at —
+ * never a statistic"*, and the two columns are exactly that distinction:
+ * `unit_price_median` is the purchase's own median, which interpolates on an
+ * even row count and can print a figure nobody paid, and it is what the band
+ * uses (`BAND_VERSION` ends `rep=median`). This rung prints a real row, so it
+ * reads `unit_price` and that row's own description.
+ *
+ * ## The freshness filter is the band's own
+ *
+ * {@link MAX_AGE_MONTHS}, applied here too, so a purchase the band refused for
+ * age cannot reappear on a thinner rung with less around it to judge by. The
+ * same reasoning `priceEvidence` gives for the trigram path.
+ *
+ * ## One query
+ *
+ * `count(*) over ()` is evaluated before `limit`, so the full count and the
+ * newest {@link MAX_SAMPLES_SHOWN} come back together. A code holds a median of
+ * 379 purchases, so returning them all to count them in TypeScript would move
+ * thousands of rows to print four.
+ */
+export async function catalogEvidenceForItem(
+  tenderId: string,
+  itemNumber: number,
+  executor?: Executor,
+): Promise<PriceEvidence | null> {
+  const runner = executor ?? db()
+
+  const found = await runner.execute<{
+    id_compra: string
+    unit_price: string
+    description: string | null
+    total: string
+  }>(sql`
+    select p.id_compra,
+           p.unit_price,
+           p.description,
+           count(*) over () as total
+      from tender_item_codes c
+      join catalog_prices p
+        on p.kind = c.kind
+       and p.code = c.code
+     where c.tender_id = ${tenderId}
+       and c.item_number = ${itemNumber}
+       and c.rule = 'exact'
+       and c.kind = 'M'
+       and p.purchased_on >= (current_date - make_interval(months => ${MAX_AGE_MONTHS}))
+     order by p.purchased_on desc, p.id_compra desc
+     limit ${MAX_SAMPLES_SHOWN}
+  `)
+
+  const rows = found.rows
+  if (rows.length === 0) return null
+
+  return {
+    editais: Number(rows[0].total),
+    samples: rows.map((row) => ({
+      tenderId: row.id_compra,
+      value: Number(row.unit_price),
+      description: row.description,
+    })),
+  }
 }
