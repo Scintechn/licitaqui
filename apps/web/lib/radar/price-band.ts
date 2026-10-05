@@ -120,13 +120,24 @@ function percentile(sorted: readonly number[], fraction: number): number {
  */
 export type PriceSample = {
   /**
-   * Which edital this price came from.
+   * Which purchase this price came from — **and the name is now wrong**.
    *
-   * **Read by no screen yet** — `price-view.tsx` uses it as a React key and
-   * nothing else, so a reader cannot follow a result back to its source. It is
-   * on the wire because the citation is the point of this rung; **D37** is the
-   * card that draws it, and that card exists because a "later" in a comment is
-   * not a task.
+   * Since B35 this carries `catalog_prices.id_compra`, a 17-digit
+   * Compras.gov.br purchase key, **not** a PNCP `numeroControlePNCP`. The field
+   * kept its name because renaming it would reach the band route, the catalogue
+   * reader and `tests/fixtures/price_band_conformance.json`, which the worker's
+   * conformance test consumes — a rename across two languages for a comment's
+   * worth of clarity. **D44** is that rename.
+   *
+   * Nothing here may hand this value to `pncpEditalUrl`: that parser wants
+   * `{14 digits}-{digits}-{digits}/{4 digits}` and answers `null` for bare
+   * digits, which `compra.test.ts` pins so the two id spaces cannot be crossed
+   * silently.
+   *
+   * **Rendered since D37**, by `price-view.tsx`'s `EvidenceRow`: the identifier
+   * is printed beside the price with a copy control, so a reader who doubts a
+   * result can carry it to Compras.gov.br. It is an identifier and not a link,
+   * for reasons measured and recorded in `lib/radar/compra.ts`.
    */
   tenderId: string
   /**
@@ -138,9 +149,10 @@ export type PriceSample = {
    * interpolate because it never prints the intermediate; this rung prints it,
    * so it picks a real row and shows that row's own words.
    *
-   * **The screen does not link to the edital yet** — `tenderId` reaches it and
-   * serves only as a React key — so the earlier claim here that a reader could
-   * look the figure up was not true. **D37** is the card for drawing it.
+   * **The screen prints the purchase this came from** (D37) — the identifier
+   * beside the figure, copyable — so the claim that a reader can look the
+   * figure up is true again, in the weaker form the source allows: they carry
+   * the id to Compras.gov.br rather than following a link we could not verify.
    */
   value: number
   description: string | null
@@ -188,9 +200,11 @@ export type PriceSample = {
  *
  * The printed samples carry the span instead: every number shown is a price
  * somebody closed at, beside the words it closed under, so nothing is stated
- * that no row supports. The *edital* each one came from rides on
- * {@link PriceSample.tenderId} and is **not on screen yet** (**D37**), so for
- * now what the reader can check is the product, not the source.
+ * that no row supports. The *purchase* each one came from rides on
+ * {@link PriceSample.tenderId} and **is on screen since D37**, as a copyable
+ * Compras.gov.br identifier — so what the reader can check is the product *and*
+ * the source, the source being a purchase record rather than an edital since
+ * B35.
  *
  * ## Free at every rung
  *
