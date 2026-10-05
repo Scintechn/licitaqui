@@ -160,14 +160,26 @@ test.describe('E22 · the evidence ladder reaches the reader', () => {
     await expect(copy).toBeVisible()
     await copy.click()
 
-    // Read the clipboard before looking for the "Copiado" swap: the state
-    // reverts on a timer, and asserting the label first makes the test race its
-    // own timeout. `fundadores.spec.ts` learned this the same way.
-    const clipboard = await page.evaluate(() => navigator.clipboard.readText())
-    expect(clipboard).toBe(COMPRA_A)
-    // And what the reader copied is exactly what they were shown — not a
-    // re-derived or re-padded value.
-    await expect(page.getByTestId('compra-id')).toHaveText(clipboard)
+    /**
+     * **Polled, because the click does not wait for the write.** `onCopy` is
+     * `async` and React does not await it, so `click()` resolves while
+     * `navigator.clipboard.writeText` is still in flight — a bare `evaluate`
+     * straight after can read the clipboard as it was before. It passed every
+     * run here, which is exactly what makes it worth fixing rather than
+     * leaving: a flake that only appears in CI is a flake nobody can reproduce.
+     *
+     * Still read before looking for the "Copiado" swap: that state reverts on a
+     * 2 400 ms timer, so asserting the label first races its own timeout —
+     * `fundadores.spec.ts` learned that the same way.
+     */
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(COMPRA_A)
+
+    // And the reader was *shown* what they copied — asserted against the
+    // constant, not against the clipboard value, which would compare two things
+    // this test has already pinned to each other and could never fail.
+    await expect(page.getByTestId('compra-id')).toHaveText(COMPRA_A)
   })
 
   test('the id and its price stay in the column when the desktop rail appears', async ({

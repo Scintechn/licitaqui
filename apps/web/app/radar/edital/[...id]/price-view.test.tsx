@@ -433,6 +433,14 @@ describe('the action bar', () => {
  * was the defect: measured 2026-10-01, it was wrong for ten items in every
  * eleven it appeared on.
  */
+/**
+ * The markup of each evidence row, bounded by the next row — so an assertion
+ * about "this row" cannot reach the rest of the document.
+ */
+function evidenceRows(html: string): string[] {
+  return html.split('data-testid="evidence-row-layout"').slice(1)
+}
+
 describe('PriceView — the evidence ladder', () => {
   const sample = (tenderId: string, value: number, description: string | null) => ({
     tenderId,
@@ -451,10 +459,11 @@ describe('PriceView — the evidence ladder', () => {
    * `929909 · 06 · 0000(i+1) · 2026`, built from the one real row we hold
    * (`test_catalog_prices.py`'s `RAW_ROW`).
    *
-   * **`i + 1`, because a purchase number of `00000` is refused** — and that is
-   * not a quirk to work around, it is the guard working: the first version of
-   * this helper started at zero, `parseCompraId` correctly declined to cite
-   * `92990906000002026`, and the citation assertion caught it.
+   * **`i + 1` because no real purchase number is `00000`** — 0 of the 31
+   * measured ids have one. (A guard refusing that shape briefly existed in
+   * `compra.ts` and was removed as an unmeasured constraint whose justifying
+   * case was unreachable; this helper keeps counting from 1 because that is
+   * what the data looks like, not because anything forces it.)
    */
   const compraId = (i: number) => `92990906${String(i + 1).padStart(5, '0')}2026`
 
@@ -516,7 +525,12 @@ describe('PriceView — the evidence ladder', () => {
      * appears **twice per row** (the visible span and the button's accessible
      * name), so a document-wide count cannot separate those either.
      */
-    const rows = html.split('<li').slice(1)
+    // **Split on the row's own marker, not on `<li`.** `html.split('<li')` is
+    // document-wide — `MatchedList` emits `<li>`s on the top rung — and its
+    // final chunk runs to the end of the page, so the "no other row's id" and
+    // "has its price" checks on the last row were being made over the footer
+    // and the action bar as well.
+    const rows = evidenceRows(html)
     expect(rows).toHaveLength(3)
     rows.forEach((row, i) => {
       expect(row, `row ${i} lost its identifier`).toContain(compraId(i))
@@ -580,11 +594,14 @@ describe('PriceView — the evidence ladder', () => {
      * exactly what the D30 sweep missed in `tender-items.tsx`, which is D32.
      * So: no Tailwind viewport prefix anywhere in this row, in any spelling.
      */
-    const rows = html.split('<li').slice(1)
+    const rows = evidenceRows(html)
     expect(rows.length).toBeGreaterThan(0)
     for (const row of rows) {
-      const upToDiv = row.slice(0, row.indexOf('</span>'))
-      expect(upToDiv, 'a viewport breakpoint inside the app shell').not.toMatch(
+      // **The whole row, not up to the first `</span>`.** Slicing there covered
+      // the `<li>` and the layout `<div>` only, so a `md:` on the right-hand
+      // group, the identifier, the price or inside `CopyCompra` sailed through
+      // the check whose comment promised "anywhere in this row".
+      expect(row, 'a viewport breakpoint inside the app shell').not.toMatch(
         /\b(sm|md|lg|xl|2xl):/,
       )
     }

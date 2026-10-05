@@ -496,12 +496,12 @@ written in their place):
    and it is **false here**, so the accessible name is currently the digits
    themselves and a test asserts *"PNCP"* never appears on this screen.
 
-This is the same drift as `CLAIMS.md` row 84 (due 17/10), where three live
+This is the same drift as `CLAIMS.md`'s B35 row (the *"editais parecidos" / "editais encerrados"* row, due 17/10), where three live
 strings still say *editais* about a mechanism that now reads *compras* — and
 **D37 makes that drift visible rather than latent**: an unlabelled *purchase*
 identifier now sits directly under `radar.price.evidenceHelp`, which is one of
 the sentences that row names. No new claim was created, because no new
-Portuguese string was written, so row 84 needs no new row — but it is now
+Portuguese string was written, so that row needs no companion — but it is now
 something a reader can see on one screen rather than a wording mismatch only we
 knew about. Worth answering together; the card is **D43**.
 

@@ -7,6 +7,20 @@ import { pncpEditalUrl, parsePncpId } from './pncp'
 /** `db/seed/fixtures/pncp` relative to this file, which sits in `apps/web/lib/radar`. */
 const FIXTURE_DIR = join(import.meta.dirname, '..', '..', '..', '..', 'db', 'seed', 'fixtures', 'pncp')
 
+/**
+ * The purchase id out of a `linkSistemaOrigem`, in **either** spelling PNCP
+ * publishes it in, or `undefined`.
+ *
+ * Extracted so the pattern can be tested directly. It has to be: no repo
+ * fixture uses the `&compra=` form today, so a regression here would leave
+ * `fixturePurchases()` silently returning fewer records while
+ * `fixtures.length >= 6` stayed green — which is precisely how the single
+ * spelling went unnoticed long enough to put three wrong claims into the docs.
+ */
+export function compraFromLink(link: string): string | undefined {
+  return /acompanhamento-compra[?&]compra=(\d+)/.exec(link)?.[1]
+}
+
 type FixturePurchase = { compra: string; uasg: string; numero: string; ano: number }
 
 /**
@@ -21,7 +35,15 @@ function fixturePurchases(): FixturePurchase[] {
     const det = JSON.parse(readFileSync(join(FIXTURE_DIR, name), 'utf8'))?.det
     const link: unknown = det?.linkSistemaOrigem
     if (typeof link !== 'string') continue
-    const compra = /acompanhamento-compra\?compra=(\d+)/.exec(link)?.[1]
+    // **`[?&]`, not `?`.** PNCP publishes this link in two spellings —
+    // `…/public/compras/acompanhamento-compra?compra=<id>` and
+    // `…/public/landing?destino=acompanhamento-compra&compra=<id>` — and an
+    // earlier pass of this card matched only the first. That found 27 of 31
+    // records, declared two real ids fabricated and deleted a true example.
+    // No repo fixture uses the second form today, so this costs nothing now and
+    // is the whole point: `fixtures.length >= 6` would stay green while an
+    // `&compra=` fixture was silently skipped.
+    const compra = compraFromLink(link)
     if (compra === undefined) continue
     found.push({
       compra,
@@ -92,11 +114,17 @@ describe('parseCompraId · the measured decomposition', () => {
    * A table of `['12001605008432026', '120016', '05', '00843', 2026]` is a
    * **tautology**: the expected segments are what you get by applying the same
    * 6/2/5/4 offsets the implementation applies, so both sides share the rule
-   * under test and the assertion holds even if the rule is wrong — or if the id
-   * was never real. That is not a hypothetical. The first version of this file
-   * pinned four ids as measured and **one of them, `98621905983652025`, existed
-   * in no file anywhere**; it was invented, and a review caught it. §4d, from
-   * the inside.
+   * under test and the assertion holds even if the rule is wrong. A literal
+   * table also cannot tell you whether the id it pins was ever real.
+   *
+   * **This card proved both halves the hard way.** A first pass pinned four
+   * literal ids as measured; a review could not find `98621905983652025` and
+   * reported it fabricated; the "correction" then deleted it, deleted a true
+   * leading-zero example (`081102`), and wrote the wrong population into four
+   * documents. All of it came from one grep for `acompanhamento-compra?compra=`
+   * — **PNCP publishes a second spelling, `…&compra=`, and those four records
+   * were invisible to it.** Both ids are real. The population is 31.
+   * `memory: empty-result-is-not-absence`, twice, in the card about §4d.
    *
    * So this reads `db/seed/fixtures/pncp/*.json`, takes the `compra=` parameter
    * out of PNCP's own `linkSistemaOrigem`, and compares each segment to a
@@ -105,11 +133,34 @@ describe('parseCompraId · the measured decomposition', () => {
    * agreement is evidence.
    *
    * Six records are in this repository and CI can see them. The full measured
-   * set is **27** — the other 21 live in the read-only knowledge base
-   * (`~/Documents/POC Licitacao/cache_pncp/`), and all 27 fit. That number is
-   * stated in `compra.ts` and cannot be re-derived here, which is exactly why
-   * the six that *can* be are asserted rather than described.
+   * set is **31** — all 31 live in the read-only knowledge base
+   * (`~/Documents/POC Licitacao/cache_pncp/`), of which the repo's six are a
+   * strict subset, and all 31 fit. That number is stated in `compra.ts` and
+   * cannot be re-derived here, which is exactly why the six that *can* be are
+   * asserted rather than described.
    */
+  /**
+   * **The blind spot that cost three documents their accuracy**, pinned.
+   * Measured across the 31 records: 27 use `?compra=`, 4 use the `landing`
+   * route with `&compra=`. A pattern matching only the first finds 27.
+   */
+  it.each([
+    [
+      'https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra=12001605008432026',
+      '12001605008432026',
+    ],
+    [
+      'https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/landing?destino=acompanhamento-compra&compra=98621905983652025',
+      '98621905983652025',
+    ],
+  ])('reads the purchase id out of both spellings PNCP publishes', (link, expected) => {
+    expect(compraFromLink(link)).toBe(expected)
+  })
+
+  it('reads nothing out of a link that names no purchase', () => {
+    expect(compraFromLink('https://previjop.mg.gov.br/')).toBeUndefined()
+  })
+
   const fixtures = fixturePurchases()
 
   it('finds the PNCP fixtures it is supposed to cross-check', () => {
@@ -136,20 +187,20 @@ describe('parseCompraId · the leading zero JSON already lost', () => {
    * **The defect this padding exists for.** The API sends `idCompra` as a JSON
    * *number* — `RAW_ROW` records it as the integer `92990906001072026` — so a
    * UASG beginning with a zero arrives already short, and `str()` in the worker
-   * cannot put back what JSON dropped. **`070018`, `092201` and `092301` are
-   * real leading-zero UASGs in the 27 measured records**, so this is reachable
-   * rather than hypothetical.
+   * cannot put back what JSON dropped. **`070018`, `081102`, `092201` and
+   * `092301` are real leading-zero UASGs in the 31 measured records**, so this
+   * is reachable rather than hypothetical.
+   *
+   * `08110203901202026` is a real purchase id (`60509015000101_2026_162.json`).
+   * It was briefly deleted from this file as unmeasured, which it never was —
+   * it is one of the four records the single-spelling grep could not see.
    */
-  it('restores a UASG whose code begins with a zero', () => {
-    const short = '7001805001072026' // 16 digits: 070018 · 05 · 00107 · 2026
+  it.each([
+    ['8110203901202026', '08110203901202026', '081102', '03', '90120', 2026],
+    ['7001805001072026', '07001805001072026', '070018', '05', '00107', 2026],
+  ])('restores %s, a UASG whose code begins with a zero', (short, id, uasg, modality, number, year) => {
     expect(short).toHaveLength(16)
-    expect(parseCompraId(short)).toEqual({
-      id: '07001805001072026',
-      uasg: '070018',
-      modality: '05',
-      number: '00107',
-      year: 2026,
-    })
+    expect(parseCompraId(short)).toEqual({ id, uasg, modality, number, year })
   })
 
   /**
@@ -231,7 +282,13 @@ describe('parseCompraId · what it refuses', () => {
       const parsed = parseCompraId(value)
       if (parsed === null) continue
       expect(parsed.id, `${value} parsed to a malformed id`).toMatch(/^\d{17}$/)
-      expect(parsed.uasg + parsed.modality + parsed.number + String(parsed.year)).toBe(parsed.id)
+      // **Idempotence, which can actually fail** — unlike concatenating the
+      // four segments back together, which holds for any implementation that
+      // slices contiguous ranges of `id` and is therefore no assertion at all.
+      // Re-parsing the normalised id must give the same answer: that is the
+      // property every caller relies on, since the screen prints `parsed.id`
+      // and the reader may well paste it back to us in a support thread.
+      expect(parseCompraId(parsed.id), `${value} is not a fixed point`).toEqual(parsed)
     }
   })
 
@@ -240,25 +297,28 @@ describe('parseCompraId · what it refuses', () => {
     expect(parseCompraId('00000006001072026')).toBeNull()
   })
 
-  it('refuses an all-zero purchase number, the same degeneracy one segment along', () => {
-    // Found by sweeping boundaries, not by reading: a short stored value like
-    // `100000002026` pads into `00000100000002026`, which clears the UASG and
-    // year checks and names nothing. `pncp.ts` refuses `sequence <= 0` for the
-    // identical reason.
-    expect(parseCompraId('00000100000002026')).toBeNull()
-    expect(parseCompraId('100000002026')).toBeNull()
-    // …but a high number is ordinary and must survive. `90000` is real:
-    // `92930605900002025`, measured 2026-10-03 — purchase, item 59, two
-    // suppliers at R$ 5,10 and R$ 5,00 (a cadastro de reserva, which is why
-    // `(idCompra, numeroItemCompra)` is not unique).
-    //
-    // **This comment previously cited a second id as real and it was the
-    // invented one.** The docstring above records that a review caught the
-    // fabrication; the correction then missed this line, because a claim in a
-    // comment is not an assertion and no test could fail on it. That is the
-    // same shape one layer down, and it is why the claim is now a single id
-    // with the measurement that backs it.
+  /**
+   * **The guard that was here is gone, and the measurement is why.**
+   *
+   * A `number === '00000'` refusal sat here for one commit, justified by
+   * `'100000002026'` padding up into `00000100000002026`. That case is
+   * **unreachable** — 12 digits are refused by the length floor — and **0 of
+   * the 31 real ids have an all-zero number**, so the constraint had no
+   * evidence in either direction and could only cost a reader a citation that
+   * was correct. §4d: check a threshold is one before pinning it. It is also
+   * what forced this file's sibling fixture helper to start counting at 1.
+   *
+   * What remains is the measured fact it was confused with: a *high* number is
+   * ordinary. `90000` is real — `92930605900002025`, measured 2026-10-03
+   * against the live API: purchase, item 59, two suppliers at R$ 5,10 and
+   * R$ 5,00, a cadastro de reserva (which is why `(idCompra, numeroItemCompra)`
+   * is not unique upstream).
+   */
+  it('accepts the full range of real purchase numbers, high and low', () => {
     expect(parseCompraId('92930605900002025')?.number).toBe('90000')
+    expect(parseCompraId('92990906001072026')?.number).toBe('00107')
+    // Short enough to have been padded, and still a real-shaped number.
+    expect(parseCompraId('7001805001072026')?.number).toBe('00107')
   })
 
   it.each(['92990906001071026', '92990906001079026'])(

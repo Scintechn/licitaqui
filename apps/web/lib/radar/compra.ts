@@ -16,18 +16,28 @@
  *     92990906001072026  →  929909 · 06 · 00107 · 2026
  *
  * **[M] That decomposition is measured, not assumed — and the measurement is
- * reproducible.** 27 real purchase ids carry a `linkSistemaOrigem` of the form
- * `…?compra=<17 digits>` in cached PNCP payloads; each was decomposed against
- * the *sibling* fields of its own record — `unidadeOrgao.codigoUnidade`,
- * `numeroCompra`, `anoCompra` — and **all 27 fit, with no exceptions**. Every
+ * reproducible.** **31** real purchase ids carry a `linkSistemaOrigem` naming
+ * a Compras.gov.br purchase in cached PNCP payloads; each was decomposed
+ * against the *sibling* fields of its own record — `unidadeOrgao.codigoUnidade`,
+ * `numeroCompra`, `anoCompra` — and **all 31 fit, with no exceptions**. Every
  * one is exactly 17 characters.
  *
- * **6 of the 27 are in this repository** (`db/seed/fixtures/pncp/*.json`) and
- * the other 21 are in the read-only knowledge base (`~/Documents/POC
- * Licitacao/cache_pncp/`), which CI cannot see. So `compra.test.ts` re-derives
- * the rule from **the six, at test time**, reading the fixtures and comparing
- * each segment to its sibling field — a cross-check rather than a restatement
- * of the offsets this file already applies.
+ * **PNCP publishes that link in two spellings, and only one of them is
+ * obvious.** 27 records use
+ * `…/public/compras/acompanhamento-compra?compra=<id>` and **4 use
+ * `…/public/landing?destino=acompanhamento-compra&compra=<id>`**. A search for
+ * the first form finds nothing for those four — which is how an earlier pass of
+ * this card measured "27", declared two real ids fabricated, and deleted a true
+ * example. `memory: empty-result-is-not-absence`, in the one card whose subject
+ * is not doing that. Match `acompanhamento-compra[?&]compra=`, never `?` alone.
+ *
+ * **6 of the 31 are in this repository** (`db/seed/fixtures/pncp/*.json`); all
+ * 31 are in the read-only knowledge base (`~/Documents/POC
+ * Licitacao/cache_pncp/`), which CI cannot see — the repo set is a strict
+ * subset, not a disjoint half. So `compra.test.ts` re-derives the rule from
+ * **the six, at test time**, reading the fixtures and comparing each segment to
+ * its sibling field — a cross-check rather than a restatement of the offsets
+ * this file already applies.
  *
  * The one real price-API row we hold agrees from the other direction:
  * `worker/tests/test_catalog_prices.py`'s `RAW_ROW` carries
@@ -41,7 +51,8 @@
  * live API on 2026-10-03 — and `parse_rows` stores `str(id_compra)`. So for any
  * UASG whose code begins with a zero the leading zero is gone *before the
  * worker ever sees it*: JSON has no way to carry it. **[M] Such UASGs are real
- * and are in the measured set — `070018`, `092201` and `092301` all appear** —
+ * and are in the measured set — `070018`, `081102`, `092201` and `092301` all
+ * appear** —
  * so a 16-digit `id_compra` is reachable in storage, and printing it verbatim
  * would hand the reader an identifier that matches nothing.
  *
@@ -135,19 +146,20 @@ export function parseCompraId(value: string | null | undefined): CompraId | null
   const year = Number(id.slice(13))
 
   // `000000…` is syntactically a key and identifies nothing — `pncp.ts`'s
-  // `sequence <= 0` guard, in the two places this key can degenerate. An
-  // all-zero UASG is what a `0` or an empty value pads up into, and an
-  // all-zero purchase number is the same degeneracy one segment along: a short
-  // stored value like `100000002026` pads into a well-formed-looking
-  // `00000100000002026` that names nothing. Found by sweeping the boundaries
-  // rather than by reading.
+  // `sequence <= 0` guard, in the one place this key can still degenerate once
+  // the length floor above has done its work.
   //
-  // **`modality` is deliberately not constrained.** Only `03`, `05` and `06`
-  // were observed across 32 records, and pinning a set from three observations
-  // is the §4d mistake — a real modality outside it would be refused and the
-  // reader would lose a citation that was correct.
+  // **Neither `modality` nor `number` is constrained, and that is a decision.**
+  // Only `03`, `05` and `06` appear across all 31 measured records (`05`×25,
+  // `06`×4, `03`×2) — pinning a set from three observations is the §4d mistake,
+  // and a real modality outside it would cost the reader a citation that was
+  // correct. A `number === '00000'` guard sat here for one commit and is gone
+  // for the stronger version of the same reason: **0 of 31 real ids have it**,
+  // so there is no evidence either way, and the case it was written for —
+  // `'100000002026'` padding up into `00000100000002026` — is **unreachable**,
+  // because 12 digits are refused by the floor above. An unmeasured constraint
+  // whose justification cannot occur can only refuse a real id.
   if (uasg === '000000') return null
-  if (number === '00000') return null
   if (year < FIRST_YEAR || year > LAST_YEAR) return null
 
   return { id, uasg, modality, number, year }
