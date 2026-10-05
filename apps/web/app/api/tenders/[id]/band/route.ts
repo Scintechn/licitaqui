@@ -153,7 +153,23 @@ export async function GET(
         ? await fallbackEvidenceForItem(id, item, executor)
         : catalogue
 
-    if (band !== null && !entitled) {
+    // **Sci, 2026-10-05, superseding his rulings of 01/10 and 02/10:** the
+    // past winners' **prices** are a paid feature. The descriptions are not.
+    //
+    //   > "The description, ok, all plan can have access. But the price (Won)
+    //   > must be hide."
+    //
+    // So the gate is no longer *does a band exist* — it is *is this caller
+    // entitled*, and `LockedEvidence` is exactly the shape that answers it: a
+    // count and what was matched, with **no price field at all**, so a leak is
+    // a compile error rather than a review finding.
+    //
+    // `band !== null || evidence !== null` and not a bare `!entitled`, because
+    // `locked` must keep meaning *something exists and you cannot see it*. An
+    // item with nothing at all still answers `ready` with nulls, so a visitor
+    // is never shown a paywall over an empty set — which is E9's own complaint
+    // and the reason this branch was written narrowly in the first place.
+    if (!entitled && (band !== null || evidence !== null)) {
       return NextResponse.json(
         // **The count and what was matched ride along; the prices do not.**
         //
@@ -175,7 +191,11 @@ export async function GET(
         // them equal. `LockedEvidence` drops `source`, so a fallback rung
         // reaching here would arrive labelled as nothing and read as the
         // identity claim this card exists to stop.
-        { state: 'locked', evidence: catalogue === null ? null : withoutPrices(catalogue) },
+        // **`evidence`, not `catalogue`** — changed with the gate above. This
+        // branch used to be reachable only where a band exists, where the two
+        // are equal; it is now reached on the fallback rung too, and narrowing
+        // `catalogue` there would send `null` while results were on screen.
+        { state: 'locked', evidence: evidence === null ? null : withoutPrices(evidence) },
         { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
       )
     }
@@ -187,6 +207,10 @@ export async function GET(
     // two index reads, so only the one-source-of-truth reason is left. The gate
     // below still applies: an unentitled caller never receives a band.
     return NextResponse.json(
+      // Reached only when entitled, or when nothing exists for anybody — the
+      // gate above takes every other unentitled case. `entitled ? band : null`
+      // stays as defence: it is now unreachable for a non-null band, and a
+      // ternary that cannot fire is cheaper than a leak if the gate moves.
       { state: 'ready', band: entitled ? band : null, evidence },
       { status: 200, headers: { 'cache-control': PRIVATE_NO_STORE } },
     )

@@ -222,7 +222,21 @@ export function PriceScreen({ id, entitled }: { id: string; entitled: boolean })
    * the error branches above. A request that errored sets `locked: false`, so
    * the screen falls back to the honest empty card.
    */
-  const bandLocked = current === null || current.locked
+  const bandLocked = current !== null && current.locked
+  /**
+   * **Claim 2 (Sci, 2026-10-05): in flight is not a verdict.**
+   *
+   * This used to read `current === null || current.locked`, so the locked bar
+   * was what every first paint showed, for the whole round trip. The argument
+   * above — a lock replaced by a band is an upgrade the reader watches happen,
+   * where *"ainda sem dados"* replaced by a price tells them something false
+   * first — needs a band to be **possible**. Measured 2026-10-05: **4 131 of
+   * 381 131** open materials have one, **1.08%**, and for a service it is 0.
+   * So the argument held for one reader in a hundred and misled the rest.
+   *
+   * The third answer is to assert neither until the request answers.
+   */
+  const bandPending = current === null
   /**
    * **One question, one source.** Entitlement does not depend on the item, the
    * band or the tender, so it is read on the server before anything renders
@@ -244,6 +258,7 @@ export function PriceScreen({ id, entitled }: { id: string; entitled: boolean })
       search={search}
       band={band}
       bandLocked={bandLocked}
+      bandPending={bandPending}
       evidence={current?.evidence ?? null}
       showPlanCta={showPlanCta}
       onRetry={onRetry}

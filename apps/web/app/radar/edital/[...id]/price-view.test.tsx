@@ -474,11 +474,20 @@ describe('the action bar', () => {
     expect(html.indexOf('sticky bottom-0')).toBeGreaterThan(html.indexOf('</main>'))
   })
 
-  it('offers nothing to a reader who already has the plan', () => {
+  it('offers no plan to a reader who has it, but still gives them the edital', () => {
     // `showPlanCta` is the server's answer, read once in the page. The screen
     // must not draw a second, more prominent "Ver plano Essencial" for someone
-    // looking at the band they already paid for.
-    expect(bar(render({ showPlanCta: false }))).toBeNull()
+    // looking at the band they already paid for. That half is unchanged.
+    //
+    // **What changed (claim 4, Sci 2026-10-05): the bar no longer disappears
+    // with the offer.** It used to, and that took the only "Edital" link with
+    // it — so a *paying* reader had no way to the edital from this screen. The
+    // gap was never carded because the test asserted the absence rather than
+    // asking what the absence cost.
+    const html = render({ showPlanCta: false })
+    expect(html).not.toContain(page.cta)
+    expect(bar(html)).not.toBeNull()
+    expect(html).toContain(messages.common.tender)
   })
 })
 
@@ -556,7 +565,7 @@ describe('PriceView — the evidence ladder', () => {
     expect(html).toContain('R$ 204,00')
     expect(html).toContain('PERFURADOR DE PAPEL 0 FUROS')
     // The sentence that explains the absent faixa without promising one.
-    expect(html).toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).toContain('A faixa aparece quando encontramos ao menos 5 compras públicas')
     expect(html).toContain('Neste item encontramos 1')
     // **The rung is not a weaker band.**
     expect(html).not.toContain(page.noData)
@@ -809,7 +818,7 @@ describe('PriceView — the sentence that would contradict itself', () => {
     // editais… Neste item encontramos 6" — would sit directly above no faixa.
     // Reachable: ~1 in 5 of the items that reach five editais fails on spread.
     const html = render({ item: 1, bandLocked: false, evidence: scattered })
-    expect(html).not.toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).not.toContain('A faixa aparece quando encontramos ao menos 5 compras públicas')
     // The count states the rows drawn, never `editais` — see the cap test above.
     expect(html).toContain('Encontramos 4 resultados parecidos')
     // The results themselves still render: suppressing the explanation must not
@@ -826,7 +835,7 @@ describe('PriceView — the sentence that would contradict itself', () => {
       bandLocked: false,
       evidence: { editais: 4, source: 'catalog', samples: scattered.samples },
     })
-    expect(html).toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).toContain('A faixa aparece quando encontramos ao menos 5 compras públicas')
     expect(html).toContain('Neste item encontramos 4')
   })
 })
@@ -964,11 +973,20 @@ describe('PriceView — the awards fallback rung (D40)', () => {
     expect(html).toContain(page.fallbackHelp)
     // `evidenceHelp` promises the faixa at five editais. The fallback never
     // draws one at any count, so the sentence is false here regardless.
-    expect(html).not.toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).not.toContain('A faixa aparece quando encontramos ao menos 5 compras públicas')
     expect(html).not.toContain('o mesmo produto')
-    // The locked rung's identity sentence is unreachable without a band, and
-    // this asserts it rather than assuming it.
-    expect(html).not.toContain('do mesmo item')
+    // **The locked rung's identity sentence is unreachable without a band.**
+    //
+    // Asserted against the *sentence*, not the substring. `fallbackIntro`
+    // (claim 1) now opens this rung with *"Não encontramos contratações do
+    // mesmo item"* — a **denial** of identity, which is the honest thing to
+    // say here and which a bare `not.toContain('do mesmo item')` cannot tell
+    // apart from a claim. A guard that cannot distinguish the two would have
+    // to be weakened or deleted the first time an honest sentence used those
+    // words, which is how guards get lost.
+    expect(html).not.toContain(page.lockedEvidence)
+    expect(html).not.toContain(page.intro)
+    expect(html).toContain(page.fallbackIntro)
   })
 
   it('draws no band, no range and no margin control on the fallback rung', () => {
@@ -1000,7 +1018,7 @@ describe('PriceView — the awards fallback rung (D40)', () => {
     expect(html).not.toContain(page.maxTitle)
     expect(html).not.toContain(page.fallbackHelp)
     expect(html).not.toContain('Serviços raramente')
-    expect(html).not.toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).not.toContain('A faixa aparece quando encontramos ao menos 5 compras públicas')
   })
 
   it('keeps the catalogue rung exactly as B35 left it', () => {
@@ -1014,7 +1032,7 @@ describe('PriceView — the awards fallback rung (D40)', () => {
 
     expect(html).toContain('Encontramos 4 resultados parecidos')
     expect(html).toContain(page.maxTitle)
-    expect(html).toContain('Mostramos a faixa quando encontramos pelo menos 5 editais')
+    expect(html).toContain('A faixa aparece quando encontramos ao menos 5 compras públicas')
     expect(html).not.toContain(page.fallbackTitle)
     expect(html).not.toContain(page.fallbackHelp)
   })

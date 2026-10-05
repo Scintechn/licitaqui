@@ -370,11 +370,13 @@ export function ItemPicker({ tenderId, search, list, chosen }: ItemPickerProps) 
       </summary>
 
       <div className="flex flex-col gap-2 border-t border-line px-3 py-2.5">
-        {/* **A search field with no label of its own.** Its accessible name is
-            the group heading above (`aria-labelledby`), its role comes from
-            `type="search"`, and the magnifier is the set's own `search` icon.
-            A placeholder or a visible label would be a new user-facing string,
-            and those are Sci's — D47. `text-base` and `min-h-control` are
+        {/* **D47, closed: the field now has words of its own.** Sci approved
+            `radar.price.searchItems` on 2026-10-05. It stays `aria-labelledby`
+            the group heading — a placeholder is **not** an accessible name, it
+            disappears on the first keystroke, and leaving the name on the
+            heading means the two cannot drift. The placeholder is for the
+            sighted reader who has not typed yet, which is exactly what was
+            missing. `text-base` and `min-h-control` are
             `components/field.tsx`'s, including the reason: iOS Safari zooms the
             viewport for a focused input under 16px. */}
         <div className="flex items-center gap-2 rounded-control border border-field-line bg-surface pl-3">
@@ -382,6 +384,7 @@ export function ItemPicker({ tenderId, search, list, chosen }: ItemPickerProps) 
           <input
             type="search"
             aria-labelledby={headingId}
+            placeholder={messages.radar.price.searchItems}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             // No `name`, and autofill off: this box filters what is already on
