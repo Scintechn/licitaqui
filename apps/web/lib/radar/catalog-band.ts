@@ -212,6 +212,10 @@ export async function catalogEvidenceForItem(
 
   return {
     editais: Number(rows[0].total),
+    // D40: the catalogue rung, so the screen may keep the identity wording.
+    // The only other value is `awards`, and that rung is a same-area
+    // comparison — see `fallback-evidence.ts`.
+    source: 'catalog',
     samples: rows.map((row) => ({
       tenderId: row.id_compra,
       value: Number(row.unit_price),

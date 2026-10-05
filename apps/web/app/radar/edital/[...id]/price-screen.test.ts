@@ -37,6 +37,8 @@ const BAND: PriceBand = {
  */
 const EVIDENCE: PriceEvidence = {
   editais: 6,
+  // D40: the catalogue rung — the only one a band may stand beside.
+  source: 'catalog',
   samples: [
     { tenderId: '99000000000001-1-000001/2026', value: 24, description: 'CANETA ESFEROGRAFICA AZUL' },
     { tenderId: '99000000000002-1-000001/2026', value: 20.34, description: 'CANETA ESFEROGRAFICA AZUL' },

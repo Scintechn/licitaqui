@@ -317,8 +317,12 @@ describe('priceEvidence', () => {
     // could not fail, while `range.low` and `range.high` existed one level
     // down. An exhaustive key set is the assertion that actually constrains
     // what a future change may add here.
+    // D40 added `source`, which is a label for the corpus and not a figure:
+    // the point of the exhaustive set is that no *statistic* may be added here
+    // without this line failing, and it still holds.
     const found = priceEvidence([one('a', 204), one('b', 180)], NOW)
-    expect(Object.keys(found ?? {}).sort()).toEqual(['editais', 'samples'])
+    expect(Object.keys(found ?? {}).sort()).toEqual(['editais', 'samples', 'source'])
+    expect(found?.source).toBe('awards')
     expect(Object.keys(found?.samples[0] ?? {}).sort()).toEqual([
       'description',
       'tenderId',

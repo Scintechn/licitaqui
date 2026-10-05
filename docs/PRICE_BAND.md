@@ -52,6 +52,65 @@ refused by it while holding 29 to 3 572 purchases each.
 
 ---
 
+## 0.2 Status, 2026-10-05 — the band and the evidence rung now have different sources (D40)
+
+B35 landed and moved **both** rungs onto the catalogue. The band got better by
+every measure in §0. The **evidence** rung inherited the band's two SQL filters
+— `rule = 'exact'` and `kind = 'M'` — and that was not measured before it
+shipped. What it cost, measured against production on 2026-10-05 over the
+**447 484** open items (`t.proposals_close_at > now()`):
+
+| | items | with catalogue evidence | with a band |
+|---|---|---|---|
+| materials (`kind = 'M'`) | 381 131 | **53 592** (14.1%) | **4 131** (1.08%) |
+| services (`kind = 'S'`) | **66 353** | **0** | **0** |
+| **all open items** | **447 484** | **53 592 — 11.98%** | **4 131 — 0.92%** |
+
+`catalog_prices` holds 907 129 rows and **not one `kind = 'S'`**, because
+`refresh_catalog_prices` gives services no refresh budget
+(`worker/licitaqui/catalog_prices.py`, `MATERIAL = "M"`). So every service item
+went blank, and so did the ~327 539 materials the catalogue could not match
+(143 506 `rule = 'no_match'`, 156 013 `'prefix'`, 1 757 `'prefix_rev'`,
+12 504 with no `tender_item_codes` row at all, and 13 737 that *are* `exact`
+with no recent `catalog_prices` row behind the code). All had shown past
+winners before B35.
+
+**Sci's decision, 2026-10-05** — *"the application should present the data from
+previous won tenders, for Services or Product."* The two rungs now have
+different sources, on purpose:
+
+```
+band      ← catalog_bands, by primary key, rule='exact' AND kind='M'   (B35, unchanged)
+evidence  ← catalog_prices where the catalogue has them                (B35, unchanged)
+          ← awards, via comparablesForItem + priceEvidence, otherwise  (D40)
+               └─ and NEVER a band: the route reaches it only where
+                  catalogBandForItem already answered null, and
+                  fallbackEvidenceForItem returns a type with no band field
+```
+
+So §2's pipeline is **live again for the evidence rung** and dead for the band.
+Three things follow, and they are the reason this section exists rather than a
+line in §0:
+
+1. **`SIMILARITY_FLOOR`, `MAX_COMPARABLES` and `sameProduct` are load-bearing
+   again**, after B35 made them dead code. §3's table is current for the
+   fallback rung.
+2. **The trigram cost is back** — §3's measured median 412 ms and worst
+   2 715 ms, with no `gin (description gin_trgm_ops)` index on `tender_items`,
+   for every item the catalogue misses, computed before the plan is consulted.
+   **B21 is load-bearing rather than an optimisation.**
+3. **§0's back-test does not condemn this rung.** It measured the trigram
+   *band* — 14–31% hit against the ~50% a correct quartile band scores by
+   construction — and that is exactly why D40 draws no band from it. A set of
+   real winning prices for the same area, each shown beside the words it closed
+   under (D38), makes no quartile claim at all.
+
+`PriceEvidence.source` (`'catalog' | 'awards'`) is on the wire because the
+copy that may be shown depends on which corpus answered. `docs/CLAIMS.md` has
+the three sentences this left open.
+
+---
+
 ## 1. What the product promises
 
 Two sentences, both live on `/`:
