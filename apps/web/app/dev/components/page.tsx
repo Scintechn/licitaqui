@@ -409,7 +409,7 @@ function Surfaces() {
           label={
             <span className="flex items-center gap-1.5">
               <Icon name="locked" size={14} className="text-muted" />
-              Preço de mercado + frete
+              Valor disponível em outro plano
             </span>
           }
           value={<LockedValue label="Disponível no plano Essencial" />}

@@ -191,16 +191,34 @@ describe('PriceView', () => {
     // one: nothing here invents a figure.
     expect(html).toContain(page.noData)
     expect(html).toContain(page.noDataHelp)
-    // The `won` row is gone with the band it belonged to; `market` stays
-    // locked, because a market price genuinely is an Essencial feature we hold
-    // and do not show, which is what a locked bar is for.
-    expect(html).toContain(page.market)
+    // **This assertion is inverted, not deleted** — a deleted guard on this
+    // component is how the Objeto block's position was silently reverted once
+    // already (`cc4b766`), and the reasoning it carried was the defect.
+    //
+    // It used to read `toContain(page.market)`, justified by *"a market price
+    // genuinely is an Essencial feature we hold and do not show, which is what
+    // a locked bar is for."* **Every clause of that is false.** Nothing in the
+    // repository computes a market price — no job, no column, no API field —
+    // so there was nothing held; and `0002_plan_limits` grants `market_price`
+    // to `pro` alone, so it was not an Essencial feature either. Sci saw it
+    // from the screen on 2026-10-05 and read it exactly as it was built to be
+    // read: *"this rectangle makes me feel the price will be revealed."*
+    // A literal, because `radar.price.market` is deleted from the catalogue
+    // too — an approved string rendering nowhere is itself one of the five
+    // instances CLAUDE.md names (`radar.list.changeCompany`). The words are
+    // written out here so this guard keeps working with no key to point at,
+    // and so the row cannot return unnoticed.
+    expect(html).not.toContain('Preço de mercado')
     expect(html).not.toContain(page.ceilingLabel)
   })
 
-  it('names what is hidden for a screen reader', () => {
-    // Still true of the one bar that remains — see above.
-    expect(html).toContain(page.lockedValue)
+  it('shows no locked bar at all when no number is being withheld', () => {
+    // The screen-reader assertion that used to live here named `lockedValue`
+    // on "the one bar that remains". There is no such bar in this state now:
+    // the `won` row is gone with its band, and `market` is deleted. A lock
+    // announces that a number exists and this plan does not include it, so
+    // announcing one here would be the false half of E9's own complaint.
+    expect(html).not.toContain(page.lockedValue)
   })
 
   describe('the plan offer', () => {

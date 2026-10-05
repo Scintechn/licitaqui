@@ -615,6 +615,17 @@ export function PriceView({
                 <LongText
                   text={chosen.description}
                   max={90}
+                  // D48. `min-w-0 break-words`, the same pair `EvidenceRow`
+                  // already carries and that this call site was given without.
+                  // `trimObject` caps the *length*, not the token count, and
+                  // PNCP descriptions carry long unspaced codes: measured in a
+                  // browser, a 70-character unbroken code rendered **561px
+                  // inside a 390px viewport**, and nothing sets
+                  // `overflow-x: hidden`. `environment: 'node'` has no boxes,
+                  // so no assertion in that suite could fail on it (§4c) — it
+                  // was found by D34's overflow journey, against code D38 had
+                  // just shipped.
+                  className="min-w-0 break-words"
                   summaryPrefix={format(page.item, { numero: chosen.number, descricao: '' })}
                 />
               ) : (
@@ -639,15 +650,15 @@ export function PriceView({
 
             <Card className="flex flex-col">
               <SectionLabel tone="muted">{page.referencesTitle}</SectionLabel>
-              <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
+              <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body last:border-b-0">
                 <span>{page.estimated}</span>
                 <strong className="font-display text-[16px]">{estimate ?? page.noEstimate}</strong>
               </div>
               {/* D40: `lockedBand`, not `bandLocked` — see its note. */}
               {lockedBand ? (
-                <LockedRow label={page.won} />
+                <LockedRow label={page.won} last />
               ) : drawable ? (
-                <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body">
+                <div className="flex items-center justify-between gap-2.5 border-b border-line py-2.5 text-body last:border-b-0">
                   <span>{page.won}</span>
                   <strong className="font-display text-[16px] tabular-nums">
                     {/* Not a template literal: `bandRange` can answer null,
@@ -669,15 +680,21 @@ export function PriceView({
                   </strong>
                 </div>
               ) : null}
-              {/* Locked for everyone, and its label is wrong for everyone:
-                  `page.lockedValue` reads "valor disponível no plano
-                  Essencial" while `0002_plan_limits.sql` grants `market_price`
-                  to **`pro` alone**. Pre-existing, but gating the band put it
-                  beside a feature that now really does unlock, so an Essencial
-                  subscriber reads that they need Essencial. Left as it is
-                  rather than guessed at: the string is Sci's and the
-                  entitlement question is F5's. Recorded in `docs/CLAIMS.md`. */}
-              <LockedRow label={page.market} last />
+              {/* **The "preço de mercado + frete" row is deleted, not
+                  relabelled** — Sci, 2026-10-05, from the screen: *"this
+                  rectangle makes me feel the price will be revealed."* It
+                  never would have. **Nothing in the repository computes a
+                  market price** — no job, no column, no API field; the row was
+                  a hardcoded `LockedRow` with no condition and no data behind
+                  it. `0002_plan_limits` grants `market_price` to `pro` alone,
+                  so a paying Essencial subscriber saw the bar too, under
+                  `page.lockedValue` reading *"valor disponível no plano
+                  Essencial"* — false for every reader. That is E9's own
+                  complaint turned on itself: a visitor meets a paywall over
+                  nothing, pays, and finds nothing behind it. Deleting it also
+                  retires *"+ frete"*, which was wrong on every service item.
+                  If a market price is ever built, the row returns with data
+                  under it. */}
             </Card>
 
             {/* D40: `lockedBand`, not `bandLocked` — see its note. */}
