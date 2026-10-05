@@ -622,3 +622,61 @@ describe('PriceView — the sentence that would contradict itself', () => {
     expect(html).toContain('Neste item encontramos 4')
   })
 })
+
+/**
+ * D38 — the whole description is reachable.
+ *
+ * These pin the **mechanism** only: that the markup contains the full text and
+ * a real `<details>` rather than a clamp. Whether a reader can actually open it
+ * is a *result*, and `environment: 'node'` has no boxes and runs no effects, so
+ * that half is `price-description.spec.ts` in `e2e/`. §4c — the unit test pins
+ * the mechanism, the journey pins the result, and saying which is which is the
+ * point.
+ */
+describe('PriceView — the full description (D38)', () => {
+  /** 19× apart, the spread that prompted the card. */
+  const LONG =
+    'Cessão Temporária de Direitos Sobre Programas de Computador Locação de Software ' +
+    'Cessão de direito de uso de solução integrada de gestão com suporte técnico, ' +
+    'treinamento presencial e atualizações legais por 12 meses'
+
+  const longItem: TenderItemView = { ...ITEMS[0], description: LONG }
+
+  it('puts the entire description in the markup, not only the trimmed head', () => {
+    const html = render({ item: 1, tender: { ...TENDER, items: [longItem] } })
+    // The tail is the half a reader needs to judge comparability, and it is the
+    // half truncation removed.
+    expect(html).toContain('atualizações legais por 12 meses')
+  })
+
+  it('uses a real disclosure, never a clamp', () => {
+    const html = render({ item: 1, tender: { ...TENDER, items: [longItem] } })
+    expect(html).toContain('<details')
+    // `format.ts` and D25(1): a clamp hides that there is more and leaves the
+    // whole string in the accessibility tree, so a screen-reader user hears
+    // everything while a sighted one sees two lines.
+    expect(html).not.toContain('line-clamp')
+  })
+
+  it('offers the control in words a reader can act on', () => {
+    const html = render({ item: 1, tender: { ...TENDER, items: [longItem] } })
+    expect(html).toContain(copy.opportunity.items.more)
+    expect(html).toContain(copy.opportunity.items.less)
+  })
+
+  it('does not wrap a short description in a disclosure', () => {
+    // `ITEMS[0]` is "Pilha alcalina AA, embalagem com 2" — nothing to open, so
+    // offering the gesture would be noise on the common case.
+    const html = render({ item: 1 })
+    expect(html).toContain('Pilha alcalina AA, embalagem com 2')
+    expect(html).not.toContain('<details')
+  })
+
+  it('keeps the item number beside the description it belongs to', () => {
+    // The prefix rides inside the summary. Rendered outside it, "Item 1 ·"
+    // would be stranded above a block that opens away from it.
+    const html = render({ item: 1, tender: { ...TENDER, items: [longItem] } })
+    const summary = html.slice(html.indexOf('<details'), html.indexOf('</summary>'))
+    expect(summary).toContain('Item 1 ·')
+  })
+})
