@@ -4,6 +4,7 @@ import type { Executor } from '@/lib/db'
 import {
   ME_EPP_FILTERS,
   ME_EPP_OPTIONS,
+  MODALITY_CODES,
   MODALITY_NAMES,
   MODALITY_OPTIONS,
   MODALITY_SLUGS,
@@ -41,11 +42,19 @@ function render(chunk: Parameters<PgDialect['sqlToQuery']>[0]) {
 }
 
 describe('the vocabulary', () => {
-  it('maps every slug to one exact `modality_name`', () => {
-    // The three values measured on Neon `main` on 2026-10-06 over all 57 878
-    // rows. Spelled out rather than derived: if PNCP's wording changes, this
-    // test is the thing that must fail, and a test that reads the same
-    // constant it is checking cannot fail at all.
+  it('maps every slug to the PNCP code the sweep asks for', () => {
+    // `DEFAULT_MODALITIES = (6, 8, 4)` in `worker/licitaqui/tenders.py` — the
+    // three the sweep collects. Spelled out rather than derived: a test that
+    // reads the same constant it is checking cannot fail at all.
+    expect(MODALITY_CODES).toEqual({
+      'pregao-eletronico': 6,
+      'concorrencia-eletronica': 4,
+      dispensa: 8,
+    })
+    expect(Object.keys(MODALITY_CODES).sort()).toEqual([...MODALITY_SLUGS].sort())
+  })
+
+  it('keeps the names for the labels, and only for the labels', () => {
     expect(MODALITY_NAMES).toEqual({
       'pregao-eletronico': 'Pregão - Eletrônico',
       'concorrencia-eletronica': 'Concorrência - Eletrônica',
@@ -92,10 +101,14 @@ describe('the vocabulary', () => {
 })
 
 describe('the two predicates', () => {
-  it('matches one exact modality, as a bound parameter', () => {
+  it('matches PNCP\'s code, not the text it writes beside it', () => {
     const query = render(modalityCondition('dispensa')!)
-    expect(query.sql).toBe('t.modality_name = $1')
-    expect(query.params).toEqual(['Dispensa'])
+    expect(query.sql).toBe('t.modality_id = $1')
+    expect(query.params).toEqual([8])
+    // Asserted negatively too: `modality_name` is free text from two different
+    // PNCP endpoints, and one re-worded hyphen would make this option find
+    // nothing while the screen says nothing is open.
+    expect(query.sql).not.toContain('modality_name')
   })
 
   it('is no condition at all for *Todas*, so an unknown modality still shows', () => {
@@ -149,7 +162,7 @@ const CONDITIONS = [
   't.state = ',
   't.search @@ websearch_to_tsquery',
   't.segments && ',
-  't.modality_name = ',
+  't.modality_id = ',
   "t.me_epp_summary = 'exclusive'",
   "t.me_epp_summary is distinct from 'exclusive'",
 ] as const
@@ -158,9 +171,9 @@ const CONDITIONS = [
  * The conditions one statement scopes `tenders` by.
  *
  * Read from `from tenders t` onwards, so the projection — which selects
- * `t.modality_name` and `t.me_epp_summary` as **columns** — cannot be mistaken
- * for a filter on them. That distinction is the whole point: the card shows
- * both values whether or not anybody is filtering on them.
+ * `t.me_epp_summary` as a **column** — cannot be mistaken for a filter on it.
+ * That distinction is the whole point: the card shows the value whether or not
+ * anybody is filtering on it.
  */
 function scopeOf(statement: string): string[] {
   const at = statement.indexOf('from tenders t')
@@ -198,7 +211,7 @@ describe('the counts are filtered by what the page is filtered by', () => {
       meEpp: 'other',
     })
     for (const statement of [list, counts]) {
-      expect(scopeOf(statement)).toContain('t.modality_name = ')
+      expect(scopeOf(statement)).toContain('t.modality_id = ')
       expect(scopeOf(statement)).toContain("t.me_epp_summary is distinct from 'exclusive'")
     }
   })

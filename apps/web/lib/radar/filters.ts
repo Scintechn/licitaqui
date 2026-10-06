@@ -9,13 +9,29 @@ import { messages } from '@/lib/messages'
  * bundle (the filter form) as well as by the route, so it must not pull drizzle
  * in with it.
  *
- * ## Modalidade: a fixed list of three, and *Todas* is the absence of a filter
+ * ## Modalidade: filtered on the **code**, labelled with the name
+ *
+ * `modality_name` is free text PNCP sends, and it arrives from **two different
+ * endpoints under two different field names** — `modalidadeNome` on the detail
+ * API and `modalidade_licitacao_nome` on the search sweep's poorer record
+ * (`worker/licitaqui/tenders.py`), each stored verbatim. An equality on that
+ * column is a bet that PNCP spells the same three words the same way on both,
+ * forever: one missing hyphen and the option returns **nothing** while the Radar
+ * tells the reader nothing is open, which is `memory:
+ * empty-result-is-not-absence` on the product's main screen.
+ *
+ * `tenders.modality_id` is PNCP's own code and has been there since migration
+ * 0001. Measured on Neon `main` 2026-10-06: **0 of 57 878 rows** have a null
+ * `modality_id`, and each of the three ids carries exactly one distinct name. So
+ * the filter matches the code and the control shows the name — the value we do
+ * not own is used for the label, where being wrong is cosmetic, and never for
+ * the predicate, where being wrong is an empty screen.
  *
  * Measured on Neon `main` on 2026-10-06, over the 24 340 tenders whose
- * `proposals_close_at > now()`: `Pregão - Eletrônico` **17 018**,
- * `Concorrência - Eletrônica` **3 980**, `Dispensa` **3 342** — and over all
- * 57 878 rows in the table, those same three values and nothing else. Three
- * options is a `Select`, not a faceted search.
+ * `proposals_close_at > now()`: id **6** `Pregão - Eletrônico` **17 018**, id
+ * **4** `Concorrência - Eletrônica` **3 980**, id **8** `Dispensa` **3 342** —
+ * and over all 57 878 rows in the table, those same three pairs and nothing
+ * else. Three options is a `Select`, not a faceted search.
  *
  * They are **hardcoded here rather than read from the data**, for two reasons:
  * a `select distinct modality_name` would cost a query to draw a control, and
@@ -45,13 +61,29 @@ export const MODALITY_SLUGS = ['pregao-eletronico', 'concorrencia-eletronica', '
 export type ModalityFilter = (typeof MODALITY_SLUGS)[number]
 
 /**
- * Slug → the exact `tenders.modality_name` value.
+ * Slug → PNCP's modality code, which is what the filter matches.
+ *
+ * The same three numbers as `DEFAULT_MODALITIES` in
+ * `worker/licitaqui/tenders.py`, which is the tuple the sweep asks PNCP for —
+ * so this list and the set of modalities we actually hold have one source
+ * between them, in two files that cite each other.
+ *
+ * Typed as a total `Record`, so a slug added to the tuple above without a code
+ * here is a type error rather than a filter that matches nothing.
+ */
+export const MODALITY_CODES: Record<ModalityFilter, number> = {
+  'pregao-eletronico': 6,
+  'concorrencia-eletronica': 4,
+  dispensa: 8,
+}
+
+/**
+ * Slug → the `modality_name` the three codes carry today, **for the label only**.
  *
  * The slug is what travels in the URL, so `?modality=` stays readable,
- * accent-free and enumerable by Zod; the value on the right is matched against
- * the column verbatim. Typed as a total `Record`, so a slug added to the tuple
- * above without a value here is a type error rather than a filter that matches
- * nothing.
+ * accent-free and enumerable by Zod. The string on the right is never matched
+ * against anything: it is what the option says, chosen so the control and the
+ * tender screen — which prints this same column — use one wording.
  */
 export const MODALITY_NAMES: Record<ModalityFilter, string> = {
   'pregao-eletronico': 'Pregão - Eletrônico',
@@ -102,7 +134,9 @@ const copy = messages.radar.list.filters
  * The modality labels are `MODALITY_NAMES`, not catalogue strings: PNCP's words
  * are already on the tender screen, and a second spelling in `pt-BR.json`
  * would be one more pair of strings that have to agree and eventually will
- * not. Only *Todas* and the field's own label are ours.
+ * not. Only *Todas* and the field's own label are ours. If PNCP re-words one of
+ * the three, this label goes stale and **the filter keeps working**, because it
+ * matches `MODALITY_CODES`.
  */
 export const MODALITY_OPTIONS: SelectOption[] = [
   { value: '', label: copy.modalityAll },

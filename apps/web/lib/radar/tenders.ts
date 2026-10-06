@@ -4,7 +4,7 @@ import { db, type Executor } from '@/lib/db'
 import { JOB_KINDS } from '@/lib/jobs'
 import { DEFAULT_SORT } from './contract'
 import type { SegmentFit, TenderCard, TenderGroup, TenderSort } from './contract'
-import { MODALITY_NAMES, type MeEppFilter, type ModalityFilter } from './filters'
+import { MODALITY_CODES, type MeEppFilter, type ModalityFilter } from './filters'
 import { DIVULGADA } from './tender-status'
 
 /**
@@ -310,13 +310,19 @@ function labels(values: string[]): SQL {
 /**
  * D52's modality condition, or `null` for *Todas*.
  *
- * Equality against one exact PNCP string, never `in (…)`: see
- * `lib/radar/filters.ts` for why the default must be the **absence** of this
- * predicate rather than a list of the three modalities we happen to know.
+ * **`modality_id`, not `modality_name`.** The name is free text from two
+ * different PNCP endpoints and the id is PNCP's code, non-null on every one of
+ * the 57 878 rows (measured 2026-10-06); matching the text would turn one
+ * re-worded hyphen into an option that silently finds nothing. `filters.ts`
+ * has the measurement and the argument.
+ *
+ * Equality against one code, never `in (…)`: the default must be the
+ * **absence** of this predicate, or a modality this list does not know would
+ * disappear from the Radar the day the sweep starts collecting it.
  */
 export function modalityCondition(modality: ModalityFilter | null | undefined): SQL | null {
   if (!modality) return null
-  return sql`t.modality_name = ${MODALITY_NAMES[modality]}`
+  return sql`t.modality_id = ${MODALITY_CODES[modality]}`
 }
 
 /**

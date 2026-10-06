@@ -3,7 +3,7 @@ import { afterAll, beforeAll, expect, describe, it } from 'vitest'
 import { closeDb, pool } from '@/lib/db'
 import { testDatabaseUrl } from '@/lib/db/test-url'
 import type { TenderGroup } from './contract'
-import { MODALITY_NAMES, type MeEppFilter, type ModalityFilter } from './filters'
+import { MODALITY_CODES, MODALITY_NAMES, type MeEppFilter, type ModalityFilter } from './filters'
 import { countGroups, listTenders, type CompanyMatch, type TenderFilters } from './tenders'
 
 /**
@@ -24,23 +24,41 @@ import { countGroups, listTenders, type CompanyMatch, type TenderFilters } from 
  * 3. **An unknown modality is still listed under *Todas*.** The list here holds
  *    three slugs; `worker/licitaqui/tenders.py` knows ten modality names and
  *    its sweep takes the set as a job payload, so the row below with
- *    `Leilão - Eletrônico` is the fourth modality arriving.
+ *    `Leilão - Eletrônico` (id 1) is the fourth modality arriving.
+ * 4. **The filter matches PNCP's code and survives PNCP re-wording the name.**
+ *    Row 7 is a real `modality_id = 6` carrying `Pregão Eletrônico` — the same
+ *    modality spelled without the hyphen, which is what the search endpoint
+ *    could send any afternoon (`modalidade_licitacao_nome`, a different field
+ *    from the detail API's `modalidadeNome`). It must still be found by the
+ *    *Pregão* option, and a `modality_name = …` predicate would lose it.
  *
  * ## Isolation
  *
  * Every row is written under a per-**run** agency CNPJ and carries a nonsense
  * keyword unique to the run, and every query asks for that keyword — so the
- * assertions see this run's six tenders and nothing else: no other lane's
+ * assertions see this run's seven tenders and nothing else: no other lane's
  * fixtures, no seeded row, and no live sweep. A per-task constant would not do
  * (CLAUDE.md): four lanes are running against this database today.
+ *
+ * **Isolation runs the other way too, and that half was missed first.** The
+ * `object` is the token and nothing else — it used to read `Aquisicao de <token>`,
+ * which put two ordinary Portuguese words into the shared search index, where
+ * `radar.db.test.ts` picks *"a distinctive word from the tender's own object"*
+ * and asserts its own tender is on page 1 of 20. A word in common plus seven
+ * extra rows is enough to push it off, and that suite failed once on exactly
+ * that test while this file was being written. The deadline is also more than a
+ * year out, so even a token collision would sort these rows behind everyone's.
  */
 
 const url = testDatabaseUrl()
 const suite = url ? describe : describe.skip
 if (url) process.env.DATABASE_URL = url
 
-const RUN = randomUUID().replace(/[^a-f]/g, '').slice(0, 8) || 'abcdef'
-/** One word, no accents, in no edital anyone has ever published. */
+const RUN = randomUUID().replace(/-/g, '').slice(0, 8)
+/**
+ * One word, no accents, in no edital anyone has ever published — and the whole
+ * `object`, so this run adds no ordinary word to a shared index.
+ */
 const TOKEN = `zzdfiltro${RUN}`
 const AGENCY = `52${randomUUID().replace(/\D/g, '').padEnd(12, '0').slice(0, 12)}`
 
@@ -52,6 +70,9 @@ const MATCH: CompanyMatch = { compatible: [COMPAT], check: [CHECK], fits: [] }
 
 type Row = {
   sequence: number
+  /** PNCP's code — what the filter matches. */
+  modalityId: number
+  /** PNCP's text — what the card prints, and what the filter must not need. */
   modalityName: string
   meEpp: string | null
   segments: string[]
@@ -63,14 +84,20 @@ type Row = {
  * card's own acceptance criterion. Row 2 is the one that matters most: PNCP
  * published no ME/EPP regime for it at all.
  */
+const PREGAO = MODALITY_CODES['pregao-eletronico']
+const DISPENSA = MODALITY_CODES.dispensa
+const CONCORRENCIA = MODALITY_CODES['concorrencia-eletronica']
+
 const ROWS: Row[] = [
-  { sequence: 1, modalityName: MODALITY_NAMES['pregao-eletronico'], meEpp: 'exclusive', segments: [COMPAT], group: 'compatible' },
-  { sequence: 2, modalityName: MODALITY_NAMES['pregao-eletronico'], meEpp: null, segments: [COMPAT], group: 'compatible' },
-  { sequence: 3, modalityName: MODALITY_NAMES.dispensa, meEpp: 'exclusive', segments: [CHECK], group: 'check' },
-  { sequence: 4, modalityName: MODALITY_NAMES.dispensa, meEpp: 'none', segments: [], group: 'keyword' },
-  { sequence: 5, modalityName: MODALITY_NAMES['concorrencia-eletronica'], meEpp: 'mixed', segments: [COMPAT], group: 'compatible' },
+  { sequence: 1, modalityId: PREGAO, modalityName: MODALITY_NAMES['pregao-eletronico'], meEpp: 'exclusive', segments: [COMPAT], group: 'compatible' },
+  { sequence: 2, modalityId: PREGAO, modalityName: MODALITY_NAMES['pregao-eletronico'], meEpp: null, segments: [COMPAT], group: 'compatible' },
+  { sequence: 3, modalityId: DISPENSA, modalityName: MODALITY_NAMES.dispensa, meEpp: 'exclusive', segments: [CHECK], group: 'check' },
+  { sequence: 4, modalityId: DISPENSA, modalityName: MODALITY_NAMES.dispensa, meEpp: 'none', segments: [], group: 'keyword' },
+  { sequence: 5, modalityId: CONCORRENCIA, modalityName: MODALITY_NAMES['concorrencia-eletronica'], meEpp: 'mixed', segments: [COMPAT], group: 'compatible' },
   // The fourth modality, which this product's option list does not know.
-  { sequence: 6, modalityName: 'Leilão - Eletrônico', meEpp: 'quota', segments: [], group: 'keyword' },
+  { sequence: 6, modalityId: 1, modalityName: 'Leilão - Eletrônico', meEpp: 'quota', segments: [], group: 'keyword' },
+  // A Pregão Eletrônico whose *name* PNCP spelled differently. Same code.
+  { sequence: 7, modalityId: PREGAO, modalityName: 'Pregão Eletrônico', meEpp: 'none', segments: [CHECK], group: 'check' },
 ]
 
 const id = (row: Row) => `${AGENCY}-1-${String(row.sequence).padStart(6, '0')}/2026`
@@ -79,13 +106,22 @@ async function seed(): Promise<void> {
   for (const row of ROWS) {
     await pool().query(
       `insert into tenders (id, agency_cnpj, year, sequence, object, agency_name, city, state,
-                            modality_name, status, proposals_close_at, me_epp_summary, segments,
-                            search, updated_at)
+                            modality_id, modality_name, status, proposals_close_at,
+                            me_epp_summary, segments, search, updated_at)
        values ($1, $2, 2026, $3, $4, 'Prefeitura de Teste', 'Campinas', 'SP',
-               $5, 'Divulgada no PNCP', now() + interval '10 days', $6, $7,
+               $5, $6, 'Divulgada no PNCP', now() + interval '400 days', $7, $8,
                to_tsvector('pt_unaccent', $4), now())
        on conflict (id) do nothing`,
-      [id(row), AGENCY, row.sequence, `Aquisicao de ${TOKEN}`, row.modalityName, row.meEpp, row.segments],
+      [
+        id(row),
+        AGENCY,
+        row.sequence,
+        TOKEN,
+        row.modalityId,
+        row.modalityName,
+        row.meEpp,
+        row.segments,
+      ],
     )
   }
 }
@@ -114,7 +150,7 @@ suite('D52 · the two filters, against Postgres', () => {
   })
 
   it('*Todas* changes nothing, and lists the modality the option list does not know', async () => {
-    expect(await countGroups(MATCH, filters())).toEqual({ compatible: 3, check: 1, keyword: 2 })
+    expect(await countGroups(MATCH, filters())).toEqual({ compatible: 3, check: 2, keyword: 2 })
     // Row 6 is `Leilão - Eletrônico`. It is in the list, under *Todas*, because
     // *Todas* adds no predicate — not because this file knows about leilões.
     expect(await idsIn('keyword')).toEqual(expected(() => true, 'keyword'))
@@ -133,6 +169,19 @@ suite('D52 · the two filters, against Postgres', () => {
     // And the unknown modality is gone the moment a modality is chosen, which
     // is the honest answer: it is not a Dispensa.
     expect(await idsIn('keyword', only)).not.toContain(id(ROWS[5]!))
+  })
+
+  it('finds a Pregão whose name PNCP spelled differently, because it matches the code', async () => {
+    const only = { modality: 'pregao-eletronico' as ModalityFilter }
+    // Row 7 is `modality_id = 6` with the name `Pregão Eletrônico` — no hyphen.
+    // A `modality_name = 'Pregão - Eletrônico'` predicate loses it silently, and
+    // the reader is told nothing is open.
+    expect(await idsIn('check', only)).toEqual([id(ROWS[6]!)])
+    expect(await countGroups(MATCH, filters(only))).toEqual({
+      compatible: 2,
+      check: 1,
+      keyword: 0,
+    })
   })
 
   it('*Exclusivo* is `me_epp_summary = exclusive`, nothing else', async () => {
@@ -154,7 +203,7 @@ suite('D52 · the two filters, against Postgres', () => {
     expect(compatible).toEqual([id(ROWS[1]!), id(ROWS[4]!)].sort())
     expect(await countGroups(MATCH, filters(only))).toEqual({
       compatible: 2,
-      check: 0,
+      check: 1,
       keyword: 2,
     })
   })
@@ -173,7 +222,7 @@ suite('D52 · the two filters, against Postgres', () => {
     expect(await idsIn('compatible', both)).toEqual([id(ROWS[1]!)])
     expect(await countGroups(MATCH, filters(both))).toEqual({
       compatible: 1,
-      check: 0,
+      check: 1,
       keyword: 0,
     })
   })
@@ -207,7 +256,7 @@ suite('D52 · the two filters, against Postgres', () => {
     expect(total).toBe(
       ROWS.filter(
         (row) =>
-          (!extra.modality || row.modalityName === MODALITY_NAMES[extra.modality]) &&
+          (!extra.modality || row.modalityId === MODALITY_CODES[extra.modality]) &&
           (!extra.meEpp ||
             (extra.meEpp === 'exclusive'
               ? row.meEpp === 'exclusive'

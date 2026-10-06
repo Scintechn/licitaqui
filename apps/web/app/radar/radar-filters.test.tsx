@@ -89,6 +89,16 @@ function form(markup: string): string {
   return markup.slice(open, close)
 }
 
+/** The `value` of the selected `<option>` inside the `<select name="…">`. */
+function selected(markup: string, name: string): string | null {
+  const at = markup.indexOf(`name="${name}"`)
+  expect(at, `the form draws a control named ${name}`).toBeGreaterThan(-1)
+  const end = markup.indexOf('</select>', at)
+  expect(end).toBeGreaterThan(at)
+  const found = markup.slice(at, end).match(/<option value="([^"]*)" selected="">/)
+  return found ? found[1]! : null
+}
+
 const FILE = readFileSync(new URL('./radar-view.tsx', import.meta.url), 'utf8')
 
 /**
@@ -132,10 +142,16 @@ describe('both filters are in the form that searches', () => {
   })
 
   it('selects *Todas* when the URL carries no filter', () => {
-    const fields = form(render())
-    // The empty option is the selected one on both selects — two of them.
-    expect(fields.match(/<option value="" selected="">/g)?.length).toBe(2)
-    expect(fields).not.toContain('<option value="dispensa" selected="">')
+    // Per select, not across the form: counting `<option value="" selected="">`
+    // over the whole form only gave 2 because this fixture sets `state: 'SP'`.
+    // With no UF the UF select's own empty option makes it 3, and the test would
+    // fail for a reason that has nothing to do with these two filters.
+    for (const query of [{}, { state: null }]) {
+      const fields = form(render(query))
+      expect(selected(fields, MODALITY_PARAM)).toBe('')
+      expect(selected(fields, ME_EPP_PARAM)).toBe('')
+    }
+    expect(form(render())).not.toContain('<option value="dispensa" selected="">')
   })
 
   it('keeps every control in one form, with the submit that applies them', () => {
@@ -144,8 +160,12 @@ describe('both filters are in the form that searches', () => {
       expect(fields).toContain(`name="${name}"`)
     }
     expect(fields).toContain(copy.list.apply)
-    // …and the form is a real GET to `/radar`, so the filters work with no
-    // JavaScript at all — the same property the three old controls had.
+    // …and the form is a real GET to `/radar`, so **applying a filter produces a
+    // shareable address without any script** — the same property the three old
+    // controls had. Not the same as "the Radar works without JavaScript": the
+    // rows are fetched in an effect, so with scripting off this form gives a
+    // correct URL and no list. Claiming the larger thing here would be the
+    // defect §4b describes, since nothing in this runner submits anything.
     expect(fields).toContain('action="/radar"')
     expect(fields).toContain('method="get"')
   })
@@ -169,6 +189,26 @@ describe('the arrangement asks this column, not the window', () => {
   })
 
   /**
+   * The comment stripper is asserted before the sweep that depends on it.
+   *
+   * The first version of the sweep used `expect(viewport.length)
+   * .toBeGreaterThan(0)` as its canary — which was a canary over exactly one
+   * surviving `min-[560px]:`, so a later lane removing that class would have
+   * turned the guard off and failed this test for an unrelated reason. The
+   * stripper is what has to be right, so the stripper is what is tested.
+   */
+  it('strips the comments the sweep below would otherwise read as code', () => {
+    // These two really are in `radar-view.tsx`, inside the D30 docblock, and
+    // they are the strings the sweep is looking for.
+    expect(FILE).toContain('`min-[900px]:`')
+    expect(FILE).toContain('`hidden lg:block`')
+    expect(SOURCE).not.toContain('min-[900px]')
+    expect(SOURCE).not.toContain('lg:block')
+    // And it keeps the code: the classes are still there to be swept.
+    expect(SOURCE).toContain('@min-[880px]:grid-cols-4')
+  })
+
+  /**
    * Both spellings, because the sweep that fixed D29 and D30 searched only one
    * of them and `md:` inside the app shell is D32. Nothing in this file may ask
    * the **window** about a width above 720px: `main` is
@@ -179,10 +219,11 @@ describe('the arrangement asks this column, not the window', () => {
     const viewport = [...SOURCE.matchAll(/(^|[^@\w[])min-\[(\d+)px\]:/g)].map((match) =>
       Number(match[2]),
     )
-    expect(viewport.length, 'the old 560px queries are still here').toBeGreaterThan(0)
     for (const width of viewport) expect(width).toBeLessThanOrEqual(720)
     // Tailwind's named viewport breakpoints are 768px and up: `md:` is 768,
-    // which is 48px past the content box at the moment the rail appears.
-    expect(SOURCE).not.toMatch(/(^|[^@\w-])(md|lg|xl|2xl):/m)
+    // which is 48px past the content box at the moment the rail appears. Both
+    // directions, because `max-md:` and `max-lg:` are viewport queries too and
+    // the `-` in front of them slips past a naive word boundary.
+    expect(SOURCE).not.toMatch(/(^|[^@\w])(max-)?(md|lg|xl|2xl):/m)
   })
 })

@@ -171,6 +171,41 @@ test.describe('D52 · the filter row is sized by its own column', () => {
   })
 
   /**
+   * **The share and the bookmark**: a cold load of an address that already
+   * carries both filters.
+   *
+   * Everything else in this file reaches the filtered state by *applying* a
+   * filter, which exercises `router.push` and then the effect. That is not the
+   * path a link in a WhatsApp group takes. The first version of this file did
+   * not have this test, and `radar-filters.test.tsx` cannot stand in for it:
+   * that one hands `query.modality` straight to `RadarView`, so it proves
+   * `FilterRow` draws what it is given and says nothing about whether
+   * `RadarScreen` reads `?modality=` at all.
+   */
+  test('a shared address arrives already filtered, before anything is clicked', async ({
+    page,
+  }) => {
+    const asked: string[] = []
+    page.on('request', (request) => {
+      if (request.url().includes('/api/radar/tenders')) asked.push(request.url())
+    })
+
+    await page.goto(`/radar?cnpj=${CNPJ}&group=compatible&modality=dispensa&meepp=exclusive`)
+    await expect(cards(page).first()).toBeVisible()
+
+    // The very first request for the list carried both filters: the reader was
+    // never shown an unfiltered list for a frame.
+    expect(asked[0], `the first list request: ${asked.join(' ')}`).toContain('modality=dispensa')
+    expect(asked[0]).toContain('meepp=exclusive')
+
+    // …and the controls say what the address says, so the reader can see which
+    // filters they arrived with.
+    await openFilters(page)
+    await expect(page.getByLabel('Modalidade')).toHaveValue('dispensa')
+    await expect(page.getByLabel('ME/EPP')).toHaveValue('exclusive')
+  })
+
+  /**
    * The seam, not the layout: the control is in a real GET form, so choosing a
    * modality has to reach the address bar and the route. Asserted in a browser
    * because `readSearch` ↔ `radarHref` ↔ `tendersUrl` agreeing in a unit test
