@@ -25,6 +25,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 10 | What separates a triagem from an análise completa — depth or breadth | **C2**, and a live sentence on `/` | **high** |
 | 11 | Whether a **closed** tender is ever re-read for its value, and the attempt bound | **B38** | medium |
 | 13 | Two Radar header sentences shipped as drafts: there is no approved copy for "no company" or "no CNAE to compare" | nothing — both render today | medium |
+| 14 | Two *Favoritar* failure sentences shipped as drafts: there is no approved copy for "we could not save this" or "too many, wait a moment" | nothing — both render today on `/radar` | medium |
 
 ---
 
@@ -569,3 +570,66 @@ CNAE atende"* over an empty Compatíveis tab. That is consistent with the header
 beside it (*"3 CNAEs"*), and the tab is empty so nothing is claimed about any
 edital — but if Sci wants the hint to speak about what is comparable rather than
 about what was read, it is a one-line change and a third string.
+
+---
+
+## 14. Two *Favoritar* failure sentences, shipped as drafts — D56, 2026-10-06
+
+D56 closed a hole by **adding two strings**, which legal brief §5 says is Sci's.
+They render on `/radar` today, so this is a decision about live copy rather than
+about scope.
+
+Until 2026-10-06 the only sentence a failed *Favoritar* could produce was
+`radar.favourites.signedOut` — Sci's, and about not having an account. `refused`
+was set on **401 alone**, so a 429 (the route allows 60 a minute), a 400, a 500
+and a dropped connection all reverted the star in silence. Reusing `signedOut`
+for those would have been a lie about a 500, and nothing in `radar.states.*`
+fits: `errorTitle` is *"Não conseguimos carregar o Radar"*, which names the wrong
+subject — the D47 trap of borrowing a sentence whose words are about something
+else.
+
+| Key | Draft | When it renders | Why a new string was needed |
+|---|---|---|---|
+| `radar.favourites.failed` | *"Não conseguimos guardar o edital. Tente de novo."* | a 400, a 500, a 200 whose body is not `ready`, or a dropped connection | The one honest fact available is that the edital was not saved and the press can be repeated. Nothing in the client knows why, so the sentence deliberately does not say |
+| `radar.favourites.tooMany` | *"Muitas tentativas em pouco tempo. Espere um instante e tente de novo."* | a 429 | Separate from `failed` **because the remedy differs**: *"tente de novo"* on its own is wrong advice inside a rate limit, where an immediate retry fails again |
+
+Each is gated on the status it describes, and
+`app/radar/favourite-feedback.test.tsx` plus
+`e2e/journeys/favourite-feedback.spec.ts` hold it there. **Two things the §4b
+review corrected before they shipped**, both worth knowing when deciding the
+wording:
+
+- `tooMany` first read *"Você marcou muitos editais em pouco tempo"*, which is
+  false three ways. `app/api/tenders/[id]/favorito/route.ts` calls
+  `rateLimitRequest` **before** the auth check and keys it on request headers —
+  so the budget is an **IP's**, not a person's; un-marking spends it exactly as
+  marking does; and on a 429 nothing was stored at all. Behind an office NAT it
+  need not even be the reader's own traffic. The draft is now impersonal.
+- `failed` first read *"este edital"*. The region is fixed to the bottom of the
+  window, up to twenty cards away from the star that failed, so the
+  demonstrative pointed at nothing.
+
+So there are three questions here, not one:
+
+1. **The wording of each sentence.**
+2. **One sentence or two.** If Sci would rather have a single failure line,
+   delete `tooMany` and point the 429 branch of `favourite-star.tsx` at
+   `failed`. The `_note` in `pt-BR.json` says so, so whoever acts on this does
+   not have to rediscover where the branch is.
+3. **Whether the sentence should name the edital.** It is written on the
+   *answer* and cleared on the *press*, so a slow failure on card A can surface
+   just after the reader has pressed card B — and would be read as being about
+   B. D57 has just put every card's title in a node with an id, so
+   interpolating it costs no new **key**; it is a new **sentence**, which is why
+   this is a question and not a decision taken in that PR. The alternatives are
+   a notice per card (D56 rejected it: there is no room beside a 44px control
+   over a card's corner) and serialising presses across cards (which makes the
+   second press wait on the first, for a failure that is rare).
+
+*Rendering nothing* — D47's answer — was never a candidate here: silence is the
+defect D56 exists to remove.
+
+`signedOut` is unaffected and still Sci's. **D66 reuses all three on the
+opportunity screen and adds no key of its own**, so a rewording here lands in
+both places at once — which is a reason to decide before D66 is built rather
+than after.

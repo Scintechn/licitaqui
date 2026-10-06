@@ -23,7 +23,11 @@ import { MARTA, processo, tenderRun } from '../fixtures/world'
  *    **nothing**, so a star rebuilt from the network would come back empty;
  *  - tapping the star does **not** open the edital, which is the one failure the
  *    placement exists to prevent and the one a string assertion cannot see;
- *  - a visitor is told rather than ignored.
+ *  - a visitor's star goes back, and claims nothing was stored.
+ *
+ * **Where the sentence goes, and that every failure gets one, is D56's own file**
+ * — `favourite-feedback.spec.ts`, together with D57's computed accessible names.
+ * This file is about the star; that one is about the answer.
  *
  * ## Which numbers come from where
  *
@@ -39,8 +43,29 @@ const LIST = `/radar?cnpj=${CNPJ}&group=compatible`
 /** The three cards' ids, in the order `tenderRun` numbers them. */
 const ID = (n: number) => `51885242000140-1-${String(n).padStart(6, '0')}/2026`
 
-function star(page: Page, label: string): Locator {
-  return page.getByRole('button', { name: label })
+/**
+ * Every star on the list in one state — found by the **state** it reports, never
+ * by its name.
+ *
+ * ## What this replaced, and why the old one was wrong
+ *
+ * It was `getByRole('button', { name: 'Favoritar' })` with `toHaveCount(3)`,
+ * which **required all three names to be identical** — the card id for that is
+ * D57, and it is §4b's shape exactly: a test that passes *because* of the
+ * defect, in the same PR as the defect. Worse than merely tolerating it: with
+ * D57's fix in place the assertion would have **gone on passing**, because
+ * Playwright matches the `name` option as a substring and *Favoritar* is a
+ * substring of *Favoritar Baterias e pilhas*. A green suite would have been
+ * evidence of nothing in either direction.
+ *
+ * `aria-pressed` is what the star actually promises a reader, it is one value
+ * per card rather than a name shared across cards, and it cannot be satisfied by
+ * twenty controls answering to one word. The names themselves are asserted where
+ * they can be — as the **computed** accessible name, in
+ * `favourite-feedback.spec.ts`.
+ */
+function stars(page: Page, marked: boolean): Locator {
+  return page.locator('li').getByRole('button', { pressed: marked })
 }
 
 /**
@@ -51,11 +76,11 @@ function star(page: Page, label: string): Locator {
  * markup became. The process number is how `screen.ts`'s `card()` finds one card
  * among sixty, and it survives the de-shouting rule verbatim.
  */
-function starOn(page: Page, n: number, label: string): Locator {
+function starOn(page: Page, n: number, marked: boolean): Locator {
   return page
     .locator('li')
     .filter({ hasText: processo(n) })
-    .getByRole('button', { name: label })
+    .getByRole('button', { pressed: marked })
 }
 
 async function world(page: Page, marked: string[] = []): Promise<RadarApi> {
@@ -74,16 +99,16 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
 
     // Three cards, three stars, none of them marked, and no request was spent
     // finding that out: it came back with the rows.
-    await expect(star(page, copy.add)).toHaveCount(3)
+    await expect(stars(page, false)).toHaveCount(3)
     expect(api.calls.favourite, 'nothing is fetched on mount').toEqual([])
 
-    await starOn(page, 2, copy.add).click()
+    await starOn(page, 2, false).click()
 
-    await expect(starOn(page, 2, copy.added)).toBeVisible()
+    await expect(starOn(page, 2, true)).toBeVisible()
     expect(api.favourites, 'the row the route would have written').toEqual(new Set([ID(2)]))
     expect(api.calls.favourite).toHaveLength(1)
     // The other two are untouched: a toggle on one card is not a toggle on the list.
-    await expect(star(page, copy.add)).toHaveCount(2)
+    await expect(stars(page, false)).toHaveCount(2)
   })
 
   test('the tap does not open the edital — the star is beside the link, not in it', async ({
@@ -93,8 +118,8 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
     await page.goto(LIST)
     await expect(cards(page).first()).toBeVisible()
 
-    await starOn(page, 1, copy.add).click()
-    await expect(starOn(page, 1, copy.added)).toBeVisible()
+    await starOn(page, 1, false).click()
+    await expect(starOn(page, 1, true)).toBeVisible()
 
     // Still the list. A `<button>` inside the card's `<a>` would have navigated
     // here, and every assertion in the unit suite would still have passed.
@@ -107,8 +132,8 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
     await page.goto(LIST)
     await expect(cards(page).first()).toBeVisible()
 
-    await starOn(page, 3, copy.add).click()
-    await expect(starOn(page, 3, copy.added)).toBeVisible()
+    await starOn(page, 3, false).click()
+    await expect(starOn(page, 3, true)).toBeVisible()
 
     const before = api.calls.tenders.length
     await page.reload()
@@ -118,8 +143,8 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
     // a minute old, `restoreList` returns the snapshot and nothing is fetched.
     // So this is the snapshot's `favourites` and nothing else could have
     // supplied it.
-    await expect(starOn(page, 3, copy.added)).toBeVisible()
-    await expect(star(page, copy.add)).toHaveCount(2)
+    await expect(starOn(page, 3, true)).toBeVisible()
+    await expect(stars(page, false)).toHaveCount(2)
     expect(api.calls.tenders.length, 'a fresh snapshot asks for nothing').toBe(before)
   })
 
@@ -130,26 +155,34 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
     await page.goto(LIST)
     await expect(cards(page).first()).toBeVisible()
 
-    await expect(starOn(page, 2, copy.added)).toBeVisible()
-    await expect(star(page, copy.add)).toHaveCount(2)
+    await expect(starOn(page, 2, true)).toBeVisible()
+    await expect(stars(page, false)).toHaveCount(2)
     expect(api.calls.favourite).toEqual([])
   })
 
   test('unmarks again, and the star goes back to Favoritar', async ({ page }) => {
     const api = await world(page, [ID(1)])
     await page.goto(LIST)
-    await expect(starOn(page, 1, copy.added)).toBeVisible()
+    await expect(starOn(page, 1, true)).toBeVisible()
 
-    await starOn(page, 1, copy.added).click()
+    await starOn(page, 1, true).click()
 
-    await expect(starOn(page, 1, copy.add)).toBeVisible()
+    await expect(starOn(page, 1, false)).toBeVisible()
     expect(api.favourites).toEqual(new Set())
   })
 
-  test('a visitor is told, not ignored, and the star reverts', async ({ page }) => {
+  /**
+   * This used to assert the refusal as `starOn(page, 1, copy.signedOut)` — the
+   * star's own `aria-label` becoming the sentence, which is the attribute D56
+   * deleted precisely because it is not *said* to anybody. What belongs in this
+   * file is what the **star** does with a refusal: it goes back. Where the
+   * sentence goes, and that it goes somewhere for a 429 and a dropped connection
+   * too, is `favourite-feedback.spec.ts`.
+   */
+  test('a visitor’s star reverts, and claims nothing was stored', async ({ page }) => {
     // `POST /api/tenders/:id/favorito` is the only Radar route that refuses a
     // caller outright: a favourite is a row keyed on `users.id` and there is
-    // nowhere to put one. The star says so rather than appearing to have worked.
+    // nowhere to put one.
     const api = await world(page)
     api.favourites = null
 
@@ -158,11 +191,14 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
 
     // The star is drawn for a visitor too — §8's rule is that an account adds
     // capability, and a control that is simply absent teaches nobody anything.
-    await starOn(page, 1, copy.add).click()
+    await starOn(page, 1, false).click()
 
-    await expect(starOn(page, 1, copy.signedOut)).toBeVisible()
-    // Reverted: nothing was stored, so nothing may claim it was.
-    await expect(star(page, copy.added)).toHaveCount(0)
+    // Reverted: nothing was stored, so nothing may claim it was. Asserted as the
+    // state the reader perceives, on all three cards.
+    await expect(stars(page, true)).toHaveCount(0)
+    await expect(stars(page, false)).toHaveCount(3)
+    // And the sentence is on the screen rather than hidden in the control.
+    await expect(page.getByText(copy.signedOut)).toBeVisible()
   })
 
   /**
@@ -189,7 +225,7 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
       return found!
     }
 
-    const control = await box(starOn(page, 1, copy.add))
+    const control = await box(starOn(page, 1, false))
     // The countdown is the top row's right-hand content: the one thing the star
     // is placed over the top of.
     const countdown = await box(row.getByText(/^\d+ dias?$/))
@@ -282,16 +318,16 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
     await expect(cards(page).first()).toBeVisible()
     await reached
 
-    await starOn(page, 1, copy.add).click()
-    await expect(starOn(page, 1, copy.added)).toBeVisible()
+    await starOn(page, 1, false).click()
+    await expect(starOn(page, 1, true)).toBeVisible()
     expect(api.favourites, 'the POST landed').toEqual(new Set([ID(1)]))
 
     deliver()
 
     // The stale answer arrives and says nothing is marked. The star stays filled,
     // because the reader touched this tender after that answer was composed.
-    await expect(starOn(page, 1, copy.added)).toBeVisible()
-    await expect(star(page, copy.add)).toHaveCount(2)
+    await expect(starOn(page, 1, true)).toBeVisible()
+    await expect(stars(page, false)).toHaveCount(2)
   })
 
   /**
@@ -313,17 +349,17 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
 
     const gate = api.hold('favourite')
 
-    await starOn(page, 1, copy.add).click()
+    await starOn(page, 1, false).click()
     await gate.reached
     // Optimistic: the star is already filled while the POST is open.
-    await expect(starOn(page, 1, copy.added)).toBeVisible()
+    await expect(starOn(page, 1, true)).toBeVisible()
 
     // The second press, with the first still in flight.
-    await starOn(page, 1, copy.added).click()
+    await starOn(page, 1, true).click()
     gate.open()
 
     // One request, one row, and the screen agrees with it.
-    await expect(starOn(page, 1, copy.added)).toBeVisible()
+    await expect(starOn(page, 1, true)).toBeVisible()
     expect(api.calls.favourite, 'only one toggle left the browser').toHaveLength(1)
     expect(api.favourites).toEqual(new Set([ID(1)]))
   })
@@ -339,6 +375,11 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
 
     // The card is one stop for the whole tender and the star is the next one.
     // Nested interactive content would have made the order undefined.
-    await expect(page.locator(':focus')).toHaveAttribute('aria-label', copy.add)
+    //
+    // This used to read `aria-label` off `:focus`. That attribute is gone (D57),
+    // and asserting an attribute would in any case not have said *which* card's
+    // star had focus — which is the only interesting part. So: the first card's
+    // own star, identified by the `<li>` it lives in.
+    await expect(starOn(page, 1, false)).toBeFocused()
   })
 })

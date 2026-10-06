@@ -5,6 +5,8 @@ import { Icon } from '@/components'
 import { cn } from '@/lib/cn'
 import { messages } from '@/lib/messages'
 import { tenderApiPath } from '@/lib/radar/client'
+import { useFavouriteNotice } from './favourite-notice'
+import { tenderTitleId } from './tender-card'
 
 /**
  * *Favoritar*, on a Radar card — the second half of card **D23**.
@@ -64,27 +66,46 @@ import { tenderApiPath } from '@/lib/radar/client'
  * delete, both insert, and two taps produce one mark. That needs a `PUT` with
  * the desired state rather than a toggle, and it is **D59**.
  *
- * ## A visitor is told, not ignored
+ * ## A visitor is told, out loud and on the screen — D56
  *
  * `POST` answers 401 for anybody without an account, because a favourite is a
  * row keyed on `users.id`. The star is still drawn — §8's rule is that an
- * account adds capability, and a control that is simply absent teaches nothing
- * — and on the refusal the string goes into `title` and into the accessible
- * name, which is reachable with a pointer and with a screen reader's own
- * inspection.
+ * account adds capability, and a control that is simply absent teaches nothing.
  *
- * **It is not announced, and that is stated rather than assumed**: changing the
- * `aria-label` of an already-focused button does not reliably fire an
- * announcement, there is no live region on this screen, and nothing here has
- * been tested with a screen reader. So on a card the refusal is *present*, not
- * *said*. The opportunity screen has a bar to put a sentence in and a card in a
- * list of twenty has not; where that sentence goes is a design decision and a
- * new string, which is **D56**.
+ * What it does **not** do any more is report the refusal by renaming itself. It
+ * did, in `aria-label` and `title` and nowhere else, and both are *present*
+ * rather than *said*: renaming an already-focused button does not reliably fire
+ * an announcement, and a thumb on a phone never produces a hover. The sentence
+ * now goes to the list's one live region (`favourite-notice.tsx`), which is
+ * visible, announced, and the same place every other failure lands.
  *
- * **Every other failure reverts in silence** — a 429 (this route allows 60 a
- * minute), a 400, a 500, a dropped connection. The star flips, bounces back and
- * says nothing, because the only approved sentence here is about not having an
- * account and it would be a lie about a 500. Same missing surface, same card.
+ * **Every failure lands there, not only the 401.** `refused` used to be set on
+ * 401 alone, so a 429 (this route allows 60 a minute), a 400, a 500 and a
+ * dropped connection all reverted in identical silence. Three sentences now
+ * cover them: the approved `signedOut` for 401, `tooMany` for 429 — where
+ * *"tente de novo"* on its own would be wrong advice, because an immediate retry
+ * fails again — and `failed` for everything else, including a body that is not
+ * `ready`, which used to revert saying nothing at all.
+ *
+ * `tooMany` and `failed` are **drafts awaiting Sci** (their `_note` lines in
+ * `pt-BR.json` say so). `signedOut` is his.
+ *
+ * ## One name per star, and it names the edital — D57
+ *
+ * Every star on the list used to be `aria-label="Favoritar"`: on the opportunity
+ * screen that is right, and in a list of twenty it is twenty buttons with one
+ * name, unusable to list and ambiguous to voice control. The name is now
+ * composed by `aria-labelledby` from two nodes that already exist — this
+ * button's own `sr-only` action word and the **card's title** — so the computed
+ * name is *"Favoritar Baterias e pilhas"* with **no new string**: both halves are
+ * text the screen is already showing, joined by the accessible name computation
+ * and not by a sentence anybody wrote. `tenderTitleId` is derived on both sides
+ * from the tender id, so the reference cannot dangle.
+ *
+ * The action comes first because that is what the control *does* and what a
+ * reader skimming a list of buttons needs in the first word; the subject
+ * disambiguates it. A composed sentence (*Favoritar "Baterias e pilhas"*) reads
+ * better and is a new user-facing sentence, which is Sci's.
  */
 
 const copy = messages.radar.favourites
@@ -101,8 +122,20 @@ export type FavouriteStarProps = {
   onChange: (tenderId: string, marked: boolean) => void
 }
 
+/**
+ * The id of the `sr-only` span this button names itself from.
+ *
+ * It is a node *inside* the button rather than `aria-label` beside it, so that a
+ * card whose title node is somehow absent still yields "Favoritar" instead of an
+ * empty accessible name — the failure mode of an `aria-labelledby` whose every
+ * reference dangles.
+ */
+function actionId(tenderId: string): string {
+  return `favourite-action-${tenderId.replace(/[^A-Za-z0-9_-]+/g, '-')}`
+}
+
 export function FavouriteStar({ tenderId, marked, onChange }: FavouriteStarProps) {
-  const [refused, setRefused] = useState(false)
+  const announce = useFavouriteNotice()
   /**
    * A `POST` for this tender is open. A ref and not state, deliberately: it
    * gates the handler rather than the render, and `aria-busy` below reads the
@@ -129,32 +162,50 @@ export function FavouriteStar({ tenderId, marked, onChange }: FavouriteStarProps
       setBusy(false)
     }
 
-    setRefused(false)
+    // The sentence from the last failure, if one is up, is about a press that
+    // is now over. Cleared here rather than left to expire.
+    announce(null)
     onChange(tenderId, !before)
+
+    const fail = (message: string) => {
+      announce(message)
+      revert()
+    }
 
     fetch(`/api/tenders/${tenderApiPath(tenderId)}/favorito`, { method: 'POST' })
       .then(async (answer) => {
-        if (answer.status === 401) {
-          setRefused(true)
-          revert()
-          return
-        }
+        // 401: no account. The one approved sentence, and the only failure that
+        // is not a failure — the route is working exactly as §8 says it should.
+        if (answer.status === 401) return fail(copy.signedOut)
+        // 429: the route allows 60 a minute, which a reader working down a long
+        // list can reach. "Tente de novo" alone would be wrong advice here.
+        if (answer.status === 429) return fail(copy.tooMany)
         const body: unknown = await answer.json().catch(() => null)
         const state = body as { state?: string; favourite?: boolean } | null
-        if (state?.state === 'ready') onChange(tenderId, state.favourite === true)
-        else revert()
+        if (answer.ok && state?.state === 'ready') {
+          onChange(tenderId, state.favourite === true)
+          return
+        }
+        // A 400, a 500, or a 200 whose body is not `ready`. The last one used to
+        // revert in complete silence, which looked identical to the star not
+        // having been pressed.
+        fail(copy.failed)
       })
-      .catch(revert)
+      // Offline, DNS, a dropped connection: the press never reached the route.
+      .catch(() => fail(copy.failed))
       .finally(settle)
-  }, [marked, onChange, tenderId])
+  }, [announce, marked, onChange, tenderId])
 
-  const label = refused ? copy.signedOut : marked ? copy.added : copy.add
+  const label = marked ? copy.added : copy.add
+  const action = actionId(tenderId)
 
   return (
     <button
       type="button"
       onClick={toggle}
-      aria-label={label}
+      /* D57: the action word plus the card's own title, in that order. Never
+         `aria-label` — twenty stars with one name is the defect. */
+      aria-labelledby={`${action} ${tenderTitleId(tenderId)}`}
       aria-pressed={marked}
       aria-busy={busy || undefined}
       title={label}
@@ -174,6 +225,11 @@ export function FavouriteStar({ tenderId, marked, onChange }: FavouriteStarProps
         marked ? 'text-blue' : 'text-muted hover:text-ink',
       )}
     >
+      {/* The action half of the name. `sr-only` and not `aria-label`, so the
+          composed name below can never come out empty. */}
+      <span id={action} className="sr-only">
+        {label}
+      </span>
       <Icon name="star" size={22} filled={marked} />
     </button>
   )
