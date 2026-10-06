@@ -102,6 +102,8 @@ export type Calls = {
   tender: string[]
   screeningPost: string[]
   screeningGet: string[]
+  /** `POST /api/tenders/:id/favorito` — D23's star on a card. */
+  favourite: string[]
   jobs: string[]
   /** Anything under `/api/` this dispatcher did not expect. Must stay empty. */
   unexpected: string[]
@@ -131,6 +133,15 @@ export type RadarApi = {
   screening: ScreeningState
   /** Per-tender `{ ready, spent }`, which is what names the CTA (#70). */
   availability: Map<string, ScreeningAvailability>
+  /**
+   * The editais this caller has marked (D23). The world owns it, so a journey
+   * asserts the screen rather than its own bookkeeping: the list envelope
+   * reports it, the `POST` toggles it, and a reload reads it back.
+   *
+   * `null` is "no account" — the `POST` then answers 401, which is what
+   * `/api/tenders/:id/favorito` really does for a visitor.
+   */
+  favourites: Set<string> | null
   /** Holds the next response of a route open until the test opens the gate. */
   hold(route: keyof Omit<Calls, 'unexpected'>): Gate
   /** Swap the whole world mid-journey (Carla changing client, say). */
@@ -182,6 +193,7 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
       tender: [],
       screeningPost: [],
       screeningGet: [],
+      favourite: [],
       jobs: [],
       unexpected: [],
     },
@@ -194,6 +206,7 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
       rules: null,
     },
     availability: new Map(),
+    favourites: new Set<string>(),
     hold: (name) => {
       const gate = new Gate()
       gates[name] = gate
@@ -277,10 +290,30 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
         state: 'ready',
         group,
         tenders: slice,
+        // D23: the marked ids come back **with the rows**, scoped to this page,
+        // which is exactly what `listTenders` projects.
+        favourites: slice
+          .filter((row) => api.favourites?.has(row.id))
+          .map((row) => row.id),
         counts,
         nextCursor: next,
         freshness,
       } satisfies TenderListResponse)
+    }
+
+    // ── POST /api/tenders/:id/favorito (D23) ──────────────────────────────
+    if (path.endsWith('/favorito')) {
+      await through('favourite', request.url())
+      const id = tenderIdFrom(path, '/favorito')
+      if (api.favourites === null) {
+        // The one Radar route that refuses a visitor outright: a favourite is a
+        // row keyed on `users.id` and there is nowhere to put one otherwise.
+        return json(route, { state: 'error', error: 'unauthenticated' }, 401)
+      }
+      const marked = !api.favourites.has(id)
+      if (marked) api.favourites.add(id)
+      else api.favourites.delete(id)
+      return json(route, { state: 'ready', favourite: marked })
     }
 
     // ── /api/tenders/:id and /api/tenders/:id/screening ───────────────────

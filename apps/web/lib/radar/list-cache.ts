@@ -72,6 +72,21 @@ export type ListSnapshot = {
   counts: Record<TenderGroup, number> | null
   /** Every page the user had loaded, in the order they were appended. */
   tenders: TenderCard[]
+  /**
+   * The ids of `tenders` this reader has marked — D23's stars on the cards.
+   *
+   * Part of the snapshot and not derived on restore, because the whole point of
+   * a snapshot is that coming back asks for nothing: inside
+   * `REVALIDATE_AFTER_MS` the list is restored and **no request is made at
+   * all**, so a set rebuilt from the network would be rebuilt from nothing and
+   * every star would come back empty. It also has to survive a mark made after
+   * the list was read, which no re-read of the envelope would know about until
+   * it happened.
+   *
+   * Ids rather than a `Set`, because this is `JSON.stringify`d into
+   * `sessionStorage` and a `Set` serialises to `{}`.
+   */
+  favourites: string[]
   nextCursor: string | null
   freshness: Freshness | null
   status: SnapshotStatus
@@ -148,12 +163,20 @@ function erase(key: string): void {
 /**
  * Storage is written by a previous page load, so what comes back is input, not
  * state: anything whose shape we would render is checked before it is trusted.
+ *
+ * **`favourites` is checked, which discards snapshots written before D23's
+ * second half.** That is deliberate: an entry from the previous deploy has no
+ * marked ids, so restoring it would draw a list of empty stars over tenders the
+ * reader had marked — the exact failure the field exists to prevent, wearing the
+ * previous version's clothes. Refusing it costs one request and heals the entry,
+ * which is what every other branch here does too.
  */
 function valid(value: unknown): value is ListSnapshot {
   if (typeof value !== 'object' || value === null) return false
   const snapshot = value as Partial<ListSnapshot>
   return (
     Array.isArray(snapshot.tenders) &&
+    Array.isArray(snapshot.favourites) &&
     typeof snapshot.savedAt === 'number' &&
     Number.isFinite(snapshot.savedAt) &&
     typeof snapshot.group === 'string' &&
@@ -344,6 +367,54 @@ export function refreshTenders(current: TenderCard[], incoming: TenderCard[]): T
     return update
   })
   return changed ? merged : current
+}
+
+/**
+ * The same background refresh, applied to D23's stars.
+ *
+ * A refresh asks for **page 1** and comes back with page 1's marked ids. Simply
+ * taking that array would empty every star below the first page, because those
+ * tenders were not in the answer — and after three "Ver mais editais" that is
+ * most of the list. So the rule is the one `refreshTenders` already follows: the
+ * route is authoritative about the rows it returned, and silent about the rest.
+ *
+ * `refreshed` are the ids the refresh *asked about* (page 1's tenders) and
+ * `marked` the subset it says are marked. For an id in `refreshed` the answer
+ * replaces what we had, in both directions — a tender unmarked in another tab
+ * loses its star here too. For an id outside it, what we had stands.
+ */
+export function refreshFavourites(
+  current: string[],
+  refreshed: TenderCard[],
+  marked: string[],
+): string[] {
+  if (refreshed.length === 0) return current
+  const asked = new Set(refreshed.map((tender) => tender.id))
+  const kept = current.filter((id) => !asked.has(id))
+  const next = [...kept, ...marked.filter((id) => asked.has(id))]
+  // Identity matters: `RadarScreen` keeps this in state and a new array every
+  // revalidation would re-save the snapshot and rebuild the `Set` for nothing.
+  return same(current, next) ? current : next
+}
+
+/** Set equality, for arrays whose order carries no meaning. */
+function same(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const left = new Set(a)
+  return b.every((id) => left.has(id))
+}
+
+/**
+ * One tender's mark, flipped — what the star on a card calls.
+ *
+ * Returns the same array when nothing changes, so a second report of a state we
+ * already hold (the optimistic update, then the route agreeing with it) does not
+ * re-render the list or re-write the snapshot.
+ */
+export function withFavourite(current: string[], tenderId: string, marked: boolean): string[] {
+  const has = current.includes(tenderId)
+  if (has === marked) return current
+  return marked ? [...current, tenderId] : current.filter((id) => id !== tenderId)
 }
 
 /** Tests only: the Map outlives a test file otherwise. */

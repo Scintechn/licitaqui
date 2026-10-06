@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { cnpjOf, readViewer } from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { normaliseCnpj } from '@/lib/cnpj'
 import { db } from '@/lib/db'
 import { readCompany, segmentsByFit } from '@/lib/radar/company'
 import { TENDER_GROUPS, type TenderListResponse } from '@/lib/radar/contract'
 import { countGroups, listFreshness, listTenders, MAX_LIMIT } from '@/lib/radar/tenders'
-import { loadVisitor } from '@/lib/radar/visitor'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
 /**
@@ -24,6 +24,20 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  * The CNPJ comes from the query string when given, otherwise from the CNPJ this
  * device last searched (`visitors.cnpj`), so the Radar survives a reload
  * without putting the company back in every URL.
+ *
+ * ## `favourites` rides with the rows (D23)
+ *
+ * The envelope names which of this page's tenders the caller has already
+ * marked, and it comes from the **same statement** as the rows
+ * (`listTenders`'s `exists` projection). D23's rule is that the badge and the
+ * list are one read; the list and its stars are the same rule, and the
+ * alternative — a `GET /api/tenders/:id/favorito` per card — is thirteen
+ * answers free to disagree with the one list they describe.
+ *
+ * This is why a read route that used to need no identity now reads one. It
+ * still **mints** nothing: `readViewer` never inserts a `visitors` row, and a
+ * caller with no account gets an empty array rather than a 401 — unlike
+ * `POST /api/tenders/:id/favorito`, which has nowhere to put a row and says so.
  */
 
 export const runtime = 'nodejs'
@@ -80,11 +94,22 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
   const params = parsed.data
 
   try {
-    // Read only: a GET never mints an identity. The cookie is set by the first
-    // POST /api/radar/cnpj, which is where §8 puts it.
-    const visitor = await loadVisitor(request.headers.get('cookie'))
+    const executor = db()
 
-    const cnpj = params.cnpj ? normaliseCnpj(params.cnpj) : (visitor?.cnpj ?? null)
+    // Read only: a GET never mints an identity. `readViewer` is the non-creating
+    // reader — the cookie is set by the first POST /api/radar/cnpj, which is
+    // where §8 puts it.
+    //
+    // One call, not two: it already reads the session and then the visitor, so
+    // asking `loadVisitor` separately for the fallback CNPJ would read the same
+    // row twice on the Radar's hottest route. `cnpjOf` is the fallback it used
+    // to compute by hand, and for a signed-in caller it now prefers
+    // `users.cnpj` — the company this account searched last — over whatever
+    // visitor row they happened to leave behind before signing up.
+    const viewer = await readViewer(request.headers.get('cookie'), executor)
+    const viewerUserId = viewer?.kind === 'user' ? viewer.user.userId : null
+
+    const cnpj = params.cnpj ? normaliseCnpj(params.cnpj) : cnpjOf(viewer)
     if (params.cnpj && !cnpj) {
       return fail({ state: 'error', error: 'validation', fields: { cnpj: 'cnpjInvalid' } }, 400)
     }
@@ -98,7 +123,6 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
       return fail({ state: 'error', error: 'validation', fields: { cnpj: 'cnpjRequired' } }, 400, headers)
     }
 
-    const executor = db()
     const company = cnpj ? await readCompany(cnpj, executor) : null
     const fits = company?.data.company.segments ?? []
     const { compatible, check } = segmentsByFit(fits)
@@ -113,7 +137,7 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
     }
 
     const [page, counts, freshness] = await Promise.all([
-      listTenders(match, params.group, filters, executor),
+      listTenders(match, params.group, filters, executor, viewerUserId),
       countGroups(match, filters, executor),
       listFreshness({ state: filters.state }, { executor }),
     ])
@@ -123,6 +147,8 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
         state: 'ready' as const,
         group: params.group,
         tenders: page.tenders,
+        // The stars, from the same statement as the rows (D23).
+        favourites: page.favourites,
         counts,
         nextCursor: page.nextCursor,
         freshness: {

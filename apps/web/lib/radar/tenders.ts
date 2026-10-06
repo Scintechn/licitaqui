@@ -87,6 +87,8 @@ type TenderRow = {
   halted: boolean
   updated_at: Date | string
   pncp_updated_at: Date | string | null
+  /** Whether the viewer has marked it (D23). Always `false` with no viewer. */
+  favourite: boolean
 }
 
 /**
@@ -197,6 +199,40 @@ function groupExpression(match: CompanyMatch): SQL {
 export type TenderPage = {
   tenders: TenderCard[]
   nextCursor: string | null
+  /**
+   * The ids on **this page** that `viewerUserId` has marked (card **D23**).
+   *
+   * A subset of `tenders`, from the same statement as the rows. See
+   * {@link favouriteExpression} for why it is one read and not thirteen.
+   */
+  favourites: string[]
+}
+
+/**
+ * Has this viewer marked this tender — card **D23**, projected over the page.
+ *
+ * **One read, which is the whole rule.** D23's store deliberately has no
+ * `countFavourites` because the nav badge and the section must come from one
+ * query; the list and its stars are the same sentence one level up. Thirteen
+ * `GET /api/tenders/:id/favorito` calls would be thirteen answers free to
+ * disagree with the list they decorate, and each one a round trip before the
+ * star could paint at all.
+ *
+ * It sits beside `item_count` in the `matched` projection, deliberately: both
+ * are per-row subqueries on the same rows, and `(user_id, tender_id)` is the
+ * `favourites` primary key, so each one is a single index probe.
+ *
+ * No viewer — a visitor, or nobody — projects the constant `false` rather than
+ * a subquery against a null id. A favourite is a row keyed on `users.id`; a
+ * caller with no account has none, which is not an error and not an empty
+ * query.
+ */
+function favouriteExpression(viewerUserId: number | null): SQL {
+  if (viewerUserId === null) return sql`false`
+  return sql`exists (
+    select 1 from favourites f
+     where f.user_id = ${viewerUserId}::bigint and f.tender_id = t.id
+  )`
 }
 
 export async function listTenders(
@@ -204,6 +240,12 @@ export async function listTenders(
   group: TenderGroup,
   filters: TenderFilters,
   database: Executor = db(),
+  /**
+   * The signed-in reader, for the stars on the cards. `null` for a visitor and
+   * on every call that does not need them — the projection is then a constant
+   * and the `favourites` table is not touched at all.
+   */
+  viewerUserId: number | null = null,
 ): Promise<TenderPage> {
   const limit = Math.min(Math.max(filters.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
   const cursor = filters.cursor ? decodeCursor(filters.cursor) : null
@@ -234,6 +276,8 @@ export async function listTenders(
              -- The board's "7 itens" on the card. One indexed count per row of
              -- the page (at most 50), not per row of the tenders table.
              (select count(*) from tender_items i where i.tender_id = t.id) as item_count,
+             -- D23's star, from the same read as the row it sits on.
+             ${favouriteExpression(viewerUserId)} as favourite,
              ${groupExpression(match)} as grp
         ${scope(match, filters, after)}
     )
@@ -248,7 +292,13 @@ export async function listTenders(
   const last = page[page.length - 1]
   const nextCursor = rows.length > limit && last ? encodeCursor(last) : null
 
-  return { tenders: page.map((row) => toCard(row, match)), nextCursor }
+  return {
+    tenders: page.map((row) => toCard(row, match)),
+    nextCursor,
+    // The page's marked ids, never the whole account's: this is what the cards
+    // on screen need, and a star is only ever drawn for a row that is here.
+    favourites: page.filter((row) => row.favourite === true).map((row) => row.id),
+  }
 }
 
 export async function countGroups(

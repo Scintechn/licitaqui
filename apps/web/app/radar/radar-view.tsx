@@ -27,6 +27,7 @@ import { everyGroupEmpty, otherPopulatedGroup } from '@/lib/radar/group'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { TENDER_GROUPS } from '@/lib/radar/contract'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
+import { FavouriteStar } from './favourite-star'
 import { TenderCardView } from './tender-card'
 
 /**
@@ -93,6 +94,18 @@ export type RadarViewProps = {
   visitor: VisitorView | null
   counts: Record<TenderGroup, number> | null
   tenders: TenderCard[]
+  /**
+   * Which of `tenders` the reader has marked — D23's stars, straight from the
+   * list envelope through `RadarScreen`.
+   */
+  favourites?: ReadonlySet<string>
+  /**
+   * A card's star was pressed. **Absent means no star is drawn at all**, the way
+   * `onOpenMenu` works: the Landing's example panel has no viewer to report
+   * marks for, and a control that cannot persist anything must not be rendered
+   * looking as though it can.
+   */
+  onFavourite?: (tenderId: string, marked: boolean) => void
   freshness: Freshness | null
   /**
    * The cursor for the next page, straight from the envelope. `null` is the
@@ -615,16 +628,20 @@ function Body({
   counts,
   query,
   tenders,
+  favourites,
   now,
   onRetry,
+  onFavourite,
 }: {
   status: RadarStatus
   group: TenderGroup
   counts: Record<TenderGroup, number> | null
   query: RadarQuery
   tenders: TenderCard[]
+  favourites?: ReadonlySet<string>
   now: Date
   onRetry?: () => void
+  onFavourite?: (tenderId: string, marked: boolean) => void
 }) {
   switch (status.kind) {
     case 'analyzing':
@@ -768,6 +785,18 @@ function Body({
               tender={tender}
               now={now}
               href={tenderHref(tender.id, { ...query, group })}
+              /* D23. Seeded from the envelope, so it never paints the wrong
+                 state, and rendered outside the card's anchor — see
+                 `tender-card.tsx` for the box arithmetic. */
+              action={
+                onFavourite ? (
+                  <FavouriteStar
+                    tenderId={tender.id}
+                    marked={favourites?.has(tender.id) ?? false}
+                    onChange={onFavourite}
+                  />
+                ) : undefined
+              }
             />
           </li>
         ))}
@@ -785,6 +814,7 @@ export function RadarView({
   visitor,
   counts,
   tenders,
+  favourites,
   freshness,
   nextCursor = null,
   loadingMore = false,
@@ -793,6 +823,7 @@ export function RadarView({
   onRetry,
   onLoadMore,
   onOpenMenu,
+  onFavourite,
 }: RadarViewProps) {
   const showList = status.kind === 'ready' || status.kind === 'manualCnae'
 
@@ -857,8 +888,10 @@ export function RadarView({
             counts={counts}
             query={query}
             tenders={showList ? tenders : []}
+            favourites={favourites}
             now={now}
             onRetry={onRetry}
+            onFavourite={onFavourite}
           />
           {showList ? (
             <More

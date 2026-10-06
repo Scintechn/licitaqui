@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { getJobStatus, getTenders, postCnpj } from '@/lib/radar/client'
 import type {
   CnpjResponse,
@@ -18,11 +18,13 @@ import {
   forgetList,
   listKey,
   readCompany,
+  refreshFavourites,
   refreshTenders,
   rememberScroll,
   restoreList,
   saveCompany,
   saveList,
+  withFavourite,
   type ListSnapshot,
   type SnapshotStatus,
 } from '@/lib/radar/list-cache'
@@ -87,6 +89,15 @@ type Data = {
   visitor: VisitorView | null
   counts: Record<TenderGroup, number> | null
   tenders: TenderCard[]
+  /**
+   * The ids of `tenders` this reader has marked — D23's stars.
+   *
+   * Here, and not inside each star, because the set has to outlive the cards:
+   * the snapshot carries it (`list-cache.ts`), so pressing Back restores the
+   * list *with* its stars, and a mark made on page 3 is still a mark after a
+   * background refresh of page 1.
+   */
+  favourites: string[]
   /** The tab on screen: the chosen one, or the one `bestGroup()` elected. */
   group: TenderGroup
   /** From the envelope. `null` is the end of the list. */
@@ -131,6 +142,7 @@ const INITIAL: Data = {
   visitor: null,
   counts: EMPTY_COUNTS,
   tenders: [],
+  favourites: [],
   group: 'compatible',
   nextCursor: null,
   loadingMore: false,
@@ -178,6 +190,7 @@ function fromSnapshot(snapshot: ListSnapshot, key: string): Data {
     visitor: snapshot.visitor,
     counts: snapshot.counts,
     tenders: snapshot.tenders,
+    favourites: snapshot.favourites,
     group: snapshot.group,
     nextCursor: snapshot.nextCursor,
     loadingMore: false,
@@ -299,6 +312,7 @@ export function RadarScreen() {
       visitor: data.visitor,
       counts: data.counts,
       tenders: data.tenders,
+      favourites: data.favourites,
       nextCursor: data.nextCursor,
       freshness: data.freshness,
       status,
@@ -383,6 +397,13 @@ export function RadarScreen() {
               counts: list.counts,
               freshness: list.freshness,
               tenders: refreshTenders(current.tenders, list.tenders),
+              // Page 1's answer about page 1's rows, and silence about the
+              // pages below it — the same rule `refreshTenders` follows.
+              favourites: refreshFavourites(
+                current.favourites,
+                list.tenders,
+                list.favourites,
+              ),
               readAt: Date.now(),
             }
           : {}),
@@ -417,6 +438,7 @@ export function RadarScreen() {
         ...previous,
         key,
         tenders: [],
+        favourites: [],
         nextCursor: null,
         loadingMore: false,
         status: { kind: 'analyzing', what: cnpj ? 'company' : 'list' },
@@ -489,13 +511,20 @@ export function RadarScreen() {
         setData((previous) => ({
           ...previous,
           tenders: [],
+          favourites: [],
           group,
           status: { kind: 'error', code: answer.error, text: apiErrorText(answer) },
         }))
         return
       }
       if (answer.state === 'analyzing') {
-        setData((previous) => ({ ...previous, tenders: [], group, status: { kind: 'timeout' } }))
+        setData((previous) => ({
+          ...previous,
+          tenders: [],
+          favourites: [],
+          group,
+          status: { kind: 'timeout' },
+        }))
         return
       }
 
@@ -514,6 +543,7 @@ export function RadarScreen() {
         visitor,
         counts: answer.counts,
         tenders: answer.tenders,
+        favourites: answer.favourites,
         group,
         nextCursor: answer.nextCursor,
         loadingMore: false,
@@ -569,6 +599,14 @@ export function RadarScreen() {
             ? {
                 ...previous,
                 tenders: appendTenders(previous.tenders, answer.tenders),
+                // The new page's marked ids join the set. `appendTenders`
+                // de-duplicates the rows; this de-duplicates the ids, because a
+                // page boundary can repeat a tender when the sweep inserts one.
+                favourites: refreshFavourites(
+                  previous.favourites,
+                  answer.tenders,
+                  answer.favourites,
+                ),
                 nextCursor: answer.nextCursor,
                 loadingMore: false,
               }
@@ -611,6 +649,28 @@ export function RadarScreen() {
     setAttempt((value) => value + 1)
   }, [key])
 
+  /**
+   * D23's stars. The view wants a `Set` — it asks once per card — and the state
+   * holds an array, because that is what `sessionStorage` can carry.
+   */
+  const favourites = useMemo(() => new Set(data.favourites), [data.favourites])
+
+  /**
+   * One card's star changed, and this is the only writer of `data.favourites`.
+   *
+   * `FavouriteStar` calls it twice per press: optimistically, then with what the
+   * route said. `withFavourite` returns the same array when the two agree, so the
+   * second call costs no render and no re-write of the snapshot — and the save
+   * effect below picks the change up on its own, which is why the snapshot keeps
+   * the mark across a Back without anything here mentioning storage.
+   */
+  const onFavourite = useCallback((tenderId: string, marked: boolean) => {
+    setData((previous) => {
+      const next = withFavourite(previous.favourites, tenderId, marked)
+      return next === previous.favourites ? previous : { ...previous, favourites: next }
+    })
+  }, [])
+
   return (
     <>
     <RadarView
@@ -620,6 +680,8 @@ export function RadarScreen() {
       visitor={data.visitor}
       counts={data.counts}
       tenders={data.tenders}
+      favourites={favourites}
+      onFavourite={onFavourite}
       nextCursor={data.nextCursor}
       loadingMore={data.loadingMore}
       freshness={data.freshness}
