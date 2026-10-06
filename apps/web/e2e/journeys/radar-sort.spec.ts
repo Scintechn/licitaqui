@@ -107,6 +107,35 @@ test.describe('D51 · the Radar list can be ordered', () => {
   })
 
   /**
+   * The other half of the same rule, and the only place it can be asserted.
+   *
+   * `FilterRow`'s hidden `group` field is gated on `groupChosen`, but its
+   * `onSubmit` — the path a reader with JavaScript actually takes — passed
+   * `query.group` unconditionally, so the two halves of one form disagreed: with
+   * scripting the elected tab was pinned into the next search, without it the
+   * election stood. Both read `groupChosen` now.
+   *
+   * It cannot be pinned in `sort-menu.test.tsx`: `onSubmit` is a handler, and
+   * `renderToStaticMarkup` emits no handlers. So it is here, driven as a reader
+   * drives it.
+   */
+  test('a tab the counts elected is not pinned by applying a filter', async ({ page }) => {
+    // No `group=` in the address: the tab on screen is `bestGroup()`'s election.
+    await page.goto(`/radar?cnpj=${CNPJ}`)
+    await expect(cards(page).first()).toBeVisible()
+    await expect(page).not.toHaveURL(/group=/)
+
+    await filterLabel(page).click()
+    await page.getByLabel(messages.radar.landing.ufLabel).selectOption('MG')
+    await page.getByRole('button', { name: list.apply }).click()
+
+    await expect(page).toHaveURL(/uf=MG/)
+    // The election is re-run against the new counts rather than carried over —
+    // a tab nobody chose must never pin a search, because it can be the empty one.
+    await expect(page).not.toHaveURL(/group=/)
+  })
+
+  /**
    * The 390px frame, which is the one the board was drawn at.
    *
    * The label this control replaced was `position: absolute` over the right end

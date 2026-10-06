@@ -84,6 +84,11 @@ export type RadarQuery = {
    * The user pressed this tab. An elected one must not be written into the
    * filter form as though it had been, or changing the UF would carry a
    * decision the user never made into a search where it may be wrong again.
+   *
+   * **Read by every address this screen builds out of `query`, not only by the
+   * form** — the sort links (D51) had to learn the same rule, and the filter
+   * form's `onSubmit` turned out never to have known it while its hidden field
+   * did. Anything that spreads `query` into `radarHref` has to answer this flag.
    */
   groupChosen?: boolean
   /**
@@ -404,7 +409,27 @@ function SortMenu({ query }: { query: RadarQuery }) {
         {TENDER_SORTS.map((sort) => (
           <li key={sort}>
             <Link
-              href={radarHref({ ...query, sort })}
+              href={radarHref({
+                ...query,
+                /**
+                 * **The tab is carried only if the reader picked it.**
+                 * `query.group` is *the tab on screen* — chosen, or the one
+                 * `bestGroup()` elected from the counts — and spreading it here
+                 * would write an election into the URL as though it had been a
+                 * decision. That is the trap `RadarQuery.groupChosen` exists to
+                 * name, and it does not stop at this link: `FilterRow`'s hidden
+                 * `group` field is gated on `groupChosen`, so a promoted tab
+                 * then starts travelling with every filter the reader applies,
+                 * and a later search opens on a tab nobody chose — which may be
+                 * empty, which is the whole reason `bestGroup()` exists.
+                 *
+                 * Dropping it costs nothing the reader can see: the counts do
+                 * not change with the order, so the next load elects the same
+                 * tab and the list stays where it is.
+                 */
+                group: query.groupChosen ? query.group : null,
+                sort,
+              })}
               aria-current={sort === active ? 'true' : undefined}
               aria-label={format(list.sortBy, { ordem: list.sortOrders[sort] })}
               className={cn(
@@ -515,7 +540,12 @@ function FilterRow({
                       cnpj: String(data.get('cnpj') ?? '') || null,
                       state: String(data.get('uf') ?? '') || null,
                       q: String(data.get('q') ?? '').trim() || null,
-                      group: query.group,
+                      // The same rule as the sort links above, and the same
+                      // rule as the hidden `group` field below — which is
+                      // already gated on `groupChosen`, so until now the two
+                      // halves of this one form disagreed: with JavaScript the
+                      // elected tab was pinned, without it the election stood.
+                      group: query.groupChosen ? query.group : null,
                       // Applying a filter must not quietly re-sort the list.
                       sort: query.sort,
                     }),

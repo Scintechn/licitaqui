@@ -66,16 +66,54 @@ describe('the sort control', () => {
     }
     // The default is the address with no parameter at all; the other two name
     // themselves. Four `href`s would mean one of them is not a link.
-    expect(out).toContain('href="/radar?cnpj=51885242000140&amp;uf=SP&amp;group=compatible"')
+    //
+    // No `group` here, and that is the rule asserted below rather than an
+    // omission: the fixture's tab is the one the counts elected, not one the
+    // reader pressed.
+    expect(out).toContain('href="/radar?cnpj=51885242000140&amp;uf=SP"')
     expect(out).toContain('sort=valueDesc')
     expect(out).toContain('sort=valueAsc')
     expect(out.match(/href=/g)).toHaveLength(3)
   })
 
+  /** Every `href` inside the control, which is what a reader would follow. */
+  function orders(out: string): string[] {
+    return (control(out).match(/href="([^"]*)"/g) ?? []).map((href) =>
+      href.slice(6, -1).replaceAll('&amp;', '&'),
+    )
+  }
+
+  it('does not turn the tab the counts elected into a tab the reader chose', () => {
+    // `query.group` is *the tab on screen* — chosen, or elected by `bestGroup()`
+    // — so spreading it into these links would write an election into the URL as
+    // a decision. `FilterRow`'s hidden `group` field is gated on `groupChosen`,
+    // so a promoted tab then travels with every filter applied afterwards and a
+    // later search opens on a tab nobody picked, which may be empty.
+    //
+    // Asserted as behaviour and not as a string: what matters is that no address
+    // a reader can reach from here carries a `group` they did not choose.
+    const elected = orders(render({ group: 'keyword', groupChosen: false }))
+    expect(elected).toHaveLength(3)
+    for (const href of elected) {
+      expect(new URLSearchParams(href.split('?')[1]).has('group'), href).toBe(false)
+      // …and nothing else is lost in the process.
+      expect(href).toContain('cnpj=51885242000140')
+    }
+
+    // A tab the reader actually pressed is never second-guessed.
+    const chosen = orders(render({ group: 'keyword', groupChosen: true }))
+    expect(chosen).toHaveLength(3)
+    for (const href of chosen) {
+      expect(new URLSearchParams(href.split('?')[1]).get('group'), href).toBe('keyword')
+    }
+  })
+
   it('carries the whole search into every order, not just the order', () => {
     // A link that dropped the keyword would re-sort a different list — the same
     // loss `client.ts` exists to make impossible to write by hand.
-    const out = control(render({ q: 'papel', state: 'MG', group: 'keyword' }))
+    // `groupChosen` on purpose: the test above owns the elected case, and a
+    // chosen tab is part of the search that has to survive.
+    const out = control(render({ q: 'papel', state: 'MG', group: 'keyword', groupChosen: true }))
     for (const href of out.match(/href="[^"]*"/g) ?? []) {
       expect(href).toContain('cnpj=51885242000140')
       expect(href).toContain('uf=MG')
