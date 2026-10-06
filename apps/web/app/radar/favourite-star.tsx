@@ -62,7 +62,7 @@ import { tenderApiPath } from '@/lib/radar/client'
  * moment. `toggleFavourite` is `delete … returning` then `insert`, which closes
  * the lost-**row** window and not the lost-**intent** one — both find nothing to
  * delete, both insert, and two taps produce one mark. That needs a `PUT` with
- * the desired state rather than a toggle, and it is **D57**.
+ * the desired state rather than a toggle, and it is **D59**.
  *
  * ## A visitor is told, not ignored
  *
@@ -79,7 +79,7 @@ import { tenderApiPath } from '@/lib/radar/client'
  * been tested with a screen reader. So on a card the refusal is *present*, not
  * *said*. The opportunity screen has a bar to put a sentence in and a card in a
  * list of twenty has not; where that sentence goes is a design decision and a
- * new string, which is **D54**.
+ * new string, which is **D56**.
  *
  * **Every other failure reverts in silence** — a 429 (this route allows 60 a
  * minute), a 400, a 500, a dropped connection. The star flips, bounces back and

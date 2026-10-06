@@ -155,7 +155,7 @@ describe('what the star says', () => {
 
   it('carries the label in `title` as well, so a pointer can reach it', () => {
     // The star is an icon with no text; the refusal a visitor gets has nowhere
-    // else to go on a list card (D54).
+    // else to go on a list card (D56).
     expect(withStar(false)).toContain(`title="${copy.add}"`)
   })
 
