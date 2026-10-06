@@ -2,7 +2,9 @@ import { sql, type SQL } from 'drizzle-orm'
 import { readOrEnqueue, TTL, type Cached } from '@/lib/cache'
 import { db, type Executor } from '@/lib/db'
 import { JOB_KINDS } from '@/lib/jobs'
-import type { SegmentFit, TenderCard, TenderGroup } from './contract'
+import { DEFAULT_SORT } from './contract'
+import type { SegmentFit, TenderCard, TenderGroup, TenderSort } from './contract'
+import { MODALITY_CODES, type MeEppFilter, type ModalityFilter } from './filters'
 import { DIVULGADA } from './tender-status'
 
 /**
@@ -49,11 +51,25 @@ export type TenderFilters = {
   state?: string | null
   /** Free text for `websearch_to_tsquery`. */
   q?: string | null
+  /**
+   * One `tenders.modality_id`, by slug (D52) — the code, never the name beside
+   * it: the name is PNCP's free text from two endpoints, the id is the key.
+   * `null` is *Todas*, which adds no condition at all.
+   */
+  modality?: ModalityFilter | null
+  /** `exclusive`, or everything that is not (D52). `null` is *Todas*. */
+  meEpp?: MeEppFilter | null
   /** Closed tenders are excluded by default: the Radar is for bidding. */
   includeClosed?: boolean
   limit?: number
   /** Keyset cursor from a previous page. */
   cursor?: string | null
+  /**
+   * The order (D51). Absent is `DEFAULT_SORT` — the deadline order this list
+   * has always had — and produces the same SQL it did before the parameter
+   * existed.
+   */
+  sort?: TenderSort | null
 }
 
 export type CompanyMatch = {
@@ -87,6 +103,8 @@ type TenderRow = {
   halted: boolean
   updated_at: Date | string
   pncp_updated_at: Date | string | null
+  /** Whether the viewer has marked it (D23). Always `false` with no viewer. */
+  favourite: boolean
 }
 
 /**
@@ -106,7 +124,70 @@ type TenderRow = {
 const HALTED = sql`(t.status is distinct from ${DIVULGADA})`
 
 /**
- * A keyset cursor over the sort key `(halted, proposals_close_at, id)`.
+ * The sort key, as an ordered list of ascending expressions — **one definition,
+ * read by the `order by`, by the keyset cursor's comparison and by nothing
+ * else.** The rule at the head of `HALTED` is the whole reason this is a
+ * function and not two pieces of SQL that happen to agree today: a sort key
+ * that does not match its cursor silently skips rows at every page boundary.
+ *
+ * ## Every component is non-null, and every direction is ascending
+ *
+ * That is what lets the cursor stay a single row comparison (`(a,b,c) > (…)`).
+ * Postgres has no row comparison with per-column `desc` or `nulls last`, so
+ * both are folded into the expressions instead:
+ *
+ * - **nulls last, in both value directions.** `estimated_value is null` sorts
+ *   `false` before `true`, so the 4 588 open tenders with no declared value
+ *   (19% of 24 162, measured 2026-10-06) land after every priced one whichever
+ *   way the prices run. Put them first and they own the whole first page of
+ *   *menor valor*.
+ * - **descending by negation.** `-value` ascending is `value` descending, and
+ *   it keeps the comparison one `>`.
+ *
+ * `estimated_value` is `numeric(16,2)`, so Postgres already compares it
+ * numerically; what has to be said out loud is the **cursor** side, where the
+ * value arrives as text and a missing `::numeric` would sort `R$ 9` above
+ * `R$ 10`. See `cursorKey`.
+ */
+type SortColumns = {
+  halted: SQL
+  closeAt: SQL
+  value: SQL
+  id: SQL
+}
+
+/** Inside the CTE, where `halted` is still an expression over `tenders t`. */
+const IN_SCOPE: SortColumns = {
+  halted: HALTED,
+  closeAt: sql`t.proposals_close_at`,
+  value: sql`t.estimated_value`,
+  id: sql`t.id`,
+}
+
+/** Outside it, where `matched` has already projected the same four. */
+const IN_MATCHED: SortColumns = {
+  halted: sql`halted`,
+  closeAt: sql`proposals_close_at`,
+  value: sql`estimated_value`,
+  id: sql`id`,
+}
+
+function sortKey(sort: TenderSort, columns: SortColumns): SQL[] {
+  // Nulls last on the deadline too: a tender with no deadline is not urgent,
+  // and `null > anything` would otherwise put it first.
+  const deadline = sql`coalesce(${columns.closeAt}, 'infinity'::timestamptz)`
+  if (sort === 'deadline') return [columns.halted, deadline, columns.id]
+  const value = sql`coalesce(${columns.value}, 0)`
+  return [
+    columns.halted,
+    sql`(${columns.value} is null)`,
+    sort === 'valueDesc' ? sql`-${value}` : value,
+    columns.id,
+  ]
+}
+
+/**
+ * A keyset cursor over whichever sort key minted it.
  *
  * Offset pagination would skip or repeat a tender every time the 30-minute
  * sweep inserts one between two page loads, which on a deadline-ordered list is
@@ -116,29 +197,109 @@ const HALTED = sql`(t.status is distinct from ${DIVULGADA})`
  * cursor minted before that carries two fields; it is read as `halted=false`
  * rather than rejected, so a page-2 request already in flight during the deploy
  * lands on the Divulgada run instead of silently restarting at page 1.
+ *
+ * ## The sort is in the cursor, and a mismatch restarts the run
+ *
+ * D51 made the order a choice, and a cursor is only meaningful under the key it
+ * was cut from: `(halted, value, id)` compared against a deadline order is not
+ * a smaller mistake than no cursor at all, it is the silent-skip failure above.
+ * So the sort is written into the cursor and **a cursor that does not name the
+ * sort being asked for is discarded** — `decodeCursor` answers `null` and the
+ * run starts at page 1.
+ *
+ * Restarting rather than erroring is the deliberate choice, and the direction of
+ * the trade is the point: a restart can only ever show the reader rows they
+ * have already seen, while reading the cursor under the wrong key hides rows and
+ * says nothing. A `400` was the other candidate and is worse — the only way to
+ * reach this state is a request that was already in flight when the order
+ * changed, or a hand-edited URL, and neither deserves an error card over a list
+ * that works.
+ *
+ * `deadline` keeps the **exact three-field format it has always had**, so the
+ * default order's cursors are byte-identical to the ones in flight today and a
+ * page-2 request spanning this deploy still lands where it meant to. Only the
+ * value orders carry a tag, and a tag can never be mistaken for the legacy
+ * shape: the first field of a deadline cursor is `0` or `1`.
  */
-function encodeCursor(row: TenderRow): string {
-  const closeAt = row.proposals_close_at ? new Date(row.proposals_close_at).toISOString() : ''
-  return Buffer.from(`${row.halted ? '1' : '0'}|${closeAt}|${row.id}`, 'utf8').toString(
-    'base64url',
-  )
+function encodeCursor(row: TenderRow, sort: TenderSort): string {
+  const halted = row.halted ? '1' : '0'
+  const fields =
+    sort === 'deadline'
+      ? [
+          halted,
+          row.proposals_close_at ? new Date(row.proposals_close_at).toISOString() : '',
+          row.id,
+        ]
+      : // `missing` is carried rather than derived from an empty value field,
+        // so a tender whose declared value really is `0` and one with no value
+        // at all cannot collapse into the same cursor.
+        [sort, halted, row.estimated_value === null ? '1' : '0', row.estimated_value ?? '0', row.id]
+  return Buffer.from(fields.join('|'), 'utf8').toString('base64url')
 }
 
-function decodeCursor(
-  cursor: string,
-): { halted: boolean; closeAt: string | null; id: string } | null {
+type Cursor =
+  | { sort: 'deadline'; halted: boolean; closeAt: string | null; id: string }
+  | { sort: 'valueDesc' | 'valueAsc'; halted: boolean; missing: boolean; value: string; id: string }
+
+/** A plain decimal, which is all `numeric(16,2)` can produce. */
+const DECIMAL = /^-?\d+(\.\d+)?$/
+
+function decodeCursor(cursor: string, sort: TenderSort): Cursor | null {
   try {
     const raw = Buffer.from(cursor, 'base64url').toString('utf8')
     const parts = raw.split('|')
+    const tagged = parts[0] === 'valueDesc' || parts[0] === 'valueAsc'
+
+    // A cursor cut under another order cannot be compared against this one.
+    if (tagged ? parts[0] !== sort : sort !== 'deadline') return null
+
+    if (tagged) {
+      const [tag, halted, missing, value, id] = parts
+      if (!id || parts.length !== 5) return null
+      // Validated here rather than trusted into the query: the value reaches
+      // SQL as a `::numeric` parameter, and a cursor is a string from the
+      // client.
+      if (!DECIMAL.test(value ?? '')) return null
+      return {
+        sort: tag as 'valueDesc' | 'valueAsc',
+        halted: halted === '1',
+        missing: missing === '1',
+        value: value as string,
+        id,
+      }
+    }
+
     // An id may itself contain no `|` (it is `cnpj-1-sequence/year`), so the
-    // field count alone tells the two formats apart.
+    // field count alone tells the two legacy formats apart.
     const [halted, closeAt, id] =
       parts.length >= 3 ? parts : ['0', parts[0] ?? '', parts[1] ?? '']
     if (!id) return null
-    return { halted: halted === '1', closeAt: closeAt || null, id }
+    return { sort: 'deadline', halted: halted === '1', closeAt: closeAt || null, id }
   } catch {
     return null
   }
+}
+
+/** The cursor's own values, in the same order and with the same arithmetic. */
+function cursorKey(cursor: Cursor): SQL[] {
+  if (cursor.sort === 'deadline') {
+    return [
+      sql`${cursor.halted}::boolean`,
+      sql`coalesce(${cursor.closeAt}::timestamptz, 'infinity'::timestamptz)`,
+      sql`${cursor.id}::text`,
+    ]
+  }
+  // **`::numeric`, not text.** `estimated_value` is `numeric(16,2)` in the
+  // column and a string in the row — node-postgres hands numerics over as text
+  // so no precision is lost — so this is the one place a value sort could
+  // silently become a lexicographic one, putting R$ 9 above R$ 10.
+  const value = sql`${cursor.value}::numeric`
+  return [
+    sql`${cursor.halted}::boolean`,
+    sql`${cursor.missing}::boolean`,
+    cursor.sort === 'valueDesc' ? sql`-(${value})` : value,
+    sql`${cursor.id}::text`,
+  ]
 }
 
 /** `text[]` for the overlap operator. An empty list must never match. */
@@ -148,6 +309,48 @@ function labels(values: string[]): SQL {
     values.map((value) => sql`${value}`),
     sql`, `,
   )}]::text[]`
+}
+
+/**
+ * D52's modality condition, or `null` for *Todas*.
+ *
+ * **`modality_id`, not `modality_name`.** The name is free text from two
+ * different PNCP endpoints and the id is PNCP's code, non-null on every one of
+ * the 58 495 rows (measured 2026-10-06 18:19 UTC); matching the text would turn one
+ * re-worded hyphen into an option that silently finds nothing. `filters.ts`
+ * has the measurement and the argument.
+ *
+ * Equality against one code, never `in (…)`: the default must be the
+ * **absence** of this predicate, or a modality this list does not know would
+ * disappear from the Radar the day the sweep starts collecting it.
+ */
+export function modalityCondition(modality: ModalityFilter | null | undefined): SQL | null {
+  if (!modality) return null
+  return sql`t.modality_id = ${MODALITY_CODES[modality]}`
+}
+
+/**
+ * D52's ME/EPP condition, or `null` for *Todas*.
+ *
+ * **`exclusive` and `mixed` are both *Exclusivo*** (Sci, 2026-10-06): a `mixed`
+ * edital has exclusive items, so it is part of the answer to *where does being
+ * an ME/EPP give me a reserved lane* — and leaving it out put 1 810 open editais
+ * under a heading saying *Não exclusivo* while their own cards said *Exclusivos
+ * e cotas ME/EPP*. `filters.ts` has the measurement and the reasoning.
+ *
+ * **Both clauses of the negative are `is distinct from`, and that is the whole
+ * trick.** `not in ('exclusive','mixed')` is `unknown` for the 2 086 open
+ * tenders whose `me_epp_summary` is null — PNCP published nothing about the
+ * regime — so they would fall out of *both* buckets and be reachable only with
+ * no filter at all. "We do not know" is not "exclusive", so silence belongs in
+ * *Não exclusivo*, and the two options then partition the list exactly:
+ * 6 229 + 18 534 = 24 763, measured, not derived.
+ */
+export function meEppCondition(meEpp: MeEppFilter | null | undefined): SQL | null {
+  if (!meEpp) return null
+  if (meEpp === 'exclusive') return sql`t.me_epp_summary in ('exclusive', 'mixed')`
+  return sql`t.me_epp_summary is distinct from 'exclusive'
+             and t.me_epp_summary is distinct from 'mixed'`
 }
 
 /**
@@ -165,6 +368,13 @@ function scope(match: CompanyMatch, filters: TenderFilters, extra: SQL[] = []): 
   if (filters.state) {
     conditions.push(sql`t.state = ${filters.state.toUpperCase()}`)
   }
+  // D52. Inside `scope()` and nowhere else, so `countGroups` filters by exactly
+  // what `listTenders` filters by: a tab that says "Compatíveis 13" above a page
+  // of 4 is the defect this function exists to make unwritable.
+  const modality = modalityCondition(filters.modality)
+  if (modality) conditions.push(modality)
+  const meEpp = meEppCondition(filters.meEpp)
+  if (meEpp) conditions.push(meEpp)
   if (query) {
     conditions.push(sql`t.search @@ websearch_to_tsquery('pt_unaccent', ${query})`)
   } else {
@@ -197,6 +407,69 @@ function groupExpression(match: CompanyMatch): SQL {
 export type TenderPage = {
   tenders: TenderCard[]
   nextCursor: string | null
+  /**
+   * The ids on **this page** that `viewerUserId` has marked (card **D23**).
+   *
+   * A subset of `tenders`, from the same statement as the rows. See
+   * {@link favouriteExpression} for why it is one read and not thirteen.
+   */
+  favourites: string[]
+}
+
+/**
+ * Has this viewer marked this tender — card **D23**, projected over the page.
+ *
+ * **One read, which is the whole rule.** D23's store deliberately has no
+ * `countFavourites` because the nav badge and the section must come from one
+ * query; the list and its stars are the same sentence one level up. Thirteen
+ * `GET /api/tenders/:id/favorito` calls would be thirteen answers free to
+ * disagree with the list they decorate, and each one a round trip before the
+ * star could paint at all.
+ *
+ * It sits beside `item_count` in the `matched` projection, deliberately — and
+ * **what that costs is measured, not assumed.** `explain (analyze)` against
+ * production on 2026-10-06 (24 334 open tenders, an account holding four
+ * favourites), on the Radar's *default* shape — no search term, so the
+ * `segments &&` branch of `scope()` and the index that serves it, which is the
+ * plan most readers actually get. 2 155 rows matched, 21 asked for:
+ *
+ * ```
+ *   SubPlan 1  Index Only Scan tender_items_pkey   loops=21   ← item_count
+ *   SubPlan 3  Bitmap Heap Scan favourites         loops=1    ← this
+ *                Recheck Cond: (user_id = '4'::bigint)
+ * ```
+ *
+ * Two things that plan settles, and both were open questions:
+ *
+ *  - **The subqueries run after the sort and the limit, not over the match.**
+ *    `loops=21` on `item_count` is the page, not the 2 155 matched rows: the
+ *    `Sort` orders base columns and the `Result` above it evaluates the target
+ *    list for the 21 rows the `Limit` lets through. The claim beside
+ *    `item_count` was right, and adding a column here is bounded the same way.
+ *  - **`loops=1`, and the correlation is gone from the scan.** The `Recheck
+ *    Cond` is `user_id` alone — no `tender_id = t.id` — so Postgres read this
+ *    account's `favourites` **once**, hashed them, and answered the `exists`
+ *    from the hash. It cost 0.017 ms and two buffer hits for the statement, and
+ *    it does not scale with the match count. The hash grows with the account
+ *    rather than with the Radar, which is the right direction.
+ *
+ * `(user_id, tender_id)` being the primary key, plus `favourites_user_recent_idx`
+ * on `user_id`, is what makes that one scan a single index read. End to end the
+ * projection is inside the run-to-run noise (warm: 15.6 ms with, 12.2 ms
+ * without, on a statement whose own `Execution Time` moved 8–16 ms between
+ * identical runs), so no figure is claimed for it beyond "not measurable here".
+ *
+ * No viewer — a visitor, or nobody — projects the constant `false` rather than
+ * a subquery against a null id. A favourite is a row keyed on `users.id`; a
+ * caller with no account has none, which is not an error and not an empty
+ * query.
+ */
+function favouriteExpression(viewerUserId: number | null): SQL {
+  if (viewerUserId === null) return sql`false`
+  return sql`exists (
+    select 1 from favourites f
+     where f.user_id = ${viewerUserId}::bigint and f.tender_id = t.id
+  )`
 }
 
 export async function listTenders(
@@ -204,23 +477,25 @@ export async function listTenders(
   group: TenderGroup,
   filters: TenderFilters,
   database: Executor = db(),
+  /**
+   * The signed-in reader, for the stars on the cards. `null` for a visitor and
+   * on every call that does not need them — the projection is then a constant
+   * and the `favourites` table is not touched at all.
+   */
+  viewerUserId: number | null = null,
 ): Promise<TenderPage> {
   const limit = Math.min(Math.max(filters.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
-  const cursor = filters.cursor ? decodeCursor(filters.cursor) : null
+  const sort = filters.sort ?? DEFAULT_SORT
+  const cursor = filters.cursor ? decodeCursor(filters.cursor, sort) : null
 
-  // Nulls last on both the order and the cursor: a tender with no deadline is
-  // not urgent, and `null > anything` would otherwise put it first.
+  // The keyset: the same key the `order by` below uses, compared against the
+  // values the previous page's last row wrote into the cursor.
   const after: SQL[] = cursor
     ? [
-        sql`(
-          ${HALTED},
-          coalesce(t.proposals_close_at, 'infinity'::timestamptz),
-          t.id
-        ) > (
-          ${cursor.halted}::boolean,
-          coalesce(${cursor.closeAt}::timestamptz, 'infinity'::timestamptz),
-          ${cursor.id}::text
-        )`,
+        sql`(${sql.join(sortKey(sort, IN_SCOPE), sql`, `)}) > (${sql.join(
+          cursorKey(cursor),
+          sql`, `,
+        )})`,
       ]
     : []
 
@@ -234,21 +509,29 @@ export async function listTenders(
              -- The board's "7 itens" on the card. One indexed count per row of
              -- the page (at most 50), not per row of the tenders table.
              (select count(*) from tender_items i where i.tender_id = t.id) as item_count,
+             -- D23's star, from the same read as the row it sits on.
+             ${favouriteExpression(viewerUserId)} as favourite,
              ${groupExpression(match)} as grp
         ${scope(match, filters, after)}
     )
     select * from matched
      where grp = ${group}
-     order by halted, coalesce(proposals_close_at, 'infinity'::timestamptz), id
+     order by ${sql.join(sortKey(sort, IN_MATCHED), sql`, `)}
      limit ${limit + 1}
   `)
 
   const rows = found.rows
   const page = rows.slice(0, limit)
   const last = page[page.length - 1]
-  const nextCursor = rows.length > limit && last ? encodeCursor(last) : null
+  const nextCursor = rows.length > limit && last ? encodeCursor(last, sort) : null
 
-  return { tenders: page.map((row) => toCard(row, match)), nextCursor }
+  return {
+    tenders: page.map((row) => toCard(row, match)),
+    nextCursor,
+    // The page's marked ids, never the whole account's: this is what the cards
+    // on screen need, and a star is only ever drawn for a row that is here.
+    favourites: page.filter((row) => row.favourite === true).map((row) => row.id),
+  }
 }
 
 export async function countGroups(

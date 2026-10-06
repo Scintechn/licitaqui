@@ -893,9 +893,23 @@
         "check": "Verificar",
         "keyword": "Palavra-chave"
       },
-      "filters": "Filtros",
+      "filters": {
+        "label": "Filtros",
+        "modality": "Modalidade",
+        "modalityAll": "Todas as modalidades",
+        "meEpp": "ME/EPP",
+        "meEppAll": "Todos os editais",
+        "meEppExclusive": "Exclusivo ME/EPP",
+        "meEppOther": "Não exclusivo"
+      },
       "filtersHide": "Esconder filtros",
-      "sort": "Ordenar: prazo",
+      "sort": "Ordenar:",
+      "sortBy": "Ordenar por {ordem}",
+      "sortOrders": {
+        "deadline": "prazo",
+        "valueDesc": "maior valor",
+        "valueAsc": "menor valor"
+      },
       "more": "Ver mais editais",
       "moreLoading": "Carregando…",
       "showing": "Mostrando {shown} de {total}",

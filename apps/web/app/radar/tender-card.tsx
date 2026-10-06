@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react'
 import { Card, CardLink, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
+import { cn } from '@/lib/cn'
 import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
 import { agencyLine, deadlineShort, displayTitle, meEppSummary } from '@/lib/radar/format'
 import { cardHeadline, deadlineLabel } from '@/lib/radar/headline'
@@ -40,6 +42,39 @@ import { format, messages } from '@/lib/messages'
  * No hooks and no handlers, so it renders on the server and in a test with
  * `renderToStaticMarkup`. `now` is injected for the same reason: a card whose
  * countdown depends on the wall clock cannot be asserted.
+ *
+ * ## `action`, and why it is a slot outside the anchor (D23)
+ *
+ * The card being one `<a>` is exactly why D23 left the *Favoritar* star on the
+ * list as "its own placement question": a `<button>` inside an `<a>` is nested
+ * interactive content, which is the same defect the "Objeto completo"
+ * `<details>` was. So `action` is rendered **as a sibling of the anchor**, in a
+ * `relative` wrapper, and positioned over the card's top-right corner. One
+ * keyboard stop for the tender, one more for the control, and the anchor's
+ * content stays a link all the way down.
+ *
+ * ### The arithmetic, because this is an overlay and nothing else can see it
+ *
+ * The card is `padding="sm"` → `p-3.5` → **14px** on every side. The control is
+ * the product's 44px touch target (`size-touch`), inset **6px** from the top and
+ * the right of the wrapper. So the control's box runs
+ *
+ *   horizontally   (width − 50) … (width − 6)
+ *   vertically              6 … 50
+ *
+ * and the card's content box starts 14px in from each edge. The control
+ * therefore intrudes **6 + 44 − 14 = 36px** into the content box from the
+ * right, and **50 − 14 = 36px** down from the content box's top. The top row —
+ * the status badges and the countdown ("último dia", "1 dia") — is the only
+ * content in that square, so when `action` is present that row takes exactly
+ * those two numbers: `pr-9` (36px) so the countdown cannot sit under the
+ * control, and `min-h-9` (36px) so the control's lower edge cannot reach the
+ * title below it.
+ *
+ * Both are the same two constants, written here once. `environment: 'node'` has
+ * no boxes to measure, so the unit test pins the classes and
+ * `e2e/journeys/favourite-on-card.spec.ts` is what actually looks at the
+ * rectangles.
  */
 
 const copy = messages.radar
@@ -88,6 +123,7 @@ export function TenderCardView({
   tender,
   now = new Date(),
   href,
+  action,
 }: {
   tender: TenderCard
   now?: Date
@@ -106,6 +142,15 @@ export function TenderCardView({
    * the href removed: it is not an anchor at all.
    */
   href: string | null
+  /**
+   * A control over the card's top-right corner — D23's *Favoritar* star.
+   *
+   * Rendered **outside** the anchor, never inside it: see the arithmetic in this
+   * file's docstring. Absent by default, which is what the Landing's example
+   * panel and `/conta/favoritos` want — neither has a viewer whose marks a star
+   * could be reporting.
+   */
+  action?: ReactNode
 }) {
   const status = STATUS[tender.group]
   const headline = cardHeadline(tender, now)
@@ -125,7 +170,15 @@ export function TenderCardView({
 
   const body = (
     <>
-      <div className="flex items-center justify-between gap-2">
+      {/* 36px of right padding and 36px of minimum height when something is
+          drawn over this corner — both derived in the docstring from the card's
+          14px padding, the control's 44px box and its 6px inset. */}
+      <div
+        className={cn(
+          'flex items-center justify-between gap-2',
+          action ? 'min-h-9 pr-9' : undefined,
+        )}
+      >
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <Status kind={status.kind}>{status.label}</Status>
           {/* §3.3: the state has to be visible *before* the tender is opened,
@@ -190,17 +243,29 @@ export function TenderCardView({
   // `w-full` matters: the list item is a flex container so the cards stretch
   // to equal height in the desktop grid, and a block child of a flex parent
   // is shrink-to-fit, not full width.
-  if (href === null) {
-    return (
+  const surface =
+    href === null ? (
       <Card padding="sm" className="flex w-full grow flex-col gap-2">
         {body}
       </Card>
+    ) : (
+      <CardLink href={href} className="flex w-full grow flex-col gap-2">
+        {body}
+      </CardLink>
     )
-  }
 
+  if (!action) return surface
+
+  // The wrapper exists only to position `action`, so it is added only when there
+  // is one: the Landing's example panel and `/conta/favoritos` keep exactly the
+  // markup they had. `flex w-full grow` repeats the surface's own sizing because
+  // the wrapper is now the flex item the `<li>` stretches.
   return (
-    <CardLink href={href} className="flex w-full grow flex-col gap-2">
-      {body}
-    </CardLink>
+    <div className="relative flex w-full grow">
+      {surface}
+      {/* A sibling of the anchor, never a child: a button inside an `<a>` is
+          nested interactive content. */}
+      <div className="absolute top-1.5 right-1.5">{action}</div>
+    </div>
   )
 }

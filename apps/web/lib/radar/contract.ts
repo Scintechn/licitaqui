@@ -120,6 +120,28 @@ export type CnpjResponse = CnpjOk | Analyzing | ApiError
 export const TENDER_GROUPS = ['compatible', 'check', 'keyword'] as const
 export type TenderGroup = (typeof TENDER_GROUPS)[number]
 
+/**
+ * The order the list is read in — `?sort=` on `/radar` and on
+ * `GET /api/radar/tenders` (D51).
+ *
+ * Sci, 2026-10-06: *"The sort can be by Value (Asc/Desc); By Time (prazo)."*
+ * Three orders, no more: `deadline` is what the list has always done and stays
+ * the default, and the two value orders are the new choice.
+ *
+ * **`deadline` is the absent value**, not a fourth state. Unlike `group` —
+ * where "nothing chosen" is a real, distinguishable intent that `bestGroup()`
+ * resolves from the counts — there is nothing for the product to elect here:
+ * a list has to come back in some order and the honest default is the one the
+ * screen has always shown. So `readSort()` never answers `null`, and
+ * `radarHref()` leaves `sort=deadline` out of the URL, which keeps every
+ * address the product already draws byte-identical.
+ */
+export const TENDER_SORTS = ['deadline', 'valueDesc', 'valueAsc'] as const
+export type TenderSort = (typeof TENDER_SORTS)[number]
+
+/** Absent means this one, everywhere: URL, API and `listKey`. */
+export const DEFAULT_SORT: TenderSort = 'deadline'
+
 export type TenderCard = {
   id: string
   object: string
@@ -222,6 +244,27 @@ export type TenderListOk = {
   state: 'ready'
   group: TenderGroup
   tenders: TenderCard[]
+  /**
+   * Which of `tenders` this caller has already marked (card **D23**).
+   *
+   * **A field on the envelope rather than on `TenderCard`**, because the card
+   * is shared with the Landing's "Exemplo" panel and `/conta/favoritos`, and
+   * neither has a viewer whose marks it could be describing. It is a fact
+   * about this reader and this page, not about the tender.
+   *
+   * Ids, not booleans in row order: order is the one thing a list is free to
+   * change, and an array of flags positioned against another array is a defect
+   * waiting for a sort to land.
+   *
+   * It comes from the **same read as the rows** — one `exists` projected over
+   * the page in `listTenders` — which is D23's rule restated one level up. A
+   * second request per card would be thirteen answers free to disagree with
+   * the one list they are describing. Empty for a visitor: a favourite is a
+   * row keyed on `users.id`, so somebody without an account has none rather
+   * than an error.
+   */
+  favourites: string[]
+
   /** The company the groups above were computed from. `null` means none. */
   groupedBy: GroupedBy | null
   /** How many are in each group under the same filters — the tab counts. */

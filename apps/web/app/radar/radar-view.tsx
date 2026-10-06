@@ -17,16 +17,26 @@ import type {
   GroupedBy,
   TenderCard,
   TenderGroup,
+  TenderSort,
   VisitorView,
 } from '@/lib/radar/contract'
 import { ageParts } from '@/lib/radar/format'
 import { errorText } from '@/lib/radar/error-text'
 import { format, messages } from '@/lib/messages'
-import { radarHref, tenderHref } from '@/lib/radar/client'
+import { ME_EPP_PARAM, MODALITY_PARAM, radarHref, tenderHref } from '@/lib/radar/client'
 import { everyGroupEmpty, otherPopulatedGroup } from '@/lib/radar/group'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
-import { TENDER_GROUPS } from '@/lib/radar/contract'
+import { DEFAULT_SORT, TENDER_GROUPS, TENDER_SORTS } from '@/lib/radar/contract'
+import {
+  ME_EPP_OPTIONS,
+  MODALITY_OPTIONS,
+  readMeEpp,
+  readModality,
+  type MeEppFilter,
+  type ModalityFilter,
+} from '@/lib/radar/filters'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
+import { FavouriteStar } from './favourite-star'
 import { TenderCardView } from './tender-card'
 
 /**
@@ -76,14 +86,30 @@ export type RadarQuery = {
   cnpj: string | null
   state: string | null
   q: string | null
+  /** D52's modalidade filter, or `null` for *Todas*. */
+  modality?: ModalityFilter | null
+  /** D52's ME/EPP filter, or `null` for *Todas*. */
+  meEpp?: MeEppFilter | null
   /** The tab on screen: chosen, or elected by `bestGroup()` from the counts. */
   group: TenderGroup
   /**
    * The user pressed this tab. An elected one must not be written into the
    * filter form as though it had been, or changing the UF would carry a
    * decision the user never made into a search where it may be wrong again.
+   *
+   * **Read by every address this screen builds out of `query`, not only by the
+   * form** — the sort links (D51) had to learn the same rule, and the filter
+   * form's `onSubmit` turned out never to have known it while its hidden field
+   * did. Anything that spreads `query` into `radarHref` has to answer this flag.
    */
   groupChosen?: boolean
+  /**
+   * The order the list came back in (D51). Optional, and absent means
+   * `DEFAULT_SORT`: the Landing's example panel and anything else that renders
+   * this screen as an illustration has no order to state, and the deadline
+   * order is the one it has always drawn.
+   */
+  sort?: TenderSort | null
 }
 
 export type RadarViewProps = {
@@ -99,6 +125,18 @@ export type RadarViewProps = {
   visitor: VisitorView | null
   counts: Record<TenderGroup, number> | null
   tenders: TenderCard[]
+  /**
+   * Which of `tenders` the reader has marked — D23's stars, straight from the
+   * list envelope through `RadarScreen`.
+   */
+  favourites?: ReadonlySet<string>
+  /**
+   * A card's star was pressed. **Absent means no star is drawn at all**, the way
+   * `onOpenMenu` works: the Landing's example panel has no viewer to report
+   * marks for, and a control that cannot persist anything must not be rendered
+   * looking as though it can.
+   */
+  onFavourite?: (tenderId: string, marked: boolean) => void
   freshness: Freshness | null
   /**
    * The cursor for the next page, straight from the envelope. `null` is the
@@ -390,12 +428,147 @@ function GroupHint({
 }
 
 /**
- * "Trocar empresa ou filtros", and "Ordenar: prazo" beside it. The filters are
+ * "Ordenar: prazo", and now a control that means it (D51).
+ *
+ * Sci, 2026-10-06: *"The sort can be by Value (Asc/Desc); By Time (prazo)."*
+ * Until D51 this was a statement, and `FilterRow`'s comment said why a control
+ * would have been a lie: the list query ordered by `proposals_close_at` and
+ * nothing else. `tenders.ts` now takes a `sort`, so the sentence becomes three
+ * links.
+ *
+ * ## Three links in a `<details>`, and no JavaScript anywhere
+ *
+ * Each order is a real `<a href>` to the same Radar with `?sort=` — shareable,
+ * reloadable, and working on the first paint before React hydrates, exactly
+ * like the group chips and the filter form. A `<select>` could not do that: with
+ * no JavaScript, changing a select submits nothing. `<details>` gives the
+ * disclosure with a native keyboard and a native role.
+ *
+ * It is keyed on the active order, which is how it closes again. `<details
+ * open>` is DOM state React does not own, so after a client-side navigation the
+ * menu would otherwise hang open over the list it has just re-sorted. A new key
+ * is a new element and a new element is closed — no effect, so this is also the
+ * real behaviour under `environment: 'node'` (CLAUDE.md §4c) rather than
+ * something only a browser does.
+ *
+ * ## What it inherits from the label it replaces, and what it cannot
+ *
+ * **It stays outside the filter `<details>`**, which is the whole point of the
+ * span it replaces (WCAG 4.1.2): "Trocar empresa ou filtros Ordenar: prazo" is
+ * not the name of the button that opens the search. It stays absolutely
+ * positioned over the row's right end for the other reason given there too —
+ * the form inside that `<details>` is full width, and shrinking the disclosure
+ * to make room would shrink the form with it.
+ *
+ * **`pointer-events-none` could not survive, and that is the whole of what
+ * changed.** A control has to receive the click it is drawn for. So the filter
+ * summary keeps its full-width tap target *everywhere except under this box* —
+ * the right end of the row, past its own label, where there was nothing to aim
+ * at. Nothing else about the summary moved.
+ *
+ * ## "Ordenar:" is dropped below 480px rather than overrunning the row
+ *
+ * At 390px the row has 350px of content (`--spacing-gutter` is 20px a side) and
+ * "Trocar empresa ou filtros" with its two glyphs takes most of them.
+ * "Ordenar: prazo" fits in what is left — it always has — and **"Ordenar: maior
+ * valor" plus a chevron does not**: because this box is `absolute`, it does not
+ * wrap or push, it lands *on top of* the filter label. That is measured, not
+ * reasoned: `e2e/journeys/radar-sort.spec.ts` compares the two boxes at 390px,
+ * and making this prefix unconditional makes it fail on exactly that assertion.
+ * So the prefix is hidden below 480px, where the content box is wide enough for
+ * the longest of the three, and the trigger reads just "maior valor".
+ *
+ * A **viewport** breakpoint is correct here only because it is *below* 720px:
+ * 720 is the content box at the moment the app shell's 264px rail joins the
+ * layout, so no window at or under that width can be answering about a
+ * different box than the one this row lives in (CLAUDE.md, D29/D30/D32). The
+ * `min-[560px]` breakpoints on the form two blocks down are the same bet.
+ *
+ * The accessible name carries the full phrase at every width, so the prefix is
+ * never the only thing that says what the control is for — and it is the
+ * catalogue's own two strings joined, not a third string that could drift from
+ * them.
+ */
+function SortMenu({ query }: { query: RadarQuery }) {
+  const active = query.sort ?? DEFAULT_SORT
+  /**
+   * Two names, not one. The trigger is named after the order **in effect**
+   * ("Ordenar: prazo"), the way a label and its value read together; each option
+   * is named after what choosing it **does** ("Ordenar por prazo"). Giving both
+   * the same name would put two differently-behaving controls with one name on
+   * the same row — and, incidentally, make them indistinguishable to a
+   * `getByLabel` in `e2e/`.
+   */
+  const current = `${list.sort} ${list.sortOrders[active]}`
+  return (
+    <details key={active} className="group/sort absolute top-1 right-gutter">
+      <summary
+        aria-label={current}
+        className={cn(
+          'flex min-h-touch cursor-pointer list-none items-center gap-1 text-body text-muted',
+          // One line, whatever the order is called: a wrap between "Ordenar:"
+          // and the value would break the row the board draws.
+          'whitespace-nowrap [&::-webkit-details-marker]:hidden',
+        )}
+      >
+        <span className="hidden min-[480px]:inline">{list.sort} </span>
+        {list.sortOrders[active]}
+        <Icon
+          name="chevronRight"
+          size={16}
+          className="transition-transform group-open/sort:rotate-90"
+        />
+      </summary>
+      {/* `bg-surface` and a border rather than a shadow: there is no shadow
+          token, and the menu has to be opaque over the list underneath. */}
+      <ul className="absolute right-0 z-20 mt-1 w-max rounded-control border border-line-strong bg-surface py-1">
+        {TENDER_SORTS.map((sort) => (
+          <li key={sort}>
+            <Link
+              href={radarHref({
+                ...query,
+                /**
+                 * **The tab is carried only if the reader picked it.**
+                 * `query.group` is *the tab on screen* — chosen, or the one
+                 * `bestGroup()` elected from the counts — and spreading it here
+                 * would write an election into the URL as though it had been a
+                 * decision. That is the trap `RadarQuery.groupChosen` exists to
+                 * name, and it does not stop at this link: `FilterRow`'s hidden
+                 * `group` field is gated on `groupChosen`, so a promoted tab
+                 * then starts travelling with every filter the reader applies,
+                 * and a later search opens on a tab nobody chose — which may be
+                 * empty, which is the whole reason `bestGroup()` exists.
+                 *
+                 * Dropping it costs nothing the reader can see: the counts do
+                 * not change with the order, so the next load elects the same
+                 * tab and the list stays where it is.
+                 */
+                group: query.groupChosen ? query.group : null,
+                sort,
+              })}
+              aria-current={sort === active ? 'true' : undefined}
+              aria-label={format(list.sortBy, { ordem: list.sortOrders[sort] })}
+              className={cn(
+                'flex min-h-touch items-center px-3 text-body whitespace-nowrap no-underline',
+                sort === active ? 'font-semibold text-ink' : 'text-ink hover:bg-fill-muted',
+              )}
+            >
+              {list.sortOrders[sort]}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
+/**
+ * "Trocar empresa ou filtros", and the sort control beside it. The filters are
  * a `<details>` holding a real GET form, so they work before React has
- * hydrated and the result is a URL the user can share or bookmark. Sorting is
- * by deadline and is not a choice: the list query orders by
- * `proposals_close_at`, and offering a control that changes nothing would be a
- * lie.
+ * hydrated and the result is a URL the user can share or bookmark. **The order
+ * is a real choice since D51** — it used not to be, and the paragraph that
+ * explained why a control would have been a lie now lives on `SortMenu`, which
+ * is the control.
  *
  * ## Two things the `<summary>` must not do
  *
@@ -403,12 +576,10 @@ function GroupHint({
  * `<span>` inside the `<summary>`, which made the computed accessible name of
  * the control "Trocar empresa ou filtros Ordenar: prazo" (WCAG 4.1.2). A
  * statement about the list is not part of the name of the button that changes
- * it. The label now sits outside the `<details>` entirely, positioned over the
- * row's right end so the line looks exactly as it did — and left
- * `pointer-events-none`, so the summary keeps the full-width tap target it
- * always had. Do not move it back inside, and do not shrink the `<details>` to
- * the left half to make room: the form it opens is full-width and would be
- * squeezed with it.
+ * it. The order sits outside the `<details>` entirely, positioned over the
+ * row's right end so the line looks exactly as it did. Do not move it back
+ * inside, and do not shrink the `<details>` to the left half to make room: the
+ * form it opens is full-width and would be squeezed with it.
  *
  * **It must look like it opens.** The native marker is hidden and the
  * `filters` icon is identical open and closed, so this 350×52 control — the
@@ -471,86 +642,186 @@ function FilterRow({
           </span>
         </summary>
 
-        <form
-          method="get"
-          action="/radar"
-          className="flex flex-col gap-3 pt-1 pb-3 min-[560px]:flex-row min-[560px]:items-end"
-          onSubmit={
-            onNavigate
-              ? (event) => {
-                  event.preventDefault()
-                  const data = new FormData(event.currentTarget)
-                  onNavigate(
-                    radarHref({
-                      cnpj: String(data.get('cnpj') ?? '') || null,
-                      state: String(data.get('uf') ?? '') || null,
-                      q: String(data.get('q') ?? '').trim() || null,
-                      group: query.group,
-                    }),
-                  )
-                }
-              : undefined
-          }
-        >
-          {/*
-            The CNPJ was a hidden input: carried through every search and
-            editable nowhere, so the one thing you could not change from the
-            Radar was the company — the whole reason people bounced back to
-            the landing. It is the same `name="cnpj"` posting to the same
-            `/radar`, which already treats `?cnpj=` as a real, shareable
-            address; making it visible is the entire change.
-          */}
-          <Field
-            id="radar-cnpj"
-            name="cnpj"
-            type="text"
-            inputMode="numeric"
-            maxLength={18}
-            mono
-            label={copy.landing.cnpjLabel}
-            placeholder={copy.landing.cnpjPlaceholder}
-            defaultValue={query.cnpj ?? ''}
-            className="min-[560px]:w-60"
-          />
-          {query.groupChosen ? <input type="hidden" name="group" value={query.group} /> : null}
-          <Select
-            id="radar-uf"
-            name="uf"
-            label={copy.landing.ufLabel}
-            defaultValue={query.state ?? ''}
-            options={UF_OPTIONS}
-            className="min-[560px]:w-56"
-          />
-          <div className="flex grow flex-col gap-1.5">
-            <label htmlFor="radar-q" className="text-meta font-medium text-ink">
-              {copy.landing.keywordLabel}
-            </label>
-            <input
-              id="radar-q"
-              name="q"
-              type="search"
-              defaultValue={query.q ?? ''}
-              placeholder={copy.landing.keywordPlaceholder}
-              /* 16px (`text-base`): below that iOS Safari zooms on focus. */
-              className="min-h-control w-full rounded-control border border-field-line bg-surface px-3 text-base text-ink placeholder:text-muted"
+        {/* D52 — five controls and a button, arranged by **this column's** width.
+
+            The form lives in `main` (`max-w-[1120px]`) inside `px-gutter`, so
+            its own width is
+
+              min(viewport − rail, 1120) − 2×20
+
+            and the rail is `components/app-shell.tsx`'s: in the layout flow
+            from `lg` (1024px), **264px** wide, or 56px when the reader
+            collapses it — `localStorage` state no media query can observe.
+            At 1024px with the rail out this form is **720px**, not 1024.
+
+            Three controls fitted on one line from 560px of *window*, and 560
+            is below 720, so that query was safe by accident (there is no rail
+            yet). Five do not: one row needs about 200px per control, so
+            4 × 200 + 3 × 12 of gap = **836px**, and the threshold had to go
+            above 720 — where a viewport query is wrong by up to 264px. That
+            is D29, D30 and D32, three times already in this repository. So the
+            thresholds below are container queries, and the numbers are this
+            column's width, not the window's:
+
+              column < 560    one control per row (390px phone: 350px column)
+              column 560–879  two columns; keyword and button span both
+              column ≥ 880    four columns; keyword spans 3, button takes 1
+
+            880 is 836 rounded up for the labels; at 880 each column is
+            (880 − 36) / 4 = **211px**, and at the usual desktop — 1440px with
+            the rail out — it is 261px, wider than the `w-60` / `w-56` these
+            fields used to be pinned to. Those two widths are gone: the grid
+            owns the arrangement now, and a fixed `w-60` inside a 211px cell
+            would overflow the column it is supposed to fit.
+
+            `@container` on a wrapper because an element cannot query itself,
+            and around the form only — `container-type: inline-size` makes the
+            element a containing block for fixed descendants (`sheet.tsx`), so
+            it must not creep up onto the `px-gutter` div.
+
+            `environment: 'node'` has no boxes (CLAUDE.md §4c), so the unit test
+            pins the mechanism — the container, the thresholds, no viewport
+            query above 720 — and `e2e/journeys/radar-filters.spec.ts` measures
+            the result at 390px and inside the shell at desktop. */}
+        <div className="@container">
+          <form
+            method="get"
+            action="/radar"
+            className={cn(
+              'grid grid-cols-1 items-end gap-3 pt-1 pb-3',
+              '@min-[560px]:grid-cols-2 @min-[880px]:grid-cols-4',
+            )}
+            onSubmit={
+              onNavigate
+                ? (event) => {
+                    event.preventDefault()
+                    const data = new FormData(event.currentTarget)
+                    onNavigate(
+                      radarHref({
+                        cnpj: String(data.get('cnpj') ?? '') || null,
+                        state: String(data.get('uf') ?? '') || null,
+                        q: String(data.get('q') ?? '').trim() || null,
+                        // Read back through the same reader the URL is read with,
+                        // so a hand-edited `<option>` cannot put a value in the
+                        // address that `readSearch` would then drop.
+                        modality: readModality(String(data.get(MODALITY_PARAM) ?? '')),
+                        meEpp: readMeEpp(String(data.get(ME_EPP_PARAM) ?? '')),
+                        // The same rule as the sort links above, and the same
+                        // rule as the hidden `group` field below — which is
+                        // already gated on `groupChosen`, so until now the two
+                        // halves of this one form disagreed: with JavaScript the
+                        // elected tab was pinned, without it the election stood.
+                        group: query.groupChosen ? query.group : null,
+                        // Applying a filter must not quietly re-sort the list.
+                        sort: query.sort,
+                      }),
+                    )
+                  }
+                : undefined
+            }
+          >
+            {/*
+              The CNPJ was a hidden input: carried through every search and
+              editable nowhere, so the one thing you could not change from the
+              Radar was the company — the whole reason people bounced back to
+              the landing. It is the same `name="cnpj"` posting to the same
+              `/radar`, which already treats `?cnpj=` as a real, shareable
+              address; making it visible is the entire change.
+            */}
+            <Field
+              id="radar-cnpj"
+              name="cnpj"
+              type="text"
+              inputMode="numeric"
+              maxLength={18}
+              mono
+              label={copy.landing.cnpjLabel}
+              placeholder={copy.landing.cnpjPlaceholder}
+              defaultValue={query.cnpj ?? ''}
             />
-          </div>
-          <Button type="submit" variant="secondary" className="min-[560px]:w-auto">
-            {list.apply}
-          </Button>
-        </form>
+            {query.groupChosen ? <input type="hidden" name="group" value={query.group} /> : null}
+            {/*
+              The same for the order, and only when it is not the default — a
+              hidden `sort=deadline` would put a parameter into the URL of every
+              search anybody applies, which `searchParams` deliberately keeps out.
+            */}
+            {query.sort && query.sort !== DEFAULT_SORT ? (
+              <input type="hidden" name="sort" value={query.sort} />
+            ) : null}
+            <Select
+              id="radar-uf"
+              name="uf"
+              label={copy.landing.ufLabel}
+              defaultValue={query.state ?? ''}
+              options={UF_OPTIONS}
+            />
+            {/*
+              D52 — modalidade and ME/EPP, the two filters Sci asked for on
+              2026-10-06. Both are `Select`s and not chips: `modality_id` holds
+              exactly three values over all 58 495 rows — ids 6, 4 and 8, each
+              carrying one name — and ME/EPP is one question with two answers plus
+              *Todas*. The option is **labelled** with `modality_name` and
+              **filtered** on `modality_id`: the name is PNCP's free text, sent
+              from two different endpoints under two different field names, and
+              the id is the key.
+
+              The ME/EPP option reads `me_epp_summary`, **the same column the
+              card's own tag renders**, and the option label is the tag's own
+              string — so no card under *Exclusivo ME/EPP* can be tagged as
+              anything but ME/EPP work. *Exclusivo* holds `exclusive` **and**
+              `mixed` (Sci, 2026-10-06): a `mixed` edital has exclusive items and
+              its card says *Exclusivos e cotas ME/EPP*, so it belongs in the
+              answer to "where do I get a reserved lane", and leaving it out put
+              1 810 open editais under a heading saying the opposite of their own
+              tag. `quota` stays on the other side, because a cota is not
+              exclusivity. `lib/radar/filters.ts` has the measurement.
+
+              What the structured field does *not* agree with is the triagem one
+              tap away: D36 measured the two disagreeing on 14 of 27 readings.
+              This filter follows PNCP deliberately, and will follow whatever
+              D36 decides.
+            */}
+            <Select
+              id="radar-modality"
+              name={MODALITY_PARAM}
+              label={list.filters.modality}
+              defaultValue={query.modality ?? ''}
+              options={MODALITY_OPTIONS}
+            />
+            <Select
+              id="radar-meepp"
+              name={ME_EPP_PARAM}
+              label={list.filters.meEpp}
+              defaultValue={query.meEpp ?? ''}
+              options={ME_EPP_OPTIONS}
+            />
+            <div className="flex flex-col gap-1.5 @min-[560px]:col-span-2 @min-[880px]:col-span-3">
+              <label htmlFor="radar-q" className="text-meta font-medium text-ink">
+                {copy.landing.keywordLabel}
+              </label>
+              <input
+                id="radar-q"
+                name="q"
+                type="search"
+                defaultValue={query.q ?? ''}
+                placeholder={copy.landing.keywordPlaceholder}
+                /* 16px (`text-base`): below that iOS Safari zooms on focus. */
+                className="min-h-control w-full rounded-control border border-field-line bg-surface px-3 text-base text-ink placeholder:text-muted"
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="secondary"
+              /* Full width where it has a row to itself, its own cell at ≥880. */
+              className="@min-[560px]:col-span-2 @min-[880px]:col-span-1"
+            >
+              {list.apply}
+            </Button>
+          </form>
+        </div>
       </details>
 
-      {/*
-        Outside the `<details>`, so it is not part of the summary's accessible
-        name (4.1.2), and drawn over the row's right end so the line is the one
-        the board drew. `min-h-touch` and `top-1` are the summary's own box —
-        the two labels share a baseline. `pointer-events-none` hands the click
-        back to the summary underneath, which keeps the tap target full width.
-      */}
-      <span className="pointer-events-none absolute top-1 right-gutter inline-flex min-h-touch items-center text-body text-muted">
-        {list.sort}
-      </span>
+      <SortMenu query={query} />
     </div>
   )
 }
@@ -719,16 +990,20 @@ function Body({
   counts,
   query,
   tenders,
+  favourites,
   now,
   onRetry,
+  onFavourite,
 }: {
   status: RadarStatus
   group: TenderGroup
   counts: Record<TenderGroup, number> | null
   query: RadarQuery
   tenders: TenderCard[]
+  favourites?: ReadonlySet<string>
   now: Date
   onRetry?: () => void
+  onFavourite?: (tenderId: string, marked: boolean) => void
 }) {
   switch (status.kind) {
     case 'analyzing':
@@ -872,6 +1147,18 @@ function Body({
               tender={tender}
               now={now}
               href={tenderHref(tender.id, { ...query, group })}
+              /* D23. Seeded from the envelope, so it never paints the wrong
+                 state, and rendered outside the card's anchor — see
+                 `tender-card.tsx` for the box arithmetic. */
+              action={
+                onFavourite ? (
+                  <FavouriteStar
+                    tenderId={tender.id}
+                    marked={favourites?.has(tender.id) ?? false}
+                    onChange={onFavourite}
+                  />
+                ) : undefined
+              }
             />
           </li>
         ))}
@@ -889,6 +1176,7 @@ export function RadarView({
   visitor,
   counts,
   tenders,
+  favourites,
   freshness,
   nextCursor = null,
   loadingMore = false,
@@ -897,6 +1185,7 @@ export function RadarView({
   onRetry,
   onLoadMore,
   onOpenMenu,
+  onFavourite,
 }: RadarViewProps) {
   const showList = status.kind === 'ready' || status.kind === 'manualCnae'
 
@@ -964,8 +1253,10 @@ export function RadarView({
             counts={counts}
             query={query}
             tenders={showList ? tenders : []}
+            favourites={favourites}
             now={now}
             onRetry={onRetry}
+            onFavourite={onFavourite}
           />
           {showList ? (
             <More

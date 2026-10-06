@@ -539,16 +539,24 @@ describe('an empty tab, when the results are on another one', () => {
     expect(out).toContain(copy.list.sort)
   })
 
-  it('the sort label still sits on the row, and still lets the row be tapped', () => {
+  it('the sort control still sits on the row, drawn over the summary', () => {
     // It is drawn over the right end of the summary rather than beside it: a
     // <details> squeezed to the left half would squeeze the full-width form it
     // opens along with it.
+    //
+    // **`pointer-events-none` used to be asserted here and is now wrong.** Up to
+    // D51 this was a label — "Ordenar: prazo", stating a sort the list did not
+    // offer — so handing its clicks back to the summary underneath kept the
+    // filter row's tap target full width. It is a control now, and a control has
+    // to receive the click it is drawn for. What survives is everything else:
+    // outside the `<details>` (4.1.2) and absolutely positioned.
     const out = render()
-    const sort = out.slice(out.indexOf(copy.list.sort) - 260, out.indexOf(copy.list.sort))
-    expect(sort).toContain('absolute')
-    // Clicks fall through to the summary underneath, so the control keeps the
-    // full-width target it has always had.
-    expect(sort).toContain('pointer-events-none')
+    const start = out.indexOf('<details class="group/sort')
+    expect(start).toBeGreaterThan(-1)
+    const trigger = out.slice(start, out.indexOf('</summary>', start))
+    expect(trigger).toContain('absolute')
+    expect(trigger).not.toContain('pointer-events-none')
+    expect(trigger).toContain(copy.list.sort)
   })
 
   it('the filter control looks like something that opens', () => {
@@ -665,7 +673,10 @@ describe('the list grid', () => {
     const out = render()
     const { wrapper } = grid(out)
     expect(wrapper).toBe('@container')
-    expect(out.match(/@container/g), 'one container, and it is this one').toHaveLength(1)
+    // Two on this screen since D52 gave the filter row one of its own; the
+    // claim here is about *this* one, so it is identified by its wrapper above
+    // rather than by being the only `@container` in the markup.
+    expect(out.match(/@container/g), 'the list’s container and D52’s').toHaveLength(2)
     // Named so a reader knows which placements were considered and rejected.
     expect(wrapper, 'not the padded div — it would capture D25 (3)’s fixed bar').not.toContain(
       'px-gutter',
