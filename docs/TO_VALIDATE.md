@@ -24,7 +24,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 9 | Knowledge base and repo disagree on who owns legal copy | future edits | low |
 | 10 | What separates a triagem from an análise completa — depth or breadth | **C2**, and a live sentence on `/` | **high** |
 | 11 | Whether a **closed** tender is ever re-read for its value, and the attempt bound | **B38** | medium |
-| 12 | Two Radar header sentences shipped as drafts: there is no approved copy for "no company" or "no CNAE to compare" | nothing — both render today | medium |
+| 13 | Two Radar header sentences shipped as drafts: there is no approved copy for "no company" or "no CNAE to compare" | nothing — both render today | medium |
 
 ---
 
@@ -519,7 +519,7 @@ worth keeping the `awards` path alive for — it is the only source that can
 produce one, and the approach doc already recommends keeping the table because it
 "costs nothing to keep".
 
-## 12. The Radar header shipped two sentences nobody approved — 2026-10-06, D19
+## 13. The Radar header shipped two sentences nobody approved — 2026-10-06, D19
 
 D19 closed a false claim by **adding two strings**, which is the one thing legal
 brief §5 says not to do without Sci. They render on `/radar` today, so this is a
