@@ -12,6 +12,7 @@ import {
   tenderPath,
   tendersUrl,
 } from './client'
+import { listKey } from './list-cache'
 
 const TENDER_ID = '51885242000140-1-000744/2026'
 
@@ -113,7 +114,7 @@ describe('every address out of a Radar screen carries the search', () => {
 })
 
 describe('readSearch', () => {
-  it('takes the four parameters that travel and nothing else', () => {
+  it('takes the five parameters that travel and nothing else', () => {
     const params = new URLSearchParams({
       cnpj: '51.885.242/0001-40',
       uf: 'sp',
@@ -127,6 +128,9 @@ describe('readSearch', () => {
       state: 'SP',
       q: 'papel',
       group: 'check',
+      // Not in the query string above, and never `null`: an absent order is the
+      // deadline order (D51).
+      sort: 'deadline',
     })
   })
 
@@ -212,5 +216,81 @@ describe('getJobStatus', () => {
   it('treats any other error envelope as gone, so the caller re-reads', async () => {
     stubFetch(429, { state: 'error', error: 'rate_limited' })
     expect(await getJobStatus(1)).toBe('gone')
+  })
+})
+
+/**
+ * The order in the URL (D51), end to end: what the browser's address says, what
+ * `readSearch` reads back out of it, and what the API is then asked for.
+ *
+ * The property being pinned is **"absent means the deadline order"** in all
+ * three directions at once. It has to hold in all three or the Radar quietly
+ * disagrees with itself: a link that spells `sort=deadline` out would make
+ * `radarHref(readSearch(url)) !== url` for every address the product has ever
+ * drawn, and `listKey` would then file the same list under two keys.
+ */
+describe('the sort in the URL', () => {
+  it('leaves the default out, and writes the two that are a choice', () => {
+    expect(radarHref({ cnpj: '1', sort: 'deadline' })).toBe('/radar?cnpj=1')
+    expect(radarHref({ cnpj: '1', sort: null })).toBe('/radar?cnpj=1')
+    expect(radarHref({ cnpj: '1' })).toBe('/radar?cnpj=1')
+    expect(radarHref({ cnpj: '1', sort: 'valueDesc' })).toBe('/radar?cnpj=1&sort=valueDesc')
+    expect(radarHref({ cnpj: '1', sort: 'valueAsc' })).toBe('/radar?cnpj=1&sort=valueAsc')
+  })
+
+  it('reads an absent, empty or misspelt order as the deadline order', () => {
+    expect(readSearch(new URLSearchParams({ cnpj: '1' })).sort).toBe('deadline')
+    expect(readSearch(new URLSearchParams({ cnpj: '1', sort: '' })).sort).toBe('deadline')
+    expect(readSearch(new URLSearchParams({ cnpj: '1', sort: 'prazo' })).sort).toBe('deadline')
+    expect(readSearch(new URLSearchParams({ cnpj: '1', sort: 'valueDesc' })).sort).toBe('valueDesc')
+  })
+
+  it('round-trips through a tender address and back to the same Radar', () => {
+    const sorted = { ...SEARCH, sort: 'valueAsc' } as const
+    const triagem = screeningHref(TENDER_ID, sorted)
+    expect(triagem).toContain('sort=valueAsc')
+    const back = readSearch(new URLSearchParams(triagem.split('?')[1]))
+    expect(back.sort).toBe('valueAsc')
+    expect(radarHref(back)).toBe(radarHref(sorted))
+    expect(radarHref(back)).toBe(
+      '/radar?cnpj=51885242000140&uf=SP&q=papel&group=check&sort=valueAsc',
+    )
+  })
+
+  it('round-trips the default: the way back is the bare address, twice over', () => {
+    const triagem = screeningHref(TENDER_ID, { ...SEARCH, sort: 'deadline' })
+    expect(triagem).not.toContain('sort')
+    const back = readSearch(new URLSearchParams(triagem.split('?')[1]))
+    // `readSearch` filled it in, and `radarHref` takes it straight back out.
+    expect(back.sort).toBe('deadline')
+    expect(radarHref(back)).toBe(radarHref(SEARCH))
+    // Idempotent: reading an address and rebuilding it is the same address.
+    const again = readSearch(new URLSearchParams(radarHref(back).split('?')[1]))
+    expect(radarHref(again)).toBe(radarHref(back))
+  })
+
+  it('asks the route for the same thing the address says', () => {
+    expect(tendersUrl({ group: 'compatible', cnpj: '1' })).toBe(
+      '/api/radar/tenders?group=compatible&cnpj=1',
+    )
+    expect(tendersUrl({ group: 'compatible', cnpj: '1', sort: 'deadline' })).toBe(
+      '/api/radar/tenders?group=compatible&cnpj=1',
+    )
+    expect(tendersUrl({ group: 'compatible', cnpj: '1', sort: 'valueDesc' })).toBe(
+      '/api/radar/tenders?group=compatible&cnpj=1&sort=valueDesc',
+    )
+    // The whole hop, as `radar-screen.tsx` makes it: address → search → request.
+    const search = readSearch(new URLSearchParams('cnpj=1&uf=SP&q=papel&sort=valueAsc'))
+    expect(
+      tendersUrl({ group: 'keyword', cnpj: search.cnpj, state: search.state, q: search.q, sort: search.sort }),
+    ).toBe('/api/radar/tenders?group=keyword&cnpj=1&state=SP&q=papel&sort=valueAsc')
+  })
+
+  /** `listKey` keys the Back button, so the order has to be part of it. */
+  it('keys a differently sorted list as a different list', () => {
+    const base = { cnpj: '1', state: null, q: null, group: 'compatible' } as const
+    expect(listKey({ ...base, sort: 'deadline' })).toBe(listKey(base))
+    expect(listKey({ ...base, sort: 'valueDesc' })).not.toBe(listKey(base))
+    expect(listKey({ ...base, sort: 'valueDesc' })).not.toBe(listKey({ ...base, sort: 'valueAsc' }))
   })
 })

@@ -17,6 +17,7 @@ import type {
   Freshness,
   TenderCard,
   TenderGroup,
+  TenderSort,
   VisitorView,
 } from '@/lib/radar/contract'
 import { ageParts } from '@/lib/radar/format'
@@ -25,7 +26,7 @@ import { format, messages } from '@/lib/messages'
 import { radarHref, tenderHref } from '@/lib/radar/client'
 import { everyGroupEmpty, otherPopulatedGroup } from '@/lib/radar/group'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
-import { TENDER_GROUPS } from '@/lib/radar/contract'
+import { DEFAULT_SORT, TENDER_GROUPS, TENDER_SORTS } from '@/lib/radar/contract'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
 import { FavouriteStar } from './favourite-star'
 import { TenderCardView } from './tender-card'
@@ -85,6 +86,13 @@ export type RadarQuery = {
    * decision the user never made into a search where it may be wrong again.
    */
   groupChosen?: boolean
+  /**
+   * The order the list came back in (D51). Optional, and absent means
+   * `DEFAULT_SORT`: the Landing's example panel and anything else that renders
+   * this screen as an illustration has no order to state, and the deadline
+   * order is the one it has always drawn.
+   */
+  sort?: TenderSort | null
 }
 
 export type RadarViewProps = {
@@ -299,12 +307,127 @@ function GroupHint({ group }: { group: TenderGroup }) {
 }
 
 /**
- * "Trocar empresa ou filtros", and "Ordenar: prazo" beside it. The filters are
+ * "Ordenar: prazo", and now a control that means it (D51).
+ *
+ * Sci, 2026-10-06: *"The sort can be by Value (Asc/Desc); By Time (prazo)."*
+ * Until D51 this was a statement, and `FilterRow`'s comment said why a control
+ * would have been a lie: the list query ordered by `proposals_close_at` and
+ * nothing else. `tenders.ts` now takes a `sort`, so the sentence becomes three
+ * links.
+ *
+ * ## Three links in a `<details>`, and no JavaScript anywhere
+ *
+ * Each order is a real `<a href>` to the same Radar with `?sort=` — shareable,
+ * reloadable, and working on the first paint before React hydrates, exactly
+ * like the group chips and the filter form. A `<select>` could not do that: with
+ * no JavaScript, changing a select submits nothing. `<details>` gives the
+ * disclosure with a native keyboard and a native role.
+ *
+ * It is keyed on the active order, which is how it closes again. `<details
+ * open>` is DOM state React does not own, so after a client-side navigation the
+ * menu would otherwise hang open over the list it has just re-sorted. A new key
+ * is a new element and a new element is closed — no effect, so this is also the
+ * real behaviour under `environment: 'node'` (CLAUDE.md §4c) rather than
+ * something only a browser does.
+ *
+ * ## What it inherits from the label it replaces, and what it cannot
+ *
+ * **It stays outside the filter `<details>`**, which is the whole point of the
+ * span it replaces (WCAG 4.1.2): "Trocar empresa ou filtros Ordenar: prazo" is
+ * not the name of the button that opens the search. It stays absolutely
+ * positioned over the row's right end for the other reason given there too —
+ * the form inside that `<details>` is full width, and shrinking the disclosure
+ * to make room would shrink the form with it.
+ *
+ * **`pointer-events-none` could not survive, and that is the whole of what
+ * changed.** A control has to receive the click it is drawn for. So the filter
+ * summary keeps its full-width tap target *everywhere except under this box* —
+ * the right end of the row, past its own label, where there was nothing to aim
+ * at. Nothing else about the summary moved.
+ *
+ * ## "Ordenar:" is dropped below 480px rather than overrunning the row
+ *
+ * At 390px the row has 350px of content (`--spacing-gutter` is 20px a side) and
+ * "Trocar empresa ou filtros" with its two glyphs takes most of them.
+ * "Ordenar: prazo" fits in what is left — it always has — and **"Ordenar: maior
+ * valor" plus a chevron does not**: because this box is `absolute`, it does not
+ * wrap or push, it lands *on top of* the filter label. That is measured, not
+ * reasoned: `e2e/journeys/radar-sort.spec.ts` compares the two boxes at 390px,
+ * and making this prefix unconditional makes it fail on exactly that assertion.
+ * So the prefix is hidden below 480px, where the content box is wide enough for
+ * the longest of the three, and the trigger reads just "maior valor".
+ *
+ * A **viewport** breakpoint is correct here only because it is *below* 720px:
+ * 720 is the content box at the moment the app shell's 264px rail joins the
+ * layout, so no window at or under that width can be answering about a
+ * different box than the one this row lives in (CLAUDE.md, D29/D30/D32). The
+ * `min-[560px]` breakpoints on the form two blocks down are the same bet.
+ *
+ * The accessible name carries the full phrase at every width, so the prefix is
+ * never the only thing that says what the control is for — and it is the
+ * catalogue's own two strings joined, not a third string that could drift from
+ * them.
+ */
+function SortMenu({ query }: { query: RadarQuery }) {
+  const active = query.sort ?? DEFAULT_SORT
+  /**
+   * Two names, not one. The trigger is named after the order **in effect**
+   * ("Ordenar: prazo"), the way a label and its value read together; each option
+   * is named after what choosing it **does** ("Ordenar por prazo"). Giving both
+   * the same name would put two differently-behaving controls with one name on
+   * the same row — and, incidentally, make them indistinguishable to a
+   * `getByLabel` in `e2e/`.
+   */
+  const current = `${list.sort} ${list.sortOrders[active]}`
+  return (
+    <details key={active} className="group/sort absolute top-1 right-gutter">
+      <summary
+        aria-label={current}
+        className={cn(
+          'flex min-h-touch cursor-pointer list-none items-center gap-1 text-body text-muted',
+          // One line, whatever the order is called: a wrap between "Ordenar:"
+          // and the value would break the row the board draws.
+          'whitespace-nowrap [&::-webkit-details-marker]:hidden',
+        )}
+      >
+        <span className="hidden min-[480px]:inline">{list.sort} </span>
+        {list.sortOrders[active]}
+        <Icon
+          name="chevronRight"
+          size={16}
+          className="transition-transform group-open/sort:rotate-90"
+        />
+      </summary>
+      {/* `bg-surface` and a border rather than a shadow: there is no shadow
+          token, and the menu has to be opaque over the list underneath. */}
+      <ul className="absolute right-0 z-20 mt-1 w-max rounded-control border border-line-strong bg-surface py-1">
+        {TENDER_SORTS.map((sort) => (
+          <li key={sort}>
+            <Link
+              href={radarHref({ ...query, sort })}
+              aria-current={sort === active ? 'true' : undefined}
+              aria-label={format(list.sortBy, { ordem: list.sortOrders[sort] })}
+              className={cn(
+                'flex min-h-touch items-center px-3 text-body whitespace-nowrap no-underline',
+                sort === active ? 'font-semibold text-ink' : 'text-ink hover:bg-fill-muted',
+              )}
+            >
+              {list.sortOrders[sort]}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
+/**
+ * "Trocar empresa ou filtros", and the sort control beside it. The filters are
  * a `<details>` holding a real GET form, so they work before React has
- * hydrated and the result is a URL the user can share or bookmark. Sorting is
- * by deadline and is not a choice: the list query orders by
- * `proposals_close_at`, and offering a control that changes nothing would be a
- * lie.
+ * hydrated and the result is a URL the user can share or bookmark. **The order
+ * is a real choice since D51** — it used not to be, and the paragraph that
+ * explained why a control would have been a lie now lives on `SortMenu`, which
+ * is the control.
  *
  * ## Two things the `<summary>` must not do
  *
@@ -312,12 +435,10 @@ function GroupHint({ group }: { group: TenderGroup }) {
  * `<span>` inside the `<summary>`, which made the computed accessible name of
  * the control "Trocar empresa ou filtros Ordenar: prazo" (WCAG 4.1.2). A
  * statement about the list is not part of the name of the button that changes
- * it. The label now sits outside the `<details>` entirely, positioned over the
- * row's right end so the line looks exactly as it did — and left
- * `pointer-events-none`, so the summary keeps the full-width tap target it
- * always had. Do not move it back inside, and do not shrink the `<details>` to
- * the left half to make room: the form it opens is full-width and would be
- * squeezed with it.
+ * it. The order sits outside the `<details>` entirely, positioned over the
+ * row's right end so the line looks exactly as it did. Do not move it back
+ * inside, and do not shrink the `<details>` to the left half to make room: the
+ * form it opens is full-width and would be squeezed with it.
  *
  * **It must look like it opens.** The native marker is hidden and the
  * `filters` icon is identical open and closed, so this 350×52 control — the
@@ -395,6 +516,8 @@ function FilterRow({
                       state: String(data.get('uf') ?? '') || null,
                       q: String(data.get('q') ?? '').trim() || null,
                       group: query.group,
+                      // Applying a filter must not quietly re-sort the list.
+                      sort: query.sort,
                     }),
                   )
                 }
@@ -422,6 +545,14 @@ function FilterRow({
             className="min-[560px]:w-60"
           />
           {query.groupChosen ? <input type="hidden" name="group" value={query.group} /> : null}
+          {/*
+            The same for the order, and only when it is not the default — a
+            hidden `sort=deadline` would put a parameter into the URL of every
+            search anybody applies, which `searchParams` deliberately keeps out.
+          */}
+          {query.sort && query.sort !== DEFAULT_SORT ? (
+            <input type="hidden" name="sort" value={query.sort} />
+          ) : null}
           <Select
             id="radar-uf"
             name="uf"
@@ -450,16 +581,7 @@ function FilterRow({
         </form>
       </details>
 
-      {/*
-        Outside the `<details>`, so it is not part of the summary's accessible
-        name (4.1.2), and drawn over the row's right end so the line is the one
-        the board drew. `min-h-touch` and `top-1` are the summary's own box —
-        the two labels share a baseline. `pointer-events-none` hands the click
-        back to the summary underneath, which keeps the tap target full width.
-      */}
-      <span className="pointer-events-none absolute top-1 right-gutter inline-flex min-h-touch items-center text-body text-muted">
-        {list.sort}
-      </span>
+      <SortMenu query={query} />
     </div>
   )
 }

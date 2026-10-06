@@ -120,6 +120,28 @@ export type CnpjResponse = CnpjOk | Analyzing | ApiError
 export const TENDER_GROUPS = ['compatible', 'check', 'keyword'] as const
 export type TenderGroup = (typeof TENDER_GROUPS)[number]
 
+/**
+ * The order the list is read in — `?sort=` on `/radar` and on
+ * `GET /api/radar/tenders` (D51).
+ *
+ * Sci, 2026-10-06: *"The sort can be by Value (Asc/Desc); By Time (prazo)."*
+ * Three orders, no more: `deadline` is what the list has always done and stays
+ * the default, and the two value orders are the new choice.
+ *
+ * **`deadline` is the absent value**, not a fourth state. Unlike `group` —
+ * where "nothing chosen" is a real, distinguishable intent that `bestGroup()`
+ * resolves from the counts — there is nothing for the product to elect here:
+ * a list has to come back in some order and the honest default is the one the
+ * screen has always shown. So `readSort()` never answers `null`, and
+ * `radarHref()` leaves `sort=deadline` out of the URL, which keeps every
+ * address the product already draws byte-identical.
+ */
+export const TENDER_SORTS = ['deadline', 'valueDesc', 'valueAsc'] as const
+export type TenderSort = (typeof TENDER_SORTS)[number]
+
+/** Absent means this one, everywhere: URL, API and `listKey`. */
+export const DEFAULT_SORT: TenderSort = 'deadline'
+
 export type TenderCard = {
   id: string
   object: string
