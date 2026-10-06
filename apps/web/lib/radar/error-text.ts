@@ -48,8 +48,18 @@ export function fieldErrorText(code: string | undefined | null): string | undefi
 
 /**
  * The most useful sentence for a failed response: the field message when the
- * route named a field, the code's message otherwise. `cnpjRequired` on an
- * empty Radar is "digite o CNPJ", which is help; "confira os campos" is not.
+ * route named a field, the code's message otherwise. `cnpjInvalid` on a CNPJ
+ * that does not add up is "confira o CNPJ: são 14 números", which is help;
+ * "confira os campos" is not.
+ *
+ * **`cnpjRequired` is deliberately no longer an example of that**, although
+ * `FIELD_TEXT` still carries it. `GET /api/radar/tenders` is the only route
+ * that emits it, and since D55 `radar-screen.tsx` reads that answer *before*
+ * this function — it is the `needCnpj` empty state, with a way to type a CNPJ,
+ * and not a sentence inside an error card whose *Tentar de novo* would re-ask
+ * the question that produced it. The entry stays because this table is keyed by
+ * the field codes the routes emit and that code is still emitted; it is not a
+ * string rendered nowhere.
  */
 export function apiErrorText(error: ApiError): string {
   const first = error.fields ? Object.values(error.fields)[0] : undefined
