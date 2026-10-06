@@ -4,6 +4,7 @@ import { db, type Executor } from '@/lib/db'
 import { JOB_KINDS } from '@/lib/jobs'
 import { DEFAULT_SORT } from './contract'
 import type { SegmentFit, TenderCard, TenderGroup, TenderSort } from './contract'
+import { MODALITY_NAMES, type MeEppFilter, type ModalityFilter } from './filters'
 import { DIVULGADA } from './tender-status'
 
 /**
@@ -50,6 +51,10 @@ export type TenderFilters = {
   state?: string | null
   /** Free text for `websearch_to_tsquery`. */
   q?: string | null
+  /** One `tenders.modality_name`, by slug (D52). `null` is *Todas*. */
+  modality?: ModalityFilter | null
+  /** `exclusive`, or everything that is not (D52). `null` is *Todas*. */
+  meEpp?: MeEppFilter | null
   /** Closed tenders are excluded by default: the Radar is for bidding. */
   includeClosed?: boolean
   limit?: number
@@ -303,6 +308,34 @@ function labels(values: string[]): SQL {
 }
 
 /**
+ * D52's modality condition, or `null` for *Todas*.
+ *
+ * Equality against one exact PNCP string, never `in (…)`: see
+ * `lib/radar/filters.ts` for why the default must be the **absence** of this
+ * predicate rather than a list of the three modalities we happen to know.
+ */
+export function modalityCondition(modality: ModalityFilter | null | undefined): SQL | null {
+  if (!modality) return null
+  return sql`t.modality_name = ${MODALITY_NAMES[modality]}`
+}
+
+/**
+ * D52's ME/EPP condition, or `null` for *Todas*.
+ *
+ * `is distinct from` and not `<>`: 2 105 of today's open tenders have
+ * `me_epp_summary is null` — PNCP published nothing about the regime — and
+ * `me_epp_summary <> 'exclusive'` is `unknown` for every one of them, so they
+ * would fall out of *both* buckets and be reachable only with no filter at all.
+ * "We do not know" is not "exclusive", so they belong in *Não exclusivo*, and
+ * the two options therefore partition the list exactly.
+ */
+export function meEppCondition(meEpp: MeEppFilter | null | undefined): SQL | null {
+  if (!meEpp) return null
+  if (meEpp === 'exclusive') return sql`t.me_epp_summary = 'exclusive'`
+  return sql`t.me_epp_summary is distinct from 'exclusive'`
+}
+
+/**
  * The shared `from`/`where` of the list and the counts, plus the `grp` label.
  * One definition, so a filter can never apply to the page and not to the tab
  * count above it.
@@ -317,6 +350,13 @@ function scope(match: CompanyMatch, filters: TenderFilters, extra: SQL[] = []): 
   if (filters.state) {
     conditions.push(sql`t.state = ${filters.state.toUpperCase()}`)
   }
+  // D52. Inside `scope()` and nowhere else, so `countGroups` filters by exactly
+  // what `listTenders` filters by: a tab that says "Compatíveis 13" above a page
+  // of 4 is the defect this function exists to make unwritable.
+  const modality = modalityCondition(filters.modality)
+  if (modality) conditions.push(modality)
+  const meEpp = meEppCondition(filters.meEpp)
+  if (meEpp) conditions.push(meEpp)
   if (query) {
     conditions.push(sql`t.search @@ websearch_to_tsquery('pt_unaccent', ${query})`)
   } else {

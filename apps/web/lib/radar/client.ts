@@ -10,6 +10,7 @@ import type {
   TenderSort,
 } from './contract'
 import { DEFAULT_SORT } from './contract'
+import { readMeEpp, readModality, type MeEppFilter, type ModalityFilter } from './filters'
 import { readGroup } from './group'
 import { readSort } from './sort'
 import type { JobStatus } from './poll'
@@ -55,11 +56,11 @@ export function tenderApiPath(id: string): string {
 }
 
 /**
- * The search a Radar screen is carrying: the four things that decide which
- * list the user came from, spelled the way the Radar itself reads them (`uf`,
- * not `state`).
+ * The search a Radar screen is carrying: everything that decides which list
+ * the user came from, spelled the way the Radar itself reads them (`uf`, not
+ * `state`).
  *
- * It is the same four fields `lib/radar/list-cache.ts` keys a snapshot on, and
+ * It is the same set of fields `lib/radar/list-cache.ts` keys a snapshot on, and
  * that is not a coincidence — a link that drops one of them lands on a
  * different key and the restore misses, which to a user is indistinguishable
  * from having lost the search.
@@ -68,6 +69,10 @@ export type RadarSearch = {
   cnpj?: string | null
   state?: string | null
   q?: string | null
+  /** D52's modalidade, by slug. `null` is *Todas* and is left out of the URL. */
+  modality?: ModalityFilter | null
+  /** D52's ME/EPP choice. `null` is *Todas* and is left out of the URL. */
+  meEpp?: MeEppFilter | null
   group?: TenderGroup | null
   /**
    * The order (D51). Carried with the other four because it is part of *the
@@ -78,6 +83,17 @@ export type RadarSearch = {
 }
 
 /**
+ * D52's two parameters, spelled once.
+ *
+ * The same names on the Radar's own address and on the route's query string —
+ * unlike `uf`/`state`, which are two spellings of one filter and have to be
+ * translated at every boundary. The form inside `FilterRow` posts these same
+ * two names to `/radar`, so the control works before React has hydrated.
+ */
+export const MODALITY_PARAM = 'modality'
+export const ME_EPP_PARAM = 'meepp'
+
+/**
  * Every address out of a Radar screen carries the search. **Required, on
  * purpose** — see the note on `screeningHref` below.
  */
@@ -86,6 +102,8 @@ function searchParams(search: RadarSearch): URLSearchParams {
   if (search.cnpj) params.set('cnpj', search.cnpj)
   if (search.state) params.set('uf', search.state)
   if (search.q) params.set('q', search.q)
+  if (search.modality) params.set(MODALITY_PARAM, search.modality)
+  if (search.meEpp) params.set(ME_EPP_PARAM, search.meEpp)
   if (search.group) params.set('group', search.group)
   // **The default is written as its absence**, which is the opposite of
   // `group`'s rule two lines up and for a stated reason: there is no "unchosen
@@ -200,6 +218,8 @@ export function readSearch(params: { get(name: string): string | null }): RadarS
     cnpj: (params.get('cnpj') ?? '').replace(/\D+/g, '') || null,
     state: normaliseUf(params.get('uf')),
     q: (params.get('q') ?? '').trim() || null,
+    modality: readModality(params.get(MODALITY_PARAM)),
+    meEpp: readMeEpp(params.get(ME_EPP_PARAM)),
     group: readGroup(params.get('group')),
     // Never `null`: absent means the deadline order (`readSort`).
     sort: readSort(params.get('sort')),
@@ -227,6 +247,8 @@ export type TenderQuery = {
   cnpj?: string | null
   state?: string | null
   q?: string | null
+  modality?: ModalityFilter | null
+  meEpp?: MeEppFilter | null
   limit?: number
   cursor?: string | null
   sort?: TenderSort | null
@@ -237,6 +259,8 @@ export function tendersUrl(query: TenderQuery): string {
   if (query.cnpj) params.set('cnpj', query.cnpj)
   if (query.state) params.set('state', query.state)
   if (query.q) params.set('q', query.q)
+  if (query.modality) params.set(MODALITY_PARAM, query.modality)
+  if (query.meEpp) params.set(ME_EPP_PARAM, query.meEpp)
   if (query.limit) params.set('limit', String(query.limit))
   if (query.cursor) params.set('cursor', query.cursor)
   // Left out when it is the default, for the same reason `searchParams` leaves

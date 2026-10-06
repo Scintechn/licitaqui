@@ -23,10 +23,18 @@ import type {
 import { ageParts } from '@/lib/radar/format'
 import { errorText } from '@/lib/radar/error-text'
 import { format, messages } from '@/lib/messages'
-import { radarHref, tenderHref } from '@/lib/radar/client'
+import { ME_EPP_PARAM, MODALITY_PARAM, radarHref, tenderHref } from '@/lib/radar/client'
 import { everyGroupEmpty, otherPopulatedGroup } from '@/lib/radar/group'
 import { ACCOUNT_HREF, ALERTS_HREF } from '@/lib/routes'
 import { DEFAULT_SORT, TENDER_GROUPS, TENDER_SORTS } from '@/lib/radar/contract'
+import {
+  ME_EPP_OPTIONS,
+  MODALITY_OPTIONS,
+  readMeEpp,
+  readModality,
+  type MeEppFilter,
+  type ModalityFilter,
+} from '@/lib/radar/filters'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
 import { FavouriteStar } from './favourite-star'
 import { TenderCardView } from './tender-card'
@@ -78,6 +86,10 @@ export type RadarQuery = {
   cnpj: string | null
   state: string | null
   q: string | null
+  /** D52's modalidade filter, or `null` for *Todas*. */
+  modality?: ModalityFilter | null
+  /** D52's ME/EPP filter, or `null` for *Todas*. */
+  meEpp?: MeEppFilter | null
   /** The tab on screen: chosen, or elected by `bestGroup()` from the counts. */
   group: TenderGroup
   /**
@@ -526,10 +538,55 @@ function FilterRow({
           </span>
         </summary>
 
+        {/* D52 — five controls and a button, arranged by **this column's** width.
+
+            The form lives in `main` (`max-w-[1120px]`) inside `px-gutter`, so
+            its own width is
+
+              min(viewport − rail, 1120) − 2×20
+
+            and the rail is `components/app-shell.tsx`'s: in the layout flow
+            from `lg` (1024px), **264px** wide, or 56px when the reader
+            collapses it — `localStorage` state no media query can observe.
+            At 1024px with the rail out this form is **720px**, not 1024.
+
+            Three controls fitted on one line from 560px of *window*, and 560
+            is below 720, so that query was safe by accident (there is no rail
+            yet). Five do not: one row needs about 200px per control, so
+            4 × 200 + 3 × 12 of gap = **836px**, and the threshold had to go
+            above 720 — where a viewport query is wrong by up to 264px. That
+            is D29, D30 and D32, three times already in this repository. So the
+            thresholds below are container queries, and the numbers are this
+            column's width, not the window's:
+
+              column < 560    one control per row (390px phone: 350px column)
+              column 560–879  two columns; keyword and button span both
+              column ≥ 880    four columns; keyword spans 3, button takes 1
+
+            880 is 836 rounded up for the labels; at 880 each column is
+            (880 − 36) / 4 = **211px**, and at the usual desktop — 1440px with
+            the rail out — it is 261px, wider than the `w-60` / `w-56` these
+            fields used to be pinned to. Those two widths are gone: the grid
+            owns the arrangement now, and a fixed `w-60` inside a 211px cell
+            would overflow the column it is supposed to fit.
+
+            `@container` on a wrapper because an element cannot query itself,
+            and around the form only — `container-type: inline-size` makes the
+            element a containing block for fixed descendants (`sheet.tsx`), so
+            it must not creep up onto the `px-gutter` div.
+
+            `environment: 'node'` has no boxes (CLAUDE.md §4c), so the unit test
+            pins the mechanism — the container, the thresholds, no viewport
+            query above 720 — and `e2e/journeys/radar-filters.spec.ts` measures
+            the result at 390px and inside the shell at desktop. */}
+        <div className="@container">
         <form
           method="get"
           action="/radar"
-          className="flex flex-col gap-3 pt-1 pb-3 min-[560px]:flex-row min-[560px]:items-end"
+          className={cn(
+            'grid grid-cols-1 items-end gap-3 pt-1 pb-3',
+            '@min-[560px]:grid-cols-2 @min-[880px]:grid-cols-4',
+          )}
           onSubmit={
             onNavigate
               ? (event) => {
@@ -540,6 +597,11 @@ function FilterRow({
                       cnpj: String(data.get('cnpj') ?? '') || null,
                       state: String(data.get('uf') ?? '') || null,
                       q: String(data.get('q') ?? '').trim() || null,
+                      // Read back through the same reader the URL is read with,
+                      // so a hand-edited `<option>` cannot put a value in the
+                      // address that `readSearch` would then drop.
+                      modality: readModality(String(data.get(MODALITY_PARAM) ?? '')),
+                      meEpp: readMeEpp(String(data.get(ME_EPP_PARAM) ?? '')),
                       // The same rule as the sort links above, and the same
                       // rule as the hidden `group` field below — which is
                       // already gated on `groupChosen`, so until now the two
@@ -572,7 +634,6 @@ function FilterRow({
             label={copy.landing.cnpjLabel}
             placeholder={copy.landing.cnpjPlaceholder}
             defaultValue={query.cnpj ?? ''}
-            className="min-[560px]:w-60"
           />
           {query.groupChosen ? <input type="hidden" name="group" value={query.group} /> : null}
           {/*
@@ -589,9 +650,36 @@ function FilterRow({
             label={copy.landing.ufLabel}
             defaultValue={query.state ?? ''}
             options={UF_OPTIONS}
-            className="min-[560px]:w-56"
           />
-          <div className="flex grow flex-col gap-1.5">
+          {/*
+            D52 — modalidade and ME/EPP, the two filters Sci asked for on
+            2026-10-06. Both are `Select`s and not chips: `modality_name` holds
+            exactly three values over all 57 878 rows, and ME/EPP is one
+            question with two answers plus *Todas*.
+
+            The ME/EPP option reads `me_epp_summary`, **the same column the
+            card's own tag renders**, so a card tagged *Exclusivo ME/EPP* is
+            exactly a card this filter keeps — and the words agree, because the
+            option label is the tag's own. What the structured field does *not*
+            agree with is the triagem one tap away: D36 measured the two
+            disagreeing on 14 of 27 readings. This filter follows PNCP
+            deliberately, and will follow whatever D36 decides.
+          */}
+          <Select
+            id="radar-modality"
+            name={MODALITY_PARAM}
+            label={list.filters.modality}
+            defaultValue={query.modality ?? ''}
+            options={MODALITY_OPTIONS}
+          />
+          <Select
+            id="radar-meepp"
+            name={ME_EPP_PARAM}
+            label={list.filters.meEpp}
+            defaultValue={query.meEpp ?? ''}
+            options={ME_EPP_OPTIONS}
+          />
+          <div className="flex flex-col gap-1.5 @min-[560px]:col-span-2 @min-[880px]:col-span-3">
             <label htmlFor="radar-q" className="text-meta font-medium text-ink">
               {copy.landing.keywordLabel}
             </label>
@@ -605,10 +693,16 @@ function FilterRow({
               className="min-h-control w-full rounded-control border border-field-line bg-surface px-3 text-base text-ink placeholder:text-muted"
             />
           </div>
-          <Button type="submit" variant="secondary" className="min-[560px]:w-auto">
+          <Button
+            type="submit"
+            variant="secondary"
+            /* Full width where it has a row to itself, its own cell at ≥880. */
+            className="@min-[560px]:col-span-2 @min-[880px]:col-span-1"
+          >
             {list.apply}
           </Button>
         </form>
+        </div>
       </details>
 
       <SortMenu query={query} />

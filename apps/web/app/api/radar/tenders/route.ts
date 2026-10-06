@@ -6,12 +6,13 @@ import { normaliseCnpj } from '@/lib/cnpj'
 import { db } from '@/lib/db'
 import { readCompany, segmentsByFit } from '@/lib/radar/company'
 import { TENDER_GROUPS, TENDER_SORTS, DEFAULT_SORT, type TenderListResponse } from '@/lib/radar/contract'
+import { ME_EPP_FILTERS, MODALITY_SLUGS } from '@/lib/radar/filters'
 import { countGroups, listFreshness, listTenders, MAX_LIMIT } from '@/lib/radar/tenders'
 import { loadVisitor } from '@/lib/radar/visitor'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
 /**
- * `GET /api/radar/tenders?group=compatible&state=SP&q=` (spec §8).
+ * `GET /api/radar/tenders?group=compatible&state=SP&q=&modality=&meepp=` (§8).
  *
  * > Reads from DB; groups Compatible / Check / Keyword
  *
@@ -57,6 +58,14 @@ const query = z.object({
     .regex(/^[A-Z]{2}$/, 'stateInvalid')
     .optional(),
   q: z.string().trim().max(200).optional(),
+  /**
+   * D52's two filters. Enums, not free text: the modality slug is mapped to one
+   * exact `modality_name` in `lib/radar/filters.ts`, and a value this list does
+   * not know is a 400 rather than a filter that matches nothing — the reader
+   * would otherwise be shown an empty Radar and told nothing was open.
+   */
+  modality: z.enum(MODALITY_SLUGS).optional(),
+  meepp: z.enum(ME_EPP_FILTERS).optional(),
   cnpj: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional(),
   cursor: z.string().max(200).optional(),
@@ -160,6 +169,8 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
     const filters = {
       state: params.state ?? null,
       q: params.q ?? null,
+      modality: params.modality ?? null,
+      meEpp: params.meepp ?? null,
       includeClosed: params.includeClosed ?? false,
       limit: params.limit,
       cursor: params.cursor ?? null,

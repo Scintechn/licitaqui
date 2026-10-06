@@ -114,7 +114,7 @@ describe('every address out of a Radar screen carries the search', () => {
 })
 
 describe('readSearch', () => {
-  it('takes the five parameters that travel and nothing else', () => {
+  it('takes the parameters that travel and nothing else', () => {
     const params = new URLSearchParams({
       cnpj: '51.885.242/0001-40',
       uf: 'sp',
@@ -127,6 +127,10 @@ describe('readSearch', () => {
       cnpj: '51885242000140',
       state: 'SP',
       q: 'papel',
+      // D52's two filters travel too, and read as `null` when absent: `item`
+      // and `cursor` still do not travel at all.
+      modality: null,
+      meEpp: null,
       group: 'check',
       // Not in the query string above, and never `null`: an absent order is the
       // deadline order (D51).
