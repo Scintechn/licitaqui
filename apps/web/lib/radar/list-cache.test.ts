@@ -95,7 +95,7 @@ function tender(id: string, close = '2026-09-30T11:30:00.000Z'): TenderCard {
 function snapshot(over: Partial<ListSnapshot> = {}): ListSnapshot {
   return {
     group: 'compatible',
-    company: null,
+    grouping: null,
     visitor: null,
     counts: { compatible: 140, check: 352, keyword: 0 },
     tenders: [tender('a'), tender('b')],

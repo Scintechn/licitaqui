@@ -7,6 +7,7 @@ import type {
   CnpjResponse,
   CompanyView,
   Freshness,
+  GroupedBy,
   TenderCard,
   TenderGroup,
   TenderListResponse,
@@ -83,7 +84,17 @@ import { normaliseUf } from '@/lib/radar/ufs'
 const EMPTY_COUNTS = null
 
 type Data = {
-  company: CompanyView | null
+  /**
+   * The company the **list route** reported it grouped by (D19).
+   *
+   * Not the one `POST /api/radar/cnpj` resolved, and the distinction is the
+   * whole of D19: with no `?cnpj=` in the URL that post never happens, while
+   * the list route still groups on `visitors.cnpj` — so the header asserted
+   * "sem CNAE lido" over a list grouped by a real company's CNAEs. The post's
+   * answer is still read, for `status` and for the visitor banner; it is simply
+   * not what the header renders.
+   */
+  grouping: GroupedBy | null
   visitor: VisitorView | null
   counts: Record<TenderGroup, number> | null
   tenders: TenderCard[]
@@ -127,7 +138,7 @@ type Data = {
  * search and is never written to the cache.
  */
 const INITIAL: Data = {
-  company: null,
+  grouping: null,
   visitor: null,
   counts: EMPTY_COUNTS,
   tenders: [],
@@ -174,7 +185,9 @@ function snapshotStatus(status: RadarStatus): SnapshotStatus | null {
  */
 function fromSnapshot(snapshot: ListSnapshot, key: string): Data {
   return {
-    company: snapshot.company,
+    // `?? null` because a snapshot is read back out of `sessionStorage`, which
+    // may hold one written by a build from before this field existed.
+    grouping: snapshot.grouping ?? null,
     visitor: snapshot.visitor,
     counts: snapshot.counts,
     tenders: snapshot.tenders,
@@ -295,7 +308,7 @@ export function RadarScreen() {
     if (!status || data.tenders.length === 0 || data.readAt === 0) return
     saveList(key, {
       group: data.group,
-      company: data.company,
+      grouping: data.grouping,
       visitor: data.visitor,
       counts: data.counts,
       tenders: data.tenders,
@@ -352,13 +365,15 @@ export function RadarScreen() {
      * keeping what is already rendered.
      */
     async function revalidate(previous: ListSnapshot) {
-      let company = previous.company
       let visitor = previous.visitor
 
       if (cnpj) {
         const answer = await postCnpj(cnpj, signal)
         if (answer.state === 'ready') {
-          company = answer.company
+          // Only the visitor is taken from here. The company this refresh puts
+          // in the header is the one the **list** answers with, below (D19):
+          // taking it from both would be the two-source bug again, and this
+          // branch does not even run when the CNPJ is only in the cookie.
           visitor = answer.visitor
           saveCompany(cnpj, {
             company: answer.company,
@@ -376,10 +391,10 @@ export function RadarScreen() {
 
       setData((current) => ({
         ...current,
-        company,
         visitor,
         ...(list.state === 'ready'
           ? {
+              grouping: list.groupedBy,
               counts: list.counts,
               freshness: list.freshness,
               tenders: refreshTenders(current.tenders, list.tenders),
@@ -458,9 +473,12 @@ export function RadarScreen() {
         }
       }
 
+      // `company` is deliberately **not** put on screen here. It is the answer
+      // to a different question — "what is the CNPJ in the URL" — and the
+      // header asks "what did the list group by", which only the list can say
+      // (D19). It feeds `status` and the visitor banner, below.
       setData((previous) => ({
         ...previous,
-        company,
         visitor,
         status: { kind: 'analyzing', what: 'list' },
       }))
@@ -510,7 +528,7 @@ export function RadarScreen() {
           : { kind: 'ready' }
 
       setData({
-        company,
+        grouping: answer.groupedBy,
         visitor,
         counts: answer.counts,
         tenders: answer.tenders,
@@ -616,7 +634,7 @@ export function RadarScreen() {
     <RadarView
       query={query}
       status={data.status}
-      company={data.company}
+      grouping={data.grouping}
       visitor={data.visitor}
       counts={data.counts}
       tenders={data.tenders}

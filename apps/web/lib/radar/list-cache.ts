@@ -1,4 +1,11 @@
-import type { CompanyView, Freshness, TenderCard, TenderGroup, VisitorView } from './contract'
+import type {
+  CompanyView,
+  Freshness,
+  GroupedBy,
+  TenderCard,
+  TenderGroup,
+  VisitorView,
+} from './contract'
 
 /**
  * What the Radar remembers about a list it has already shown, so that coming
@@ -67,7 +74,13 @@ export type SnapshotStatus = 'ready' | 'manualCnae' | 'noSegments'
 export type ListSnapshot = {
   /** The group actually on screen — which is not always the one in the URL. */
   group: TenderGroup
-  company: CompanyView | null
+  /**
+   * The company the list route said it grouped by (D19) — not the one the CNPJ
+   * post resolved, which is cached separately below. Restoring a list restores
+   * the header that belongs to it, so coming back cannot resurrect the
+   * mismatched pair.
+   */
+  grouping: GroupedBy | null
   visitor: VisitorView | null
   counts: Record<TenderGroup, number> | null
   /** Every page the user had loaded, in the order they were appended. */

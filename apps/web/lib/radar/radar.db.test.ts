@@ -470,6 +470,61 @@ suite('Radar read APIs (database)', () => {
       expect(after.rows[0]?.n).toBe(before.rows[0]?.n)
     })
 
+    /**
+     * D19, on the real route: the list reports the company it grouped by.
+     *
+     * The CNPJ here is in **`visitors.cnpj`** and nowhere else — no `?cnpj=`,
+     * which is the address Sci screenshotted. The browser cannot read that
+     * cookie (`httpOnly`), so before `groupedBy` existed the header had no way
+     * to know this list was grouped by anything at all and rendered
+     * *"sem CNAE lido"* over it.
+     */
+    it('reports the cookie CNPJ it grouped by, with its CNAE count', async () => {
+      const visitor = await newVisitor()
+      const response = await getTenders(
+        new Request('https://licitaqui.test/api/radar/tenders?group=compatible', {
+          headers: headers(visitor),
+        }),
+      )
+      const body = (await response.json()) as TenderListResponse
+      if (body.state !== 'ready') throw new Error(`expected ready, got ${body.state}`)
+
+      expect(body.groupedBy?.cnpj).toBe(RUN_COMPANY_CNPJ)
+      expect(body.groupedBy?.company?.cnpj).toBe(RUN_COMPANY_CNPJ)
+      // The two CNAEs `beforeAll` put on the row: one main, one secondary.
+      expect(body.groupedBy?.cnaeCount).toBe(2)
+      // And it really did group by them, which is what made the header's
+      // contradiction visible in the first place.
+      expect(body.tenders.map((t) => t.id)).toContain(compatibleTender.id)
+    })
+
+    /**
+     * The other acceptance criterion, measured rather than reasoned: with no
+     * company anywhere, there is nothing to report and every row is `keyword`.
+     *
+     * `labels([])` is `array[]::text[]` and `&&` against it is false, so this is
+     * the grouping behaving correctly — D19's card says so and says not to
+     * change it. What was wrong was only the sentence above it.
+     */
+    it('reports no company when none drove the list, and groups it all as keyword', async () => {
+      const word = longestWord(otherTender.object)
+      const visitor = await newVisitor(null)
+      const response = await getTenders(
+        new Request(
+          `https://licitaqui.test/api/radar/tenders?group=keyword&q=${encodeURIComponent(unaccent(word))}`,
+          { headers: headers(visitor) },
+        ),
+      )
+      const body = (await response.json()) as TenderListResponse
+      if (body.state !== 'ready') throw new Error(`expected ready, got ${body.state}`)
+
+      expect(body.groupedBy).toBeNull()
+      expect(body.counts.compatible).toBe(0)
+      expect(body.counts.check).toBe(0)
+      expect(body.tenders.length).toBeGreaterThan(0)
+      expect(body.tenders.every((t) => t.group === 'keyword')).toBe(true)
+    })
+
     it('refuses a request with neither a CNPJ nor a search term', async () => {
       const response = await getTenders(
         new Request('https://licitaqui.test/api/radar/tenders', { headers: headers() }),

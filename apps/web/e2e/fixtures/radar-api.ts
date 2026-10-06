@@ -50,6 +50,11 @@ import { visitor as defaultVisitor, visitorQuota } from './world'
 export type CompanyWorld = {
   company: CompanyView
   tenders: TenderDetail[]
+  /**
+   * CNAEs on record for it — what `radar.list.cnaeCount` counts, which is not
+   * `company.segments.length` (D19). Defaults to one when there is a main CNAE.
+   */
+  cnaeCount?: number
 }
 
 export type WorldOptions = {
@@ -61,6 +66,16 @@ export type WorldOptions = {
   pageSize?: number
   /** Freshness reported for every list and every tender. */
   freshness?: Freshness
+  /**
+   * The CNPJ this device searched last, as `visitors.cnpj` holds it.
+   *
+   * `GET /api/radar/tenders` resolves the company as `?cnpj= ?? visitors.cnpj`,
+   * so a Radar opened with **no** `?cnpj=` in its URL is still grouped by this
+   * one — and the cookie carrying it is `httpOnly`, which is exactly why the
+   * header could not see it and D19 happened. Modelled here because that state
+   * is unreachable from the URL alone, and it is the state Sci screenshotted.
+   */
+  cookieCnpj?: string
 }
 
 /**
@@ -257,7 +272,9 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
     // ── GET /api/radar/tenders ────────────────────────────────────────────
     if (path === '/api/radar/tenders') {
       await through('tenders', request.url())
-      const cnpj = url.searchParams.get('cnpj')
+      // The real route's rule, verbatim: the query string when it is there,
+      // otherwise whatever this device last searched (D19).
+      const cnpj = url.searchParams.get('cnpj') ?? api.world.cookieCnpj ?? null
       const group = (url.searchParams.get('group') ?? 'compatible') as TenderGroup
       const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
       const found = worldFor(cnpj)
@@ -280,6 +297,13 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
         counts,
         nextCursor: next,
         freshness,
+        groupedBy: cnpj
+          ? {
+              cnpj,
+              company: found?.company ?? null,
+              cnaeCount: found ? (found.cnaeCount ?? (found.company.mainCnae ? 1 : 0)) : 0,
+            }
+          : null,
       } satisfies TenderListResponse)
     }
 

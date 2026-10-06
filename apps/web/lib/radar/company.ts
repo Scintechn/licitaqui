@@ -41,6 +41,7 @@ type CompanyRow = {
   registration_status: string | null
   updated_at: Date | string
   segments: SegmentFit[] | null
+  cnae_count: number | string | null
 }
 
 export type CompanyRead = {
@@ -52,11 +53,38 @@ export type CompanyRead = {
    */
   manualCnae: boolean
   registrationStatus: string | null
+  /**
+   * How many **CNAEs** are on record: the main one plus `secondary_cnaes`,
+   * deduplicated. Zero means nothing has been read for this CNPJ yet.
+   *
+   * It exists because the Radar header renders `radar.list.cnaeCount` — *"3
+   * CNAEs"*, *"sem CNAE lido"* — and that string used to be fed
+   * `company.segments.length`, which is a count of the **14 POC-1 segments**
+   * the CNAEs reach after `cnae_segments` has mapped them. Those are different
+   * numbers in both directions: one CNAE can reach three segments, and ten can
+   * reach none at all (B6 leaves 777 codes unmapped). A company with five
+   * CNAEs and no mapped segment read *"sem CNAE lido"*, which is false, and
+   * one CNAE reaching two segments read *"2 CNAEs"*, which is also false (D19).
+   *
+   * Not on `CompanyView`, deliberately: the wire type is shared with
+   * `/api/radar/cnpj`, `/conta/empresa` and the client's snapshot cache, and
+   * the header must have exactly one supplier for this number — the list route
+   * that did the grouping. See `GroupedBy` in `contract.ts`.
+   */
+  cnaeCount: number
 }
 
 const SELECT = sql`
   select c.cnpj, c.legal_name, c.trade_name, c.main_cnae, c.size, c.is_mei,
          c.state, c.city, c.registration_status, c.updated_at,
+         -- The CNAEs themselves, counted: main plus secondary, deduplicated,
+         -- nulls dropped. array[c.main_cnae] is {NULL} when there is no main
+         -- CNAE, which the where clause removes, so a placeholder row counts 0
+         -- and a company whose main CNAE repeats in secondary_cnaes counts it
+         -- once. Not array_length, which would count that NULL as an element.
+         (select count(distinct u.cnae)::int
+            from unnest(coalesce(c.secondary_cnaes, '{}'::text[]) || array[c.main_cnae]) as u(cnae)
+           where u.cnae is not null) as cnae_count,
          (select json_agg(json_build_object(
                     'segment', s.segment,
                     'fit', s.fit,
@@ -95,6 +123,7 @@ export async function readCompany(
       },
       manualCnae,
       registrationStatus: row.registration_status,
+      cnaeCount: Number(row.cnae_count ?? 0),
     },
     updatedAt: new Date(row.updated_at),
     // A placeholder row is not a 30-day fact (`licitaqui.company.FALLBACK_TTL`).
