@@ -5,7 +5,7 @@ import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { normaliseCnpj } from '@/lib/cnpj'
 import { db } from '@/lib/db'
 import { readCompany, segmentsByFit } from '@/lib/radar/company'
-import { TENDER_GROUPS, type TenderListResponse } from '@/lib/radar/contract'
+import { TENDER_GROUPS, TENDER_SORTS, DEFAULT_SORT, type TenderListResponse } from '@/lib/radar/contract'
 import { countGroups, listFreshness, listTenders, MAX_LIMIT } from '@/lib/radar/tenders'
 import { loadVisitor } from '@/lib/radar/visitor'
 import { rateLimitRequest } from '@/lib/rate-limit'
@@ -64,6 +64,14 @@ const query = z.object({
     .enum(['true', 'false'])
     .transform((value) => value === 'true')
     .optional(),
+  /**
+   * The order (D51). `.default` rather than `.optional`, so every read below
+   * has an order without restating the fallback — the same shape as `group`,
+   * and like `group` an unrecognised value is a 400 rather than a silent
+   * substitution: this route is called by our own client, which has no reason
+   * to ask for an order that does not exist.
+   */
+  sort: z.enum(TENDER_SORTS).default(DEFAULT_SORT),
 })
 
 function fail(body: TenderListResponse, status: number, headers?: HeadersInit) {
@@ -155,6 +163,7 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
       includeClosed: params.includeClosed ?? false,
       limit: params.limit,
       cursor: params.cursor ?? null,
+      sort: params.sort,
     }
 
     const [page, counts, freshness] = await Promise.all([

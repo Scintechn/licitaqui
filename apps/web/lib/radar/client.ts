@@ -7,8 +7,11 @@ import type {
   TenderGroup,
   TenderListResponse,
   TenderResponse,
+  TenderSort,
 } from './contract'
+import { DEFAULT_SORT } from './contract'
 import { readGroup } from './group'
+import { readSort } from './sort'
 import type { JobStatus } from './poll'
 import { normaliseUf } from './ufs'
 
@@ -66,6 +69,12 @@ export type RadarSearch = {
   state?: string | null
   q?: string | null
   group?: TenderGroup | null
+  /**
+   * The order (D51). Carried with the other four because it is part of *the
+   * list the reader was looking at*: a "Voltar" that drops it lands on the same
+   * search re-sorted, which is the same class of loss as dropping the keyword.
+   */
+  sort?: TenderSort | null
 }
 
 /**
@@ -78,6 +87,13 @@ function searchParams(search: RadarSearch): URLSearchParams {
   if (search.state) params.set('uf', search.state)
   if (search.q) params.set('q', search.q)
   if (search.group) params.set('group', search.group)
+  // **The default is written as its absence**, which is the opposite of
+  // `group`'s rule two lines up and for a stated reason: there is no "unchosen
+  // order" for the product to resolve, so `?sort=deadline` and no `sort` at all
+  // are the same list. Spelling it out would put a parameter into every address
+  // the Radar already draws and make `radarHref(readSearch(url))` differ from
+  // `url` on every page that has never sorted by value.
+  if (search.sort && search.sort !== DEFAULT_SORT) params.set('sort', search.sort)
   return params
 }
 
@@ -185,6 +201,8 @@ export function readSearch(params: { get(name: string): string | null }): RadarS
     state: normaliseUf(params.get('uf')),
     q: (params.get('q') ?? '').trim() || null,
     group: readGroup(params.get('group')),
+    // Never `null`: absent means the deadline order (`readSort`).
+    sort: readSort(params.get('sort')),
   }
 }
 
@@ -211,6 +229,7 @@ export type TenderQuery = {
   q?: string | null
   limit?: number
   cursor?: string | null
+  sort?: TenderSort | null
 }
 
 export function tendersUrl(query: TenderQuery): string {
@@ -220,6 +239,10 @@ export function tendersUrl(query: TenderQuery): string {
   if (query.q) params.set('q', query.q)
   if (query.limit) params.set('limit', String(query.limit))
   if (query.cursor) params.set('cursor', query.cursor)
+  // Left out when it is the default, for the same reason `searchParams` leaves
+  // it out: the route's own fallback is `DEFAULT_SORT`, so the shortest URL and
+  // the explicit one ask for the same page.
+  if (query.sort && query.sort !== DEFAULT_SORT) params.set('sort', query.sort)
   return `/api/radar/tenders?${params.toString()}`
 }
 

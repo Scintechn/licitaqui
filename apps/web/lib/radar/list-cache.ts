@@ -1,4 +1,12 @@
-import type { CompanyView, Freshness, TenderCard, TenderGroup, VisitorView } from './contract'
+import { DEFAULT_SORT } from './contract'
+import type {
+  CompanyView,
+  Freshness,
+  TenderCard,
+  TenderGroup,
+  TenderSort,
+  VisitorView,
+} from './contract'
 
 /**
  * What the Radar remembers about a list it has already shown, so that coming
@@ -187,19 +195,33 @@ function valid(value: unknown): value is ListSnapshot {
 }
 
 /**
- * The identity of a list: the four things that change what the route returns.
+ * The identity of a list: the five things that change what the route returns.
  *
  * `group` is the *chosen* group, so an unchosen one keys as `auto` — the
  * snapshot then carries whichever group `bestGroup()` elected, and coming back
  * to the same unchosen URL restores that same tab rather than re-deciding it.
+ *
+ * **The order is part of the identity (D51).** The same CNPJ, UF, keyword and
+ * tab under *maior valor* is a different list of rows, so without it pressing
+ * Back after changing the order would restore the list sorted the other way
+ * under the key this URL asks for — and `nextCursor` with it, which is a cursor
+ * cut from the wrong key. Absent keys as `DEFAULT_SORT` rather than as a fifth
+ * token, because absent *is* that order everywhere else.
  */
 export function listKey(query: {
   cnpj: string | null
   state: string | null
   q: string | null
   group: TenderGroup | null
+  sort?: TenderSort | null
 }): string {
-  return [query.cnpj ?? '', query.state ?? '', query.q ?? '', query.group ?? 'auto'].join('\u0000')
+  return [
+    query.cnpj ?? '',
+    query.state ?? '',
+    query.q ?? '',
+    query.group ?? 'auto',
+    query.sort ?? DEFAULT_SORT,
+  ].join('\u0000')
 }
 
 function evict(): void {
@@ -253,6 +275,8 @@ export type ListQuery = {
   state: string | null
   q: string | null
   group: TenderGroup | null
+  /** Optional, and absent means `DEFAULT_SORT` — see `listKey`. */
+  sort?: TenderSort | null
 }
 
 /**

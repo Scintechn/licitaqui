@@ -893,7 +893,13 @@
       },
       "filters": "Filtros",
       "filtersHide": "Esconder filtros",
-      "sort": "Ordenar: prazo",
+      "sort": "Ordenar:",
+      "sortBy": "Ordenar por {ordem}",
+      "sortOrders": {
+        "deadline": "prazo",
+        "valueDesc": "maior valor",
+        "valueAsc": "menor valor"
+      },
       "more": "Ver mais editais",
       "moreLoading": "Carregando…",
       "showing": "Mostrando {shown} de {total}",
