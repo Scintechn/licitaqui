@@ -113,8 +113,12 @@ function headerSays(out: string): 'none' | 'zero' | 'some' {
  * `NO_CNAE`, so the order matters: the longer, more specific string is tested
  * first and the substring is never mistaken for it.
  */
-function helpSays(out: string): 'none' | 'zero' | 'claims' {
+function helpSays(out: string): 'none' | 'zero' | 'unmatched' | 'claims' {
   if (out.includes(list.groupHintNoCnae)) return 'zero'
+  // "seu CNAE não alcança nenhum segmento ainda" — CNAEs were read and reach
+  // none of B6's 14 segments. Tested before the claims below: it is its own
+  // answer, not a quieter version of one.
+  if (out.includes(list.groupHintNoSegment)) return 'unmatched'
   if (out.includes(list.groupHint.compatible) || out.includes(list.groupHint.check)) return 'claims'
   return 'none'
 }
@@ -138,6 +142,14 @@ const STATES: State[] = [
     name: 'a CNPJ with a company read',
     status: { kind: 'ready' },
     grouping: { company: COMPANY, cnaeCount: CNAES_ON_RECORD },
+  },
+  {
+    // B6 leaves 777 of 1 332 CNAEs unmapped on purpose, so this is a normal
+    // outcome and not an error — and until Sci's decision of 2026-10-06 it
+    // read "seu CNAE atende" over an empty Compatíveis tab.
+    name: 'a CNPJ whose CNAEs reach no segment',
+    status: { kind: 'ready' },
+    grouping: { company: { ...COMPANY, segments: [] }, cnaeCount: CNAES_ON_RECORD },
   },
 ]
 
@@ -222,6 +234,20 @@ describe('the Radar header and the tab help (D19)', () => {
    * the URL — `/radar?q=canvas&group=compatible` is exactly the address in
    * Sci's screenshot, and nothing stops a visitor with no CNAE from opening it.
    */
+  it('does not claim a match for CNAEs that reach no segment', () => {
+    const out = render({
+      grouping: { company: { ...COMPANY, segments: [] }, cnaeCount: CNAES_ON_RECORD },
+      query: { cnpj: COMPANY.cnpj, state: null, q: null, group: 'compatible' },
+    })
+    // The header is unchanged: the CNAEs were read and there are three of them.
+    expect(headerSays(out)).toBe('some')
+    // The hint is the half that must not claim a match there is no basis for.
+    expect(helpSays(out)).toBe('unmatched')
+    expect(out).not.toContain(list.groupHint.compatible)
+    // And it is not the *other* unsupported state: CNAEs were read.
+    expect(out).not.toContain(list.groupHintNoCnae)
+  })
+
   it('never claims a CNAE match beside a line reporting no CNAE', () => {
     for (const state of STATES) {
       for (const group of TENDER_GROUPS) {
@@ -249,6 +275,7 @@ describe('the Radar header and the tab help (D19)', () => {
         const allowed: Record<ReturnType<typeof helpSays>, ReturnType<typeof headerSays>[]> = {
           none: ['none', 'zero', 'some'],
           zero: ['zero'],
+          unmatched: ['some'],
           claims: ['some'],
         }
         const help = helpSays(out)

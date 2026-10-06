@@ -888,6 +888,7 @@
         "keyword": "achado pela busca"
       },
       "groupHintNoCnae": "sem CNAE lido para comparar",
+      "groupHintNoSegment": "seu CNAE não alcança nenhum segmento ainda",
       "badges": {
         "compatible": "Compatível",
         "check": "Verificar",
@@ -918,7 +919,7 @@
       "seeOther": "Ver {quantos} em {grupo}",
       "allEmpty": {
         "title": "Nada aberto com esses filtros",
-        "body": "As três abas estão vazias para esta busca. Amplie a UF, troque a palavra-chave ou tente mais tarde: a lista de editais abertos é atualizada a cada 30 minutos."
+        "body": "As três abas estão vazias para esta busca. Tente ampliar a UF, trocar a palavra-chave ou tirar os filtros de modalidade e ME/EPP — ou volte mais tarde: a lista de editais abertos é atualizada a cada 30 minutos."
       }
     },
     "tabs": {

@@ -187,6 +187,26 @@ function cnaeState(grouping: GroupedBy | null, status: RadarStatus): number | nu
 }
 
 /**
+ * How many of B6's 14 segments those CNAEs actually reach — `null` while the
+ * route has not answered, the same unknown `cnaeState` reports.
+ *
+ * **CNAEs read and segments reached are different numbers, and the tab hint
+ * depends on the second one.** D19 fixed the header's half: it no longer says
+ * "sem CNAE lido" over a list grouped by a real company. This is the step
+ * further in, raised as `TO_VALIDATE.md` #13 and decided by Sci on 2026-10-06:
+ * a company whose CNAEs map to **no** segment was still told *"seu CNAE
+ * atende"* over an empty Compatíveis tab. That is a claim about a match where
+ * there is no match to claim — B6 leaves 777 of 1 332 CNAEs unmapped on
+ * purpose, so it is a normal outcome and not an error, and the screen already
+ * has `noSegments` copy for exactly this state. The hint was the one place
+ * that did not know.
+ */
+function segmentState(grouping: GroupedBy | null): number | null {
+  if (!grouping) return null
+  return grouping.company?.segments.length ?? 0
+}
+
+/**
  * "Papelaria Central · 3 CNAEs · SP" — and the two cases where it may not say
  * that (D19).
  *
@@ -396,10 +416,13 @@ function GroupTabs({
 function GroupHint({
   group,
   cnaeCount,
+  segmentCount,
 }: {
   group: TenderGroup
   /** CNAEs on record, or **`null` for "nobody has asked yet"** — see below. */
   cnaeCount: number | null
+  /** Segments those CNAEs reach, same `null`. See {@link segmentState}. */
+  segmentCount: number | null
 }) {
   /**
    * Two of the three hints are claims about the reader's CNAEs — *"seu CNAE
@@ -423,7 +446,16 @@ function GroupHint({
    */
   const claimsCnae = group === 'compatible' || group === 'check'
   if (claimsCnae && cnaeCount === null) return null
-  const text = claimsCnae && cnaeCount === 0 ? list.groupHintNoCnae : list.groupHint[group]
+  // Three ways a CNAE claim can be unsupported, and they are different facts:
+  // nothing read at all, read but reaching no segment, and (above) not asked
+  // yet. Only the last draws nothing — the other two say which it is.
+  const text = !claimsCnae
+    ? list.groupHint[group]
+    : cnaeCount === 0
+      ? list.groupHintNoCnae
+      : segmentCount === 0
+        ? list.groupHintNoSegment
+        : list.groupHint[group]
   return <p className="px-gutter pb-1 text-meta text-muted">{text}</p>
 }
 
@@ -1240,7 +1272,11 @@ export function RadarView({
         {/* The same number the line above renders, through the same function:
             these two sentences are the pair D19's test holds against each
             other, so they must not be able to read different states. */}
-        <GroupHint group={query.group} cnaeCount={cnaeState(grouping, status)} />
+        <GroupHint
+          group={query.group}
+          cnaeCount={cnaeState(grouping, status)}
+          segmentCount={segmentState(grouping)}
+        />
 
         <FilterRow query={query} onNavigate={onNavigate} />
 
