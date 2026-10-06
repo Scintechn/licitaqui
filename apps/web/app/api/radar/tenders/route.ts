@@ -60,9 +60,11 @@ const query = z.object({
   q: z.string().trim().max(200).optional(),
   /**
    * D52's two filters. Enums, not free text: the modality slug is mapped to one
-   * exact `modality_name` in `lib/radar/filters.ts`, and a value this list does
-   * not know is a 400 rather than a filter that matches nothing — the reader
-   * would otherwise be shown an empty Radar and told nothing was open.
+   * PNCP code in `lib/radar/filters.ts` (`MODALITY_CODES`, matched against
+   * `tenders.modality_id` — the name is free text from two endpoints, the id is
+   * the key), and a value this list does not know is a 400 rather than a filter
+   * that matches nothing — the reader would otherwise be shown an empty Radar
+   * and told nothing was open.
    */
   modality: z.enum(MODALITY_SLUGS).optional(),
   meepp: z.enum(ME_EPP_FILTERS).optional(),

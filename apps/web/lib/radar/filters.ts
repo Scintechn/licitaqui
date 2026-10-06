@@ -50,7 +50,7 @@ import { messages } from '@/lib/messages'
  * list will not know it.
  *
  * That is survivable **only** because *Todas* adds no condition at all. A
- * `modality_name in (…the three we know…)` default would silently hide every
+ * `modality_id in (…the three we know…)` default would silently hide every
  * edital of the new modality from every reader on the day the worker started
  * syncing it — and nothing would fail, which is the shape this repository has
  * paid for five times. The rule is therefore: the default is the absence of a

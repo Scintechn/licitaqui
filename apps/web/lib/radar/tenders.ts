@@ -51,7 +51,11 @@ export type TenderFilters = {
   state?: string | null
   /** Free text for `websearch_to_tsquery`. */
   q?: string | null
-  /** One `tenders.modality_name`, by slug (D52). `null` is *Todas*. */
+  /**
+   * One `tenders.modality_id`, by slug (D52) — the code, never the name beside
+   * it: the name is PNCP's free text from two endpoints, the id is the key.
+   * `null` is *Todas*, which adds no condition at all.
+   */
   modality?: ModalityFilter | null
   /** `exclusive`, or everything that is not (D52). `null` is *Todas*. */
   meEpp?: MeEppFilter | null
