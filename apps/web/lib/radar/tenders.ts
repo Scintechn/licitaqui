@@ -4,6 +4,7 @@ import { db, type Executor } from '@/lib/db'
 import { JOB_KINDS } from '@/lib/jobs'
 import { DEFAULT_SORT } from './contract'
 import type { SegmentFit, TenderCard, TenderGroup, TenderSort } from './contract'
+import { MODALITY_CODES, type MeEppFilter, type ModalityFilter } from './filters'
 import { DIVULGADA } from './tender-status'
 
 /**
@@ -50,6 +51,14 @@ export type TenderFilters = {
   state?: string | null
   /** Free text for `websearch_to_tsquery`. */
   q?: string | null
+  /**
+   * One `tenders.modality_id`, by slug (D52) — the code, never the name beside
+   * it: the name is PNCP's free text from two endpoints, the id is the key.
+   * `null` is *Todas*, which adds no condition at all.
+   */
+  modality?: ModalityFilter | null
+  /** `exclusive`, or everything that is not (D52). `null` is *Todas*. */
+  meEpp?: MeEppFilter | null
   /** Closed tenders are excluded by default: the Radar is for bidding. */
   includeClosed?: boolean
   limit?: number
@@ -303,6 +312,48 @@ function labels(values: string[]): SQL {
 }
 
 /**
+ * D52's modality condition, or `null` for *Todas*.
+ *
+ * **`modality_id`, not `modality_name`.** The name is free text from two
+ * different PNCP endpoints and the id is PNCP's code, non-null on every one of
+ * the 58 495 rows (measured 2026-10-06 18:19 UTC); matching the text would turn one
+ * re-worded hyphen into an option that silently finds nothing. `filters.ts`
+ * has the measurement and the argument.
+ *
+ * Equality against one code, never `in (…)`: the default must be the
+ * **absence** of this predicate, or a modality this list does not know would
+ * disappear from the Radar the day the sweep starts collecting it.
+ */
+export function modalityCondition(modality: ModalityFilter | null | undefined): SQL | null {
+  if (!modality) return null
+  return sql`t.modality_id = ${MODALITY_CODES[modality]}`
+}
+
+/**
+ * D52's ME/EPP condition, or `null` for *Todas*.
+ *
+ * **`exclusive` and `mixed` are both *Exclusivo*** (Sci, 2026-10-06): a `mixed`
+ * edital has exclusive items, so it is part of the answer to *where does being
+ * an ME/EPP give me a reserved lane* — and leaving it out put 1 810 open editais
+ * under a heading saying *Não exclusivo* while their own cards said *Exclusivos
+ * e cotas ME/EPP*. `filters.ts` has the measurement and the reasoning.
+ *
+ * **Both clauses of the negative are `is distinct from`, and that is the whole
+ * trick.** `not in ('exclusive','mixed')` is `unknown` for the 2 086 open
+ * tenders whose `me_epp_summary` is null — PNCP published nothing about the
+ * regime — so they would fall out of *both* buckets and be reachable only with
+ * no filter at all. "We do not know" is not "exclusive", so silence belongs in
+ * *Não exclusivo*, and the two options then partition the list exactly:
+ * 6 229 + 18 534 = 24 763, measured, not derived.
+ */
+export function meEppCondition(meEpp: MeEppFilter | null | undefined): SQL | null {
+  if (!meEpp) return null
+  if (meEpp === 'exclusive') return sql`t.me_epp_summary in ('exclusive', 'mixed')`
+  return sql`t.me_epp_summary is distinct from 'exclusive'
+             and t.me_epp_summary is distinct from 'mixed'`
+}
+
+/**
  * The shared `from`/`where` of the list and the counts, plus the `grp` label.
  * One definition, so a filter can never apply to the page and not to the tab
  * count above it.
@@ -317,6 +368,13 @@ function scope(match: CompanyMatch, filters: TenderFilters, extra: SQL[] = []): 
   if (filters.state) {
     conditions.push(sql`t.state = ${filters.state.toUpperCase()}`)
   }
+  // D52. Inside `scope()` and nowhere else, so `countGroups` filters by exactly
+  // what `listTenders` filters by: a tab that says "Compatíveis 13" above a page
+  // of 4 is the defect this function exists to make unwritable.
+  const modality = modalityCondition(filters.modality)
+  if (modality) conditions.push(modality)
+  const meEpp = meEppCondition(filters.meEpp)
+  if (meEpp) conditions.push(meEpp)
   if (query) {
     conditions.push(sql`t.search @@ websearch_to_tsquery('pt_unaccent', ${query})`)
   } else {

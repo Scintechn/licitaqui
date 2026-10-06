@@ -671,7 +671,10 @@ describe('the list grid', () => {
     const out = render()
     const { wrapper } = grid(out)
     expect(wrapper).toBe('@container')
-    expect(out.match(/@container/g), 'one container, and it is this one').toHaveLength(1)
+    // Two on this screen since D52 gave the filter row one of its own; the
+    // claim here is about *this* one, so it is identified by its wrapper above
+    // rather than by being the only `@container` in the markup.
+    expect(out.match(/@container/g), 'the list’s container and D52’s').toHaveLength(2)
     // Named so a reader knows which placements were considered and rejected.
     expect(wrapper, 'not the padded div — it would capture D25 (3)’s fixed bar').not.toContain(
       'px-gutter',

@@ -2,7 +2,13 @@
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { getJobStatus, getTenders, postCnpj } from '@/lib/radar/client'
+import {
+  getJobStatus,
+  getTenders,
+  ME_EPP_PARAM,
+  MODALITY_PARAM,
+  postCnpj,
+} from '@/lib/radar/client'
 import type {
   CnpjResponse,
   CompanyView,
@@ -13,6 +19,7 @@ import type {
   VisitorView,
 } from '@/lib/radar/contract'
 import { apiErrorText, NETWORK_ERROR } from '@/lib/radar/error-text'
+import { readMeEpp, readModality } from '@/lib/radar/filters'
 import { bestGroup, readGroup } from '@/lib/radar/group'
 import { readSort } from '@/lib/radar/sort'
 import {
@@ -135,7 +142,7 @@ type Data = {
 
 /**
  * Nothing read yet. The key is `''`, which `listKey` can never produce — it
- * always joins five fields with a NUL separator — so this state matches no
+ * always joins its fields with a NUL separator — so this state matches no
  * search and is never written to the cache.
  */
 const INITIAL: Data = {
@@ -210,11 +217,22 @@ export function RadarScreen() {
   const cnpj = (params.get('cnpj') ?? '').replace(/\D+/g, '') || null
   const state = normaliseUf(params.get('uf'))
   const q = (params.get('q') ?? '').trim() || null
+  /**
+   * D52's two filters, read here and threaded into **every** read below.
+   *
+   * They have to reach four places or they do nothing: the list route, the
+   * cache key, the snapshot restore and the effect's dependency array. A
+   * parameter missing from the last one is a URL that changes and a list that
+   * does not — which is how the Radar's whole navigation silently did nothing
+   * on 2026-09-23 (see the snapshot-writing effect below).
+   */
+  const modality = readModality(params.get(MODALITY_PARAM))
+  const meEpp = readMeEpp(params.get(ME_EPP_PARAM))
   const chosenGroup = readGroup(params.get('group'))
   // Never `null`: an absent `?sort=` is the deadline order, which is the order
   // this list has always come back in (D51).
   const sort = readSort(params.get('sort'))
-  const key = listKey({ cnpj, state, q, group: chosenGroup, sort })
+  const key = listKey({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
 
   /**
    * The snapshot is read here, in the initializer, and not in the effect: the
@@ -224,7 +242,7 @@ export function RadarScreen() {
    * and those mounts have no server-rendered HTML to disagree with.
    */
   const [data, setData] = useState<Data>(() => {
-    const restored = restoreList({ cnpj, state, q, group: chosenGroup, sort })
+    const restored = restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
     return restored ? fromSnapshot(restored.snapshot, key) : INITIAL
   })
 
@@ -305,6 +323,8 @@ export function RadarScreen() {
     cnpj,
     state,
     q,
+    modality,
+    meEpp,
     group: data.group,
     groupChosen: chosenGroup !== null,
     sort,
@@ -377,7 +397,7 @@ export function RadarScreen() {
    */
   useBeforePaint(() => {
     if (data.tenders.length === 0) return
-    const restored = restoreList({ cnpj, state, q, group: chosenGroup, sort })
+    const restored = restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
     if (restored && restored.snapshot.scrollY > 0) window.scrollTo(0, restored.snapshot.scrollY)
   }, [])
 
@@ -425,7 +445,10 @@ export function RadarScreen() {
         // is not the reason the screen exists.
       }
 
-      const list = await getTenders({ group: previous.group, cnpj, state, q, sort }, signal)
+      const list = await getTenders(
+        { group: previous.group, cnpj, state, q, modality, meEpp, sort },
+        signal,
+      )
       if (signal.aborted) return
 
       setData((current) => ({
@@ -460,7 +483,7 @@ export function RadarScreen() {
         return
       }
 
-      const restored = restoreList({ cnpj, state, q, group: chosenGroup, sort })
+      const restored = restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
       if (restored) {
         // The mount initializer may already have rendered this exact snapshot;
         // setting it again would replace an identical view model and re-render
@@ -536,7 +559,7 @@ export function RadarScreen() {
       // answer usually belongs to.
       const asked = chosenGroup ?? 'compatible'
       let answer: TenderListResponse = await getTenders(
-        { group: asked, cnpj, state, q, sort },
+        { group: asked, cnpj, state, q, modality, meEpp, sort },
         signal,
       )
       let group = asked
@@ -546,7 +569,7 @@ export function RadarScreen() {
         if (best !== asked) {
           // The one extra request this costs happens only in the case that was
           // broken before it: nothing in the tab we would have opened on.
-          const second = await getTenders({ group: best, cnpj, state, q, sort }, signal)
+          const second = await getTenders({ group: best, cnpj, state, q, modality, meEpp, sort }, signal)
           if (second.state === 'ready') {
             answer = second
             group = best
@@ -610,7 +633,7 @@ export function RadarScreen() {
       controller.abort()
       moreRequest.current?.abort()
     }
-  }, [cnpj, state, q, chosenGroup, sort, key, attempt])
+  }, [cnpj, state, q, modality, meEpp, chosenGroup, sort, key, attempt])
 
   /**
    * "Ver mais editais" — the next keyset page, appended.
@@ -637,7 +660,10 @@ export function RadarScreen() {
       if (moreRequest.current === controller) moreRequest.current = null
     }
 
-    getTenders({ group: data.group, cnpj, state, q, sort, cursor }, controller.signal)
+    getTenders(
+      { group: data.group, cnpj, state, q, modality, meEpp, sort, cursor },
+      controller.signal,
+    )
       .then((answer) => {
         settle()
         if (controller.signal.aborted) return
@@ -665,7 +691,7 @@ export function RadarScreen() {
         if (controller.signal.aborted) return
         setData((previous) => ({ ...previous, loadingMore: false }))
       })
-  }, [data.nextCursor, data.loadingMore, data.group, cnpj, state, q, sort])
+  }, [data.nextCursor, data.loadingMore, data.group, cnpj, state, q, modality, meEpp, sort])
 
   const onNavigate = useCallback(
     (href: string) => {

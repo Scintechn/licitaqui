@@ -7,6 +7,7 @@ import type {
   TenderSort,
   VisitorView,
 } from './contract'
+import type { MeEppFilter, ModalityFilter } from './filters'
 
 /**
  * What the Radar remembers about a list it has already shown, so that coming
@@ -195,7 +196,7 @@ function valid(value: unknown): value is ListSnapshot {
 }
 
 /**
- * The identity of a list: the five things that change what the route returns.
+ * The identity of a list: every thing that changes what the route returns.
  *
  * `group` is the *chosen* group, so an unchosen one keys as `auto` — the
  * snapshot then carries whichever group `bestGroup()` elected, and coming back
@@ -205,13 +206,24 @@ function valid(value: unknown): value is ListSnapshot {
  * tab under *maior valor* is a different list of rows, so without it pressing
  * Back after changing the order would restore the list sorted the other way
  * under the key this URL asks for — and `nextCursor` with it, which is a cursor
- * cut from the wrong key. Absent keys as `DEFAULT_SORT` rather than as a fifth
+ * cut from the wrong key. Absent keys as `DEFAULT_SORT` rather than as its own
  * token, because absent *is* that order everywhere else.
+ *
+ * **Every filter belongs here too, and D52's two are why this sentence exists.**
+ * A parameter the route reads and this key does not is a list restored under
+ * another list's name: `?modality=dispensa` and no modality at all would share
+ * a key, so pressing Back after changing the filter would hand the reader the
+ * other filter's rows, with no request and nothing on screen to say so. The
+ * same failure the group guard in `restoreList` was written for, except that
+ * `ListSnapshot` carries no filters, so there is no second lock here — only
+ * this one.
  */
 export function listKey(query: {
   cnpj: string | null
   state: string | null
   q: string | null
+  modality?: ModalityFilter | null
+  meEpp?: MeEppFilter | null
   group: TenderGroup | null
   sort?: TenderSort | null
 }): string {
@@ -219,6 +231,8 @@ export function listKey(query: {
     query.cnpj ?? '',
     query.state ?? '',
     query.q ?? '',
+    query.modality ?? '',
+    query.meEpp ?? '',
     query.group ?? 'auto',
     query.sort ?? DEFAULT_SORT,
   ].join('\u0000')
@@ -274,6 +288,8 @@ export type ListQuery = {
   cnpj: string | null
   state: string | null
   q: string | null
+  modality?: ModalityFilter | null
+  meEpp?: MeEppFilter | null
   group: TenderGroup | null
   /** Optional, and absent means `DEFAULT_SORT` — see `listKey`. */
   sort?: TenderSort | null
