@@ -150,17 +150,37 @@ describe('the snapshot carries the marked ids', () => {
 })
 
 describe('withFavourite', () => {
+  const onScreen = [tender('a'), tender('b'), tender('z')]
+
   it('adds and removes', () => {
-    expect(withFavourite(['a'], 'b', true)).toEqual(['a', 'b'])
-    expect(withFavourite(['a', 'b'], 'a', false)).toEqual(['b'])
+    expect(withFavourite(['a'], 'b', true, onScreen)).toEqual(['a', 'b'])
+    expect(withFavourite(['a', 'b'], 'a', false, onScreen)).toEqual(['b'])
   })
 
   it('returns the same array when nothing changes', () => {
     // The star reports twice per press — optimistically, then with the route's
     // answer — and the second report must cost no render and no re-write.
     const marked = ['a', 'b']
-    expect(withFavourite(marked, 'a', true)).toBe(marked)
-    expect(withFavourite(marked, 'z', false)).toBe(marked)
+    expect(withFavourite(marked, 'a', true, onScreen)).toBe(marked)
+    expect(withFavourite(marked, 'z', false, onScreen)).toBe(marked)
+  })
+
+  it('ignores a tender that is not on screen', () => {
+    // A POST that resolves after the reader moved to another search. Writing the
+    // id would file it under a list no card of which can match it, and the save
+    // effect would put it in `sessionStorage` for the life of the tab.
+    const marked = ['a']
+    expect(withFavourite(marked, 'gone', true, onScreen)).toBe(marked)
+    // Including the case where it *is* in the set: an id that cannot be seen
+    // cannot be unmarked by an answer about a list it is not in.
+    expect(withFavourite(['gone'], 'gone', false, onScreen)).toEqual(['gone'])
+  })
+
+  it('still accepts a tender the new list happens to contain', () => {
+    // The filter is "can a card show this", not "did this list request it": if
+    // the reader has navigated to a search that also holds the tender, the mark
+    // is real and belongs on it.
+    expect(withFavourite([], 'b', true, onScreen)).toEqual(['b'])
   })
 })
 
@@ -187,6 +207,21 @@ describe('refreshFavourites', () => {
   it('returns the same array when the answer agrees with what we had', () => {
     const current = ['a', 'z']
     expect(refreshFavourites(current, pageOne, ['a'])).toBe(current)
+  })
+
+  it('leaves a star the reader pressed while the refresh was in flight', () => {
+    // The refresh read the server before the press, so its "not marked" is older
+    // than the reader's own `POST`. Taking its word for it would empty a star
+    // they had just filled — and `revalidate()` runs at mount, which is exactly
+    // when somebody is looking at the list and pressing things.
+    expect(refreshFavourites(['a'], pageOne, [], new Set(['a']))).toEqual(['a'])
+    // The other direction too: unmarked here, still marked on the server.
+    expect(refreshFavourites([], pageOne, ['a'], new Set(['a']))).toEqual([])
+  })
+
+  it('still takes the answer for rows the reader has not touched', () => {
+    // The guard is per id, not a blanket "ignore the refresh".
+    expect(refreshFavourites(['a'], pageOne, ['b'], new Set(['a'])).sort()).toEqual(['a', 'b'])
   })
 
   it('ignores ids the answer names that are not on the page it returned', () => {

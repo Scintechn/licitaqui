@@ -205,6 +205,129 @@ test.describe('D23 · Favoritar, from the Radar list', () => {
     expect(control.height).toBeGreaterThanOrEqual(44)
   })
 
+  /**
+   * A refresh that was already in flight must not undo a press.
+   *
+   * `revalidate()` runs when a restored snapshot is between a minute and thirty
+   * minutes old, and it carries a picture of the server **from the moment its
+   * request left**. Press a star while it is in flight and the reader's own
+   * `POST` has confirmed a newer fact; letting the refresh win empties a star
+   * they just filled. The window is short and it is at mount, which is exactly
+   * when somebody is looking at the list.
+   *
+   * Driven, not waited on: the snapshot's `savedAt` is aged by hand so the
+   * restore chooses `revalidate`, and the refresh's answer is held open and
+   * built **before** the press, which is what makes it stale.
+   */
+  test('a refresh in flight does not undo a star pressed while it was open', async ({ page }) => {
+    const api = await world(page)
+    await page.goto(LIST)
+    await expect(cards(page).first()).toBeVisible()
+
+    /*
+     * Age the snapshot past `REVALIDATE_AFTER_MS` (60 s) so the next mount
+     * restores it *and* refreshes behind it.
+     *
+     * `addInitScript`, not `evaluate` before the reload, and that is not a
+     * style choice: `radar-screen.tsx` re-writes the snapshot on `pagehide`,
+     * which a reload fires, and it writes the copy the in-memory Map still
+     * holds — so an entry aged in the outgoing document is replaced by a fresh
+     * one on the way out. This runs in the *incoming* document, before any
+     * application script reads storage.
+     */
+    await page.addInitScript(() => {
+      for (let i = 0; i < sessionStorage.length; i += 1) {
+        const key = sessionStorage.key(i)
+        if (!key?.startsWith('licitaqui.radar.list:')) continue
+        const entry = JSON.parse(sessionStorage.getItem(key)!)
+        entry.savedAt = Date.now() - 90_000
+        sessionStorage.setItem(key, JSON.stringify(entry))
+      }
+    })
+
+    // The refresh's answer, composed now — before anything is pressed — and
+    // delivered when this test says so. Registered after `installRadarApi`, so
+    // it wins: Playwright runs the most recently added handler first.
+    let deliver = () => {}
+    const held = new Promise<void>((resolve) => {
+      deliver = resolve
+    })
+    let asked = () => {}
+    const reached = new Promise<void>((resolve) => {
+      asked = resolve
+    })
+    const stale = {
+      state: 'ready',
+      group: 'compatible',
+      tenders: tenderRun(3),
+      // The whole point: the server had no marks when this was read.
+      favourites: [] as string[],
+      counts: { compatible: 3, check: 0, keyword: 0 },
+      nextCursor: null,
+      freshness: { state: 'fresh', updatedAt: new Date().toISOString(), ageSeconds: 90 },
+    }
+    // A regex, not a glob: `?` is a single-character wildcard in Playwright's
+    // glob and would not match the query string this route always carries.
+    await page.route(/\/api\/radar\/tenders(\?|$)/, async (route) => {
+      asked()
+      await held
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(stale),
+      })
+    })
+
+    await page.reload()
+    await expect(cards(page).first()).toBeVisible()
+    await reached
+
+    await starOn(page, 1, copy.add).click()
+    await expect(starOn(page, 1, copy.added)).toBeVisible()
+    expect(api.favourites, 'the POST landed').toEqual(new Set([ID(1)]))
+
+    deliver()
+
+    // The stale answer arrives and says nothing is marked. The star stays filled,
+    // because the reader touched this tender after that answer was composed.
+    await expect(starOn(page, 1, copy.added)).toBeVisible()
+    await expect(star(page, copy.add)).toHaveCount(2)
+  })
+
+  /**
+   * A second press inside one round trip cannot leave the screen and the row
+   * disagreeing.
+   *
+   * Two open toggles answer in whatever order the network returns them, and
+   * applying the later answer leaves the star saying one thing and `favourites`
+   * saying another — which the list then writes into `sessionStorage`, so the
+   * wrong state survives a Back. `favourite-star.tsx` ignores a press while a
+   * `POST` for that tender is open, which makes the last answer the only answer.
+   */
+  test('a second press inside one round trip cannot desync the star from the row', async ({
+    page,
+  }) => {
+    const api = await world(page)
+    await page.goto(LIST)
+    await expect(cards(page).first()).toBeVisible()
+
+    const gate = api.hold('favourite')
+
+    await starOn(page, 1, copy.add).click()
+    await gate.reached
+    // Optimistic: the star is already filled while the POST is open.
+    await expect(starOn(page, 1, copy.added)).toBeVisible()
+
+    // The second press, with the first still in flight.
+    await starOn(page, 1, copy.added).click()
+    gate.open()
+
+    // One request, one row, and the screen agrees with it.
+    await expect(starOn(page, 1, copy.added)).toBeVisible()
+    expect(api.calls.favourite, 'only one toggle left the browser').toHaveLength(1)
+    expect(api.favourites).toEqual(new Set([ID(1)]))
+  })
+
   test('the star is one extra keyboard stop, after the card', async ({ page }) => {
     await world(page)
     await page.goto(LIST)

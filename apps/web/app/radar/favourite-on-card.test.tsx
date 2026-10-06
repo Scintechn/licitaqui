@@ -158,4 +158,18 @@ describe('what the star says', () => {
     // else to go on a list card (D54).
     expect(withStar(false)).toContain(`title="${copy.add}"`)
   })
+
+  it('is not busy before anything is pressed', () => {
+    // `aria-busy` appears only while a POST is open, and the serialisation it
+    // reports is asserted in the browser (`favourite-on-card.spec.ts`), because
+    // `environment: 'node'` cannot click.
+    expect(withStar(false)).not.toContain('aria-busy')
+  })
+
+  it('does not turn an already-marked star to ink under the pointer', () => {
+    // `.hover\:text-ink:hover` outranks `.text-blue`, so a `hover:` utility
+    // beside the marked colour would wash it out. The two are one expression.
+    expect(withStar(true)).not.toContain('hover:text-ink')
+    expect(withStar(false)).toContain('hover:text-ink')
+  })
 })

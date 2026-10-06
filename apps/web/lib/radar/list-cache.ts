@@ -382,16 +382,27 @@ export function refreshTenders(current: TenderCard[], incoming: TenderCard[]): T
  * `marked` the subset it says are marked. For an id in `refreshed` the answer
  * replaces what we had, in both directions — a tender unmarked in another tab
  * loses its star here too. For an id outside it, what we had stands.
+ *
+ * **`pressed` is the third case, and it is a race rather than a page boundary.**
+ * The answer is a picture of the server from the moment its request left, and a
+ * reader can press a star while it is in flight: their `POST` then confirms a
+ * newer fact than the refresh is carrying, and taking the refresh's word for it
+ * would empty a star they had just filled. So an id they have touched since the
+ * request went out is theirs, not the refresh's — the one direction in which
+ * "the server is authoritative" is the wrong rule.
  */
 export function refreshFavourites(
   current: string[],
   refreshed: TenderCard[],
   marked: string[],
+  pressed: ReadonlySet<string> = new Set(),
 ): string[] {
   if (refreshed.length === 0) return current
   const asked = new Set(refreshed.map((tender) => tender.id))
-  const kept = current.filter((id) => !asked.has(id))
-  const next = [...kept, ...marked.filter((id) => asked.has(id))]
+  /** Ids this answer may speak for: on the page it read, and untouched since. */
+  const theirs = (id: string) => asked.has(id) && !pressed.has(id)
+  const kept = current.filter((id) => !theirs(id))
+  const next = [...kept, ...marked.filter(theirs)]
   // Identity matters: `RadarScreen` keeps this in state and a new array every
   // revalidation would re-save the snapshot and rebuild the `Set` for nothing.
   return same(current, next) ? current : next
@@ -410,8 +421,22 @@ function same(a: string[], b: string[]): boolean {
  * Returns the same array when nothing changes, so a second report of a state we
  * already hold (the optimistic update, then the route agreeing with it) does not
  * re-render the list or re-write the snapshot.
+ *
+ * **`onScreen` is a filter, not a formality.** A `POST` can resolve after the
+ * reader has moved to another search, and its answer would otherwise write an id
+ * into *that* list's set — where no card can match it, nothing will ever ask
+ * about it again, and the save effect puts it in `sessionStorage` for the life of
+ * the tab. It belongs here rather than in the caller because this is the only
+ * place that can be asserted: `RadarScreen`'s handler is not exported, and the
+ * stray id has no visible effect for a browser test to look at.
  */
-export function withFavourite(current: string[], tenderId: string, marked: boolean): string[] {
+export function withFavourite(
+  current: string[],
+  tenderId: string,
+  marked: boolean,
+  onScreen: TenderCard[],
+): string[] {
+  if (!onScreen.some((tender) => tender.id === tenderId)) return current
   const has = current.includes(tenderId)
   if (has === marked) return current
   return marked ? [...current, tenderId] : current.filter((id) => id !== tenderId)

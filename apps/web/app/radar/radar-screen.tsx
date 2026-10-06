@@ -256,6 +256,32 @@ export function RadarScreen() {
   const moreRequest = useRef<AbortController | null>(null)
 
   /**
+   * The tenders whose star this reader has pressed since the list was last read
+   * from the route — D23.
+   *
+   * `revalidate()`'s answer is a picture of the server from the moment its
+   * request left, and a star can be pressed while it is in flight: that `POST`
+   * confirms a newer fact than the refresh is carrying, so letting the refresh
+   * win would empty a star the reader had just filled. `refreshFavourites` takes
+   * this set and leaves those ids alone.
+   *
+   * A ref, because nothing renders differently because of it.
+   *
+   * **It is emptied where the refresh reads it, not only when the search
+   * changes.** With one refresh per search those two are the same moment, and
+   * resting on that would make this correct by an accident of structure: a second
+   * refresh — a `visibilitychange` refetch, polling, a manual *Atualizar* — and
+   * the set becomes a permanent per-search override in which the server can never
+   * correct a star the reader has touched, quietly falsifying
+   * `refreshFavourites`'s own promise that a tender unmarked in another tab loses
+   * its star here too. So `revalidate` takes what is in it and clears it in the
+   * same breath, and protects that batch **plus** anything pressed while its own
+   * request was open. The reset at the top of the loading effect stays, to bound
+   * the set when a search is replaced rather than refreshed.
+   */
+  const pressed = useRef<Set<string>>(new Set())
+
+  /**
    * Where the window is, kept current by a passive listener rather than read
    * when the screen unmounts: by then the router may already have scrolled the
    * incoming page to the top, and the number we want is the one from before
@@ -354,6 +380,9 @@ export function RadarScreen() {
     const controller = new AbortController()
     const signal = controller.signal
 
+    // Whatever was pressed belongs to the list that is about to be replaced.
+    pressed.current = new Set()
+
     // A new query means the previous "Ver mais" is answering a question nobody
     // is asking any more.
     moreRequest.current?.abort()
@@ -368,6 +397,12 @@ export function RadarScreen() {
     async function revalidate(previous: ListSnapshot) {
       let company = previous.company
       let visitor = previous.visitor
+
+      // Taken and cleared together: these are the presses this refresh must not
+      // speak for, and leaving them in the live set would make every *later*
+      // refresh unable to speak for them either.
+      const touchedBefore = pressed.current
+      pressed.current = new Set()
 
       if (cnpj) {
         const answer = await postCnpj(cnpj, signal)
@@ -399,10 +434,14 @@ export function RadarScreen() {
               tenders: refreshTenders(current.tenders, list.tenders),
               // Page 1's answer about page 1's rows, and silence about the
               // pages below it — the same rule `refreshTenders` follows.
+              // Pressed before the request left — its `POST` may not have
+              // reached the database before this read did — and pressed while it
+              // was open. Both are newer than the answer.
               favourites: refreshFavourites(
                 current.favourites,
                 list.tenders,
                 list.favourites,
+                new Set([...touchedBefore, ...pressed.current]),
               ),
               readAt: Date.now(),
             }
@@ -665,8 +704,15 @@ export function RadarScreen() {
    * the mark across a Back without anything here mentioning storage.
    */
   const onFavourite = useCallback((tenderId: string, marked: boolean) => {
+    // Recorded before the state changes, so a refresh already in flight cannot
+    // speak for this tender any more.
+    pressed.current.add(tenderId)
     setData((previous) => {
-      const next = withFavourite(previous.favourites, tenderId, marked)
+      // `previous.tenders` is the fourth argument because a `POST` can resolve
+      // after the reader has moved to another search: `withFavourite` drops an id
+      // no card on screen can match, rather than filing it under a list it has
+      // nothing to do with.
+      const next = withFavourite(previous.favourites, tenderId, marked, previous.tenders)
       return next === previous.favourites ? previous : { ...previous, favourites: next }
     })
   }, [])

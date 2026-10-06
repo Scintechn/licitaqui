@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { cnpjOf, readViewer } from '@/lib/auth/viewer'
+import { readViewer } from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { normaliseCnpj } from '@/lib/cnpj'
 import { db } from '@/lib/db'
 import { readCompany, segmentsByFit } from '@/lib/radar/company'
 import { TENDER_GROUPS, type TenderListResponse } from '@/lib/radar/contract'
 import { countGroups, listFreshness, listTenders, MAX_LIMIT } from '@/lib/radar/tenders'
+import { loadVisitor } from '@/lib/radar/visitor'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
 /**
@@ -38,6 +39,8 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  * still **mints** nothing: `readViewer` never inserts a `visitors` row, and a
  * caller with no account gets an empty array rather than a 401 — unlike
  * `POST /api/tenders/:id/favorito`, which has nowhere to put a row and says so.
+ * The fallback CNPJ it computes is deliberately the same one it computed before,
+ * from the visitor row and not from the account — see the comment at the call.
  */
 
 export const runtime = 'nodejs'
@@ -99,19 +102,37 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
     // Read only: a GET never mints an identity. `readViewer` is the non-creating
     // reader — the cookie is set by the first POST /api/radar/cnpj, which is
     // where §8 puts it.
-    //
-    // One call, not two: it already reads the session and then the visitor, so
-    // asking `loadVisitor` separately for the fallback CNPJ would read the same
-    // row twice on the Radar's hottest route. `cnpjOf` is the fallback it used
-    // to compute by hand, and for a signed-in caller it now prefers
-    // `users.cnpj` — the company this account searched last — over whatever
-    // visitor row they happened to leave behind before signing up.
-    const viewer = await readViewer(request.headers.get('cookie'), executor)
+    const cookie = request.headers.get('cookie')
+    const viewer = await readViewer(cookie, executor)
     const viewerUserId = viewer?.kind === 'user' ? viewer.user.userId : null
 
-    const cnpj = params.cnpj ? normaliseCnpj(params.cnpj) : cnpjOf(viewer)
+    let cnpj = params.cnpj ? normaliseCnpj(params.cnpj) : null
     if (params.cnpj && !cnpj) {
       return fail({ state: 'error', error: 'validation', fields: { cnpj: 'cnpjInvalid' } }, 400)
+    }
+
+    /*
+     * The fallback is **the CNPJ this device last searched**, unchanged.
+     *
+     * `cnpjOf(viewer)` is right here and is deliberately not used: for a
+     * signed-in caller it answers `users.cnpj`, and those two can disagree
+     * permanently. `attachCnpj` only writes `visitors.cnpj` while the caller is a
+     * visitor, and `rememberUserCnpj` only ever fills a `null`, so an account set
+     * to company A by the offer form keeps A while the reader searches B all
+     * afternoon — and this fallback decides the compatible/check grouping of a
+     * keyword search. Preferring the account's company may well be the better
+     * product, but it is a product decision this card did not ask for, so it is
+     * not made here.
+     *
+     * Two reads instead of one in exactly one case: a signed-in caller who omits
+     * `?cnpj=`. `readViewer` stops at the session for them, so the visitor row is
+     * read only when it is going to be used.
+     */
+    if (!cnpj) {
+      cnpj =
+        viewer?.kind === 'visitor'
+          ? viewer.visitor.cnpj
+          : ((await loadVisitor(cookie, executor))?.cnpj ?? null)
     }
 
     const headers: Record<string, string> = { 'cache-control': PRIVATE_NO_STORE }

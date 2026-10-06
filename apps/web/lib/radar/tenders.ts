@@ -218,9 +218,38 @@ export type TenderPage = {
  * disagree with the list they decorate, and each one a round trip before the
  * star could paint at all.
  *
- * It sits beside `item_count` in the `matched` projection, deliberately: both
- * are per-row subqueries on the same rows, and `(user_id, tender_id)` is the
- * `favourites` primary key, so each one is a single index probe.
+ * It sits beside `item_count` in the `matched` projection, deliberately — and
+ * **what that costs is measured, not assumed.** `explain (analyze)` against
+ * production on 2026-10-06 (24 334 open tenders, an account holding four
+ * favourites), on the Radar's *default* shape — no search term, so the
+ * `segments &&` branch of `scope()` and the index that serves it, which is the
+ * plan most readers actually get. 2 155 rows matched, 21 asked for:
+ *
+ * ```
+ *   SubPlan 1  Index Only Scan tender_items_pkey   loops=21   ← item_count
+ *   SubPlan 3  Bitmap Heap Scan favourites         loops=1    ← this
+ *                Recheck Cond: (user_id = '4'::bigint)
+ * ```
+ *
+ * Two things that plan settles, and both were open questions:
+ *
+ *  - **The subqueries run after the sort and the limit, not over the match.**
+ *    `loops=21` on `item_count` is the page, not the 2 155 matched rows: the
+ *    `Sort` orders base columns and the `Result` above it evaluates the target
+ *    list for the 21 rows the `Limit` lets through. The claim beside
+ *    `item_count` was right, and adding a column here is bounded the same way.
+ *  - **`loops=1`, and the correlation is gone from the scan.** The `Recheck
+ *    Cond` is `user_id` alone — no `tender_id = t.id` — so Postgres read this
+ *    account's `favourites` **once**, hashed them, and answered the `exists`
+ *    from the hash. It cost 0.017 ms and two buffer hits for the statement, and
+ *    it does not scale with the match count. The hash grows with the account
+ *    rather than with the Radar, which is the right direction.
+ *
+ * `(user_id, tender_id)` being the primary key, plus `favourites_user_recent_idx`
+ * on `user_id`, is what makes that one scan a single index read. End to end the
+ * projection is inside the run-to-run noise (warm: 15.6 ms with, 12.2 ms
+ * without, on a statement whose own `Execution Time` moved 8–16 ms between
+ * identical runs), so no figure is claimed for it beyond "not measurable here".
  *
  * No viewer — a visitor, or nobody — projects the constant `false` rather than
  * a subquery against a null id. A favourite is a row keyed on `users.id`; a
