@@ -180,6 +180,26 @@ export type TenderListOk = {
   state: 'ready'
   group: TenderGroup
   tenders: TenderCard[]
+  /**
+   * Which of `tenders` this caller has already marked (card **D23**).
+   *
+   * **A field on the envelope rather than on `TenderCard`**, because the card
+   * is shared with the Landing's "Exemplo" panel and `/conta/favoritos`, and
+   * neither has a viewer whose marks it could be describing. It is a fact
+   * about this reader and this page, not about the tender.
+   *
+   * Ids, not booleans in row order: order is the one thing a list is free to
+   * change, and an array of flags positioned against another array is a defect
+   * waiting for a sort to land.
+   *
+   * It comes from the **same read as the rows** — one `exists` projected over
+   * the page in `listTenders` — which is D23's rule restated one level up. A
+   * second request per card would be thirteen answers free to disagree with
+   * the one list they are describing. Empty for a visitor: a favourite is a
+   * row keyed on `users.id`, so somebody without an account has none rather
+   * than an error.
+   */
+  favourites: string[]
   /** How many are in each group under the same filters — the tab counts. */
   counts: Record<TenderGroup, number>
   /** Opaque; pass back as `cursor` for the next page. `null` at the end. */

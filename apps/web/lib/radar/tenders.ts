@@ -87,6 +87,8 @@ type TenderRow = {
   halted: boolean
   updated_at: Date | string
   pncp_updated_at: Date | string | null
+  /** Whether the viewer has marked it (D23). Always `false` with no viewer. */
+  favourite: boolean
 }
 
 /**
@@ -197,6 +199,69 @@ function groupExpression(match: CompanyMatch): SQL {
 export type TenderPage = {
   tenders: TenderCard[]
   nextCursor: string | null
+  /**
+   * The ids on **this page** that `viewerUserId` has marked (card **D23**).
+   *
+   * A subset of `tenders`, from the same statement as the rows. See
+   * {@link favouriteExpression} for why it is one read and not thirteen.
+   */
+  favourites: string[]
+}
+
+/**
+ * Has this viewer marked this tender — card **D23**, projected over the page.
+ *
+ * **One read, which is the whole rule.** D23's store deliberately has no
+ * `countFavourites` because the nav badge and the section must come from one
+ * query; the list and its stars are the same sentence one level up. Thirteen
+ * `GET /api/tenders/:id/favorito` calls would be thirteen answers free to
+ * disagree with the list they decorate, and each one a round trip before the
+ * star could paint at all.
+ *
+ * It sits beside `item_count` in the `matched` projection, deliberately — and
+ * **what that costs is measured, not assumed.** `explain (analyze)` against
+ * production on 2026-10-06 (24 334 open tenders, an account holding four
+ * favourites), on the Radar's *default* shape — no search term, so the
+ * `segments &&` branch of `scope()` and the index that serves it, which is the
+ * plan most readers actually get. 2 155 rows matched, 21 asked for:
+ *
+ * ```
+ *   SubPlan 1  Index Only Scan tender_items_pkey   loops=21   ← item_count
+ *   SubPlan 3  Bitmap Heap Scan favourites         loops=1    ← this
+ *                Recheck Cond: (user_id = '4'::bigint)
+ * ```
+ *
+ * Two things that plan settles, and both were open questions:
+ *
+ *  - **The subqueries run after the sort and the limit, not over the match.**
+ *    `loops=21` on `item_count` is the page, not the 2 155 matched rows: the
+ *    `Sort` orders base columns and the `Result` above it evaluates the target
+ *    list for the 21 rows the `Limit` lets through. The claim beside
+ *    `item_count` was right, and adding a column here is bounded the same way.
+ *  - **`loops=1`, and the correlation is gone from the scan.** The `Recheck
+ *    Cond` is `user_id` alone — no `tender_id = t.id` — so Postgres read this
+ *    account's `favourites` **once**, hashed them, and answered the `exists`
+ *    from the hash. It cost 0.017 ms and two buffer hits for the statement, and
+ *    it does not scale with the match count. The hash grows with the account
+ *    rather than with the Radar, which is the right direction.
+ *
+ * `(user_id, tender_id)` being the primary key, plus `favourites_user_recent_idx`
+ * on `user_id`, is what makes that one scan a single index read. End to end the
+ * projection is inside the run-to-run noise (warm: 15.6 ms with, 12.2 ms
+ * without, on a statement whose own `Execution Time` moved 8–16 ms between
+ * identical runs), so no figure is claimed for it beyond "not measurable here".
+ *
+ * No viewer — a visitor, or nobody — projects the constant `false` rather than
+ * a subquery against a null id. A favourite is a row keyed on `users.id`; a
+ * caller with no account has none, which is not an error and not an empty
+ * query.
+ */
+function favouriteExpression(viewerUserId: number | null): SQL {
+  if (viewerUserId === null) return sql`false`
+  return sql`exists (
+    select 1 from favourites f
+     where f.user_id = ${viewerUserId}::bigint and f.tender_id = t.id
+  )`
 }
 
 export async function listTenders(
@@ -204,6 +269,12 @@ export async function listTenders(
   group: TenderGroup,
   filters: TenderFilters,
   database: Executor = db(),
+  /**
+   * The signed-in reader, for the stars on the cards. `null` for a visitor and
+   * on every call that does not need them — the projection is then a constant
+   * and the `favourites` table is not touched at all.
+   */
+  viewerUserId: number | null = null,
 ): Promise<TenderPage> {
   const limit = Math.min(Math.max(filters.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
   const cursor = filters.cursor ? decodeCursor(filters.cursor) : null
@@ -234,6 +305,8 @@ export async function listTenders(
              -- The board's "7 itens" on the card. One indexed count per row of
              -- the page (at most 50), not per row of the tenders table.
              (select count(*) from tender_items i where i.tender_id = t.id) as item_count,
+             -- D23's star, from the same read as the row it sits on.
+             ${favouriteExpression(viewerUserId)} as favourite,
              ${groupExpression(match)} as grp
         ${scope(match, filters, after)}
     )
@@ -248,7 +321,13 @@ export async function listTenders(
   const last = page[page.length - 1]
   const nextCursor = rows.length > limit && last ? encodeCursor(last) : null
 
-  return { tenders: page.map((row) => toCard(row, match)), nextCursor }
+  return {
+    tenders: page.map((row) => toCard(row, match)),
+    nextCursor,
+    // The page's marked ids, never the whole account's: this is what the cards
+    // on screen need, and a star is only ever drawn for a row that is here.
+    favourites: page.filter((row) => row.favourite === true).map((row) => row.id),
+  }
 }
 
 export async function countGroups(

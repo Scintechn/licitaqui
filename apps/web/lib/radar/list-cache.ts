@@ -72,6 +72,21 @@ export type ListSnapshot = {
   counts: Record<TenderGroup, number> | null
   /** Every page the user had loaded, in the order they were appended. */
   tenders: TenderCard[]
+  /**
+   * The ids of `tenders` this reader has marked — D23's stars on the cards.
+   *
+   * Part of the snapshot and not derived on restore, because the whole point of
+   * a snapshot is that coming back asks for nothing: inside
+   * `REVALIDATE_AFTER_MS` the list is restored and **no request is made at
+   * all**, so a set rebuilt from the network would be rebuilt from nothing and
+   * every star would come back empty. It also has to survive a mark made after
+   * the list was read, which no re-read of the envelope would know about until
+   * it happened.
+   *
+   * Ids rather than a `Set`, because this is `JSON.stringify`d into
+   * `sessionStorage` and a `Set` serialises to `{}`.
+   */
+  favourites: string[]
   nextCursor: string | null
   freshness: Freshness | null
   status: SnapshotStatus
@@ -148,12 +163,20 @@ function erase(key: string): void {
 /**
  * Storage is written by a previous page load, so what comes back is input, not
  * state: anything whose shape we would render is checked before it is trusted.
+ *
+ * **`favourites` is checked, which discards snapshots written before D23's
+ * second half.** That is deliberate: an entry from the previous deploy has no
+ * marked ids, so restoring it would draw a list of empty stars over tenders the
+ * reader had marked — the exact failure the field exists to prevent, wearing the
+ * previous version's clothes. Refusing it costs one request and heals the entry,
+ * which is what every other branch here does too.
  */
 function valid(value: unknown): value is ListSnapshot {
   if (typeof value !== 'object' || value === null) return false
   const snapshot = value as Partial<ListSnapshot>
   return (
     Array.isArray(snapshot.tenders) &&
+    Array.isArray(snapshot.favourites) &&
     typeof snapshot.savedAt === 'number' &&
     Number.isFinite(snapshot.savedAt) &&
     typeof snapshot.group === 'string' &&
@@ -344,6 +367,79 @@ export function refreshTenders(current: TenderCard[], incoming: TenderCard[]): T
     return update
   })
   return changed ? merged : current
+}
+
+/**
+ * The same background refresh, applied to D23's stars.
+ *
+ * A refresh asks for **page 1** and comes back with page 1's marked ids. Simply
+ * taking that array would empty every star below the first page, because those
+ * tenders were not in the answer — and after three "Ver mais editais" that is
+ * most of the list. So the rule is the one `refreshTenders` already follows: the
+ * route is authoritative about the rows it returned, and silent about the rest.
+ *
+ * `refreshed` are the ids the refresh *asked about* (page 1's tenders) and
+ * `marked` the subset it says are marked. For an id in `refreshed` the answer
+ * replaces what we had, in both directions — a tender unmarked in another tab
+ * loses its star here too. For an id outside it, what we had stands.
+ *
+ * **`pressed` is the third case, and it is a race rather than a page boundary.**
+ * The answer is a picture of the server from the moment its request left, and a
+ * reader can press a star while it is in flight: their `POST` then confirms a
+ * newer fact than the refresh is carrying, and taking the refresh's word for it
+ * would empty a star they had just filled. So an id they have touched since the
+ * request went out is theirs, not the refresh's — the one direction in which
+ * "the server is authoritative" is the wrong rule.
+ */
+export function refreshFavourites(
+  current: string[],
+  refreshed: TenderCard[],
+  marked: string[],
+  pressed: ReadonlySet<string> = new Set(),
+): string[] {
+  if (refreshed.length === 0) return current
+  const asked = new Set(refreshed.map((tender) => tender.id))
+  /** Ids this answer may speak for: on the page it read, and untouched since. */
+  const theirs = (id: string) => asked.has(id) && !pressed.has(id)
+  const kept = current.filter((id) => !theirs(id))
+  const next = [...kept, ...marked.filter(theirs)]
+  // Identity matters: `RadarScreen` keeps this in state and a new array every
+  // revalidation would re-save the snapshot and rebuild the `Set` for nothing.
+  return same(current, next) ? current : next
+}
+
+/** Set equality, for arrays whose order carries no meaning. */
+function same(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const left = new Set(a)
+  return b.every((id) => left.has(id))
+}
+
+/**
+ * One tender's mark, flipped — what the star on a card calls.
+ *
+ * Returns the same array when nothing changes, so a second report of a state we
+ * already hold (the optimistic update, then the route agreeing with it) does not
+ * re-render the list or re-write the snapshot.
+ *
+ * **`onScreen` is a filter, not a formality.** A `POST` can resolve after the
+ * reader has moved to another search, and its answer would otherwise write an id
+ * into *that* list's set — where no card can match it, nothing will ever ask
+ * about it again, and the save effect puts it in `sessionStorage` for the life of
+ * the tab. It belongs here rather than in the caller because this is the only
+ * place that can be asserted: `RadarScreen`'s handler is not exported, and the
+ * stray id has no visible effect for a browser test to look at.
+ */
+export function withFavourite(
+  current: string[],
+  tenderId: string,
+  marked: boolean,
+  onScreen: TenderCard[],
+): string[] {
+  if (!onScreen.some((tender) => tender.id === tenderId)) return current
+  const has = current.includes(tenderId)
+  if (has === marked) return current
+  return marked ? [...current, tenderId] : current.filter((id) => id !== tenderId)
 }
 
 /** Tests only: the Map outlives a test file otherwise. */

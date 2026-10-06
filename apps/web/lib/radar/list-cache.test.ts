@@ -99,6 +99,8 @@ function snapshot(over: Partial<ListSnapshot> = {}): ListSnapshot {
     visitor: null,
     counts: { compatible: 140, check: 352, keyword: 0 },
     tenders: [tender('a'), tender('b')],
+    /** D23's stars, which the snapshot carries so Back does not empty them. */
+    favourites: [],
     nextCursor: 'cursor-3',
     freshness: { state: 'fresh', updatedAt: null, ageSeconds: 120 },
     status: 'ready',
