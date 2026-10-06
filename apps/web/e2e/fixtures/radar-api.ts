@@ -299,7 +299,6 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
         freshness,
         groupedBy: cnpj
           ? {
-              cnpj,
               company: found?.company ?? null,
               cnaeCount: found ? (found.cnaeCount ?? (found.company.mainCnae ? 1 : 0)) : 0,
             }

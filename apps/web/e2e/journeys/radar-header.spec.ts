@@ -93,10 +93,14 @@ test.describe('D19 · the header names the company the list grouped by', () => {
 
     await page.goto(`/radar?cnpj=${MARTA.cnpj}&group=compatible`)
     await expect(cards(page).first()).toBeVisible()
-    await expect(page.getByText('Papelaria Dona Marta')).toBeVisible()
-    await expect(page.getByText('3 CNAEs')).toBeVisible()
+    // One assertion on the whole line, because `getByText` resolves to the `<p>`:
+    // an `exact: true` match on "1 CNAE" can never fire against
+    // "Papelaria Dona Marta · 3 CNAEs · Todo o Brasil" and would be an inert
+    // guard dressed as a check.
+    const line = page.getByText('Papelaria Dona Marta')
+    await expect(line).toHaveText(/· 3 CNAEs ·/)
     // `COMPANY.segments.length` is 1 — what the line used to render.
     expect(COMPANY.segments).toHaveLength(1)
-    await expect(page.getByText('1 CNAE', { exact: true })).toHaveCount(0)
+    await expect(line).not.toHaveText(/· 1 CNAE ·/)
   })
 })

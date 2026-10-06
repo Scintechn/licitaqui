@@ -130,7 +130,6 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
         // said "sem CNAE lido" over a list grouped by a real company.
         groupedBy: cnpj
           ? {
-              cnpj,
               company: company?.data.company ?? null,
               cnaeCount: company?.data.cnaeCount ?? 0,
             }

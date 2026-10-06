@@ -316,6 +316,35 @@ describe('surviving a document navigation', () => {
     expect(readList(key, NOW)).toBeNull()
   })
 
+  /**
+   * D19: an entry written by the build **before** `grouping` existed must be
+   * refused, not restored with the field missing.
+   *
+   * It would otherwise pass every other test in `valid()` — the shape is
+   * unchanged apart from one key — restore with `status: 'ready'` and its counts
+   * intact, and draw "Sem empresa informada · sem CNAE lido para comparar" over
+   * "Compatíveis 13": the exact pair D19 closed, re-created by the deploy, with
+   * the company's name lost. Inside `REVALIDATE_AFTER_MS` the restore is `fresh`
+   * and no request is made, so nothing corrects it for that viewing.
+   *
+   * The legacy entry is built from a **real** one with the key deleted rather
+   * than hand-written, so it cannot drift away from the shape this code writes.
+   */
+  it('refuses a snapshot from before it recorded what the list was grouped by', () => {
+    saveList(key, snapshot())
+    const raw = session.getItem(`licitaqui.radar.list:${key}`)
+    expect(raw, 'the snapshot must have reached storage').not.toBeNull()
+    const legacy = JSON.parse(raw as string) as Record<string, unknown>
+    expect('grouping' in legacy, 'the field must be there to be removed').toBe(true)
+    delete legacy.grouping
+    // What `0b1fbcb` wrote in its place.
+    legacy.company = null
+    reload()
+    session.setItem(`licitaqui.radar.list:${key}`, JSON.stringify(legacy))
+
+    expect(readList(key, NOW)).toBeNull()
+  })
+
   it('keeps working when storage refuses to be written to', () => {
     session.full = true
     saveList(key, snapshot())

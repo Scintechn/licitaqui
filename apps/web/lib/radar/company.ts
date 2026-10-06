@@ -82,9 +82,14 @@ const SELECT = sql`
          -- CNAE, which the where clause removes, so a placeholder row counts 0
          -- and a company whose main CNAE repeats in secondary_cnaes counts it
          -- once. Not array_length, which would count that NULL as an element.
+         -- The <> '' test is defence, not a fix: the worker's cnae_code()
+         -- returns NULL for an empty or all-zero code, so no empty string
+         -- should reach the column. It is here because the number this feeds is
+         -- rendered as a sentence, and "1 CNAE" over an empty string is a false
+         -- one.
          (select count(distinct u.cnae)::int
             from unnest(coalesce(c.secondary_cnaes, '{}'::text[]) || array[c.main_cnae]) as u(cnae)
-           where u.cnae is not null) as cnae_count,
+           where u.cnae is not null and u.cnae <> '') as cnae_count,
          (select json_agg(json_build_object(
                     'segment', s.segment,
                     'fit', s.fit,

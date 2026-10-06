@@ -185,8 +185,10 @@ function snapshotStatus(status: RadarStatus): SnapshotStatus | null {
  */
 function fromSnapshot(snapshot: ListSnapshot, key: string): Data {
   return {
-    // `?? null` because a snapshot is read back out of `sessionStorage`, which
-    // may hold one written by a build from before this field existed.
+    // `?? null` because a snapshot comes back out of `sessionStorage`, which is
+    // input rather than state. `valid()` refuses an entry with no `grouping`
+    // key at all — a build from before D19 — but it does not type-check the
+    // value, and `undefined` here would be *unknown* rendered as *absent*.
     grouping: snapshot.grouping ?? null,
     visitor: snapshot.visitor,
     counts: snapshot.counts,

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { format, messages } from '@/lib/messages'
-import type { CompanyView, GroupedBy, TenderGroup } from '@/lib/radar/contract'
+import type { CompanyView, GroupedBy } from '@/lib/radar/contract'
 import { TENDER_GROUPS } from '@/lib/radar/contract'
 import { RadarView, type RadarStatus, type RadarViewProps } from './radar-view'
 
@@ -91,18 +91,31 @@ function header(out: string): string {
   return out.slice(0, end)
 }
 
-/** What the header claims about CNAEs. `none` = it makes no claim at all. */
+/**
+ * What the header claims about CNAEs. `none` = it makes no claim at all.
+ *
+ * *"Sem empresa informada"* counts as `zero`, not as `none`: a line saying there
+ * is no company has said there is no CNAE, and the tab help is entitled — in
+ * fact required — to agree with it in as many words. `none` is reserved for the
+ * header that withholds, which is the state where the route has not answered.
+ */
 function headerSays(out: string): 'none' | 'zero' | 'some' {
   const top = header(out)
-  if (top.includes(NO_CNAE)) return 'zero'
+  if (top.includes(NO_CNAE) || top.includes(list.noCompany)) return 'zero'
   if (/\d+ CNAEs|1 CNAE/.test(top)) return 'some'
   return 'none'
 }
 
-/** What the sentence under the tabs claims. */
+/**
+ * What the sentence under the tabs claims about CNAEs.
+ *
+ * `groupHintNoCnae` is *"sem CNAE lido para comparar"*, which **contains**
+ * `NO_CNAE`, so the order matters: the longer, more specific string is tested
+ * first and the substring is never mistaken for it.
+ */
 function helpSays(out: string): 'none' | 'zero' | 'claims' {
-  if (out.includes(list.groupHint.compatible) || out.includes(list.groupHint.check)) return 'claims'
   if (out.includes(list.groupHintNoCnae)) return 'zero'
+  if (out.includes(list.groupHint.compatible) || out.includes(list.groupHint.check)) return 'claims'
   return 'none'
 }
 
@@ -119,19 +132,19 @@ const STATES: State[] = [
   {
     name: 'a CNPJ with nothing read for it yet',
     status: { kind: 'ready' },
-    grouping: { cnpj: CNPJ, company: null, cnaeCount: 0 },
+    grouping: { company: null, cnaeCount: 0 },
   },
   {
     name: 'a CNPJ with a company read',
     status: { kind: 'ready' },
-    grouping: { cnpj: CNPJ, company: COMPANY, cnaeCount: CNAES_ON_RECORD },
+    grouping: { company: COMPANY, cnaeCount: CNAES_ON_RECORD },
   },
 ]
 
 describe('the Radar header and the tab help (D19)', () => {
   it('counts CNAEs, because that is what the string says it counts', () => {
     const out = render({
-      grouping: { cnpj: CNPJ, company: COMPANY, cnaeCount: CNAES_ON_RECORD },
+      grouping: { company: COMPANY, cnaeCount: CNAES_ON_RECORD },
     })
     expect(out).toContain(format(list.cnaeCount, { count: CNAES_ON_RECORD }))
     // The segment count, which this line used to render under the word CNAE.
@@ -140,7 +153,7 @@ describe('the Radar header and the tab help (D19)', () => {
 
   it('names the company the list grouped by', () => {
     const out = render({
-      grouping: { cnpj: CNPJ, company: COMPANY, cnaeCount: CNAES_ON_RECORD },
+      grouping: { company: COMPANY, cnaeCount: CNAES_ON_RECORD },
     })
     expect(header(out)).toContain('Papelaria Central')
     expect(header(out)).not.toContain(list.companyFallback)
@@ -154,7 +167,8 @@ describe('the Radar header and the tab help (D19)', () => {
         query: { cnpj: null, state: null, q: 'canvas', group },
       })
       expect(header(out)).toContain(list.noCompany)
-      expect(headerSays(out)).toBe('none')
+      // "Sem empresa informada" is itself the zero claim — see `headerSays`.
+      expect(headerSays(out)).toBe('zero')
       expect(helpSays(out)).not.toBe('claims')
     }
     // The keyword tab's own sentence is about the search term, not about a
@@ -165,7 +179,7 @@ describe('the Radar header and the tab help (D19)', () => {
   })
 
   it('a CNPJ nothing has been read for names no company and reports no CNAE', () => {
-    const out = render({ grouping: { cnpj: CNPJ, company: null, cnaeCount: 0 } })
+    const out = render({ grouping: { company: null, cnaeCount: 0 } })
     // There is a company behind the list; we simply do not know its name yet.
     // So the non-committal label, not "sem empresa" — which would be false.
     expect(header(out)).toContain(list.companyFallback)
@@ -218,44 +232,31 @@ describe('the Radar header and the tab help (D19)', () => {
         })
         const where = `${state.name} / ${group}`
 
-        // The defect, in one line: "sem CNAE lido" over "seu CNAE atende".
+        /**
+         * **The rule is agreement, not the absence of one named pair.**
+         *
+         * It was written as two forbidden pairs first — `('zero','claims')`,
+         * the defect in Sci's screenshot, and its mirror `('some','zero')` —
+         * and a review found that the pair it *permitted* was live on every
+         * first paint: the header withholding (`'none'`, because the route had
+         * not answered) while the hint asserted *"sem CNAE lido para
+         * comparar"*. The loop rendered it and let it past.
+         *
+         * So the help may only speak when the header says the same thing. The
+         * help staying silent is always allowed — on `keyword`, whose sentence
+         * is about the search term, and wherever nothing is known yet.
+         */
+        const allowed: Record<ReturnType<typeof helpSays>, ReturnType<typeof headerSays>[]> = {
+          none: ['none', 'zero', 'some'],
+          zero: ['zero'],
+          claims: ['some'],
+        }
+        const help = helpSays(out)
         expect(
-          headerSays(out) === 'zero' && helpSays(out) === 'claims',
-          `${where}: the header reports no CNAE and the tab help claims one`,
-        ).toBe(false)
-
-        // And the mirror of it, which would be just as wrong: a header naming
-        // CNAEs over a hint saying there are none to compare.
-        expect(
-          headerSays(out) === 'some' && helpSays(out) === 'zero',
-          `${where}: the header counts CNAEs and the tab help says there are none`,
-        ).toBe(false)
+          allowed[help],
+          `${where}: the tab help says "${help}" while the header says "${headerSays(out)}"`,
+        ).toContain(headerSays(out))
       }
     }
-  })
-
-  /**
-   * One source, structurally.
-   *
-   * `grouping` is the only company-shaped input this component has, so there is
-   * no second one for a caller to fill from somewhere else. The assertion is
-   * the compile — `RadarViewProps` has no `company` — and this test states the
-   * rule so that re-adding one is a deliberate act with a failing test beside
-   * it rather than a quiet prop.
-   */
-  it('takes its company from the list route and from nowhere else', () => {
-    const props: Record<string, unknown> = {
-      query: { cnpj: null, state: null, q: 'canvas', group: 'compatible' as TenderGroup },
-      status: { kind: 'ready' } as RadarStatus,
-      grouping: null,
-      visitor: null,
-      counts: null,
-      tenders: [],
-      freshness: null,
-    }
-    expect(Object.keys(props)).not.toContain('company')
-    expect(renderToStaticMarkup(<RadarView {...(props as unknown as RadarViewProps)} />)).toContain(
-      list.noCompany,
-    )
   })
 })

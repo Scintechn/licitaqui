@@ -197,10 +197,18 @@ export type TenderCard = {
  * | `null` | no CNPJ drove the list at all: a keyword search, and every row is `keyword` |
  * | `company: null` | a CNPJ drove it (query or cookie) and nothing has been read for it yet |
  * | `company` set | that company's segments are what `compatible` and `check` were computed from |
+ *
+ * **There is deliberately no `cnpj` field.** It was the obvious thing to put
+ * here and it would have been the only CNPJ this product sends to page
+ * JavaScript that the page did not already know: `visitors.cnpj` reaches the
+ * route through an `httpOnly` cookie precisely so the browser cannot read it,
+ * and the client snapshot in `list-cache.ts` would then have written it into
+ * `sessionStorage`. §12 puts a CNPJ in the same bucket as a CPF. Nothing in the
+ * header needs it — *whether* a CNPJ drove the list is `groupedBy !== null`, and
+ * when the company has been read its own `CompanyView.cnpj` is already on the
+ * wire because the browser typed it.
  */
 export type GroupedBy = {
-  /** The CNPJ the grouping used: `?cnpj=` when given, else `visitors.cnpj`. */
-  cnpj: string
   /** `null` when `companies` holds no row for it yet. */
   company: CompanyView | null
   /**

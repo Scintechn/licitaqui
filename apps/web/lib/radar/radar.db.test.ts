@@ -77,6 +77,25 @@ async function soleCnaeFor(segment: string, fit: 'compatible' | 'check'): Promis
   return cnae
 }
 
+/**
+ * A 7-digit code `cnae_segments` maps to nothing — one of B6's 777 unmapped
+ * subclasses. Read rather than hard-coded: a later revision of
+ * `db/reference/cnae_segments.csv` could map any particular code and the test
+ * would then be measuring the wrong thing silently.
+ */
+async function unmappedCnae(): Promise<string> {
+  const found = await pool().query<{ cnae: string }>(
+    `select c.cnae from (
+       select lpad(generate_series::text, 7, '0') as cnae from generate_series(1000000, 1000200)
+     ) c
+      where not exists (select 1 from cnae_segments s where s.cnae = c.cnae)
+      order by c.cnae limit 1`,
+  )
+  const cnae = found.rows[0]?.cnae
+  if (!cnae) throw new Error('no unmapped CNAE in 1000000-1000200 — is migration 0003 applied?')
+  return cnae
+}
+
 type CompanyOptions = { mainCnae?: string | null; secondaryCnaes?: string[]; updatedAt?: Date }
 
 async function upsertCompany(options: CompanyOptions = {}) {
@@ -479,23 +498,45 @@ suite('Radar read APIs (database)', () => {
      * to know this list was grouped by anything at all and rendered
      * *"sem CNAE lido"* over it.
      */
-    it('reports the cookie CNPJ it grouped by, with its CNAE count', async () => {
+    it('reports the cookie company it grouped by, and counts CNAEs not segments', async () => {
       const visitor = await newVisitor()
-      const response = await getTenders(
-        new Request('https://licitaqui.test/api/radar/tenders?group=compatible', {
-          headers: headers(visitor),
-        }),
-      )
-      const body = (await response.json()) as TenderListResponse
-      if (body.state !== 'ready') throw new Error(`expected ready, got ${body.state}`)
+      /**
+       * A third CNAE that `cnae_segments` does not map, so the two numbers
+       * **differ**: 3 CNAEs on the row, 2 segments reached.
+       *
+       * Without it this assertion passes under the old implementation too.
+       * `soleCnaeFor` picks codes mapping to exactly one segment, so the
+       * fixture's main + one secondary give `segments.length === 2 === cnaeCount`
+       * and `segments.length` — the thing D19 replaced — is indistinguishable
+       * from the right answer. B6 leaves 777 codes unmapped, so a CNAE reaching
+       * nothing is the ordinary case rather than a contrived one.
+       */
+      const main = await soleCnaeFor(IT, 'compatible')
+      const food = await soleCnaeFor(FOOD, 'compatible')
+      const unmapped = await unmappedCnae()
+      await upsertCompany({ mainCnae: main, secondaryCnaes: [food, unmapped] })
+      try {
+        const response = await getTenders(
+          new Request('https://licitaqui.test/api/radar/tenders?group=compatible', {
+            headers: headers(visitor),
+          }),
+        )
+        const body = (await response.json()) as TenderListResponse
+        if (body.state !== 'ready') throw new Error(`expected ready, got ${body.state}`)
 
-      expect(body.groupedBy?.cnpj).toBe(RUN_COMPANY_CNPJ)
-      expect(body.groupedBy?.company?.cnpj).toBe(RUN_COMPANY_CNPJ)
-      // The two CNAEs `beforeAll` put on the row: one main, one secondary.
-      expect(body.groupedBy?.cnaeCount).toBe(2)
-      // And it really did group by them, which is what made the header's
-      // contradiction visible in the first place.
-      expect(body.tenders.map((t) => t.id)).toContain(compatibleTender.id)
+        // No `?cnpj=` anywhere: the CNPJ came from `visitors.cnpj`, behind an
+        // `httpOnly` cookie the browser cannot read. That is the address Sci
+        // screenshotted, and the reason the route has to say what it grouped by.
+        expect(body.groupedBy?.company?.cnpj).toBe(RUN_COMPANY_CNPJ)
+        expect(body.groupedBy?.cnaeCount).toBe(3)
+        expect(body.groupedBy?.company?.segments).toHaveLength(2)
+        // And it really did group by them, which is what made the header's
+        // contradiction visible in the first place.
+        expect(body.tenders.map((t) => t.id)).toContain(compatibleTender.id)
+      } finally {
+        // Back to exactly what `beforeAll` built, for the tests after this one.
+        await upsertCompany({ mainCnae: main, secondaryCnaes: [food] })
+      }
     })
 
     /**

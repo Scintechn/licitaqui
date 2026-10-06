@@ -65,7 +65,7 @@ function render(overrides: Partial<RadarViewProps> = {}): string {
   const props: RadarViewProps = {
     query: { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible' },
     status: { kind: 'ready' },
-    grouping: { cnpj: COMPANY.cnpj, company: COMPANY, cnaeCount: 3 },
+    grouping: { company: COMPANY, cnaeCount: 3 },
     visitor: null,
     counts: { compatible: 12, check: 7, keyword: 3 },
     tenders: [TENDER],
@@ -239,7 +239,7 @@ describe('the states', () => {
   it('an unmapped CNAE reads as "we could not match you", never as a failure', () => {
     const out = render({
       status: { kind: 'noSegments' },
-      grouping: { cnpj: COMPANY.cnpj, company: { ...COMPANY, segments: [] }, cnaeCount: 3 },
+      grouping: { company: { ...COMPANY, segments: [] }, cnaeCount: 3 },
       tenders: [],
     })
     only(out, copy.states.noSegmentsTitle)

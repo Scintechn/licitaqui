@@ -129,6 +129,26 @@ export type RadarViewProps = {
 /* ------------------------------------------------------------------ pieces */
 
 /**
+ * How many CNAEs the list was grouped by — or **`null` for "we do not know"**.
+ *
+ * One function, because the header and the tab help have to give the same
+ * answer and the first attempt at D19 let them differ: the header refused to
+ * say whether a company existed while the hint beneath it asserted that no CNAE
+ * had been read. Three states, in one place, read by both.
+ *
+ * "There is no company" is a claim, and only a list route that **answered**
+ * supports it. `analyzing`, `timeout` and `error` are states in which nobody
+ * asked or nobody replied — the request that would have reported a cookie CNPJ
+ * never came back — so reading an absence out of them would be D19 in the
+ * opposite direction. `needCnpj` is the one unanswered status that does know:
+ * it is reached only when there is neither a CNPJ nor a search term.
+ */
+function cnaeState(grouping: GroupedBy | null, status: RadarStatus): number | null {
+  if (grouping) return grouping.cnaeCount
+  return status.kind === 'ready' || status.kind === 'needCnpj' ? 0 : null
+}
+
+/**
  * "Papelaria Central · 3 CNAEs · SP" — and the two cases where it may not say
  * that (D19).
  *
@@ -175,16 +195,9 @@ function CompanyLine({
   // teaches people the header is dead. The way to change the search is the
   // filter row below, which now says so in as many words.
   if (!grouping) {
-    /**
-     * "There is no company" is a claim, and only a list route that **answered**
-     * supports it. `analyzing`, `timeout` and `error` are all states in which
-     * nobody asked or nobody replied — the request that would have reported a
-     * cookie CNPJ never came back — so saying "sem empresa informada" there
-     * would be the same defect in the opposite direction, asserting an absence
-     * from a failure. `needCnpj` is the one unanswered state that *does* know:
-     * it is reached only when there is neither a CNPJ nor a search term.
-     */
-    const unknown = !(status.kind === 'ready' || status.kind === 'needCnpj')
+    // `null` is "the route has not answered", which is not the same fact as
+    // "there is no company" — see `cnaeState`.
+    const unknown = cnaeState(grouping, status) === null
     return (
       <p className="text-meta text-muted">
         {unknown ? list.companyFallback : list.noCompany} · {where}
@@ -342,7 +355,14 @@ function GroupTabs({
  * compatibility verdict must always show why, and "pode haver exigências" is
  * the sentence that keeps "Verificar" a reading rather than a judgement.
  */
-function GroupHint({ group, cnaeCount }: { group: TenderGroup; cnaeCount: number }) {
+function GroupHint({
+  group,
+  cnaeCount,
+}: {
+  group: TenderGroup
+  /** CNAEs on record, or **`null` for "nobody has asked yet"** — see below. */
+  cnaeCount: number | null
+}) {
   /**
    * Two of the three hints are claims about the reader's CNAEs — *"seu CNAE
    * atende"*, *"pode haver exigências"* — and a claim about a CNAE that was
@@ -350,10 +370,21 @@ function GroupHint({ group, cnaeCount }: { group: TenderGroup; cnaeCount: number
    * lines above; this said "seu CNAE atende" anyway, because it was a lookup on
    * `group` alone and `group` can come straight from the URL.
    *
-   * `keyword` is untouched: "achado pela busca" is a statement about the search
-   * term and is true whether or not a CNPJ is in play.
+   * **Three states, not two, and the third one cost a review finding.** The
+   * first fix took `grouping?.cnaeCount ?? 0`, which collapses *unknown* into
+   * *zero* — so while `CompanyLine` was carefully refusing to say whether a
+   * company exists, this line two rows below asserted *"sem CNAE lido para
+   * comparar"* about a CNAE nobody had looked for. It rendered on the server
+   * Suspense frame, for the whole of `waitForData`'s sixty-second window on a
+   * first-time CNPJ, and on every `timeout` and `error`. So `null` means
+   * unknown and draws **nothing**: the two sentences now agree in all three
+   * states, which is what D19's test holds them to.
+   *
+   * `keyword` is untouched throughout: "achado pela busca" is a statement about
+   * the search term and is true whether or not a CNPJ is in play.
    */
   const claimsCnae = group === 'compatible' || group === 'check'
+  if (claimsCnae && cnaeCount === null) return null
   const text = claimsCnae && cnaeCount === 0 ? list.groupHintNoCnae : list.groupHint[group]
   return <p className="px-gutter pb-1 text-meta text-muted">{text}</p>
 }
@@ -917,9 +948,10 @@ export function RadarView({
         {visitor ? <VisitorBanner visitor={visitor} now={now} /> : null}
 
         <GroupTabs active={query.group} counts={counts} query={query} />
-        {/* The same number the line above renders, from the same field: these
-            two sentences are the pair D19's test holds against each other. */}
-        <GroupHint group={query.group} cnaeCount={grouping?.cnaeCount ?? 0} />
+        {/* The same number the line above renders, through the same function:
+            these two sentences are the pair D19's test holds against each
+            other, so they must not be able to read different states. */}
+        <GroupHint group={query.group} cnaeCount={cnaeState(grouping, status)} />
 
         <FilterRow query={query} onNavigate={onNavigate} />
 

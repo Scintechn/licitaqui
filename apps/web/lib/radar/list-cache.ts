@@ -170,6 +170,21 @@ function valid(value: unknown): value is ListSnapshot {
     typeof snapshot.savedAt === 'number' &&
     Number.isFinite(snapshot.savedAt) &&
     typeof snapshot.group === 'string' &&
+    /**
+     * The **key**, not the value: `grouping: null` is a legitimate snapshot (a
+     * keyword search with no company) and `JSON.stringify` keeps the key for it,
+     * while a snapshot written before D19 has no such key at all.
+     *
+     * Without this line the deploy itself re-creates the defect D19 fixes. An
+     * entry written by the previous build carries `company` and no `grouping`;
+     * it passes every other test here, restores with `status: 'ready'` and its
+     * counts intact, and the screen draws *"Sem empresa informada"* and
+     * *"sem CNAE lido para comparar"* above "Compatíveis 13" — with the
+     * company's name lost. Inside `REVALIDATE_AFTER_MS` the restore is `fresh`
+     * and **no request is made**, so nothing corrects it for that viewing.
+     * Rejecting the entry costs one list request and is the whole fix.
+     */
+    'grouping' in snapshot &&
     (snapshot.status === 'ready' ||
       snapshot.status === 'manualCnae' ||
       snapshot.status === 'noSegments')
