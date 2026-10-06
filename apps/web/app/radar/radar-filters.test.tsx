@@ -129,8 +129,11 @@ describe('both filters are in the form that searches', () => {
     expect(fields).toContain(filters.meEpp)
     expect(fields).toContain(filters.meEppAll)
     for (const option of ME_EPP_OPTIONS) expect(fields).toContain(option.label)
-    // The agreement that matters: the option and the tag are one string, so a
-    // card marked *Exclusivo ME/EPP* is exactly a card this option keeps.
+    // The agreement that matters: the option and the card tag are one string,
+    // so nothing under this heading is tagged as something else. The bucket is
+    // wider than that one tag by Sci's ruling of 2026-10-06 — it holds `mixed`
+    // too, whose tag also says ME/EPP — and `filters.db.test.ts` is where that
+    // membership is asserted, against rows rather than against strings.
     expect(filters.meEppExclusive).toBe(copy.tags.exclusive)
   })
 

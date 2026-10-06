@@ -14,10 +14,12 @@ import { countGroups, listTenders, type CompanyMatch, type TenderFilters } from 
  * count query scopes `tenders` exactly as the page does. Three things it cannot
  * pin, because they are facts about Postgres and not about a string:
  *
- * 1. **`is distinct from` returns the rows PNCP is silent about.** 2 105 of
- *    today's open tenders have `me_epp_summary is null`; under `<> 'exclusive'`
- *    every one of them would vanish from both buckets, and the test would still
- *    be green on a filter that hides 9% of the Radar.
+ * 1. **`is distinct from` returns the rows PNCP is silent about — in both
+ *    clauses.** 2 086 of today's open tenders have `me_epp_summary is null`.
+ *    Under `<> 'exclusive'`, or under `not in ('exclusive','mixed')` — the easy
+ *    spelling once `mixed` joined the positive side — every one of them vanishes
+ *    from both buckets, and a row-count test stays green on a filter that hides
+ *    8.4% of the Radar.
  * 2. **The tab count equals the page.** Asserted by comparing `countGroups` to
  *    the number of rows `listTenders` returns, for each group, under every
  *    combination — not by reading the SQL of either.
@@ -184,25 +186,50 @@ suite('D52 · the two filters, against Postgres', () => {
     })
   })
 
-  it('*Exclusivo* is `me_epp_summary = exclusive`, nothing else', async () => {
+  it('*Exclusivo* is `exclusive` and `mixed`, and nothing else', async () => {
     const only = { meEpp: 'exclusive' as MeEppFilter }
     expect(await countGroups(MATCH, filters(only))).toEqual({
-      compatible: 1,
+      compatible: 2,
       check: 1,
       keyword: 0,
     })
-    expect(await idsIn('compatible', only)).toEqual([id(ROWS[0]!)])
+    // Row 1 is `exclusive`, row 5 is `mixed`.
+    expect(await idsIn('compatible', only)).toEqual([id(ROWS[0]!), id(ROWS[4]!)].sort())
   })
 
-  /** The claim `<> 'exclusive'` would quietly break. */
+  /**
+   * Sci's ruling, 2026-10-06, asserted from both sides.
+   *
+   * A `mixed` edital has exclusive items, and its card says so — *Exclusivos e
+   * cotas ME/EPP*. Under the first version of this filter it was in *Não
+   * exclusivo*, which is the product contradicting itself on one screen. The
+   * second half of this test is what fails if `mixed` is ever moved back.
+   */
+  it('puts a `mixed` tender under *Exclusivo* and never under *Não exclusivo*', async () => {
+    const mixed = id(ROWS[4]!)
+    expect(await idsIn('compatible', { meEpp: 'exclusive' })).toContain(mixed)
+    expect(await idsIn('compatible', { meEpp: 'other' })).not.toContain(mixed)
+  })
+
+  /** A cota is not exclusivity, so `quota` stays on the other side. */
+  it('leaves `quota` under *Não exclusivo*', async () => {
+    const quota = id(ROWS[5]!)
+    expect(await idsIn('keyword', { meEpp: 'other' })).toContain(quota)
+    expect(await idsIn('keyword', { meEpp: 'exclusive' })).not.toContain(quota)
+  })
+
+  /**
+   * The claim both `<> 'exclusive'` and `not in ('exclusive','mixed')` would
+   * quietly break, each for the same reason: `unknown` is not `true`.
+   */
   it('*Não exclusivo* includes the rows PNCP is silent about', async () => {
     const only = { meEpp: 'other' as MeEppFilter }
     const compatible = await idsIn('compatible', only)
     // Row 2 has `me_epp_summary is null`: no regime published.
     expect(compatible).toContain(id(ROWS[1]!))
-    expect(compatible).toEqual([id(ROWS[1]!), id(ROWS[4]!)].sort())
+    expect(compatible).toEqual([id(ROWS[1]!)])
     expect(await countGroups(MATCH, filters(only))).toEqual({
-      compatible: 2,
+      compatible: 1,
       check: 1,
       keyword: 2,
     })
@@ -259,8 +286,12 @@ suite('D52 · the two filters, against Postgres', () => {
           (!extra.modality || row.modalityId === MODALITY_CODES[extra.modality]) &&
           (!extra.meEpp ||
             (extra.meEpp === 'exclusive'
-              ? row.meEpp === 'exclusive'
-              : row.meEpp !== 'exclusive')),
+              ? row.meEpp === 'exclusive' || row.meEpp === 'mixed'
+              // `null !== 'exclusive'` is `true` in JavaScript, which is the
+              // answer the two `is distinct from` clauses give in Postgres —
+              // and the reason this expectation has to be written out rather
+              // than taken from the same helper the query uses.
+              : row.meEpp !== 'exclusive' && row.meEpp !== 'mixed')),
       ).length,
     )
   })

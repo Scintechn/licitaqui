@@ -35,10 +35,15 @@ import {
 
 const dialect = new PgDialect()
 
-/** The statement as Postgres would receive it, with its parameters. */
+/**
+ * The statement as Postgres would receive it, with its parameters.
+ *
+ * Whitespace collapsed, because the ME/EPP negative is two clauses written on
+ * two lines and the assertions below are about the clauses, not the layout.
+ */
 function render(chunk: Parameters<PgDialect['sqlToQuery']>[0]) {
   const query = dialect.sqlToQuery(chunk)
-  return { sql: query.sql, params: query.params }
+  return { sql: query.sql.replace(/\s+/g, ' ').trim(), params: query.params }
 }
 
 describe('the vocabulary', () => {
@@ -118,21 +123,38 @@ describe('the two predicates', () => {
     expect(meEppCondition(undefined)).toBeNull()
   })
 
-  it('reads ME/EPP off `me_epp_summary` — the column the card tags', () => {
-    expect(render(meEppCondition('exclusive')!).sql).toBe("t.me_epp_summary = 'exclusive'")
+  /**
+   * `mixed` is *Exclusivo* (Sci, 2026-10-06): the edital has exclusive items, so
+   * it is part of the answer to "where do I get a reserved lane". Asserted as
+   * the predicate rather than as a count, because the count would also pass if
+   * `mixed` were in both buckets.
+   */
+  it('reads ME/EPP off `me_epp_summary`, and *Exclusivo* holds `mixed` too', () => {
+    expect(render(meEppCondition('exclusive')!).sql).toBe(
+      "t.me_epp_summary in ('exclusive', 'mixed')",
+    )
   })
 
   /**
-   * The single most important line in the card: 2 105 of today's open tenders
-   * have no `me_epp_summary` at all, and `<> 'exclusive'` is `unknown` for
-   * every one of them. Asserted as code because the difference between the two
-   * spellings is invisible in a row count.
+   * The single most important line in the card: 2 086 of today's open tenders
+   * have no `me_epp_summary` at all, and **every** shorter spelling of this
+   * predicate is `unknown` for all of them — `<> 'exclusive'`, and now
+   * `not in ('exclusive','mixed')` as well, which is the easy mistake to make
+   * when a second value joins the positive side. Asserted as code because the
+   * difference between the spellings is invisible in a row count.
    */
   it('includes the rows PNCP is silent about in *Não exclusivo*', () => {
     const query = render(meEppCondition('other')!)
-    expect(query.sql).toBe("t.me_epp_summary is distinct from 'exclusive'")
+    expect(query.sql).toBe(
+      "t.me_epp_summary is distinct from 'exclusive' " +
+        "and t.me_epp_summary is distinct from 'mixed'",
+    )
+    // One `is distinct from` per excluded value, and no spelling that goes
+    // `unknown` on a null.
+    expect(query.sql.match(/is distinct from/g)).toHaveLength(2)
     expect(query.sql).not.toContain('<>')
     expect(query.sql).not.toContain('!=')
+    expect(query.sql).not.toContain('not in')
   })
 })
 
@@ -163,8 +185,8 @@ const CONDITIONS = [
   't.search @@ websearch_to_tsquery',
   't.segments && ',
   't.modality_id = ',
-  "t.me_epp_summary = 'exclusive'",
-  "t.me_epp_summary is distinct from 'exclusive'",
+  "t.me_epp_summary in ('exclusive', 'mixed')",
+  "t.me_epp_summary is distinct from 'exclusive' and t.me_epp_summary is distinct from 'mixed'",
 ] as const
 
 /**
@@ -186,7 +208,9 @@ function recorder() {
   const statements: string[] = []
   const executor = {
     execute(chunk: Parameters<PgDialect['sqlToQuery']>[0]) {
-      statements.push(dialect.sqlToQuery(chunk).sql)
+      // Whitespace collapsed for the same reason `render` does it: the ME/EPP
+      // negative is two clauses on two lines, and `scopeOf` looks for both.
+      statements.push(dialect.sqlToQuery(chunk).sql.replace(/\s+/g, ' '))
       return Promise.resolve({ rows: [] })
     },
   } as unknown as Executor
@@ -212,7 +236,9 @@ describe('the counts are filtered by what the page is filtered by', () => {
     })
     for (const statement of [list, counts]) {
       expect(scopeOf(statement)).toContain('t.modality_id = ')
-      expect(scopeOf(statement)).toContain("t.me_epp_summary is distinct from 'exclusive'")
+      expect(scopeOf(statement)).toContain(
+        "t.me_epp_summary is distinct from 'exclusive' and t.me_epp_summary is distinct from 'mixed'",
+      )
     }
   })
 

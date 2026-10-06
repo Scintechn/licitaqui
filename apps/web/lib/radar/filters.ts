@@ -21,16 +21,18 @@ import { messages } from '@/lib/messages'
  * empty-result-is-not-absence` on the product's main screen.
  *
  * `tenders.modality_id` is PNCP's own code and has been there since migration
- * 0001. Measured on Neon `main` 2026-10-06: **0 of 57 878 rows** have a null
- * `modality_id`, and each of the three ids carries exactly one distinct name. So
+ * 0001. Measured on Neon `main` 2026-10-06 18:19 UTC: **0 of 58 495 rows** have
+ * a null `modality_id`, and each of the three ids carries exactly one name. So
  * the filter matches the code and the control shows the name — the value we do
  * not own is used for the label, where being wrong is cosmetic, and never for
  * the predicate, where being wrong is an empty screen.
  *
- * Measured on Neon `main` on 2026-10-06, over the 24 340 tenders whose
- * `proposals_close_at > now()`: id **6** `Pregão - Eletrônico` **17 018**, id
- * **4** `Concorrência - Eletrônica` **3 980**, id **8** `Dispensa` **3 342** —
- * and over all 57 878 rows in the table, those same three pairs and nothing
+ * One snapshot of Neon `main`, 2026-10-06 18:19 UTC, for every number in this
+ * file — the counts drift with the 30-minute sweep, so they are all read at one
+ * instant rather than collected over an afternoon. Over the 24 763 tenders whose
+ * `proposals_close_at > now()`: id **6** `Pregão - Eletrônico` **17 259**, id
+ * **4** `Concorrência - Eletrônica` **4 016**, id **8** `Dispensa` **3 488** —
+ * and over all 58 495 rows in the table, those same three pairs and nothing
  * else. Three options is a `Select`, not a faceted search.
  *
  * They are **hardcoded here rather than read from the data**, for two reasons:
@@ -96,15 +98,41 @@ export const MODALITY_NAMES: Record<ModalityFilter, string> = {
  * own tag renders (`radar.tags.*`), so the list and the card can never disagree
  * about why an edital is in it.
  *
- * Same measurement, same 24 340 open tenders: `none` 15 662, `exclusive`
- * 4 293, `mixed` 1 791, `quota` 489, and **2 105 where PNCP is silent**
+ * Same snapshot, same 24 763 open tenders: `none` 15 952, `exclusive` 4 419,
+ * `mixed` 1 810, `quota` 496, and **2 086 where PNCP is silent**
  * (`me_epp_summary is null`).
  *
- * Two options, and the second one owns the silence: *Não exclusivo* is
- * `me_epp_summary is distinct from 'exclusive'`, which includes the null rows,
- * because **"we do not know" is not "exclusive"**. The alternative — treating
- * silence as a third state the reader has to ask for — would put 2 105 open
- * editais in a bucket nobody selects.
+ * ## *Exclusivo* is `exclusive` **and** `mixed` (Sci, 2026-10-06)
+ *
+ * A reader choosing *Exclusivo ME/EPP* is asking *where does being an ME/EPP
+ * give me a reserved lane*, and a `mixed` edital **has** exclusive items — so it
+ * belongs in that answer. The first version left it out, and the cost was
+ * measured rather than argued: **1 810 open editais sat under a heading saying
+ * *Não exclusivo* while their own cards said "Exclusivos e cotas ME/EPP"** — the
+ * product contradicting itself on one screen, which is D28's shape with a number
+ * on it.
+ *
+ * What stays in *Não exclusivo* is `quota` (496 open, tagged *Cotas ME/EPP*),
+ * `none`, and the silence — and **a cota is not exclusivity**, so nothing under
+ * that heading is tagged as exclusive any more.
+ *
+ * ## The second option owns the silence, and needs two clauses to do it
+ *
+ * *Não exclusivo* is
+ *
+ * ```
+ * me_epp_summary is distinct from 'exclusive' and me_epp_summary is distinct from 'mixed'
+ * ```
+ *
+ * and **not** `not in ('exclusive','mixed')`, which is `unknown` for every null
+ * and therefore drops the 2 086 silent rows out of *both* buckets — 8.4% of the
+ * open Radar, reachable only with no filter at all. "We do not know" is not
+ * "exclusive", so silence belongs here. Measured both ways on the same database,
+ * same day: the two clauses answer **18 534** and `not in` answers **16 448**,
+ * exactly 2 086 fewer.
+ *
+ * The two options partition the list exactly — 6 229 + 18 534 = 24 763 — which
+ * is asserted against Postgres in `filters.db.test.ts` rather than reasoned.
  */
 export const ME_EPP_FILTERS = ['exclusive', 'other'] as const
 

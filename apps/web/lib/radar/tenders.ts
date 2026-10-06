@@ -316,7 +316,7 @@ function labels(values: string[]): SQL {
  *
  * **`modality_id`, not `modality_name`.** The name is free text from two
  * different PNCP endpoints and the id is PNCP's code, non-null on every one of
- * the 57 878 rows (measured 2026-10-06); matching the text would turn one
+ * the 58 495 rows (measured 2026-10-06 18:19 UTC); matching the text would turn one
  * re-worded hyphen into an option that silently finds nothing. `filters.ts`
  * has the measurement and the argument.
  *
@@ -332,17 +332,25 @@ export function modalityCondition(modality: ModalityFilter | null | undefined): 
 /**
  * D52's ME/EPP condition, or `null` for *Todas*.
  *
- * `is distinct from` and not `<>`: 2 105 of today's open tenders have
- * `me_epp_summary is null` — PNCP published nothing about the regime — and
- * `me_epp_summary <> 'exclusive'` is `unknown` for every one of them, so they
- * would fall out of *both* buckets and be reachable only with no filter at all.
- * "We do not know" is not "exclusive", so they belong in *Não exclusivo*, and
- * the two options therefore partition the list exactly.
+ * **`exclusive` and `mixed` are both *Exclusivo*** (Sci, 2026-10-06): a `mixed`
+ * edital has exclusive items, so it is part of the answer to *where does being
+ * an ME/EPP give me a reserved lane* — and leaving it out put 1 810 open editais
+ * under a heading saying *Não exclusivo* while their own cards said *Exclusivos
+ * e cotas ME/EPP*. `filters.ts` has the measurement and the reasoning.
+ *
+ * **Both clauses of the negative are `is distinct from`, and that is the whole
+ * trick.** `not in ('exclusive','mixed')` is `unknown` for the 2 086 open
+ * tenders whose `me_epp_summary` is null — PNCP published nothing about the
+ * regime — so they would fall out of *both* buckets and be reachable only with
+ * no filter at all. "We do not know" is not "exclusive", so silence belongs in
+ * *Não exclusivo*, and the two options then partition the list exactly:
+ * 6 229 + 18 534 = 24 763, measured, not derived.
  */
 export function meEppCondition(meEpp: MeEppFilter | null | undefined): SQL | null {
   if (!meEpp) return null
-  if (meEpp === 'exclusive') return sql`t.me_epp_summary = 'exclusive'`
-  return sql`t.me_epp_summary is distinct from 'exclusive'`
+  if (meEpp === 'exclusive') return sql`t.me_epp_summary in ('exclusive', 'mixed')`
+  return sql`t.me_epp_summary is distinct from 'exclusive'
+             and t.me_epp_summary is distinct from 'mixed'`
 }
 
 /**

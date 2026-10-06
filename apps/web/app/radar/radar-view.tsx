@@ -654,7 +654,7 @@ function FilterRow({
             {/*
               D52 — modalidade and ME/EPP, the two filters Sci asked for on
               2026-10-06. Both are `Select`s and not chips: `modality_id` holds
-              exactly three values over all 57 878 rows — ids 6, 4 and 8, each
+              exactly three values over all 58 495 rows — ids 6, 4 and 8, each
               carrying one name — and ME/EPP is one question with two answers plus
               *Todas*. The option is **labelled** with `modality_name` and
               **filtered** on `modality_id`: the name is PNCP's free text, sent
@@ -662,12 +662,20 @@ function FilterRow({
               the id is the key.
 
               The ME/EPP option reads `me_epp_summary`, **the same column the
-              card's own tag renders**, so a card tagged *Exclusivo ME/EPP* is
-              exactly a card this filter keeps — and the words agree, because the
-              option label is the tag's own. What the structured field does *not*
-              agree with is the triagem one tap away: D36 measured the two
-              disagreeing on 14 of 27 readings. This filter follows PNCP
-              deliberately, and will follow whatever D36 decides.
+              card's own tag renders**, and the option label is the tag's own
+              string — so no card under *Exclusivo ME/EPP* can be tagged as
+              anything but ME/EPP work. *Exclusivo* holds `exclusive` **and**
+              `mixed` (Sci, 2026-10-06): a `mixed` edital has exclusive items and
+              its card says *Exclusivos e cotas ME/EPP*, so it belongs in the
+              answer to "where do I get a reserved lane", and leaving it out put
+              1 810 open editais under a heading saying the opposite of their own
+              tag. `quota` stays on the other side, because a cota is not
+              exclusivity. `lib/radar/filters.ts` has the measurement.
+
+              What the structured field does *not* agree with is the triagem one
+              tap away: D36 measured the two disagreeing on 14 of 27 readings.
+              This filter follows PNCP deliberately, and will follow whatever
+              D36 decides.
             */}
             <Select
               id="radar-modality"
