@@ -47,11 +47,14 @@ const TOKEN = `favoritolista${RUN_ID}`
  *
  * **Not a sentence, and the reason is a near miss rather than a bug that
  * happened.** The first version read *"Aquisição de <token> item N"*. A suite
- * elsewhere searches for `longestWord()` of one of its own fixtures with no CNPJ
- * and no limit — `radar.db.test.ts`'s *"finds an unmatched tender by keyword"* —
- * and a row whose object says *Aquisição* matches that query. These rows had the
- * earliest deadlines in the table, so they would have taken the first slots of
- * its twenty and pushed the tender it was looking for off the page.
+ * elsewhere searched for a word out of one of its own fixtures' objects with no
+ * CNPJ and no limit — `radar.db.test.ts`'s *"finds an unmatched tender by
+ * keyword"* — and a row whose object says *Aquisição* matches that query. These
+ * rows had the earliest deadlines in the table, so they would have taken the
+ * first slots of its twenty and pushed the tender it was looking for off the
+ * page. **That query is now scoped to its own run** (card D54): it sends a token
+ * no other run can match, and `limit=50` for its 20 rows, so it has no page-1
+ * boundary left to lose a tender at.
  *
  * **It was not what made that test fail**, and the measurement is the only reason
  * this comment can say so: `radar.db.test.ts` resolves `TEST_DATABASE_URL_R1` and
