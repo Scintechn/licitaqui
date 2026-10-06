@@ -70,7 +70,9 @@ function render(query: Partial<RadarViewProps['query']> = {}): string {
   const props: RadarViewProps = {
     query: { cnpj: COMPANY.cnpj, state: 'SP', q: null, group: 'compatible', ...query },
     status: { kind: 'ready' },
-    company: COMPANY,
+    // One CNAE on record (`mainCnae`), which is what `cnaeCount` counts —
+    // not `segments.length`, the conflation D19 corrected.
+    grouping: { company: COMPANY, cnaeCount: 1 },
     visitor: null,
     counts: { compatible: 12, check: 7, keyword: 3 },
     tenders: [TENDER],

@@ -873,6 +873,7 @@
     "list": {
       "title": "Radar",
       "companyFallback": "Sua empresa",
+      "noCompany": "Sem empresa informada",
       "cnaeCount": "{count, plural, =0 {sem CNAE lido} one {1 CNAE} other {# CNAEs}}",
       "changeCompany": "Trocar empresa ou filtros",
       "resultsLabel": "Editais encontrados",
@@ -886,6 +887,7 @@
         "check": "pode haver exigências",
         "keyword": "achado pela busca"
       },
+      "groupHintNoCnae": "sem CNAE lido para comparar",
       "badges": {
         "compatible": "Compatível",
         "check": "Verificar",

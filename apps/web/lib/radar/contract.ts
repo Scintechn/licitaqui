@@ -198,6 +198,48 @@ export type TenderCard = {
   pncpUpdatedAt: string | null
 }
 
+/**
+ * The company this list was **actually grouped by** (D19).
+ *
+ * The header used to compute its own answer from whatever company the screen
+ * happened to hold, while the route resolved the CNPJ as
+ * `?cnpj= ?? visitors.cnpj` and grouped on *that* company's segments. With no
+ * `?cnpj=` in the URL the screen held `null` and rendered *"sem CNAE lido"*
+ * directly above *"Compatíveis 13"* and *"seu CNAE atende"* — two sources, and
+ * the one asserting a match was the false one.
+ *
+ * So the route says what it did. This field is the single supplier of every
+ * fact in that header, and the cookie CNPJ — which the browser cannot read,
+ * because it is `httpOnly` — becomes visible to the screen for the first time.
+ *
+ * Three states, all of them real:
+ *
+ * | | |
+ * |---|---|
+ * | `null` | no CNPJ drove the list at all: a keyword search, and every row is `keyword` |
+ * | `company: null` | a CNPJ drove it (query or cookie) and nothing has been read for it yet |
+ * | `company` set | that company's segments are what `compatible` and `check` were computed from |
+ *
+ * **There is deliberately no `cnpj` field.** It was the obvious thing to put
+ * here and it would have been the only CNPJ this product sends to page
+ * JavaScript that the page did not already know: `visitors.cnpj` reaches the
+ * route through an `httpOnly` cookie precisely so the browser cannot read it,
+ * and the client snapshot in `list-cache.ts` would then have written it into
+ * `sessionStorage`. §12 puts a CNPJ in the same bucket as a CPF. Nothing in the
+ * header needs it — *whether* a CNPJ drove the list is `groupedBy !== null`, and
+ * when the company has been read its own `CompanyView.cnpj` is already on the
+ * wire because the browser typed it.
+ */
+export type GroupedBy = {
+  /** `null` when `companies` holds no row for it yet. */
+  company: CompanyView | null
+  /**
+   * CNAEs on record — main plus secondary, deduplicated — **not** segments.
+   * `radar.list.cnaeCount` says "CNAEs"; this is what it counts.
+   */
+  cnaeCount: number
+}
+
 export type TenderListOk = {
   state: 'ready'
   group: TenderGroup
@@ -222,6 +264,9 @@ export type TenderListOk = {
    * than an error.
    */
   favourites: string[]
+
+  /** The company the groups above were computed from. `null` means none. */
+  groupedBy: GroupedBy | null
   /** How many are in each group under the same filters — the tab counts. */
   counts: Record<TenderGroup, number>
   /** Opaque; pass back as `cursor` for the next page. `null` at the end. */

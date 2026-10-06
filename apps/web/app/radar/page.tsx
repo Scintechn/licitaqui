@@ -34,7 +34,13 @@ export default function RadarPage() {
         <RadarView
           query={{ cnpj: null, state: null, q: null, group: 'compatible' }}
           status={{ kind: 'analyzing', what: 'company' }}
-          company={null}
+          /* Nothing is known before the client has asked: not the company, and
+             not whether there is one — the CNPJ may be in the visitor cookie,
+             which this server pass cannot resolve without becoming the read
+             that §3.3 keeps off the CDN. `null` with an `analyzing` status is
+             the one combination `CompanyLine` reads as *unknown* rather than as
+             *absent* (D19), so this frame claims nothing it cannot support. */
+          grouping={null}
           visitor={null}
           counts={null}
           tenders={[]}

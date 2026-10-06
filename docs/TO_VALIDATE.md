@@ -24,6 +24,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 9 | Knowledge base and repo disagree on who owns legal copy | future edits | low |
 | 10 | What separates a triagem from an análise completa — depth or breadth | **C2**, and a live sentence on `/` | **high** |
 | 11 | Whether a **closed** tender is ever re-read for its value, and the attempt bound | **B38** | medium |
+| 13 | Two Radar header sentences shipped as drafts: there is no approved copy for "no company" or "no CNAE to compare" | nothing — both render today | medium |
 
 ---
 
@@ -517,3 +518,34 @@ rung honest. The question Sci still owns is whether a **PNCP edital** citation i
 worth keeping the `awards` path alive for — it is the only source that can
 produce one, and the approach doc already recommends keeping the table because it
 "costs nothing to keep".
+
+## 13. The Radar header shipped two sentences nobody approved — 2026-10-06, D19
+
+D19 closed a false claim by **adding two strings**, which is the one thing legal
+brief §5 says not to do without Sci. They render on `/radar` today, so this is a
+decision about live copy rather than about scope.
+
+| Key | Draft | Where it renders | Why a new string was needed |
+|---|---|---|---|
+| `radar.list.noCompany` | *"Sem empresa informada"* | the header line, in place of `companyFallback`, **only** once the list route has answered with no company at all | `companyFallback` is *"Sua empresa"*, which asserts there is one. It stays for the state where nothing is known yet, where it is exactly right |
+| `radar.list.groupHintNoCnae` | *"sem CNAE lido para comparar"* | under the tabs, replacing `groupHint.compatible` (*"seu CNAE atende"*) and `groupHint.check` (*"pode haver exigências"*) when no CNAE was read | Those two sentences are claims about the reader's CNAEs. Rendered with none read, they are the half of D19 that was false. `groupHint.keyword` is untouched — it is about the search term |
+
+Both are **true as rendered**: each is gated on the state it describes, which is
+what `app/radar/radar-header.test.tsx` holds them to. The open question is only
+the wording. Two things worth knowing before deciding:
+
+- *"sem CNAE lido"* in the second draft is lifted from `cnaeCount`'s own
+  already-approved zero branch, so the header and the hint read as one sentence
+  rather than two vocabularies.
+- A third option was considered and not taken: **render nothing** in both places,
+  the way D47 ships no label rather than an unapproved one. It was rejected for
+  the header because a line that disappears moves the tabs, and taken for the
+  *unknown* state, where the hint genuinely draws nothing.
+
+One related wording question this card does **not** answer, raised in review:
+`groupHintNoCnae` is gated on **CNAEs read**, not on **segments reached**. A
+company with three CNAEs that B6 maps to no segment therefore still reads *"seu
+CNAE atende"* over an empty Compatíveis tab. That is consistent with the header
+beside it (*"3 CNAEs"*), and the tab is empty so nothing is claimed about any
+edital — but if Sci wants the hint to speak about what is comparable rather than
+about what was read, it is a one-line change and a third string.

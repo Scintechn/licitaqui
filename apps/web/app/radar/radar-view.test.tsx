@@ -65,7 +65,7 @@ function render(overrides: Partial<RadarViewProps> = {}): string {
   const props: RadarViewProps = {
     query: { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible' },
     status: { kind: 'ready' },
-    company: COMPANY,
+    grouping: { company: COMPANY, cnaeCount: 3 },
     visitor: null,
     counts: { compatible: 12, check: 7, keyword: 3 },
     tenders: [TENDER],
@@ -115,7 +115,9 @@ describe('the Radar frame', () => {
   it('names the company, its CNAE count and where it is looking', () => {
     const out = render()
     expect(out).toContain('Papelaria Central')
-    expect(out).toContain(format(copy.list.cnaeCount, { count: 2 }))
+    // 3 CNAEs behind 2 segments: the string says "CNAEs" and the fixture
+    // makes the two numbers differ on purpose (D19).
+    expect(out).toContain(format(copy.list.cnaeCount, { count: 3 }))
   })
 
   it('draws the three group tabs with their counts and marks the current one', () => {
@@ -237,7 +239,7 @@ describe('the states', () => {
   it('an unmapped CNAE reads as "we could not match you", never as a failure', () => {
     const out = render({
       status: { kind: 'noSegments' },
-      company: { ...COMPANY, segments: [] },
+      grouping: { company: { ...COMPANY, segments: [] }, cnaeCount: 3 },
       tenders: [],
     })
     only(out, copy.states.noSegmentsTitle)
@@ -256,7 +258,7 @@ describe('the states', () => {
   })
 
   it('no CNPJ and no keyword asks for one instead of erroring', () => {
-    const out = render({ status: { kind: 'needCnpj' }, company: null, tenders: [], counts: null })
+    const out = render({ status: { kind: 'needCnpj' }, grouping: null, tenders: [], counts: null })
     only(out, copy.states.needCnpjTitle)
     expect(out).toContain('href="/"')
   })

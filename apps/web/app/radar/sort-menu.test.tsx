@@ -35,7 +35,7 @@ function render(query: Partial<RadarQuery> = {}): string {
   const props: RadarViewProps = {
     query: { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible', ...query },
     status: { kind: 'ready' },
-    company: null,
+    grouping: null,
     visitor: null,
     counts: { compatible: 12, check: 7, keyword: 3 },
     tenders: [],

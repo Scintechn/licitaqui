@@ -12,9 +12,9 @@ import {
 } from '@/components'
 import { cn } from '@/lib/cn'
 import type {
-  CompanyView,
   ErrorCode,
   Freshness,
+  GroupedBy,
   TenderCard,
   TenderGroup,
   TenderSort,
@@ -115,7 +115,13 @@ export type RadarQuery = {
 export type RadarViewProps = {
   query: RadarQuery
   status: RadarStatus
-  company: CompanyView | null
+  /**
+   * The company the **list route** grouped by, straight from its envelope
+   * (D19). There is deliberately no second company prop: the header's name,
+   * its CNAE count and the tab help all read this one field, so they cannot
+   * disagree with the list they sit above.
+   */
+  grouping: GroupedBy | null
   visitor: VisitorView | null
   counts: Record<TenderGroup, number> | null
   tenders: TenderCard[]
@@ -160,18 +166,88 @@ export type RadarViewProps = {
 
 /* ------------------------------------------------------------------ pieces */
 
-function CompanyLine({ company, query }: { company: CompanyView | null; query: RadarQuery }) {
-  const name = company?.tradeName || company?.legalName || list.companyFallback
-  const cnaes = company ? company.segments.length : 0
+/**
+ * How many CNAEs the list was grouped by — or **`null` for "we do not know"**.
+ *
+ * One function, because the header and the tab help have to give the same
+ * answer and the first attempt at D19 let them differ: the header refused to
+ * say whether a company existed while the hint beneath it asserted that no CNAE
+ * had been read. Three states, in one place, read by both.
+ *
+ * "There is no company" is a claim, and only a list route that **answered**
+ * supports it. `analyzing`, `timeout` and `error` are states in which nobody
+ * asked or nobody replied — the request that would have reported a cookie CNPJ
+ * never came back — so reading an absence out of them would be D19 in the
+ * opposite direction. `needCnpj` is the one unanswered status that does know:
+ * it is reached only when there is neither a CNPJ nor a search term.
+ */
+function cnaeState(grouping: GroupedBy | null, status: RadarStatus): number | null {
+  if (grouping) return grouping.cnaeCount
+  return status.kind === 'ready' || status.kind === 'needCnpj' ? 0 : null
+}
+
+/**
+ * "Papelaria Central · 3 CNAEs · SP" — and the two cases where it may not say
+ * that (D19).
+ *
+ * ## One supplier, and it is the route that did the grouping
+ *
+ * Every fact here comes from `grouping`. It used to come from whatever company
+ * the screen had resolved itself, which was `null` unless the URL carried
+ * `?cnpj=` — while the list route resolved `?cnpj= ?? visitors.cnpj` and
+ * grouped 13 editais by that company. So the line read *"Sua empresa · sem
+ * CNAE lido"* above *"Compatíveis 13"*, and the false half was the half
+ * claiming a match. The browser cannot fix that by looking harder: the visitor
+ * cookie is `httpOnly`, and only the route can see it.
+ *
+ * ## "sem CNAE lido" now means it
+ *
+ * `cnaeCount` counts **CNAEs** — `main_cnae` plus `secondary_cnaes`. It used to
+ * be `company.segments.length`, a count of the 14 POC-1 segments those CNAEs
+ * reach, which is a different number in both directions (`company.ts`).
+ *
+ * ## Three renderings, because there are three states
+ *
+ * - **Nothing known yet** — the list has not answered, so the CNPJ driving it
+ *   may exist and be invisible from here. The line names no company and claims
+ *   no CNAE: unknown is reported as unknown, never as absent.
+ * - **No company at all** — a keyword search with no CNPJ anywhere. It says so,
+ *   and every row in the list is `keyword` by construction (`labels([])` is
+ *   `array[]::text[]`, and `&&` against it is false).
+ * - **A CNPJ, read or not** — named when there is a name, and the CNAE count is
+ *   whatever was actually on record, including zero.
+ */
+function CompanyLine({
+  grouping,
+  query,
+  status,
+}: {
+  grouping: GroupedBy | null
+  query: RadarQuery
+  status: RadarStatus
+}) {
   const where = query.state ?? copy.ufAll
   // No chevron. It used to draw one here, inside a `<p>` with no link, no
   // button and no handler — the universal "tap me" affordance on something
   // that could not be tapped, which is worse than no affordance at all: it
   // teaches people the header is dead. The way to change the search is the
   // filter row below, which now says so in as many words.
+  if (!grouping) {
+    // `null` is "the route has not answered", which is not the same fact as
+    // "there is no company" — see `cnaeState`.
+    const unknown = cnaeState(grouping, status) === null
+    return (
+      <p className="text-meta text-muted">
+        {unknown ? list.companyFallback : list.noCompany} · {where}
+      </p>
+    )
+  }
+
+  const company = grouping.company
+  const name = company?.tradeName || company?.legalName || list.companyFallback
   return (
     <p className="text-meta text-muted">
-      {name} · {format(list.cnaeCount, { count: cnaes })} · {where}
+      {name} · {format(list.cnaeCount, { count: grouping.cnaeCount })} · {where}
     </p>
   )
 }
@@ -317,10 +393,38 @@ function GroupTabs({
  * compatibility verdict must always show why, and "pode haver exigências" is
  * the sentence that keeps "Verificar" a reading rather than a judgement.
  */
-function GroupHint({ group }: { group: TenderGroup }) {
-  return (
-    <p className="px-gutter pb-1 text-meta text-muted">{list.groupHint[group]}</p>
-  )
+function GroupHint({
+  group,
+  cnaeCount,
+}: {
+  group: TenderGroup
+  /** CNAEs on record, or **`null` for "nobody has asked yet"** — see below. */
+  cnaeCount: number | null
+}) {
+  /**
+   * Two of the three hints are claims about the reader's CNAEs — *"seu CNAE
+   * atende"*, *"pode haver exigências"* — and a claim about a CNAE that was
+   * never read is the other half of D19. The header says "sem CNAE lido" two
+   * lines above; this said "seu CNAE atende" anyway, because it was a lookup on
+   * `group` alone and `group` can come straight from the URL.
+   *
+   * **Three states, not two, and the third one cost a review finding.** The
+   * first fix took `grouping?.cnaeCount ?? 0`, which collapses *unknown* into
+   * *zero* — so while `CompanyLine` was carefully refusing to say whether a
+   * company exists, this line two rows below asserted *"sem CNAE lido para
+   * comparar"* about a CNAE nobody had looked for. It rendered on the server
+   * Suspense frame, for the whole of `waitForData`'s sixty-second window on a
+   * first-time CNPJ, and on every `timeout` and `error`. So `null` means
+   * unknown and draws **nothing**: the two sentences now agree in all three
+   * states, which is what D19's test holds them to.
+   *
+   * `keyword` is untouched throughout: "achado pela busca" is a statement about
+   * the search term and is true whether or not a CNPJ is in play.
+   */
+  const claimsCnae = group === 'compatible' || group === 'check'
+  if (claimsCnae && cnaeCount === null) return null
+  const text = claimsCnae && cnaeCount === 0 ? list.groupHintNoCnae : list.groupHint[group]
+  return <p className="px-gutter pb-1 text-meta text-muted">{text}</p>
 }
 
 /**
@@ -1068,7 +1172,7 @@ function Body({
 export function RadarView({
   query,
   status,
-  company,
+  grouping,
   visitor,
   counts,
   tenders,
@@ -1127,13 +1231,16 @@ export function RadarView({
       <main id="radar" className="mx-auto flex w-full max-w-[1120px] grow flex-col pb-10">
         <div className="flex flex-col gap-1 px-gutter pb-2.5">
           <h1 className="font-display text-[28px] leading-tight font-semibold">{list.title}</h1>
-          <CompanyLine company={company} query={query} />
+          <CompanyLine grouping={grouping} query={query} status={status} />
         </div>
 
         {visitor ? <VisitorBanner visitor={visitor} now={now} /> : null}
 
         <GroupTabs active={query.group} counts={counts} query={query} />
-        <GroupHint group={query.group} />
+        {/* The same number the line above renders, through the same function:
+            these two sentences are the pair D19's test holds against each
+            other, so they must not be able to read different states. */}
+        <GroupHint group={query.group} cnaeCount={cnaeState(grouping, status)} />
 
         <FilterRow query={query} onNavigate={onNavigate} />
 

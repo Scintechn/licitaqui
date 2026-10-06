@@ -192,6 +192,17 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
         tenders: page.tenders,
         // The stars, from the same statement as the rows (D23).
         favourites: page.favourites,
+        // What the groups above were computed from, reported by the code that
+        // computed them (D19). The header renders this and nothing else: it
+        // cannot resolve `visitors.cnpj` itself — the cookie is `httpOnly` —
+        // so before this field existed the screen guessed from `?cnpj=` and
+        // said "sem CNAE lido" over a list grouped by a real company.
+        groupedBy: cnpj
+          ? {
+              company: company?.data.company ?? null,
+              cnaeCount: company?.data.cnaeCount ?? 0,
+            }
+          : null,
         counts,
         nextCursor: page.nextCursor,
         freshness: {

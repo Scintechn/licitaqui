@@ -102,7 +102,7 @@ const QUERY = { cnpj: '11222333000181', state: null, q: null, group: 'compatible
 function snapshot(over: Partial<ListSnapshot> = {}): ListSnapshot {
   return {
     group: 'compatible',
-    company: null,
+    grouping: null,
     visitor: null,
     counts: { compatible: 3, check: 0, keyword: 0 },
     tenders: [tender('a'), tender('b'), tender('c')],
