@@ -1,11 +1,25 @@
 #!/usr/bin/env python3
-"""Queue B17's coverage comparison — the `q=saas` re-run (card B17).
+"""Queue B17's coverage comparison for **one** keyword (card B17).
 
     python worker/scripts/check_coverage.py             # dry run
     python worker/scripts/check_coverage.py --commit     # writes the row
     python worker/scripts/check_coverage.py --commit --q limpeza
 
-## Why this exists as a queued job rather than a script that measures
+## This is the ad-hoc path; the standing one is the schedule
+
+Since 2026-10-05 `coverage_check` is a **daily** entry (05:10 BRT) over a
+derived set of seven keywords, one per segment a company's CNAE can land in,
+and `/admin` reads the result — `coverage_check.DEFAULT_QUERIES` and
+`apps/web/lib/admin/coverage.ts`. It had to be: before that it had run three
+times ever, over one keyword, and nothing read the answer, which is B32's shape
+on the one sentence the whole product rests on.
+
+What this script is still for is **one keyword, now** — a question about a
+particular segment, outside the cadence. It always passes `q`, and a payload
+carrying `q` is exactly what makes a job a single measurement rather than the
+whole set.
+
+## Why it exists as a queued job rather than a script that measures
 
 B17's acceptance is one comparison: ask PNCP for the editais matching a keyword
 that are open for proposals, and count how many we hold. Measured 2026-09-27 as
@@ -35,6 +49,10 @@ except confirmation that the row was queued.
 job rather than a row means PNCP answered nothing — the handler refuses to
 record 0% from a failed walk, which is the `empty result is not absence` rule
 this repo has been bitten by.
+
+Or read it on `/admin`, which is where the daily set lands: the weakest keyword
+decides the state, because an average over seven segments can sit above target
+while the one segment a founder works in holds nothing.
 
 ## Safe by default
 

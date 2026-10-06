@@ -91,6 +91,15 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
         # measuring itself. Daily because awake time is a trend.
         "neon_usage",
         "sweep_titles",
+        # B17's closure test, standing since 2026-10-05. 05:10 BRT is 70
+        # minutes after the inventory it measures (one cycle took about 37
+        # minutes — inferred from its 07:37 UTC completion row against this
+        # file's 04:00 entry, not timed) and inside the hour
+        # `refresh_catalog_prices`' per-code jobs
+        # keep the compute awake, so it costs a job slot and not a wake tail.
+        # Priority 8 rather than 9 is what stops it queueing behind a thousand
+        # of those price jobs and being measured at an unpredictable hour.
+        "coverage_check",
         "weekly_digest",
         # `sweep_tender_values` is on the clock for the same reason
         # `sweep_titles` is, and a sharper one: the per-tender follow-up that

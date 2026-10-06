@@ -201,6 +201,48 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # and the sweep is cheap when there is nothing to do, which after the
     # backfill is the normal case.
     ScheduleEntry(kind="sweep_titles", every_seconds=60 * 60, priority=8),
+    # **B17's closure test, now standing rather than asked once.** Measured
+    # 2026-10-05, `coverage_check` had run three times ever — all on
+    # 2026-09-30, all on one keyword — and nothing read the result. Its last
+    # row said the gap was closed (`ratio: 1.0` against a 0.416 baseline), so
+    # the only thing missing was anybody noticing if it came back. That is
+    # B32's shape, and `docs/CLAIMS.md` dates the sentence it measures 17/10.
+    #
+    # **05:10 BRT, and the hour is three decisions.**
+    #
+    # *After the inventory.* `reconcile_open_tenders` starts at 04:00 and is
+    # the sweep that closes this gap, so measuring before it would conflate
+    # staleness with the keying defect B17 is about. How long to wait is
+    # **inferred, not measured**: the one recorded cycle finished at 07:37 UTC
+    # = 04:37 BRT (B17's card: `complete: True, coverage: 1.0, records: 25817`)
+    # and the entry that started it is this file's 04:00, which makes it about
+    # 37 minutes — a single run, read off two facts rather than timed. 70
+    # minutes is roughly two of those. If a cycle ever runs long enough to
+    # overlap, the symptom is visible rather than silent: the reading comes
+    # back short while the sweep is still filling the table, and `/admin` says
+    # so.
+    #
+    # *Inside somebody else's wake.* `refresh_catalog_prices` queues its
+    # per-code jobs at 04:40 and they are "about an hour of calling a day", so
+    # at 05:10 the worker and the Neon compute are already awake. This entry
+    # therefore costs a job slot rather than a five-minute suspend tail — the
+    # same reasoning that keeps `neon_usage` on `reconcile_open_tenders`' 04:00.
+    #
+    # *Priority 8, not 9, and that is the point of the hour.* At 9 it would
+    # queue behind up to a thousand per-code price jobs and be measured at an
+    # unpredictable time hours later; at 8 it overtakes them and takes about a
+    # minute (seven queries, at most 84 requests). Still behind every collector
+    # at 5 — a missing coverage reading degrades a watchdog, it does not lose a
+    # tender — which is exactly where `sweep_titles` sits for the same reason.
+    #
+    # No payload: the absence of `q` is what makes the job the standing set
+    # (`coverage_check.DEFAULT_QUERIES`) rather than one ad-hoc keyword. The
+    # hour is BRT; the `events` row it writes is UTC (08:10), per CLAUDE.md.
+    #
+    # The alarm on it is "no successful measurement in N days, or a measured
+    # ratio under target" — read by `apps/web/lib/admin/coverage.ts` — and
+    # **never** "0 queued", for B32's reason.
+    ScheduleEntry(kind="coverage_check", daily_at="05:10", priority=8),
     ScheduleEntry(kind="weekly_digest", daily_at="07:00", priority=9, weekday=0),
     # The safety net under ADR-0001's fallback. Every tender the search sweep
     # ingests arrives with no `estimated_value` — the index does not publish one
