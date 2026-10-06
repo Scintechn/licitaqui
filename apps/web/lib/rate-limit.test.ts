@@ -60,7 +60,13 @@ describe('clientAddress', () => {
 describe('hashClient', () => {
   it('never returns the address it was given', () => {
     const hash = hashClient('203.0.113.7')
-    expect(hash).not.toContain('203')
+    // **Not `not.toContain('203')`.** `salt()` is per-process, so the digest is
+    // 24 fresh hex characters every run and a 3-character fragment of the input
+    // lands in one by coincidence about once in 186 runs (22 windows x 16^-3).
+    // It went red on a green tree on 2026-10-06, and when it passed it proved
+    // nothing: the assertion the test's own name makes is that the hash is not
+    // the address, which the shape below already guarantees — `.` is not hex.
+    expect(hash).not.toBe('203.0.113.7')
     expect(hash).toMatch(/^[0-9a-f]{24}$/)
     expect(hashClient('203.0.113.7')).toBe(hash)
     expect(hashClient('203.0.113.8')).not.toBe(hash)
