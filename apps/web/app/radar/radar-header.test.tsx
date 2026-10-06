@@ -175,12 +175,27 @@ describe('the Radar header and the tab help (D19)', () => {
   })
 
   it('reports an unanswered list as unknown, never as no company', () => {
-    const out = render({ status: { kind: 'analyzing', what: 'list' }, grouping: null })
     // The CNPJ driving the list may be in the visitor cookie, which no browser
-    // code can read. Before the route has answered, nothing is asserted.
-    expect(header(out)).toContain(list.companyFallback)
-    expect(header(out)).not.toContain(list.noCompany)
-    expect(headerSays(out)).toBe('none')
+    // code can read. Until the route has answered, nothing is asserted — and a
+    // request that failed or timed out has not answered either, so an absence
+    // must not be read out of a failure.
+    const unanswered: RadarStatus[] = [
+      { kind: 'analyzing', what: 'company' },
+      { kind: 'analyzing', what: 'list' },
+      { kind: 'timeout' },
+      { kind: 'error', code: 'server_error' },
+    ]
+    for (const status of unanswered) {
+      const out = render({ status, grouping: null })
+      expect(header(out), status.kind).toContain(list.companyFallback)
+      expect(header(out), status.kind).not.toContain(list.noCompany)
+      expect(headerSays(out), status.kind).toBe('none')
+    }
+
+    // `needCnpj` is the exception: it is reached only when there is neither a
+    // CNPJ nor a keyword, so there provably is no company.
+    const asked = render({ status: { kind: 'needCnpj' }, grouping: null, counts: null })
+    expect(header(asked)).toContain(list.noCompany)
   })
 
   /**

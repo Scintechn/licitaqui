@@ -175,7 +175,16 @@ function CompanyLine({
   // teaches people the header is dead. The way to change the search is the
   // filter row below, which now says so in as many words.
   if (!grouping) {
-    const unknown = status.kind === 'analyzing'
+    /**
+     * "There is no company" is a claim, and only a list route that **answered**
+     * supports it. `analyzing`, `timeout` and `error` are all states in which
+     * nobody asked or nobody replied — the request that would have reported a
+     * cookie CNPJ never came back — so saying "sem empresa informada" there
+     * would be the same defect in the opposite direction, asserting an absence
+     * from a failure. `needCnpj` is the one unanswered state that *does* know:
+     * it is reached only when there is neither a CNPJ nor a search term.
+     */
+    const unknown = !(status.kind === 'ready' || status.kind === 'needCnpj')
     return (
       <p className="text-meta text-muted">
         {unknown ? list.companyFallback : list.noCompany} · {where}
