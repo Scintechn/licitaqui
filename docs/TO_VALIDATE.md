@@ -519,7 +519,27 @@ worth keeping the `awards` path alive for — it is the only source that can
 produce one, and the approach doc already recommends keeping the table because it
 "costs nothing to keep".
 
-## 13. The Radar header shipped two sentences nobody approved — 2026-10-06, D19
+## 13. ~~The Radar header shipped two sentences nobody approved~~ — **resolved 2026-10-06**
+
+> **Sci approved all of it on 2026-10-06**, and decided the open question with it.
+>
+> `radar.list.noCompany` and `radar.list.groupHintNoCnae` stand as drafted.
+>
+> **The gate moves from *CNAEs read* to *segments reached*.** The question this
+> row raised was that a company whose CNAEs map to no segment still read *"seu
+> CNAE atende"* over an empty Compatíveis tab — a claim about a match where
+> there is none, and the same shape as D19 one step further in. B6 leaves 777
+> of 1 332 CNAEs unmapped on purpose, so it is a normal outcome rather than an
+> error. A third string, `radar.list.groupHintNoSegment` — *"seu CNAE não
+> alcança nenhum segmento ainda"* — now says so, and `segmentState()` in
+> `radar-view.tsx` is what the hint reads.
+>
+> Note for whoever reads the test next: **D19's invariant loop cannot catch
+> this one.** It holds the header and the hint to agreeing about *CNAEs*, and
+> in this state they did agree — the header truthfully said "3 CNAEs" while
+> the hint claimed a match. The header renders CNAEs, not segments, so the
+> loop is structurally blind to it. A dedicated case in
+> `radar-header.test.tsx` carries it, and it fails on the old behaviour.
 
 D19 closed a false claim by **adding two strings**, which is the one thing legal
 brief §5 says not to do without Sci. They render on `/radar` today, so this is a

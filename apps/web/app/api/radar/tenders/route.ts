@@ -143,6 +143,13 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
      * product, but it is a product decision this card did not ask for, so it is
      * not made here.
      *
+     * **Decided by Sci, 2026-10-06: it stays on the visitor row.** The CNPJ
+     * somebody is searching with right now describes what they want better than
+     * one set once at signup — and because the two diverge permanently, the
+     * account value would silently win for ever. If the account's company is
+     * ever to be preferred, it should be a visible choice on screen rather than
+     * a fallback nobody can see.
+     *
      * Two reads instead of one in exactly one case: a signed-in caller who omits
      * `?cnpj=`. `readViewer` stops at the session for them, so the visitor row is
      * read only when it is going to be used.
