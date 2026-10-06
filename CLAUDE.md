@@ -279,6 +279,24 @@ mis-attribute both the commit and the Vercel deployment. Verify with
    applies both appends cleanly. Rebase and force-push with `--force-with-lease`; do not
    resolve it in the web editor.
 
+   **"Applies both appends cleanly" is true across lanes and false within one.**
+   `docs/STATUS.md` is `merge=union` in `.gitattributes`, so a rebase keeps *both*
+   sides of every hunk. That is right for two lanes appending different rows. It is
+   wrong for one lane **editing its own appended row** — the ordinary case, because
+   the row is appended with `(pending)` and edited once the PR number exists. Union
+   replays that edit as a **second line** rather than a replacement, so the stale
+   copy comes back on **every** rebase of that branch. Four times on 2026-10-05
+   (B35, D37, and one branch twice), each one a row saying `PR pending` beside the
+   same row carrying its link.
+
+   So after any rebase that touches `STATUS.md`, **count your own row**. And when
+   you delete the extra, **assert the two are the same row first** — one attempt at
+   this compared them with a whole-file `md5`, which cannot tell two lines apart,
+   and would have kept the stale copy had its own assertion not refused. The two
+   differed by exactly one field. Either append once and fill the link in a second
+   commit you expect to see duplicated, or write the row with the PR number already
+   in it.
+
 Decisions marked open in plan §1.2 are Sci's: stop and ask. External side effects need
 Sci's OK — Asaas **sandbox** only, no real messages except to Sci's test contacts, no
 migrations on the Neon `main` branch without Sci.
