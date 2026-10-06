@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Queue the one-off 08/10 19:00 BRT founders-opening broadcast (task E5).
+"""Queue the one-off 17/10 12:00 BRT founders-opening broadcast (task E5).
 
     python worker/scripts/schedule_founders_opening.py            # dry run
     python worker/scripts/schedule_founders_opening.py --commit    # writes the row

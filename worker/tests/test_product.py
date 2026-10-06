@@ -12,6 +12,7 @@ the value is stale. The fix is to copy the number across, not to relax the test.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 from licitaqui import product
@@ -64,3 +65,42 @@ def test_money_is_formatted_the_way_the_templates_write_it() -> None:
     # No non-breaking space: it reads identically and compares unequal, so an
     # assertion — or a person running grep — would silently miss it.
     assert " " not in product.brl(26)
+
+
+def test_the_founders_opening_date_matches_the_canonical_file() -> None:
+    """The assertion that did not exist when the opening moved.
+
+    Sci moved the opening to 2026-10-17 on 2026-10-03 and cancelled the
+    broadcast queued for 08/10. `docs/product.json` moved and `apps/web` moved
+    with it; the worker did not, because the date lived in `whatsapp.py`'s own
+    constants rather than in `product`, where every other product fact is
+    asserted against this file.
+
+    It was not a dormant difference. `broadcast_at()` builds its instant from
+    this date, and a `run_after` in the past makes a job claimable
+    **immediately** -- so a stale value fires early rather than not at all.
+    """
+    assert date.fromisoformat(FACTS["founders"]["opensOn"]) == product.OPENING_DATE
+
+
+def test_the_founders_opening_hour_matches_the_canonical_file() -> None:
+    """Separate from the date, because the two are allowed to move apart.
+
+    The date is copy -- `{{data_abertura}}`, on the welcome and the waitlist
+    e-mail -- and the hour belongs to the broadcast sweep alone. One test each,
+    so a failure names which one drifted.
+    """
+    assert FACTS["founders"]["opensAtBrt"] == product.OPENING_HOUR_BRT
+
+
+def test_the_broadcast_defaults_to_the_product_values() -> None:
+    """`whatsapp.py` must not keep a second copy of either.
+
+    This is the part the two tests above cannot see: they would both pass while
+    `whatsapp.py` ignored `product` entirely and used its own literal, which is
+    exactly the state this card found.
+    """
+    from licitaqui import whatsapp
+
+    assert whatsapp.DEFAULT_OPENING_DATE is product.OPENING_DATE
+    assert whatsapp.DEFAULT_BROADCAST_HOUR is product.OPENING_HOUR_BRT

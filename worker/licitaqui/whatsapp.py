@@ -113,10 +113,16 @@ MAX_INTERVAL_SECONDS = 30.0
 #: clock skew between containers must not wedge the queue.
 MAX_WAIT_SECONDS = 35.0
 
-#: Opening day (`docs/DEVELOPMENT_PLAN.md` M3: 08/10 at 19:00), overridable so a
-#: slipped date is an env change rather than a deploy. ``{{data_abertura}}``.
+#: Opening day — **2026-10-17**, Sci 2026-10-03 — still overridable so a slipped
+#: date is an env change rather than a deploy. ``{{data_abertura}}``.
+#:
+#: The value lives in :mod:`licitaqui.product` now, beside the prices and the
+#: seat total, because it is a product fact and `test_product.py` asserts those
+#: against `docs/product.json`. It was here, alone, when Sci moved the opening:
+#: the web app followed `product.json` and the worker did not, and no test
+#: could see the difference.
 OPENING_DATE_VAR = "FOUNDERS_OPENING_DATE"
-DEFAULT_OPENING_DATE = date(2026, 10, 8)
+DEFAULT_OPENING_DATE = product.OPENING_DATE
 
 #: ``{{link_acesso}}``, E5/E6's `founders-opening`. See :func:`opening_link`.
 OPENING_LINK_VAR = "FOUNDERS_OPENING_LINK"
@@ -603,12 +609,12 @@ def whatsapp_inbound(ctx: JobContext) -> None:
 # `founders-opening.md`'s own front matter says it is "fired from the /admin
 # button" — but no `/admin` exists in this repository today, and building one
 # is a scope this card does not ask for. What the card does ask for is a
-# *dated* run at 08/10 19:00 BRT, so this is a sweep enqueued for exactly that
+# *dated* run at 17/10 12:00 BRT, so this is a sweep enqueued for exactly that
 # instant rather than a button someone has to remember to press.
 #
 # `ScheduleEntry` (`licitaqui/scheduler.py`) cannot express it:
 # `__post_init__` requires exactly one of `every_seconds` or `daily_at`, and
-# 08/10 19:00 is neither a cadence nor a daily time — it happens once. Rather
+# 17/10 12:00 is neither a cadence nor a daily time — it happens once. Rather
 # than stretch that dataclass for a shape it was not built for (and touch a
 # file other lanes are also changing), this uses the primitive every job kind
 # already has: `queue.enqueue`'s `run_after` and the `jobs.run_after <= now()`
@@ -638,13 +644,13 @@ def whatsapp_inbound(ctx: JobContext) -> None:
 BROADCAST_JOB_KIND = "founders_opening_broadcast"
 OPENING_TEMPLATE = "founders-opening"
 
-#: 19:00 BRT (`docs/DEVELOPMENT_PLAN.md` M3), the same day :func:`opening_date`
+#: 12:00 BRT (`docs/product.json`), the same day :func:`opening_date`
 #: already names. A separate variable rather than folded into
 #: :data:`OPENING_DATE_VAR`: the date is copy (``{{data_abertura}}``, on the
 #: welcome and the waitlist e-mail), and the hour belongs to this sweep alone —
 #: moving one must not silently move the other.
 BROADCAST_HOUR_VAR = "FOUNDERS_OPENING_HOUR"
-DEFAULT_BROADCAST_HOUR = "19:00"
+DEFAULT_BROADCAST_HOUR = product.OPENING_HOUR_BRT
 
 BRT_ZONE = "America/Sao_Paulo"
 
@@ -658,7 +664,7 @@ def broadcast_hour() -> tuple[int, int]:
 
 
 def broadcast_at(*, day: date | None = None) -> datetime:
-    """08/10 19:00 BRT (or an overridden day/hour), converted to UTC.
+    """17/10 12:00 BRT (or an overridden day/hour), converted to UTC.
 
     `queue.enqueue`'s `run_after` and `jobs.run_after <= now()` are both
     compared against the database's own ``now()``, which is UTC (CLAUDE.md's
