@@ -157,6 +157,89 @@ async function cleanup() {
   await client.query('delete from companies where cnpj = any($1::bpchar[])', [cnpjs])
 }
 
+/**
+ * A `plan_limits` row — its `period` and a `quantity` the caller can count to —
+ * read in the same test as the assertion that uses it (card **D64**).
+ *
+ * The Básico test below pinned `limit: 5` twice and wrote out five allowed calls
+ * to match, which is a bet on a row this run does not write: `plan_limits` is
+ * migration-seeded reference data and `entitlement.db.test.ts` inserts and
+ * updates it. The two are on separate databases **today**; **B31**, which Sci
+ * ruled on 2026-10-07 and **D63** records, drops all of them but one, and after
+ * that `RUN_ID` scoping — which cannot scope a read — is the only isolation left.
+ *
+ * Owning the row is not available here for the same reason as in
+ * `lib/radar/radar.db.test.ts`: the plan comes from the signed-in user's
+ * subscription and the route looks it up by name, so no input would make it
+ * consult a run-scoped plan. Read by its own query rather than through
+ * `readLimit`, so a regression inside the function the route uses cannot move
+ * both sides of the assertion together.
+ *
+ * Throws when the row is absent — naming migration `0002`, like `soleCnaeFor` in
+ * `radar.db.test.ts` — and throws again when the quantity is not a number the
+ * caller can count to. Both matter: `readLimit` reads a missing row as `0`, and
+ * `null` means unlimited, so either would make "refused after `granted` calls"
+ * pass without anything having been exhausted. The message says *value* and not
+ * *quota* on purpose: `visitor/days` goes through here too and `quota.ts` is
+ * explicit that it is "not a quota", so a reader who hits the message on that row
+ * should not go looking for a quota bug.
+ */
+async function grantedLimit(plan: string, feature: string) {
+  const found = await pool().query<{ period: string | null; quantity: number | null }>(
+    'select period, quantity from plan_limits where plan = $1 and feature = $2',
+    [plan, feature],
+  )
+  const row = found.rows[0]
+  if (!row) throw new Error(`plan_limits has no ${plan}/${feature} row — is migration 0002 applied?`)
+  const quantity = row.quantity === null ? null : Number(row.quantity)
+  if (quantity === null || !Number.isInteger(quantity) || quantity < 1) {
+    throw new Error(
+      `plan_limits ${plan}/${feature} is ${quantity}; this test needs a countable value of 1 or more`,
+    )
+  }
+  return { period: row.period, quantity }
+}
+
+/**
+ * Ages every `visitors` row of this company **a full day** past the free window.
+ *
+ * Three tests below wrote `interval '4 days'` for this and one wrote
+ * `interval '9 days'` — `plan_limits (visitor, days)` plus a margin somebody
+ * chose. That is the same bet as `limit: 5`, one step removed: not an assertion
+ * about the quantity, but a setup that is only *past* the window while the row
+ * still says 3, and a writer moving it to 5 turns every `expired: true` below red.
+ * So the window comes from the row and the margin stays what it was.
+ *
+ * **A day and not an hour, and the §4b review of this work is why.** A tight edge
+ * belongs in `radar.db.test.ts`, where the test asserts *both* sides of the
+ * boundary and either direction fails red. Here one caller — *"has no visitor
+ * window to run out of"* — asserts **202**, so an ageing that failed to expire the
+ * row would pass **green** having demonstrated nothing: `days + 1` day is the same
+ * 24 h of slack `interval '4 days'` had over a seeded 3, which is what the margin
+ * was for.
+ *
+ * And the setup asserts itself rather than being assumed: the read-back below
+ * fails loudly if no row was aged, which a `cnpj` that matches nothing would
+ * otherwise do silently. Both sides of that comparison are the database's own
+ * clock, never this laptop's (CLAUDE.md's three clocks).
+ */
+async function ageVisitorsPastWindow(cnpj: string) {
+  const { quantity: days } = await grantedLimit('visitor', 'days')
+  const aged = await pool().query(
+    `update visitors
+        set created_at = now() - (($2::int + 1) * interval '1 day')
+      where cnpj = $1`,
+    [cnpj, days],
+  )
+  expect(aged.rowCount, `no visitor of this company to age past the ${days}-day window`).toBeGreaterThan(0)
+  const inside = await pool().query<{ n: string }>(
+    `select count(*) n from visitors
+      where cnpj = $1 and created_at > now() - ($2::int * interval '1 day')`,
+    [cnpj, days],
+  )
+  expect(Number(inside.rows[0]?.n), 'a visitor of this company is still inside the window').toBe(0)
+}
+
 // ───────────────────────────── request helpers ─────────────────────────────
 
 /**
@@ -277,7 +360,15 @@ suite('U1 — accounts and quota enforcement (database)', () => {
       // apart either. The stranger is the test below.
       const machine = device('incognito')
 
-      // 1. A device searches the CNPJ and uses both of its screenings.
+      // 1. A device searches the CNPJ and uses its whole allowance — however
+      //    many `plan_limits` grants a visitor, read rather than written out
+      //    here as two calls and a third (D64).
+      const granted = (await grantedLimit('visitor', 'screening')).quantity
+      expect(
+        TENDERS.length,
+        `this test needs ${granted + 2} tenders: the visitor's allowance and one over it`,
+      ).toBeGreaterThan(granted + 1)
+
       const first = await searchAs({}, SHARED_CNPJ, machine)
       const deviceA = visitorCookieFrom(first.response)
       expect(first.body.state).toBe('ready')
@@ -285,22 +376,25 @@ suite('U1 — accounts and quota enforcement (database)', () => {
       expect(first.body.visitor).toMatchObject({ expired: false, screeningsUsed: 0 })
 
       const cookiesA = { [VISITOR_COOKIE]: deviceA }
-      expect(
-        (await postScreening(request(cookiesA, undefined, machine), params(TENDERS[1]))).status,
-      ).toBe(202)
-      expect(
-        (await postScreening(request(cookiesA, undefined, machine), params(TENDERS[2]))).status,
-      ).toBe(202)
-      // Two spent: the third is refused on the quota, the ordinary §10 path.
-      const spent = await postScreening(request(cookiesA, undefined, machine), params(TENDERS[3]))
+      for (let used = 0; used < granted; used += 1) {
+        const allowed = await postScreening(
+          request(cookiesA, undefined, machine),
+          params(TENDERS[1 + used]),
+        )
+        expect(allowed.status, `screening ${used + 1} of ${granted} was refused`).toBe(202)
+      }
+      // The allowance is spent: the next one is refused on the quota, the
+      // ordinary §10 path, and not yet on the clock.
+      const spent = await postScreening(
+        request(cookiesA, undefined, machine),
+        params(TENDERS[1 + granted]),
+      )
       expect(spent.status).toBe(402)
 
-      // 2. Three days pass. (The row is aged rather than the clock advanced —
-      //    this is the only way to reach the window's far side in a test.)
-      await pool().query(
-        "update visitors set created_at = now() - interval '4 days' where cnpj = $1",
-        [SHARED_CNPJ],
-      )
+      // 2. The free window runs out. (The row is aged rather than the clock
+      //    advanced — the only way to reach the window's far side in a test. How
+      //    many days is read from `plan_limits`, not written in here: D64.)
+      await ageVisitorsPastWindow(SHARED_CNPJ)
 
       // 3. **Incognito.** No cookie whatsoever: a different browser profile, a
       //    cleared jar, a new device. It gets a brand-new `visitors` row with
@@ -322,9 +416,12 @@ suite('U1 — accounts and quota enforcement (database)', () => {
       if (second.body.state !== 'ready') throw new Error('expected ready')
       expect(second.body.visitor).toMatchObject({ expired: true })
 
+      // Any tender we hold: the window closes before the quota is consulted, so
+      // which one it is cannot change the answer, and the `usage` count below
+      // says the same thing from the other side.
       const refused = await postScreening(
         request({ [VISITOR_COOKIE]: deviceB }, undefined, machine),
-        params(TENDERS[4]),
+        params(TENDERS[0]),
       )
       const body = (await refused.json()) as ScreeningResponse
       expect(refused.status).toBe(403)
@@ -371,10 +468,7 @@ suite('U1 — accounts and quota enforcement (database)', () => {
 
       const first = await searchAs({}, SHARED_CNPJ, machine)
       expect(first.body.state).toBe('ready')
-      await pool().query(
-        "update visitors set created_at = now() - interval '4 days' where cnpj = $1",
-        [SHARED_CNPJ],
-      )
+      await ageVisitorsPastWindow(SHARED_CNPJ)
 
       // Same address, a user-agent the caller made up. Still expired.
       const disguised = await searchAs({}, SHARED_CNPJ, { ...machine, userAgent: 'x1' })
@@ -396,10 +490,7 @@ suite('U1 — accounts and quota enforcement (database)', () => {
       // Somebody searched this company and their window aged out.
       const theirs = await searchAs({}, SHARED_CNPJ, mine)
       expect(theirs.body.state).toBe('ready')
-      await pool().query(
-        "update visitors set created_at = now() - interval '4 days' where cnpj = $1",
-        [SHARED_CNPJ],
-      )
+      await ageVisitorsPastWindow(SHARED_CNPJ)
 
       // A different machine, on a different connection, searches the same
       // number for the first time. It is not their clock.
@@ -445,27 +536,69 @@ suite('U1 — accounts and quota enforcement (database)', () => {
   // ──────────────────────────── Básico, with an account ────────────────────
 
   describe('Básico', () => {
-    it('gets five screenings a month from plan_limits, not two', async () => {
+    it('gets a month of screenings from plan_limits, not the visitor’s allowance', async () => {
       const { cookies } = await signedIn('basico')
+      // The allowance comes from the table, not from memory (D64): `limit: 5`
+      // was pinned twice here and written a third time into the shape of the
+      // loop, and `plan_limits` is a row this run does not write.
+      const basico = await grantedLimit('basico', 'screening')
+      const granted = basico.quantity
+      // **The period is read, so it also has to be constrained.** `period: 'month'`
+      // used to be a literal here, and it was load-bearing: `periodStart` in
+      // `quota.ts` gives `month` and `week` a `date_trunc` predicate and gives
+      // everything else **none at all**, so a row saying `total` would grant
+      // Básico five screenings for life while `pt-BR.json` sells them "por mês".
+      // Reading the value without this would have been the §4b failure — narrower
+      // than what it replaced — so the shape is asserted where the number is not.
+      expect(
+        ['month', 'week'],
+        'Básico’s allowance must be one that resets, or nothing renews it',
+      ).toContain(basico.period)
+      /**
+       * **What carries "not the visitor's" now that `5` and `2` are gone.**
+       *
+       * `plan: 'basico'` below is the whole discriminator, and a stronger one
+       * than the literals were: the route reports `limit.plan`, and `limit` is
+       * whatever `readLimit(planOf(viewer), …)` returned — so that string is a
+       * statement about which row it keyed on, not about the number in it. With
+       * `limit` and `period` read off that same row, the test says *the route
+       * looked up Básico's row and reported it*, and the refusal after exactly
+       * `granted` calls says it spent against it.
+       *
+       * A first version also asserted that Básico's quantity and period differ
+       * from the visitor's. That was deleted on measurement: it is a claim about
+       * two rows this suite does not own, which is the defect D64 exists to
+       * close, and it reddened under the very interference written to prove the
+       * card — while adding nothing `plan: 'basico'` does not already say.
+       */
+      expect(
+        TENDERS.length,
+        `this test needs ${granted + 1} tenders to exhaust Básico and be refused once`,
+      ).toBeGreaterThan(granted)
 
       const first = await postScreening(request(cookies), params(TENDERS[0]))
       const body = (await first.json()) as ScreeningResponse
       expect(first.status).toBe(202)
       if (body.state !== 'analyzing') throw new Error(`expected analyzing, got ${body.state}`)
-      expect(body.quota).toMatchObject({ plan: 'basico', period: 'month', limit: 5, used: 1 })
+      expect(body.quota).toMatchObject({
+        plan: 'basico',
+        period: basico.period,
+        limit: granted,
+        used: 1,
+      })
       // The 3-day banner is a visitor affordance and must be gone.
       expect(body.visitor ?? null).toBeNull()
 
-      // Four more distinct tenders exhaust the month; the sixth is refused.
-      for (const id of TENDERS.slice(1, 5)) {
+      // The rest of the month's allowance on distinct tenders; the next is refused.
+      for (const id of TENDERS.slice(1, granted)) {
         expect((await postScreening(request(cookies), params(id))).status).toBe(202)
       }
-      const refused = await postScreening(request(cookies), params(TENDERS[5]))
+      const refused = await postScreening(request(cookies), params(TENDERS[granted]))
       const over = (await refused.json()) as ScreeningResponse
       expect(refused.status).toBe(402)
       if (over.state !== 'error') throw new Error('expected an error')
       expect(over.error).toBe('quota_exceeded')
-      expect(over.quota).toMatchObject({ limit: 5, used: 5, left: 0 })
+      expect(over.quota).toMatchObject({ limit: granted, used: granted, left: 0 })
     }, 120_000)
 
     it('never mints a visitor row for a signed-in user', async () => {
@@ -481,14 +614,11 @@ suite('U1 — accounts and quota enforcement (database)', () => {
       for (const row of charged.rows) expect(row.visitor_id).toBeNull()
     }, 60_000)
 
-    it('has no three-day window to run out of', async () => {
+    it('has no visitor window to run out of', async () => {
       const { userId, cookies } = await signedIn('no-window')
       // Age everything a visitor of this company could inherit. An account is
       // not a visitor, so none of it applies.
-      await pool().query(
-        "update visitors set created_at = now() - interval '9 days' where cnpj = $1",
-        [SHARED_CNPJ],
-      )
+      await ageVisitorsPastWindow(SHARED_CNPJ)
       await searchAs(cookies, SHARED_CNPJ)
       const response = await postScreening(request(cookies), params(TENDERS[6]))
       expect(response.status).toBe(202)

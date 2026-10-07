@@ -254,7 +254,7 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
       ready: false,
       spent: false,
-      // `visitor` is 2 per total, so this caller is metered.
+      // The visitor plan carries a finite quantity, so this caller is metered.
       metered: true,
       // D26 folded the reading into the same statement; it is `null`
       // wherever there is no current analysis.
@@ -276,7 +276,7 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
       ready: true,
       spent: false,
-      // `visitor` is 2 per total, so this caller is metered.
+      // The visitor plan carries a finite quantity, so this caller is metered.
       metered: true,
       // D26 folded the reading into the same statement; it is `null`
       // wherever there is no current analysis.
@@ -294,7 +294,7 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
       ready: true,
       spent: true,
-      // `visitor` is 2 per total, so this caller is metered.
+      // The visitor plan carries a finite quantity, so this caller is metered.
       metered: true,
       // D26 folded the reading into the same statement; it is `null`
       // wherever there is no current analysis.
@@ -317,7 +317,7 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, spender, await limit(), db())).toEqual({
       ready: false,
       spent: true,
-      // `visitor` is 2 per total, so this caller is metered.
+      // The visitor plan carries a finite quantity, so this caller is metered.
       metered: true,
       // D26 folded the reading into the same statement; it is `null`
       // wherever there is no current analysis.
@@ -345,8 +345,14 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
       expect(seen.metered, `${plan} must not be metered`).toBe(false)
     }
 
+    // Not `toBe(5)` any more (D64): what makes Básico metered is that its
+    // quantity is a number at all, and *which* number is a `plan_limits` row
+    // this suite neither writes nor owns.
     const basic = await readLimit('basico', FEATURES.screening, db())
-    expect(basic.quantity).toBe(5)
+    expect(basic.quantity, 'Básico must carry a finite allowance to be metered').not.toBeNull()
+    // And not zero, which `plan_limits` spells "the plan does not include this" —
+    // a different product state that would satisfy `metered` for the wrong reason.
+    expect(basic.quantity ?? 0, 'a zero allowance is not a metered plan').toBeGreaterThan(0)
     expect((await screeningAvailability(tender, spender, basic, db())).metered).toBe(true)
   })
 
@@ -356,7 +362,7 @@ suite('screeningAvailability, and what a cached analysis costs', () => {
     expect(await screeningAvailability(tender, null, await limit(), db())).toEqual({
       ready: true,
       spent: false,
-      // `visitor` is 2 per total, so this caller is metered.
+      // The visitor plan carries a finite quantity, so this caller is metered.
       metered: true,
       // D26 folded the reading into the same statement; it is `null`
       // wherever there is no current analysis.

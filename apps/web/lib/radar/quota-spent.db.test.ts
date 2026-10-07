@@ -101,11 +101,25 @@ suite('hasSpentOn', () => {
   it('is false for a tender the quota refused', async () => {
     const spender = await newVisitor()
     const limit = await readLimit('visitor', FEATURES.screening, db())
-    // §10: the visitor gets two in total.
-    expect(limit.quantity).toBe(2)
+    // §10 caps the visitor. **How many is the row's business, not this test's**
+    // (D64): `toBe(2)` here, with two `spend` calls written out to match, was a
+    // literal taken from `plan_limits` — migration-seeded reference data that
+    // `entitlement.db.test.ts` writes. And this file is **already** in the same
+    // database as that one: `TEST_DATABASE_URL_D4` above does not exist, so the
+    // fallback puts both on `licitaqui_test` today, which is **D63**. B31 will
+    // make that the arrangement everywhere; here it is the arrangement now.
+    // What has to hold for this test to mean anything is only that there *is* a
+    // countable allowance to run out of; `null` is unlimited and nothing could
+    // then be refused.
+    expect(limit.quantity, 'the visitor allowance must be countable to be exhausted').not.toBeNull()
+    const granted = limit.quantity as number
+    // And not zero: a plan that includes nothing refuses the first `spend` too,
+    // so the refusal below would hold without anything having been exhausted.
+    expect(granted, 'a zero allowance makes the refusal below prove nothing').toBeGreaterThan(0)
 
-    await spend(spender, limit, `${TENDER_A}-1`, db())
-    await spend(spender, limit, `${TENDER_A}-2`, db())
+    for (let spent = 0; spent < granted; spent += 1) {
+      await spend(spender, limit, `${TENDER_A}-${spent + 1}`, db())
+    }
     const refused = await spend(spender, limit, TENDER_B, db())
 
     expect(refused.allowed).toBe(false)
