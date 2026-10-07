@@ -24,8 +24,8 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 9 | Knowledge base and repo disagree on who owns legal copy | future edits | low |
 | 10 | What separates a triagem from an análise completa — depth or breadth | **C2**, and a live sentence on `/` | **high** |
 | 11 | Whether a **closed** tender is ever re-read for its value, and the attempt bound | **B38** | medium |
-| 13 | Two Radar header sentences shipped as drafts: there is no approved copy for "no company" or "no CNAE to compare" | nothing — both render today | medium |
-| 14 | Two *Favoritar* failure sentences shipped as drafts: there is no approved copy for "we could not save this" or "too many, wait a moment" | nothing — both render today on `/radar` | medium |
+| 13 | Two Radar header sentences shipped as drafts: there is no approved copy for "no company" or "no CNAE to compare" | nothing — both render today | ~~medium~~ · **resolved 2026-10-06** — approved; gate moved to segments reached |
+| 14 | Two *Favoritar* failure sentences shipped as drafts: there is no approved copy for "we could not save this" or "too many, wait a moment" | nothing — both render today on `/radar` | ~~medium~~ · **resolved 2026-10-07** — approved as drafted, two sentences, no edital name |
 
 ---
 
@@ -573,7 +573,31 @@ about what was read, it is a one-line change and a third string.
 
 ---
 
-## 14. Two *Favoritar* failure sentences, shipped as drafts — D56, 2026-10-06
+## 14. ~~Two *Favoritar* failure sentences, shipped as drafts~~ — **resolved 2026-10-07**
+
+> **Sci, 2026-10-07: "Approve both as drafted, two sentences, don’t name the edital."**
+> All three questions this row asked are answered.
+>
+> **The wording** — `failed` and `tooMany` ship exactly as drafted; `signedOut` was
+> already his from D23.
+>
+> **One sentence or two** — **two.** The remedy differs, and that is the whole of it:
+> *"Tente de novo"* is wrong advice on a 429, because the route allows 60 a minute
+> and an immediate retry fails again. Pointing the 429 branch at `failed` would have
+> told the reader to do the one thing that makes it worse.
+>
+> **Whether it names the edital** — **no, and not yet.** D57 put every card title in
+> a node with an id, so interpolating costs no new *key*, but it is a new *sentence*
+> and a longer announcement that `aria-atomic` re-reads whole. It would also inherit
+> **D67**: two cards whose visible titles are identical would produce identical
+> announcements, so naming is worth no more than the titles are unique. Revisit it
+> after D67 is measured, not before.
+>
+> The reasoning behind each sentence stays in `pt-BR.json` beside it — *"o edital"*
+> and not *"este edital"* because the region sits twenty cards from the star, and
+> `tooMany` impersonal because the 60/minute budget is per **IP**, counted before
+> the auth check, and spent by un-marking too. Approval does not make that reasoning
+> stale; it is why the sentences read as they do.
 
 D56 closed a hole by **adding two strings**, which legal brief §5 says is Sci's.
 They render on `/radar` today, so this is a decision about live copy rather than
