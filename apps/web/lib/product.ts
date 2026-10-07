@@ -36,9 +36,14 @@ export type StatedLimit = {
  *
  * `plan_limits` is still the runtime authority, and deliberately so: the spec
  * says it twice, *"configurable without a deploy"* (:302) and *"Numbers live in
- * `plan_limits`, not in code"* (:475). **Nothing in a route reads this.** No
- * `readLimit` call was replaced by a constant, and raising Básico from 5 to 8
- * is still one `UPDATE`.
+ * `plan_limits`, not in code"* (:475). **No quota decision reads this.** Not
+ * "no route reads it" — `messages.ts` imports it, so a route that renders copy
+ * does, to produce text. The claim that matters is the narrower one: no
+ * `readLimit` call was replaced by a constant, nothing here answers *"may this
+ * request spend a screening"*, and raising Básico from 5 to 8 is still one
+ * `UPDATE`. In a file whose whole subject is the difference between the stated
+ * number and the live one, the loose version of that sentence is the kind of
+ * claim §4d is about.
  *
  * What it is for is the other half of the promise. `2 triagens`, `3 dias` and
  * `5 triagens por mês` are sold word-for-word in about a dozen catalogue
@@ -83,21 +88,25 @@ export const PLAN_LIMITS: Readonly<Record<string, Readonly<Record<string, Stated
  *
  * Generic over `planLimits` on purpose: a row added to `docs/product.json` is
  * swept and asserted without touching this file, which is what keeps the guard
- * from growing a hole nobody can see. `$`-prefixed keys are comments (the
- * house convention in that file) and are skipped.
+ * from growing a hole nobody can see.
+ *
+ * **No `$`-prefix filter, because one cannot be needed.** The house convention
+ * in `docs/product.json` is a `$…Comment` key, and an earlier version of this
+ * skipped them — dead code: the declared type makes a nested `"$comment"` a
+ * **TS2322** at the import, since `string` is not a `StatedLimit`. So the
+ * comment for this block is `$planLimitsComment`, a **sibling** of
+ * `planLimits`, never a child. A filter here would have told a future author
+ * that nesting one works, and the compiler would then have told them it does
+ * not, in a message about index signatures.
  */
 export const STATED_LIMITS: ReadonlyArray<
   Readonly<{ plan: string; feature: string } & StatedLimit>
 > = Object.freeze(
-  Object.entries(PLAN_LIMITS)
-    .filter(([plan]) => !plan.startsWith('$'))
-    .flatMap(([plan, features]) =>
-      Object.entries(features)
-        .filter(([feature]) => !feature.startsWith('$'))
-        .map(([feature, limit]) =>
-          Object.freeze({ plan, feature, period: limit.period, quantity: limit.quantity }),
-        ),
+  Object.entries(PLAN_LIMITS).flatMap(([plan, features]) =>
+    Object.entries(features).map(([feature, limit]) =>
+      Object.freeze({ plan, feature, period: limit.period, quantity: limit.quantity }),
     ),
+  ),
 )
 
 /** How many months the founder price lasts, and what it becomes after. */

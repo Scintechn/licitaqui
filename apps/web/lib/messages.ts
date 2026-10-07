@@ -76,8 +76,9 @@ const PRODUCT_FACTS: Readonly<Record<string, string>> = Object.freeze({
    * These are the **stated** values. The live quota is still a row in
    * `plan_limits`, read per request by `readLimit`, because the spec says so
    * twice: *"configurable without a deploy"* and *"Numbers live in
-   * `plan_limits`, not in code"*. Nothing here is read by a route; raising
-   * Básico from 5 to 8 is still one `UPDATE` and no deploy.
+   * `plan_limits`, not in code"*. A route does read these — that is what this
+   * file is for — but only to print a sentence: **no quota decision reads
+   * them**, and raising Básico from 5 to 8 is still one `UPDATE` and no deploy.
    *
    * What they close is the copy side. Until D69 the digits were typed into a
    * dozen strings and asserted by nothing — D64 removed the last incidental

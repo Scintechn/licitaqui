@@ -85,92 +85,159 @@ const QUOTA = {
 } as const
 
 /**
- * **Every catalogue sentence that names one of those three, by phrase.**
+ * Every string in the catalogue, as `[path, value]`.
  *
- * `[phrase, where it lives, which row it is]`. Two assertions use it, and they
- * are two halves of one guard:
+ * Arrays are walked with `Object.entries` like everything else, so an index is
+ * a dotted key — `columns.0.0.a`, not `columns[0][0].a`. Spelled the walker's
+ * way, which is the convention `keyword-limits.db.test.ts` already uses and
+ * the only spelling the assertions below can look up.
+ */
+function catalogueStrings(node: unknown, path = ''): Array<readonly [string, string]> {
+  if (typeof node === 'string') return [[path, node] as const]
+  if (node === null || typeof node !== 'object') return []
+  return Object.entries(node).flatMap(([key, value]) =>
+    catalogueStrings(value, path ? `${path}.${key}` : key),
+  )
+}
+
+/** `path → value`, for the raw catalogue and for the resolved one. */
+const stringsAt = (text: string): Map<string, string> =>
+  new Map(catalogueStrings(JSON.parse(text)))
+
+/**
+ * **Every catalogue string that names one of those three, pinned by path.**
  *
- *  - the **source** must contain none of these — a digit typed by hand is
- *    exactly what D64 left unguarded;
- *  - the **resolved** catalogue must contain every one of them — which proves
- *    the token resolves back to the sentence that was approved, and that this
- *    list has not been quietly defeated by a rewording. A sweep that matches
- *    nothing passes for free (`memory: empty-result-is-not-absence`), and this
- *    one walks copy somebody may reword.
+ * `[path, phrase, which row it is]`, one entry per **key** — not per sentence.
+ * Two sentences appear twice in the catalogue (`Seus 3 dias de visitante
+ * acabaram` and `ler 5 editais por mês`), and an earlier version of this list
+ * covered each pair with a single entry whose check was `resolved.includes`.
+ * That is satisfied by **either** of the two, so deleting or rewording one of
+ * the pair kept the guard green while that site silently lost cover — the
+ * exact failure the "still there" half was added to catch. Pinning by path is
+ * what `keyword-limits.db.test.ts` means by *"sweeping them because the regex
+ * happens to match is not the same as pinning them"*.
  *
- * **Scoped by phrase, never by the digit, and `3 dias` is why.** The catalogue
- * says `3 dias` nine times and only four are the visitor window:
+ * Three assertions use it, and they are not interchangeable:
+ *
+ *  - **raw, at that path**: the phrase must be absent, i.e. the number is a
+ *    token. This is the D64 hole.
+ *  - **resolved, at that path**: the phrase must be present. Proves the token
+ *    resolves back to the sentence that was approved, and that the key still
+ *    exists. A sweep that matches nothing passes for free
+ *    (`memory: empty-result-is-not-absence`).
+ *  - **raw, everywhere**: a *generic* `N triagens` ratchet, which is the only
+ *    one of the three that catches a **new** string. See below.
+ *
+ * **Why `dias` is a list and `triagens` is a regex.** The catalogue says
+ * `3 dias` nine times and only four are the visitor window:
  *
  *  - *"3 dias antes de cada cobrança"* — `notice.chargeReminderDays`, five
- *    times (`foundersPage.founderValue.comparisonRows[3].us`,
- *    `foundersPage.faq.columns[1][2].a`, `notifications.billingHelp`,
- *    `radar.landing.plans.body`, `radar.landing.guarantees[2].body`). Approved
+ *    times (`foundersPage.founderValue.comparisonRows.3.us`,
+ *    `foundersPage.faq.columns.1.2.a`, `notifications.billingHelp`,
+ *    `radar.landing.plans.body`, `radar.landing.guarantees.2.body`). Approved
  *    copy about a different promise that happens to be three.
  *  - *"até 3 editais por semana"* — the digest size, a third three.
  *
- * A guard on the bare number would redden all of them.
+ * So no regex on `3 dias` can exist, and `visitor/days` is covered by this
+ * list **only**: a brand-new sentence saying `3 dias` of the visitor window
+ * passes, and so does `três dias` anywhere. That is a real limit of this
+ * guard, not a wording choice, and D69's row says so. `triagens` has no such
+ * collision — after tokenisation the catalogue holds **zero** literal
+ * `N triagens` — so that half gets the ratchet the plan prices have.
  */
 const QUOTA_CLAIMS: ReadonlyArray<readonly [string, string, string]> = [
   // planLimits.visitor.screening — the two screenings before an account.
   [
-    `suas ${QUOTA.visitorScreenings} triagens gratuitas`,
     'plans.quota.visitorLeft',
-    'visitor/screening — inside the ICU `=0` branch, which is part of the surface',
+    `suas ${QUOTA.visitorScreenings} triagens gratuitas`,
+    'visitor/screening — inside an ICU `=0` branch',
   ],
   [
-    `${QUOTA.visitorScreenings} triagens de edital por inteligência artificial`,
     'radar.landing.plans.basicVisitorScreenings',
+    `${QUOTA.visitorScreenings} triagens de edital por inteligência artificial`,
     'visitor/screening',
   ],
   [
+    'radar.landing.faq.columns.0.0.a',
     `faz ${QUOTA.visitorScreenings} triagens por inteligência artificial`,
-    'radar.landing.faq.columns[0][0].a',
     'visitor/screening',
   ],
   // planLimits.visitor.days — the three-day window. NOT the charge reminder.
   [
-    `Sem cadastro · ${QUOTA.visitorDays} dias`,
     'radar.landing.plans.basicVisitorGroup',
+    `Sem cadastro · ${QUOTA.visitorDays} dias`,
     'visitor/days',
   ],
   [
+    'radar.landing.faq.columns.0.0.a',
     `Não nos primeiros ${QUOTA.visitorDays} dias`,
-    'radar.landing.faq.columns[0][0].a',
-    'visitor/days — the same answer carries both visitor rows',
+    'visitor/days — this one answer carries both visitor rows',
   ],
   [
+    'radar.visitor.expiredTitle',
     `Seus ${QUOTA.visitorDays} dias de visitante acabaram`,
-    'radar.visitor.expiredTitle and radar.errors.visitorExpired',
-    'visitor/days — two strings, same sentence',
+    'visitor/days',
+  ],
+  [
+    'radar.errors.visitorExpired',
+    `Seus ${QUOTA.visitorDays} dias de visitante acabaram`,
+    'visitor/days — the same sentence, a second key',
   ],
   // planLimits.basico.screening — five a month, and the period is the fact.
   [
-    `${QUOTA.basicoScreenings} triagens de edital por mês`,
     'founders.waitlist.basicNote',
+    `${QUOTA.basicoScreenings} triagens de edital por mês`,
     'basico/screening',
   ],
   [
-    `${QUOTA.basicoScreenings} triagens de edital por inteligência artificial por mês`,
     'plans.basic.feature2',
+    `${QUOTA.basicoScreenings} triagens de edital por inteligência artificial por mês`,
     'basico/screening',
   ],
   [
-    `continue com ${QUOTA.basicoScreenings} triagens por mês`,
     'plans.quota.visitorSpent',
+    `continue com ${QUOTA.basicoScreenings} triagens por mês`,
+    'basico/screening — see the note on dead copy below',
+  ],
+  [
+    'plans.quota.basicLeft',
+    `suas ${QUOTA.basicoScreenings} triagens deste mês`,
+    'basico/screening — inside an ICU `=0` branch',
+  ],
+  ['billing.cancel.body', `tem ${QUOTA.basicoScreenings} triagens por mês`, 'basico/screening'],
+  [
+    'radar.visitor.expiredBody',
+    `ler ${QUOTA.basicoScreenings} editais por mês`,
     'basico/screening',
   ],
   [
-    `suas ${QUOTA.basicoScreenings} triagens deste mês`,
-    'plans.quota.basicLeft',
-    'basico/screening — inside the ICU `=0` branch',
-  ],
-  [`tem ${QUOTA.basicoScreenings} triagens por mês`, 'billing.cancel.body', 'basico/screening'],
-  [
+    'radar.screening.quotaVisitorBody',
     `ler ${QUOTA.basicoScreenings} editais por mês`,
-    'radar.visitor.expiredBody and radar.screening.quotaVisitorBody',
-    'basico/screening — two strings, same clause',
+    'basico/screening — the same clause, a second key',
   ],
 ]
+
+/**
+ * **Three of those keys are copy nothing renders**, and this guard does not
+ * pretend otherwise.
+ *
+ * `plans.quota.visitorLeft` and `plans.quota.basicLeft` have exactly one
+ * reader, `screeningsLeftCaption`, which returns `null` before `left === 0` can
+ * choose a string — so their `=0` branches, the two this file sweeps, are
+ * unreachable by construction and that file says so deliberately.
+ * `plans.quota.visitorSpent` has no reader at all: approved copy rendered
+ * nowhere, which is CLAUDE.md's named family.
+ *
+ * None of that is D69's to fix (it is carded as D74), but it is why the
+ * assertion below says *"is no longer in the catalogue"* and not *"no longer
+ * renders"*. A test that claims a render it has not seen is the defect this
+ * repository keeps finding.
+ */
+const UNRENDERED = new Set([
+  'plans.quota.visitorLeft',
+  'plans.quota.basicLeft',
+  'plans.quota.visitorSpent',
+])
 
 /**
  * Amounts in those files that are **not** a plan price, each with the reason.
@@ -285,17 +352,39 @@ describe('the product facts, against every file that quotes them', () => {
      * Each is the **phrase**, never the digit. `3` alone is in almost any
      * document — the charge reminder, the digest size, the promo length — and
      * `2` and `5` more so.
+     *
+     * **And each phrase is anchored inside its own clause, which the first
+     * version was not.** `até 3 dias` and `2 triagens por IA` both read fine
+     * today and both go **false-green the moment the number moves**, which is
+     * the only event they exist for:
+     *
+     *  - raise the window to 7 and `até 7 dias` matches §8's *"pode desistir
+     *    em até 7 dias corridos"* — the CDC right of withdrawal, a different
+     *    clause. 30 matches the refund guarantee the same way.
+     *  - raise the visitor's allowance to 5 and `5 triagens por IA` matches
+     *    **Básico's** row, because the visitor's phrase is a strict prefix of
+     *    it, and the visitor's own clause could then say anything.
+     *
+     * So the surrounding words come along: `Uso por até N dias` and
+     * `palavra-chave; N triagens por IA` occur once each, in the §5 row they
+     * are about. This is the same correction the comment above records for
+     * 2026-09-27, one step further — a digit is in almost any document, and a
+     * short phrase is in more of one than you would think.
      */
     [
-      `até ${QUOTA.visitorDays} dias`,
+      `Uso por até ${QUOTA.visitorDays} dias`,
       [TERMS],
-      "the visitor window, in the terms' entitlement table",
+      "the visitor window, in the terms' entitlement table (§5)",
     ],
-    [`${QUOTA.visitorScreenings} triagens por IA`, [TERMS], "the visitor's screenings"],
     [
-      `${QUOTA.basicoScreenings} triagens por IA por mês`,
+      `palavra-chave; ${QUOTA.visitorScreenings} triagens por IA`,
       [TERMS],
-      "Básico's screenings, per month",
+      "the visitor's screenings, in the same §5 row",
+    ],
+    [
+      `**${QUOTA.basicoScreenings} triagens por IA por mês**`,
+      [TERMS],
+      "Básico's screenings, per month — the bold is part of the clause",
     ],
   ]
 
@@ -421,14 +510,18 @@ describe('the product facts, against every file that quotes them', () => {
      * `plan_limits` rows the copy *sells*, and they were pinned only
      * incidentally — literals inside route-contract suites, which D64 was
      * right to delete and which left nothing behind. A migration lowering
-     * Básico to 3 was silent while a dozen strings kept promising five.
+     * Básico to 3 was silent while thirteen strings kept promising five.
      *
-     * Two halves, and the second is not optional. See {@link QUOTA_CLAIMS} for
-     * why every entry is a phrase and which `3 dias` is which.
+     * Three halves, none of them optional. See {@link QUOTA_CLAIMS} for why
+     * `dias` is a list and `triagens` is a regex, and which `3 dias` is which.
      */
-    const typedByHand = QUOTA_CLAIMS.filter(([phrase]) => source.includes(phrase)).map(
-      ([phrase, where, row]) => `"${phrase}" at ${where} (${row})`,
-    )
+    const rawStrings = stringsAt(source)
+    const resolvedStrings = stringsAt(read(COPY))
+
+    // 1. Nothing typed by hand at a path this guard knows.
+    const typedByHand = QUOTA_CLAIMS.filter(
+      ([path, phrase]) => rawStrings.get(path)?.includes(phrase) ?? false,
+    ).map(([path, phrase, row]) => `${path} types "${phrase}" (${row})`)
     expect(
       typedByHand,
       'a plan_limits quantity is typed into pt-BR.json — use {$triagensVisitante}, ' +
@@ -436,18 +529,56 @@ describe('the product facts, against every file that quotes them', () => {
         'reaches every string, and product.db.test.ts can hold the table to it',
     ).toEqual([])
 
-    // **And the sentences are still there.** Without this, deleting a swept
-    // string — or rewording it past the phrase — would make the half above
-    // pass for free, which is the failure mode it exists to catch.
-    const resolved = read(COPY)
-    const vanished = QUOTA_CLAIMS.filter(([phrase]) => !resolved.includes(phrase)).map(
-      ([phrase, where, row]) => `"${phrase}" no longer renders at ${where} (${row})`,
+    /**
+     * 2. **And the sentence is still there, at that key.** Without this the
+     * half above passes for free on a key somebody deleted or reworded.
+     *
+     * Deliberately *"in the catalogue"* and not *"renders"*: three of these
+     * keys are read by nothing or by a branch nothing reaches
+     * ({@link UNRENDERED}), and a test must not claim a screen it has not
+     * seen.
+     */
+    const vanished = QUOTA_CLAIMS.filter(
+      ([path, phrase]) => !(resolvedStrings.get(path)?.includes(phrase) ?? false),
+    ).map(
+      ([path, phrase, row]) =>
+        `${path} no longer carries "${phrase}" (${row})` +
+        (UNRENDERED.has(path) ? ' — note this key renders nowhere today, see D74' : ''),
     )
     expect(
       vanished,
-      'a quota sentence this guard sweeps no longer renders: either the token ' +
-        'binding broke, or the copy was reworded and QUOTA_CLAIMS must follow it ' +
-        '(a reworded sentence is a decision, not a silent loss of cover)',
+      'a quota sentence this guard pins is no longer in the catalogue at its own ' +
+        'key: either the token binding broke, or the copy moved or was reworded ' +
+        'and QUOTA_CLAIMS must follow it (a reworded sentence is a decision, not ' +
+        'a silent loss of cover)',
+    ).toEqual([])
+
+    /**
+     * 3. **The ratchet — the only half that catches a string nobody listed.**
+     *
+     * `N triagens` is sweepable generically because, unlike `3 dias`, it
+     * collides with nothing: after tokenisation the catalogue holds zero
+     * literal `N triagens`, and the ICU `one` branches say `1 triagem`,
+     * singular. So this is the same shape as the plan-price guard above — a
+     * pattern built from the **actual value** — and a new string in any
+     * phrasing fails here rather than slipping past the list.
+     *
+     * `{$diasVisitante}` has no equivalent and cannot get one. That gap is
+     * named in {@link QUOTA_CLAIMS} and in D69's row.
+     */
+    const screeningRatchet = [
+      [QUOTA.visitorScreenings, 'visitor/screening', '{$triagensVisitante}'],
+      [QUOTA.basicoScreenings, 'basico/screening', '{$triagensBasico}'],
+    ] as const
+    const handwrittenScreenings = screeningRatchet.flatMap(([quantity, row, token]) =>
+      [...rawStrings]
+        .filter(([, value]) => new RegExp(`(?<![\\d.,])${quantity} triagens`).test(value))
+        .map(([path]) => `${path} types "${quantity} triagens" (${row} — use ${token})`),
+    )
+    expect(
+      handwrittenScreenings,
+      'a screening quota is typed into pt-BR.json in a phrasing QUOTA_CLAIMS does ' +
+        'not list — use the token; every legitimate one is already bound',
     ).toEqual([])
   })
 

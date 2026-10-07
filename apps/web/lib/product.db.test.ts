@@ -82,20 +82,33 @@ afterAll(async () => {
 
 type Row = { period: string | null; quantity: number | null }
 
-suite('plan_limits · the quotas the copy sells', () => {
-  it('declares at least the three rows the catalogue names', () => {
-    // A guard over an empty list is green for free. `product.test.ts` sweeps
-    // the catalogue from the same declaration, so an emptied `planLimits`
-    // would quietly disarm both halves at once.
+/**
+ * **Outside the database gate, deliberately.**
+ *
+ * This one assertion reads a file and nothing else, and the gate's whole
+ * purpose is the fork pull request with no secrets — so leaving it inside
+ * would skip the "a guard over an empty list is green for free" protection in
+ * exactly the run where no other assertion in this file executes either.
+ */
+describe('the quotas the copy sells, as docs/product.json states them', () => {
+  it('states exactly the rows the catalogue sweep knows how to check', () => {
+    // **Exact equality, and that is the point.** `$planLimitsComment` requires
+    // that a row added here is tokenised and swept in the same PR; this is what
+    // makes that a rule rather than a wish. So a *new* row reddens this too —
+    // the message says so, because the first thing D74 does is add one.
     expect(
       STATED_LIMITS.map(({ plan, feature }) => `${plan}/${feature}`).sort(),
       // Not written `'docs/product.json …'`: `ci-triggers.test.ts` reads a
       // quoted string that *starts* with `docs/` as a build dependency and
       // would take this whole sentence for a path (see D76).
-      'the planLimits rows the copy sells are gone from docs/product.json',
+      'planLimits changed. A row added needs a {$token}, a QUOTA_CLAIMS phrase ' +
+        'and this list, in the same PR; a row removed needs its copy rewritten ' +
+        'first. Either way the sweep in product.test.ts no longer matches it',
     ).toEqual(['basico/screening', 'visitor/days', 'visitor/screening'])
   })
+})
 
+suite('plan_limits · the quotas the copy sells', () => {
   it.each(STATED_LIMITS)(
     'holds $plan/$feature at $quantity per $period, as docs/product.json states',
     async ({ plan, feature, period, quantity }) => {
