@@ -40,6 +40,7 @@ import {
 import { appendTenders } from '@/lib/radar/pagination'
 import { waitForData } from '@/lib/radar/poll'
 import { useAppMenu } from '@/components/app-shell'
+import { wholeListFromCookie, isCnpjRequired, loadingStatus } from './bare-radar'
 import { RadarView, type RadarQuery, type RadarStatus } from './radar-view'
 
 /** The drawer's accessible name lives on the menu's own hidden heading. */
@@ -89,6 +90,19 @@ import { normaliseUf } from '@/lib/radar/ufs'
  * state has a screen to live on — the Radar, with its heading, tabs and state
  * card — instead of a button that spins on a page the user is about to leave.
  * It also makes `/radar?cnpj=…` a real, shareable, reloadable address.
+ *
+ * ## Bare `/radar` asks before it refuses (D55)
+ *
+ * `needCnpj` is an **answer**, never a precondition. This screen used to
+ * short-circuit on `if (!cnpj && !q)` and draw "Comece pelo CNPJ da sua
+ * empresa" before any request left — and `cnpj` there is the *URL's*, which
+ * `/radar` does not carry, while the list route resolves
+ * `?cnpj= ?? visitors.cnpj` from an `httpOnly` cookie the browser cannot see.
+ * Since `/radar` is where the rail, the drawer, the signed-in landing, both
+ * `/fundadores` CTAs, `/conta` and the 404 all point, that refusal met almost
+ * every returning visitor. So the sequence runs, and `needCnpj` is reached only
+ * when the route says `cnpjRequired` — `bare-radar.ts` holds the three
+ * decisions and the reasoning.
  */
 
 const EMPTY_COUNTS = null
@@ -155,8 +169,17 @@ type Data = {
  * Nothing read yet. The key is `''`, which `listKey` can never produce — it
  * always joins its fields with a NUL separator — so this state matches no
  * search and is never written to the cache.
+ *
+ * **It carries no `status`, and the type is what enforces that.** Every one of
+ * the five uses spreads this object and names its own — the mount initializer
+ * asks `loadingStatus` for one (D55), and the resets below carry `error`,
+ * `timeout` and `needCnpj`. It used to hold `analyzing · company`, which after
+ * D55 was a value nothing could render and the pre-D55 sentence
+ * ("Consultando o CNPJ…") surviving in the one place that no longer decided
+ * anything. `Omit` deletes it rather than documenting it, so a new caller has
+ * to say which state it means and cannot inherit a stale default.
  */
-const INITIAL: Data = {
+const INITIAL: Omit<Data, 'status'> = {
   grouping: null,
   visitor: null,
   counts: EMPTY_COUNTS,
@@ -166,7 +189,6 @@ const INITIAL: Data = {
   nextCursor: null,
   loadingMore: false,
   freshness: null,
-  status: { kind: 'analyzing', what: 'company' },
   readAt: 0,
   key: '',
 }
@@ -257,8 +279,15 @@ export function RadarScreen() {
    * and those mounts have no server-rendered HTML to disagree with.
    */
   const [data, setData] = useState<Data>(() => {
-    const restored = restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
-    return restored ? fromSnapshot(restored.snapshot, key) : INITIAL
+    const restored = wholeListFromCookie(cnpj, q)
+      ? null
+      : restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+    if (restored) return fromSnapshot(restored.snapshot, key)
+    // The first frame the reader sees — the page is `force-dynamic`, so this is
+    // server-rendered — and it has to be honest about which read is outstanding.
+    // On a bare `/radar` there is no `?cnpj=` to post, so "Consultando o CNPJ…"
+    // would name a request that is never made (D55).
+    return { ...INITIAL, status: loadingStatus(cnpj) }
   })
 
   /**
@@ -370,6 +399,36 @@ export function RadarScreen() {
      * happen to be written in. This states the rule instead.
      */
     if (data.key !== key) return
+    /**
+     * **A cookie-resolved list is not cached at all (D55).**
+     *
+     * `listKey` is every parameter that changes what the route returns, and for
+     * a bare `/radar` one of them is `visitors.cnpj` — which is `httpOnly` and
+     * cannot be put in the key. So the entry would be filed under a name that
+     * does not identify its contents, and `list-cache.ts` has both halves of
+     * what that costs: a direct key hit is trusted, and inside
+     * `REVALIDATE_AFTER_MS` it is served with **no request at all**. Search
+     * company B, press *Radar* in the rail, and Brilho's four editais come back
+     * under Brilho's name while the device is on Vida — right-looking, stale,
+     * and nothing on screen to say so. Past that minute it is worse, not
+     * better: `revalidate` merges page 1 **by id** (`refreshTenders`), so the
+     * answer would swap the header to the new company and leave the old
+     * company's rows beneath it, which is D19 recreated by its own fix.
+     *
+     * Not caching it costs one list request on the way back from an edital and
+     * loses the scroll position there — carded as **D60**, because the only
+     * sound fix is a key that can see what the route resolved, and that is a
+     * contract change.
+     *
+     * **The line this draws is not the whole of the defect.** `/radar?q=…` with
+     * a cookie CNPJ is grouped by that company too — the route resolves the
+     * cookie before it looks for a keyword — so its snapshot is mis-keyed in the
+     * same way, one degree less badly. That predates D55 and taking the cache
+     * from every keyword search is a product cost rather than a correction, so
+     * D60 carries both shapes; `wholeListFromCookie` is named for what it
+     * actually tests.
+     */
+    if (wholeListFromCookie(cnpj, q)) return
     const status = snapshotStatus(data.status)
     if (!status || data.tenders.length === 0 || data.readAt === 0) return
     saveList(key, {
@@ -385,7 +444,7 @@ export function RadarScreen() {
       savedAt: data.readAt,
       scrollY: scrollY.current,
     })
-  }, [key, data])
+  }, [key, data, cnpj, q])
 
   /**
    * Leaving: remember where they were, so coming back can put them there.
@@ -409,6 +468,14 @@ export function RadarScreen() {
    * Put the window back where it was, before the first paint. Mount only: an
    * empty `data.tenders` here means nothing was restored, and a later render
    * must never move a scroll position the reader now owns.
+   *
+   * **Deliberately not guarded by `wholeListFromCookie`, unlike the other two
+   * `restoreList` calls.** The guard would be dead code here: the line below is
+   * only reached when something *was* restored, and for that shape the mount
+   * initializer never restores anything — so `data.tenders` is empty and this
+   * returns first. The load-bearing guard is the one on `saveList`, which is why
+   * no entry under such a key can exist for this call to find. If D60 ever gives
+   * that shape a snapshot, this is the third site to re-read.
    */
   useBeforePaint(() => {
     if (data.tenders.length === 0) return
@@ -495,12 +562,21 @@ export function RadarScreen() {
     }
 
     async function load() {
-      if (!cnpj && !q) {
-        setData({ ...INITIAL, status: { kind: 'needCnpj' } })
-        return
-      }
-
-      const restored = restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+      /*
+       * **There is no short-circuit here, and that is D55.**
+       *
+       * `if (!cnpj && !q) → needCnpj` stood at the top of this function and
+       * answered a question the client cannot answer: `cnpj` is the URL's, and
+       * the route resolves `?cnpj= ?? visitors.cnpj` from a cookie that is
+       * `httpOnly`. So the sequence runs for a bare `/radar` too, and the
+       * refusal is reached only where the route states it (`isCnpjRequired`,
+       * below). The cost is one list request per bare `/radar` for a visitor
+       * who has no cookie — approved by Sci on 2026-10-06 as the price of the
+       * entry point resuming the last company's list.
+       */
+      const restored = wholeListFromCookie(cnpj, q)
+        ? null
+        : restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
       if (restored) {
         // The mount initializer may already have rendered this exact snapshot;
         // setting it again would replace an identical view model and re-render
@@ -525,7 +601,7 @@ export function RadarScreen() {
         favourites: [],
         nextCursor: null,
         loadingMore: false,
-        status: { kind: 'analyzing', what: cnpj ? 'company' : 'list' },
+        status: loadingStatus(cnpj),
       }))
 
       let company: CompanyView | null = null
@@ -597,6 +673,21 @@ export function RadarScreen() {
         }
       }
 
+      /*
+       * The one answer that is not an error (D55): the route could resolve no
+       * CNPJ at all, from the URL or from the cookie only it can read, and there
+       * is no keyword either. **This is the only way to `needCnpj`.** It is
+       * checked before the generic error branch because `apiErrorText` would
+       * otherwise render `cnpjRequired`'s sentence inside the retry card, where
+       * *Tentar de novo* repeats a request that will answer the same thing.
+       *
+       * `INITIAL`, so the `key` goes back to `''` and nothing is written to the
+       * cache under this search — the same reset the short-circuit used to do.
+       */
+      if (isCnpjRequired(answer)) {
+        setData({ ...INITIAL, status: { kind: 'needCnpj' } })
+        return
+      }
       if (answer.state === 'error') {
         setData((previous) => ({
           ...previous,

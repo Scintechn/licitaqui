@@ -639,11 +639,19 @@ function FilterRow({
   // link. The exposure grew when `/fundadores` gained an "Ir para o Radar" CTA
   // pointing cold visitors straight at this state.
   //
-  // The condition is the same one that produces the `needCnpj` state in
-  // `listState()` — no CNPJ and no keyword means nothing to list, so the search
-  // is the only thing on the screen worth doing. Once either is set the
-  // disclosure goes back to being closed by default, because then the list is
-  // the content and the search is a secondary action.
+  // The intent is "nothing to list, so the search is the only thing on this
+  // screen worth doing". Once either half is set the disclosure goes back to
+  // closed, because then the list is the content and the search is secondary.
+  //
+  // **This condition no longer means that, and the sentence that used to say so
+  // has been deleted rather than left standing.** It read "the same one that
+  // produces the `needCnpj` state in `listState()`" — a function that does not
+  // exist in this repository, and since D55 an untrue claim besides: `needCnpj`
+  // is now the list route's `cnpjRequired` answer, and a bare `/radar` with a
+  // CNPJ in the visitor cookie renders a full list with this disclosure open
+  // over it and an empty CNPJ field inside it. What the screen should do about
+  // that is a product decision, so it is **D61** and not a correction made
+  // here; what could not stay is the comment asserting the two agree.
   //
   // `open` is only the initial attribute: `<details>` stays uncontrolled, so a
   // reader can still collapse it.
