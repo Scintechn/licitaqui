@@ -1,11 +1,11 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { GET as getJob } from '@/app/api/jobs/[id]/route'
 import { POST as postCnpj } from '@/app/api/radar/cnpj/route'
 import { GET as getTenders } from '@/app/api/radar/tenders/route'
 import { GET as getTender } from '@/app/api/tenders/[id]/route'
 import { POST as postScreening } from '@/app/api/tenders/[id]/screening/route'
-import { cnpjRef } from '@/lib/cnpj'
+import { cnpjRef, normaliseCnpj } from '@/lib/cnpj'
 import { closeDb, db, pool } from '@/lib/db'
 import { testDatabaseUrl } from '@/lib/db/test-url'
 import { resetRateLimits } from '@/lib/rate-limit'
@@ -16,6 +16,7 @@ import type {
   TenderListResponse,
   TenderResponse,
 } from './contract'
+import { listFreshness } from './tenders'
 import {
   cleanupRun,
   insertFixture,
@@ -47,6 +48,50 @@ import {
  * `TEST_DATABASE_URL_R1` is task R1's own isolated, migrated database. The
  * connection string is resolved programmatically and never printed. Without it
  * the file skips, so `pnpm test` stays green on a machine with no database.
+ *
+ * ## No assertion here reads a row this run did not write (card **D54**)
+ *
+ * `RUN_ID` scopes what this file **writes**, and `cleanupRun` deletes exactly
+ * that. Neither can scope what it **reads**, and for a while several assertions
+ * below read the whole table: a tender asserted to be on page 1 of 20 of a
+ * search filtered by neither agency nor run, a `company_lookup` count over a
+ * one-minute wall-clock window, a global `visitors` count, a global
+ * `sync_open_tenders` count either side of one request. Each of those is a
+ * statement about every other lane's rows as well as this one's, and in the
+ * 24 hours to 2026-10-06 they produced red runs in three lanes where nothing
+ * was broken — one of which was reported as a defect in the wrong place.
+ *
+ * The shapes that replaced them, chosen per assertion and argued at each:
+ *
+ * - **a filter only this run's rows can satisfy** — `TOKEN`, below, for every
+ *   list assertion that names one of its own tenders;
+ * - **the key or id the thing under test would have used** — for the job a
+ *   rejected CNPJ would have enqueued, and for the visitor a mint would leave;
+ * - **a watermark** — `max(jobs.id)` before the request, so *any* new job of a
+ *   kind is visible without counting the kind over the whole table;
+ * - **a window taken from the database clock**, narrowed by every column this
+ *   run can account for.
+ *
+ * What is deliberately *not* done is a blanket weakening, and the §4b review of
+ * the first version of this work is the reason the distinction is written down
+ * at every one of them: it found three assertions that had come out *narrower*
+ * than what they replaced — one of them unable to catch a one-word regression
+ * the global count did catch, and two that a single failure would have disarmed
+ * for ever. Scoping an assertion and weakening it are one keystroke apart. The
+ * lower bounds in the tab counts therefore stay lower bounds, because a foreign
+ * row can only raise them; the negatives that scoping made small carry a
+ * positive control each; and the one claim that only the *unscoped* list can
+ * make is still asserted unscoped, in the direction where a foreign row cannot
+ * lie.
+ *
+ * **Reference data is read, and that is a different thing.** `cnae_segments`
+ * (migration 0003) and `plan_limits` (0001) are seeded by migrations and are not
+ * rows any run writes: `soleCnaeFor`, `unmappedCnae` and the quota literals read
+ * them on purpose, and the first two already fail with a message naming the
+ * migration rather than asserting against an empty table. `plan_limits` is the
+ * one that is not fully closed — `plan-limits.db.test.ts` writes it, and would
+ * share this database if `TEST_DATABASE_URL_R1` were ever unset — which is card
+ * **D64**. What this card is about is rows a *run* leaves behind.
  */
 
 const url = testDatabaseUrl('TEST_DATABASE_URL_R1') ?? testDatabaseUrl()
@@ -58,6 +103,51 @@ const FOOD = 'Alimentos'
 const FURNITURE = 'Mobiliário'
 
 const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * This run's handle **inside the search vector** — unique to the run, and a
+ * single lexeme so `websearch_to_tsquery` keeps it (D54).
+ *
+ * `GET /api/radar/tenders` takes no agency parameter, so there is no way to ask
+ * it for "my rows" through `?cnpj=` or `?state=`: the compatible and check
+ * groups are an array overlap against 14 shared segment labels, which any row in
+ * the table can carry. `?q=` is the one filter a foreign row cannot satisfy, and
+ * `scope()` in `tenders.ts` is why it is enough — with a `q` the segment overlap
+ * is *replaced* by the tsquery, so the token narrows the rows while the group
+ * expression still decides which bucket each one lands in. The grouping under
+ * test is untouched; only the universe it runs over is.
+ *
+ * The same trick as `pagination.db.test.ts` and `sort.db.test.ts`, which state
+ * the reason in the same words: a bare CNPJ search also returns rows another run
+ * inserted into the same segment. **One difference worth naming**: those two put
+ * their token in `object` and let `insertFixture`'s own statement index it, while
+ * this one is appended to the vector afterwards, because these fixtures' objects
+ * are the real PNCP payloads and the tests read them. So the token here depends
+ * on `to_tsvector` and `websearch_to_tsquery` classifying `radarr1<hex>` the same
+ * way — they do, through the one `pt_unaccent` configuration both calls name —
+ * and on nothing re-running `insertFixture`'s `update … set search` over these
+ * rows, which would drop the token. That fails loudly rather than quietly: every
+ * `listOwn` positive control stops finding its own tender.
+ */
+const TOKEN = `radarr1${RUN_ID}`
+
+/**
+ * Written to `visitors.ip_hash` on every visitor **this file** creates by hand.
+ *
+ * Two jobs, both D54's. It gives the "does not mint a visitor" assertion a way
+ * to exclude this suite's own rows from a window it cannot otherwise scope — see
+ * that test — and it gives `afterAll` a way to delete them: `cleanupRun` deletes
+ * visitors by `cnpj`, and `newVisitor(null)` writes none, so those rows have been
+ * leaking out of every run of this file. This database was holding **19**
+ * visitors nobody owns when this card was written (measured 2026-10-06, R1), and
+ * that is one of the ways they get there.
+ *
+ * The column is free text — `loadOrCreateVisitor` writes a truncated SHA-256 and
+ * nothing constrains it — and the value is never compared to a real digest. Each
+ * row gets `${VISITOR_MARK}-${id}`; see `newVisitor` for why the mark is per row
+ * and not per run.
+ */
+const VISITOR_MARK = `radarr1-${RUN_ID}`
 
 let fixtures: SeedFixture[] = []
 let openTenders: SeedFixture[] = []
@@ -120,12 +210,38 @@ async function upsertCompany(options: CompanyOptions = {}) {
 
 async function newVisitor(cnpj: string | null = RUN_COMPANY_CNPJ): Promise<string> {
   const id = randomUUID()
-  await pool().query('insert into visitors (id, cnpj) values ($1, $2)', [id, cnpj])
+  // `ip_hash` carries this run's mark, so these rows can be told apart from a row
+  // the product minted and can be deleted in `afterAll` (D54; see `VISITOR_MARK`).
+  //
+  // **One mark per visitor, not one per run.** `windowStartedAt` treats a shared
+  // `ip_hash` as the same device and counts the 3-day window from the earliest
+  // row of that (device, CNPJ) pair, which is why the suite has a second company
+  // for the test that back-dates one. A run-wide value would switch that rule on
+  // for every visitor here at once; a per-row value leaves it exactly where
+  // `null` left it — each row its own device — while still being greppable by
+  // prefix.
+  await pool().query('insert into visitors (id, cnpj, ip_hash) values ($1, $2, $3)', [
+    id,
+    cnpj,
+    `${VISITOR_MARK}-${id}`,
+  ])
   return id
 }
 
 function cookie(visitorId: string): string {
   return `lq_visitor=${visitorId}`
+}
+
+/**
+ * A 14-digit CNPJ `normaliseCnpj` refuses, **unique to this run**: this run's own
+ * company with its last check digit shifted by one.
+ *
+ * Unique matters because the job key the route would build from it is
+ * `company:<cnpjRef>`, and a key no cleanup pattern covers is a key a single
+ * regression poisons for ever. See the test that uses it.
+ */
+function invalidCnpj(): string {
+  return `${RUN_COMPANY_CNPJ.slice(0, 13)}${(Number(RUN_COMPANY_CNPJ[13]) + 1) % 10}`
 }
 
 /** Requests always carry a distinct address so the rate limiter stays out of the way. */
@@ -159,6 +275,22 @@ async function clearJobs() {
   ])
 }
 
+/**
+ * Every job on the queue that belongs to this run — the same two key patterns
+ * `clearJobs` deletes, read instead of deleted.
+ *
+ * This is what "the route enqueued nothing" is asserted against (D54). A count
+ * of some `kind` over the whole table cannot say who created the row, so one
+ * sweep enqueued by anybody in the window reddens a route that did nothing.
+ */
+async function ourJobs() {
+  const found = await pool().query<{ id: string; kind: string; key: string }>(
+    'select id, kind, key from jobs where key like $1 or key = $2 order by id',
+    [`%${RUN_AGENCY_CNPJ}%`, `company:${cnpjRef(RUN_COMPANY_CNPJ)}`],
+  )
+  return found.rows
+}
+
 async function ageTender(id: string, updatedAt: Date) {
   await pool().query('update tenders set updated_at = $2 where id = $1', [id, updatedAt])
   await pool().query('update tender_items set updated_at = $2 where tender_id = $1', [id, updatedAt])
@@ -177,6 +309,18 @@ suite('Radar read APIs (database)', () => {
     )
     await cleanupRun(db())
     for (const fixture of fixtures) await insertFixture(db(), fixture)
+    // The run's handle, appended to the vector `insertFixture` built (D54).
+    //
+    // `object`, `raw` and every column a screen renders are left exactly as PNCP
+    // sent them — this adds one lexeme to the index and nothing else — so the
+    // assertions that read a tender's own text still read the real payload. What
+    // it buys is that `?q=TOKEN` selects this run's 20 rows and no others, which
+    // is the only run-scoped filter the route exposes.
+    await pool().query(
+      `update tenders set search = search || to_tsvector('pt_unaccent', $2)
+        where agency_cnpj = $1`,
+      [RUN_AGENCY_CNPJ, TOKEN],
+    )
   }, 180_000)
 
   beforeEach(async () => {
@@ -184,6 +328,20 @@ suite('Radar read APIs (database)', () => {
   })
 
   afterAll(async () => {
+    // The visitors this file creates by hand, which `cleanupRun` cannot reach:
+    // it deletes by `cnpj` and `newVisitor(null)` writes none, so those rows have
+    // been surviving every run (D54). `usage` goes with them by cascade;
+    // `events.visitor_id` is `on delete set null`, which is why those rows are
+    // deleted first, the same order `cleanupRun` uses.
+    await pool().query(
+      'delete from events where visitor_id in (select id from visitors where ip_hash like $1)',
+      [`${VISITOR_MARK}-%`],
+    )
+    await pool().query('delete from visitors where ip_hash like $1', [`${VISITOR_MARK}-%`])
+    // And the one job key `cleanupRun` does not know about: the rejected CNPJ's.
+    // Nothing creates it unless the validation regresses, and then it should not
+    // outlive the run that found it.
+    await pool().query('delete from jobs where key = $1', [`company:${cnpjRef(invalidCnpj())}`])
     await cleanupRun(db())
     await closeDb()
   })
@@ -357,17 +515,44 @@ suite('Radar read APIs (database)', () => {
     })
 
     it('rejects a CNPJ whose check digits do not add up, before any job', async () => {
-      const response = await postCnpj(request('11111111111111'))
+      /*
+       * Scoped to the key this input would have produced (D54).
+       *
+       * This used to count every `company_lookup` created anywhere in the last
+       * minute, which is one of the sharpest cases of the defect: a job enqueued
+       * by a concurrent suite — or left behind by a run killed within the
+       * minute — reddens a validation that worked perfectly, and the failure
+       * message points at the CNPJ route.
+       *
+       * What the test means is *this request enqueued nothing*, and the route's
+       * key for a CNPJ is `company:<cnpjRef>` (`lib/radar/company.ts`), so that
+       * is the only key a job for this input could appear under.
+       *
+       * **The rejected CNPJ is derived from this run's own**, rather than being
+       * the constant `11111111111111` it used to be, and that is not cosmetic: a
+       * constant key is never deleted by anything — `clearJobs` and `cleanupRun`
+       * only know this run's patterns — so the first run in which the guard
+       * regressed would leave a `queued` row under it for ever, `jobs_dedupe`
+       * would refuse every later insert, and the assertion would be satisfied
+       * permanently. Found in review before it could happen. Run-scoped, the
+       * assertion stays a positive zero that nothing can mask.
+       */
+      const rejected = invalidCnpj()
+      expect(
+        normaliseCnpj(rejected),
+        'the input must really be invalid, or the 400 below proves nothing',
+      ).toBeNull()
+      const key = `company:${cnpjRef(rejected)}`
+
+      const response = await postCnpj(request(rejected))
       const body = (await response.json()) as CnpjResponse
 
       expect(response.status).toBe(400)
       if (body.state !== 'error') throw new Error('expected an error')
       expect(body.error).toBe('validation')
       expect(body.fields?.cnpj).toBe('cnpjInvalid')
-      const anyJob = await pool().query<{ n: string }>(
-        "select count(*) n from jobs where kind = 'company_lookup' and created_at > now() - interval '1 minute'",
-      )
-      expect(Number(anyJob.rows[0]?.n)).toBe(0)
+      expect(await jobsFor(key)).toHaveLength(0)
+      expect(await ourJobs()).toEqual([])
     })
   })
 
@@ -421,8 +606,45 @@ suite('Radar read APIs (database)', () => {
       return { response, body }
     }
 
+    /**
+     * The same read, over this run's own rows only (D54).
+     *
+     * Two things are added to the query string. `q` carries `TOKEN`, so no row
+     * this suite did not write can be in the answer at all — and when the test
+     * is also asking about a search, the token is prepended to it:
+     * `websearch_to_tsquery` ands its terms, so `TOKEN informatica` still has to
+     * match `informática` through `pt_unaccent` for the row to come back, which
+     * is the mechanism those tests exist for.
+     *
+     * `limit` is `MAX_LIMIT`, and this run inserts 20 tenders, so every row it
+     * owns fits on one page — asserted below rather than assumed. That is what
+     * turns *"the tender is in the answer"* into a statement about the whole
+     * result set instead of about position 1 of 20, which is the assertion shape
+     * this card exists to remove.
+     *
+     * **The conjunction has a trap, and `expectSearchable` is the guard.**
+     * `websearch_to_tsquery` silently drops a stopword, and a dropped term in a
+     * conjunction leaves the token alone — the row would come back and the test
+     * would pass without the search term taking any part. Before the token, a
+     * dropped term produced an empty tsquery and no match at all, so the same
+     * accident failed loudly. Found in review.
+     */
+    async function listOwn(params: Record<string, string>) {
+      const { q, ...rest } = params
+      if (q) await expectSearchable(q)
+      const answer = await list({ ...rest, q: q ? `${TOKEN} ${q}` : TOKEN, limit: '50' })
+      expect(
+        answer.body.nextCursor,
+        'this run owns 20 tenders and asked for 50: there can be no second page',
+      ).toBeNull()
+      return answer
+    }
+
     it('puts a main-CNAE segment in Compatível', async () => {
-      const { body } = await list({ group: 'compatible' })
+      // `listOwn`, not `list`: an unfiltered `group=compatible` is page 1 of 20
+      // of every row in the table whose segments overlap `Informática / TI`, so
+      // anybody's fixture carrying that label could displace this one (D54).
+      const { body } = await listOwn({ group: 'compatible' })
       const ids = body.tenders.map((t) => t.id)
       expect(ids).toContain(compatibleTender.id)
       expect(ids).not.toContain(checkTender.id)
@@ -433,7 +655,9 @@ suite('Radar read APIs (database)', () => {
     })
 
     it('caps a secondary-CNAE segment at Verificar, however the map rates it', async () => {
-      const { body } = await list({ group: 'check' })
+      // Scoped for the same reason as the test above (D54): `Alimentos` is one
+      // of the 14 shared labels and any row may carry it.
+      const { body } = await listOwn({ group: 'check' })
       const ids = body.tenders.map((t) => t.id)
       expect(ids).toContain(checkTender.id)
       expect(ids).not.toContain(compatibleTender.id)
@@ -441,23 +665,77 @@ suite('Radar read APIs (database)', () => {
     })
 
     it('leaves a segment the company has no CNAE for out of both groups', async () => {
-      const compatible = await list({ group: 'compatible' })
-      const check = await list({ group: 'check' })
+      const compatible = await listOwn({ group: 'compatible' })
+      const check = await listOwn({ group: 'check' })
+      // The positive control each negative needs. Scoping a list down to this
+      // run's rows makes it small, and a `not.toContain` over an empty page
+      // passes for the wrong reason — the shape §4b keeps finding. These two say
+      // the lists are the ones the assertions below are about.
+      expect(compatible.body.tenders.map((t) => t.id)).toContain(compatibleTender.id)
+      expect(check.body.tenders.map((t) => t.id)).toContain(checkTender.id)
       expect(compatible.body.tenders.map((t) => t.id)).not.toContain(otherTender.id)
       expect(check.body.tenders.map((t) => t.id)).not.toContain(otherTender.id)
+
+      /*
+       * And once **unscoped**, because scoping moved the reason (D54, review).
+       *
+       * With a `q`, `scope()` swaps the segment overlap for the tsquery, so above
+       * this tender is in the universe and absent only because `groupExpression`
+       * labels it `keyword`. Without a `q` it is not on the Radar **at all**,
+       * which is the stronger claim `tenders.ts` makes — *"only tenders the
+       * company's CNAEs reach"* — and the only other assertion in this file that
+       * still covers it is `counts.keyword === 0`.
+       *
+       * Safe unscoped because the direction is safe: a foreign row can add rows
+       * to this page but can never put *this* id on it. Unlike a `toContain`,
+       * this negative cannot be displaced.
+       */
+      const unfiltered = await list({ group: 'compatible' })
+      expect(unfiltered.body.tenders.map((t) => t.id)).not.toContain(otherTender.id)
     })
 
     it('finds an unmatched tender by keyword, accents and all', async () => {
-      // A distinctive word from the tender's own object, typed without its
-      // accents: `licitacao` has to match `licitação`.
-      const word = longestWord(otherTender.object)
-      expect(word.length).toBeGreaterThan(5)
-      const { body } = await list({ group: 'keyword', q: unaccent(word) })
+      /*
+       * This is the assertion D54 is named after, and it had two problems.
+       *
+       * It asserted that the tender was on **page 1 of 20** of a search filtered
+       * by neither agency nor run, so any row anywhere in `tenders` carrying the
+       * same word displaced it — measured at 1 failure in 3 against the orphaned
+       * fixtures this database held on 2026-10-06. `listOwn` sends the run token
+       * with the word, and `websearch_to_tsquery` ands them, so the row still has
+       * to match the unaccented word to come back: the mechanism is unchanged and
+       * the universe is this run's 20 rows.
+       *
+       * And the word it picked was the longest one — `componentes`, which carries
+       * no accent at all, so *"accents and all"* was tested by nothing. The word
+       * is now the longest **accented** one (`informática` → `informatica`), and
+       * the assertion that it differs from its own unaccented form is what keeps
+       * that true if the fixtures ever change.
+       */
+      const word = await keywordFrom(otherTender)
+      const { body } = await listOwn({ group: 'keyword', q: unaccent(word) })
       expect(body.tenders.map((t) => t.id)).toContain(otherTender.id)
       expect(body.tenders.find((t) => t.id === otherTender.id)?.group).toBe('keyword')
     })
 
     it('counts every group under the same filters, for the tabs', async () => {
+      /*
+       * The one list read here that is deliberately **not** scoped, because
+       * scoping it would destroy what it measures (D54).
+       *
+       * `countGroups` runs over the same `scope()` as the page, and with no `q`
+       * that scope is the segment overlap — which is the condition this test is
+       * about. Sending the run token would replace it with the tsquery and the
+       * keyword group would stop being empty, so the assertion would no longer be
+       * the one in its name.
+       *
+       * It is safe unscoped, which is a property of the three assertions rather
+       * than of the data: the first two are **lower bounds** this run's own rows
+       * satisfy, and a foreign row can only raise a count, never lower it. The
+       * third is structural — with no search term `scope()` adds no tsquery
+       * condition at all, so nothing can land in `keyword` whatever the table
+       * holds.
+       */
       const { body } = await list({ group: 'compatible' })
       expect(body.counts.compatible).toBeGreaterThanOrEqual(1)
       expect(body.counts.check).toBeGreaterThanOrEqual(1)
@@ -466,27 +744,85 @@ suite('Radar read APIs (database)', () => {
     })
 
     it('filters by state and never returns a closed tender by default', async () => {
-      const { body } = await list({ group: 'compatible', state: 'ZZ' })
+      // Both halves scoped (D54). `ZZ` is not a UF, but it is also not reserved:
+      // a foreign fixture using it as a placeholder — with a segment this company
+      // reaches — would turn "the state filter excludes everything" into a flake,
+      // and the closed-tender half is a `not.toContain` that a page full of
+      // somebody else's rows would satisfy without proving anything.
+      const { body } = await listOwn({ group: 'compatible', state: 'ZZ' })
       expect(body.tenders).toEqual([])
 
       const closed = closedTenders[0]
       expect(closed, 'the fixtures must still contain a closed tender').toBeTruthy()
       await pool().query('update tenders set segments = $2 where id = $1', [closed?.id, [IT]])
-      const open = await list({ group: 'compatible' })
+      const open = await listOwn({ group: 'compatible' })
+      // The positive control: this list really is the compatible list, so the
+      // absence below is the closed tender being excluded and not an empty page.
+      expect(open.body.tenders.map((t) => t.id)).toContain(compatibleTender.id)
       expect(open.body.tenders.map((t) => t.id)).not.toContain(closed?.id)
       await pool().query('update tenders set segments = null where id = $1', [closed?.id])
     })
 
-    it('says how old the list is and queues no sweep of its own', async () => {
-      const before = await pool().query<{ n: string }>(
-        "select count(*) n from jobs where kind = 'sync_open_tenders'",
+    it('says how old the list is and queues nothing to refresh it', async () => {
+      /*
+       * Two halves, and the division is §4c's: **the mechanism in a direct call,
+       * the result through the route** (D54).
+       *
+       * The old assertion was `count(*) from jobs where kind='sync_open_tenders'`
+       * either side of one request — the whole queue, so the scheduler, a
+       * concurrent suite or a leftover row all move it and none of them is this
+       * route. Narrowing it to one key is worse, which is what the first version
+       * of this fix did and the §4b review caught: `listFreshness`'s own
+       * docstring names the hazard as *"a web route inventing a key for it"*, and
+       * an assertion about one key cannot see an invented one.
+       *
+       * A watermark on `jobs.id` was the next attempt, over both refreshing
+       * kinds, and it is **measured not to work**: with a writer enqueueing
+       * `sync_open_tenders` beside this suite — which is what the scheduler does
+       * on every real database — it failed on that row, `d54-interference-sweep-…`,
+       * because a kind and an id tell you a job is new and never tell you who
+       * made it. *Nothing read from `jobs` can attribute a row to this request
+       * unless the key or the payload carries something the request owns.*
+       *
+       * So the breadth comes from the one place that **can** attribute it: the
+       * value `readOrEnqueue` returns. `Cached.job` is *the job this call
+       * created*, whatever key it chose, and `enqueue: false` makes it
+       * permanently null. Forcing the read stale is what puts the enqueue branch
+       * on the path, so this cannot pass by never reaching the code.
+       *
+       * Through the route, what is left is attributable and stays: nothing under
+       * this run's keys, and nothing under the key `listFreshness` names.
+       */
+      await clearJobs()
+      const watermark = await pool().query<{ id: string | null }>('select max(id) id from jobs')
+
+      // Two hours ahead of the 30-minute TTL: stale, so a regression enqueues.
+      const forced = await listFreshness(
+        { state: null },
+        { executor: db(), now: new Date(Date.now() + 2 * 60 * 60 * 1000) },
       )
-      const { body } = await list({ group: 'compatible' })
+      expect(forced.state, 'the read must be stale, or the enqueue branch is not on the path').toBe(
+        'stale',
+      )
+      expect(forced.job, 'listFreshness must never create the sweep: it is the scheduler’s').toBeNull()
+
+      const { body } = await listOwn({ group: 'compatible' })
+
       expect(['fresh', 'stale']).toContain(body.freshness.state)
-      const after = await pool().query<{ n: string }>(
-        "select count(*) n from jobs where kind = 'sync_open_tenders'",
+      // And the age, which the old version did not assert despite the title:
+      // `['fresh','stale']` is exhaustive — the route maps `absent` to `stale` —
+      // so that assertion alone could never fail. This run inserted 7 open
+      // tenders seconds ago, so the list has an age and it is a recent one.
+      expect(typeof body.freshness.updatedAt).toBe('string')
+      expect(Date.parse(String(body.freshness.updatedAt))).toBeLessThanOrEqual(Date.now() + 60_000)
+      expect(body.freshness.ageSeconds).toBeGreaterThanOrEqual(0)
+
+      const named = await pool().query<{ id: string; kind: string }>(
+        `select id, kind from jobs where key = 'unused' and id > coalesce($1::bigint, 0)`,
+        [watermark.rows[0]?.id ?? null],
       )
-      expect(after.rows[0]?.n).toBe(before.rows[0]?.n)
+      expect(named.rows).toEqual([])
+      expect(await ourJobs()).toEqual([])
     })
 
     /**
@@ -516,10 +852,15 @@ suite('Radar read APIs (database)', () => {
       const unmapped = await unmappedCnae()
       await upsertCompany({ mainCnae: main, secondaryCnaes: [food, unmapped] })
       try {
+        // `?q=` and `?limit=` for the same reason as `listOwn` (D54) — this one
+        // builds its own request because the point is that there is no `?cnpj=`,
+        // so it cannot go through `list`. The run token keeps the page to this
+        // run's rows; the CNPJ still comes from the cookie and nowhere else.
         const response = await getTenders(
-          new Request('https://licitaqui.test/api/radar/tenders?group=compatible', {
-            headers: headers(visitor),
-          }),
+          new Request(
+            `https://licitaqui.test/api/radar/tenders?group=compatible&limit=50&q=${TOKEN}`,
+            { headers: headers(visitor) },
+          ),
         )
         const body = (await response.json()) as TenderListResponse
         if (body.state !== 'ready') throw new Error(`expected ready, got ${body.state}`)
@@ -548,11 +889,20 @@ suite('Radar read APIs (database)', () => {
      * change it. What was wrong was only the sentence above it.
      */
     it('reports no company when none drove the list, and groups it all as keyword', async () => {
-      const word = longestWord(otherTender.object)
+      // `keywordFrom` rather than the bare helper: this test took the word with
+      // no assertion about it, so an unaccented or stopword fixture would have
+      // left every assertion below satisfied by the run token alone (D54).
+      const word = await keywordFrom(otherTender)
       const visitor = await newVisitor(null)
+      // The run token with the word, and `limit=50` (D54). Unscoped, every
+      // assertion below held over **somebody else's** rows: `tenders.length > 0`
+      // was satisfied by any match anywhere, and `every(keyword)` is trivially
+      // true of a foreign row too, since with no company nothing can be anything
+      // but keyword. Scoped, the same two assertions are about this run's tender,
+      // which is why the first one now names it.
       const response = await getTenders(
         new Request(
-          `https://licitaqui.test/api/radar/tenders?group=keyword&q=${encodeURIComponent(unaccent(word))}`,
+          `https://licitaqui.test/api/radar/tenders?group=keyword&limit=50&q=${encodeURIComponent(`${TOKEN} ${unaccent(word)}`)}`,
           { headers: headers(visitor) },
         ),
       )
@@ -560,9 +910,12 @@ suite('Radar read APIs (database)', () => {
       if (body.state !== 'ready') throw new Error(`expected ready, got ${body.state}`)
 
       expect(body.groupedBy).toBeNull()
+      // Structural, not a count of the table: with no company `labels([])` is
+      // `array[]::text[]` and `&&` against it is false for every row, so these
+      // two are zero whatever else is in `tenders`.
       expect(body.counts.compatible).toBe(0)
       expect(body.counts.check).toBe(0)
-      expect(body.tenders.length).toBeGreaterThan(0)
+      expect(body.tenders.map((t) => t.id)).toContain(otherTender.id)
       expect(body.tenders.every((t) => t.group === 'keyword')).toBe(true)
     })
 
@@ -658,12 +1011,88 @@ suite('Radar read APIs (database)', () => {
     })
 
     it('does not mint a visitor: a GET must not let a crawler fill the table', async () => {
-      const before = await pool().query<{ n: string }>('select count(*) n from visitors')
-      const response = await getTender(request(), params((openTenders[0] as SeedFixture).id))
-      const after = await pool().query<{ n: string }>('select count(*) n from visitors')
+      /*
+       * `select count(*) from visitors` either side of one request is a count of
+       * every lane's rows (D54) — a concurrent suite minting one visitor in the
+       * window reddens a route that did nothing, and this database was holding
+       * **19** visitors nobody owns when this card was written (measured, R1,
+       * 2026-10-06), left by runs killed before their `afterAll`.
+       *
+       * Four assertions replace it, and **the fourth is the one that matters**,
+       * because the first three miss the likeliest regression of all. The route
+       * reads `readViewer` (`app/api/tenders/[id]/route.ts`) and passes no IP and
+       * no user-agent to anything; swapping that one word for
+       * `readOrCreateViewer` type-checks and inserts a row with `ip_hash` **null**,
+       * `user_agent_hash` null, `cnpj` null and a **fresh** id. That escapes a
+       * fingerprint assertion and a cookie-id assertion alike — found in review,
+       * and the old global count did catch it. Worse, `cleanupRun` deletes
+       * visitors by `cnpj`, so the row it misses is also a row nothing can clean.
+       *
+       * 1. the `set-cookie` the caller would need — a row the client never
+       *    receives is not an identity, so this is the contract half;
+       * 2. no row under `ip_hash = sha256(<this request's forwarded-for>)[:32]`,
+       *    which is what `loadOrCreateVisitor` stamps when it is *given* an IP —
+       *    the CNPJ route passes the raw header (`api/radar/cnpj/route.ts`), so
+       *    this is the trace of a mint that copied that route;
+       * 3. no row under the id a dangling cookie named — the other shape, an
+       *    upsert on a cookie that names nothing;
+       * 4. **no row created since this request began that could be anybody's
+       *    mint**: `created_at >= now()` taken from the database, `cnpj is null`
+       *    (the route has no CNPJ to attach), and an `ip_hash` that is either
+       *    null or this request's fingerprint. That excludes every visitor this
+       *    file creates, because `newVisitor` marks them (see `VISITOR_MARK`);
+       *    every visitor the CNPJ route mints, because those carry a CNPJ and a
+       *    real digest; and everything written before the window. What it does
+       *    **not** exclude is a second process inserting a CNPJ-less,
+       *    fingerprint-less visitor inside the same ~300 ms — nothing in this
+       *    database does, and that residue is the price of proving a negative
+       *    about a table two writers share.
+       *
+       * Both callers a crawler can be are asked: one with no cookie, one with a
+       * cookie naming a visitor that does not exist. Each asserts a 200 first, so
+       * neither can pass by never reaching the identity code at all.
+       */
+      const fixture = openTenders[0] as SeedFixture
+      for (const [index, dangling] of [null, randomUUID()].entries()) {
+        // The first hop is what the rate limiter keys on; the rest of the header
+        // is hashed whole, which is where the run's uniqueness goes.
+        const forwardedFor = `203.0.113.${200 + index}, 100.64.0.0 run-${RUN_ID}`
+        const fingerprint = createHash('sha256').update(forwardedFor).digest('hex').slice(0, 32)
+        const headersWith: Record<string, string> = {
+          'content-type': 'application/json',
+          'x-forwarded-for': forwardedFor,
+        }
+        if (dangling) headersWith.cookie = cookie(dangling)
 
-      expect(response.headers.get('set-cookie')).toBeNull()
-      expect(after.rows[0]?.n).toBe(before.rows[0]?.n)
+        // From the database, not from this laptop: the two clocks are an hour
+        // apart (CLAUDE.md, Clocks) and the comparison below is against
+        // `visitors.created_at`, which is UTC and Postgres's.
+        const since = await pool().query<{ at: Date }>('select now() at')
+
+        const response = await getTender(
+          new Request('https://licitaqui.test/api/tenders/x', { headers: headersWith }),
+          params(fixture.id),
+        )
+        expect(response.status).toBe(200)
+        expect(response.headers.get('set-cookie')).toBeNull()
+
+        const traced = await pool().query<{ n: string }>(
+          'select count(*) n from visitors where ip_hash = $1 or id = $2::uuid',
+          [fingerprint, dangling ?? '00000000-0000-0000-0000-000000000000'],
+        )
+        expect(Number(traced.rows[0]?.n)).toBe(0)
+
+        const anonymous = await pool().query<{ n: string }>(
+          `select count(*) n from visitors
+            where created_at >= $1 and cnpj is null
+              and (ip_hash is null or ip_hash = $2)`,
+          [since.rows[0]?.at, fingerprint],
+        )
+        expect(
+          Number(anonymous.rows[0]?.n),
+          'the GET minted a visitor with no cookie, no CNPJ and no fingerprint',
+        ).toBe(0)
+      }
     })
   })
 
@@ -868,14 +1297,62 @@ suite('Radar read APIs (database)', () => {
   })
 })
 
+/** The words of the object, stripped of punctuation. */
+function words(text: string): string[] {
+  return text.split(/\s+/).map((word) => word.replace(/[^\p{L}]/gu, ''))
+}
+
 /**
- * The longest word of the object: long enough to be distinctive, and never a
- * stopword, which `websearch_to_tsquery` would drop and leave an empty query.
+ * The term a keyword test is about to search for really is a search term:
+ * `websearch_to_tsquery` keeps it rather than dropping it as a stopword.
+ *
+ * Asked of Postgres with the configuration the route uses, not reasoned about
+ * from a list of Portuguese stopwords, because that list is the configuration's
+ * and can change with it.
  */
-function longestWord(text: string): string {
-  return text
-    .split(/\s+/)
-    .map((word) => word.replace(/[^\p{L}]/gu, ''))
+async function expectSearchable(term: string): Promise<void> {
+  const parsed = await pool().query<{ q: string }>(
+    `select websearch_to_tsquery('pt_unaccent', $1)::text q`,
+    [term],
+  )
+  expect(
+    parsed.rows[0]?.q,
+    `"${term}" is dropped by websearch_to_tsquery, so searching for it proves nothing`,
+  ).not.toBe('')
+}
+
+/**
+ * The word the two keyword tests search for, with every property they need
+ * asserted here rather than at one of the two call sites (D54).
+ *
+ * Long, accented — otherwise `pt_unaccent` is not under test at all — and not a
+ * stopword. The second test used to take the word with no assertion about it,
+ * which is how one of these could have gone quiet without the other.
+ */
+async function keywordFrom(fixture: SeedFixture): Promise<string> {
+  const word = longestAccentedWord(fixture.object)
+  expect(word.length).toBeGreaterThan(5)
+  expect(unaccent(word), 'the word must carry an accent, or nothing here tests accents').not.toBe(
+    word,
+  )
+  await expectSearchable(unaccent(word))
+  return word
+}
+
+/**
+ * The longest word of the object that **carries a diacritic** — long enough to
+ * be distinctive, never a stopword (`websearch_to_tsquery` would drop one and
+ * leave an empty query), and accented, which is the whole point of the test that
+ * reads it.
+ *
+ * The longest word alone is not enough: for the tender these tests search for it
+ * is `componentes`, which is unaccented, so *"accents and all"* was asserting
+ * that an ASCII word matches itself. The caller also asserts that the word
+ * differs from its own unaccented form, so this cannot quietly stop being true.
+ */
+function longestAccentedWord(text: string): string {
+  return words(text)
+    .filter((word) => /\p{Diacritic}/u.test(word.normalize('NFD')))
     .reduce((longest, word) => (word.length > longest.length ? word : longest), '')
 }
 
