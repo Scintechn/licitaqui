@@ -4,7 +4,7 @@ channel: email
 subject: "A LicitaQui abriu, {{nome}} — seu acesso de fundador está aqui"
 preheader: "Coloque o CNPJ da sua empresa e veja os editais abertos que combinam com ela."
 status: approved
-placeholders: [email_contato, link_acesso, nome, numero_vaga, preco_essencial, preco_promocional, vagas]
+placeholders: [email_contato, link_acesso, meses_promocionais, nome, numero_vaga, preco_essencial, preco_promocional, vagas]
 partials: [partial-footer]
 notes: Opening email, 17/10 at 12:00. Pairs with whatsapp/founders-opening.
 ---
@@ -26,7 +26,7 @@ A triagem é feita por inteligência artificial e serve para você decidir rápi
 
 SOBRE O PREÇO
 
-O LicitaQui gratuito para busca, nada muda. Quando abrirmos as assinaturas, você terá acesso as funcionalidades premium, com o preço de fundador: {{preco_promocional}} por mês nos 6 primeiros meses e {{preco_essencial}} por mês a partir do sétimo, sempre com aviso de 30 dias antes da mudança e sem fidelidade.
+O LicitaQui gratuito para busca, nada muda. Quando abrirmos as assinaturas, você terá acesso as funcionalidades premium, com o preço de fundador: {{preco_promocional}} por mês nos {{meses_promocionais}} primeiros meses e {{preco_essencial}} por mês a partir do quarto mês, sempre com aviso de 30 dias antes da mudança e sem fidelidade.
 
 O QUE EU PEÇO EM TROCA
 
