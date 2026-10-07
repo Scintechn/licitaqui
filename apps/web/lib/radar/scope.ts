@@ -270,6 +270,25 @@ export type RadarScopes = {
  * share a `viewer` scope. They do not share a browser, so they do not share a
  * `sessionStorage`, and within one browser the visitor identity changes only by
  * being minted — which is the transition this split exists to survive.
+ *
+ * ## Why the mint cannot poison the `device` scope either, which is not obvious
+ *
+ * The split keeps the mint out of the key for an address that names a CNPJ. The
+ * reader's next question is the one the first version of this file left
+ * unanswered: a brand-new device's mint also changes `device`, so what about a
+ * snapshot written *before* it?
+ *
+ * **There cannot be one.** `device` only ever keys an address with no `?cnpj=`,
+ * and before the mint such a device has no `lq_visitor`, so
+ * `GET /api/radar/tenders` resolves no CNPJ from either place and answers
+ * `400 cnpjRequired` — which `radar-screen.tsx` turns into `INITIAL` with
+ * `key: ''`, and the save effect returns on an empty list and on `readAt === 0`
+ * regardless. So the pre-mint `device` scope names nothing that was ever stored,
+ * and the first list that *can* be cached under it is read after the mint.
+ *
+ * It is written down because it is load-bearing and no test drives it: a journey
+ * would have to mint the cookie mid-flight on an address that cannot produce a
+ * cacheable list, which is a path with no observable difference to assert.
  */
 export function listScopes(cookieHeader: string | null, env: ScopeEnv = process.env): RadarScopes {
   const session = sessionTokenFromCookies(cookieHeader)

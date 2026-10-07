@@ -1,4 +1,7 @@
 import type { TenderListResponse } from '@/lib/radar/contract'
+// `import type`, deliberately: `lib/radar/scope.ts` pulls in `node:crypto`, and
+// this module is imported by a `'use client'` file. A type-only import is erased.
+import type { RadarScopes } from '@/lib/radar/scope'
 import type { RadarStatus } from './radar-view'
 
 /**
@@ -15,7 +18,7 @@ import type { RadarStatus } from './radar-view'
  * D19's defect one layer up: the client deciding from the URL what only the
  * route knows.
  *
- * **Two** decisions are here, as functions of their inputs, because
+ * **Three** decisions are here, as functions of their inputs, because
  * `vitest.config.mts` is `environment: 'node'` and runs no effects
  * (CLAUDE.md §4c): this file is what a unit test can hold. The **result** — a
  * cookie, a mount and a response — lives in `e2e/journeys/radar-bare.spec.ts`.
@@ -84,4 +87,31 @@ export function isCnpjRequired(answer: TenderListResponse): boolean {
     answer.error === 'validation' &&
     answer.fields?.cnpj === 'cnpjRequired'
   )
+}
+
+/**
+ * **Which of the two scopes names this list** — the one line D58/D60 turn on.
+ *
+ * `lib/radar/scope.ts` builds both and carries the whole argument; this is the
+ * choice, and it is here rather than inline in `radar-screen.tsx` for the reason
+ * this file exists at all. It lived inline for one commit, and the review of that
+ * commit mutated it to `scopes.device` — the pre-fix behaviour, the one that
+ * regressed the *Voltar* journey from 60 cards to 20 — and **all 101 unit tests
+ * stayed green**, because a client component is something `environment: 'node'`
+ * cannot mount (CLAUDE.md §4c). Only a 20-minute `next build` and a browser could
+ * see it. That is the inverse of what D55 did deliberately when it put its own
+ * decisions in this file.
+ *
+ * The rule, in one sentence: **a CNPJ in the URL means the cookie cannot change
+ * the answer, so the key must not depend on it.** `GET /api/radar/tenders` uses
+ * `params.cnpj` when it is given and never reaches the `visitors.cnpj` fallback;
+ * and that same address is the only one that posts a CNPJ, whose response stamps
+ * `lq_scope` and can mint `lq_visitor` — **after** the page computed these
+ * digests. So keying on the cookie there would discriminate on something that
+ * cannot change the answer *and* would go stale inside the document doing the
+ * saving. With no CNPJ in the URL both halves invert: nothing is posted, the jar
+ * holds still, and the cookie is the only thing that names the list at all.
+ */
+export function scopeFor(cnpj: string | null, scopes: RadarScopes): string {
+  return cnpj ? scopes.viewer : scopes.device
 }

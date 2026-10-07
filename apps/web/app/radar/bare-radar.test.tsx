@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
 import type { TenderListResponse } from '@/lib/radar/contract'
-import { isCnpjRequired, loadingStatus } from './bare-radar'
+import { isCnpjRequired, loadingStatus, scopeFor } from './bare-radar'
 import { RadarView, type RadarStatus, type RadarViewProps } from './radar-view'
 
 /**
@@ -24,8 +24,16 @@ import { RadarView, type RadarStatus, type RadarViewProps } from './radar-view'
  * functions of their inputs, and the two states the screen may render while it
  * does not yet know.
  *
- * **D60 deleted a test from this file**, and that is worth stating rather than
- * leaving as a shorter suite. `wholeListFromCookie` was the third decision here:
+ * **D60 deleted a decision from this file and D58/D60's review put one back.**
+ * `scopeFor` is the last `describe` below, and it is here for exactly the reason
+ * the rest of this file is: it spent one commit inline in `radar-screen.tsx`,
+ * where a mutation to the pre-fix behaviour — the one that took the *Voltar*
+ * journey from 60 cards to 20 — left **all 101 unit tests green**, because
+ * `environment: 'node'` cannot mount a client component. Only a 20-minute
+ * `next build` could see it.
+ *
+ * **D60 deleted a test from this file too**, and that is worth stating rather
+ * than leaving as a shorter suite. `wholeListFromCookie` was the third decision here:
  * which query shapes have their whole list decided by the cookie, and therefore
  * had the snapshot cache switched off. Its last assertion recorded that
  * `/radar?q=…` answering `false` was deliberate. Both shapes are now keyed by
@@ -125,5 +133,36 @@ describe('D55 · what a bare /radar may decide for itself', () => {
     // `needCnpj` is the one unanswered status that does know there is no
     // company, so here the header may say so (D19's `cnaeState`).
     expect(out).toContain(list.noCompany)
+  })
+})
+
+describe('D58/D60 · which scope names this list', () => {
+  /** Two values that could not be mistaken for each other in a failure message. */
+  const scopes = { viewer: 'viewer-scope', device: 'device-scope' } as const
+
+  it('keys by the viewer when the CNPJ is in the URL', () => {
+    /*
+     * The route uses `params.cnpj` and never reaches the `visitors.cnpj`
+     * fallback, so the cookie cannot change this answer — and this is the only
+     * address that posts a CNPJ, whose response stamps `lq_scope` and can mint
+     * `lq_visitor` **after** the page computed both digests. Keying on the
+     * cookie here discriminated on something that cannot change the answer and
+     * went stale inside the document doing the saving: that was B1.
+     */
+    expect(scopeFor(CNPJ, scopes)).toBe(scopes.viewer)
+  })
+
+  it('keys by the device when the URL names no CNPJ', () => {
+    // Both halves invert: nothing is posted, the jar holds still, and the
+    // cookie is the only thing that names the list at all (D60).
+    expect(scopeFor(null, scopes)).toBe(scopes.device)
+  })
+
+  it('never returns the other one, which is the whole of the regression', () => {
+    // Stated as an inequality as well as an equality, so a function that
+    // returned `scopes.device` for every address — the pre-fix behaviour —
+    // fails here rather than only in a browser.
+    expect(scopeFor(CNPJ, scopes)).not.toBe(scopes.device)
+    expect(scopeFor(null, scopes)).not.toBe(scopes.viewer)
   })
 })

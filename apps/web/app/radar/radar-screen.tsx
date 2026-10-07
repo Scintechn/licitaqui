@@ -42,7 +42,7 @@ import {
 import { appendTenders } from '@/lib/radar/pagination'
 import { waitForData } from '@/lib/radar/poll'
 import { useAppMenu } from '@/components/app-shell'
-import { isCnpjRequired, loadingStatus } from './bare-radar'
+import { isCnpjRequired, loadingStatus, scopeFor } from './bare-radar'
 import { RadarView, type RadarQuery, type RadarStatus } from './radar-view'
 
 /** The drawer's accessible name lives on the menu's own hidden heading. */
@@ -305,17 +305,10 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
   // Never `null`: an absent `?sort=` is the deadline order, which is the order
   // this list has always come back in (D51).
   const sort = readSort(params.get('sort'))
-  /**
-   * Which of the two scopes names this list — see `RadarScreenProps.scopes`.
-   *
-   * With a CNPJ in the URL the route answers from `params.cnpj` and never reads
-   * `visitors.cnpj`, so the cookie-derived digest would discriminate on something
-   * that cannot change the answer — **and would go stale inside this very
-   * document**, because this is the shape that posts the CNPJ and the response
-   * stamps `lq_scope`. Without a CNPJ in the URL nothing is posted, the jar holds
-   * still, and the cookie is the only thing that names the list at all.
-   */
-  const scope = cnpj ? scopes.viewer : scopes.device
+  // Which of the two scopes names this list. `bare-radar.ts` holds the rule and
+  // the reasoning, so a node suite can fail on it: inline here, the review of
+  // this diff mutated it to the pre-fix behaviour and 101 unit tests stayed green.
+  const scope = scopeFor(cnpj, scopes)
   const key = listKey({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
 
   /**

@@ -256,6 +256,13 @@ describe('the cookie that carries the CNPJ generation', () => {
      */
     expect(() => deviceScope(jar({ [VISITOR_COOKIE]: '%' }), SECRET)).not.toThrow()
     expect(deviceScope(jar({ [VISITOR_COOKIE]: '%' }), SECRET)).toBe(deviceScope('', SECRET))
+    /*
+     * **A forward guard, not coverage** — said plainly so a later reader does
+     * not mistake it for either. `cnpjTagFromCookies` has no `decodeURIComponent`
+     * at all, so this line passes under every mutation of the code it is about.
+     * It is here to fail the day somebody adds one, which is exactly what
+     * happened to `visitorIdFromCookies` two functions away.
+     */
     expect(() => deviceScope(jar({ [CNPJ_SCOPE_COOKIE]: '%E0%A4%A' }), SECRET)).not.toThrow()
   })
 })
