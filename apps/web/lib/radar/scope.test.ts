@@ -35,8 +35,24 @@ const CNPJ = '11222333000181'
 const OTHER_CNPJ = '33444555000163'
 const VISITOR = '6f7e8d9c-0a1b-4c2d-8e3f-4a5b6c7d8e9f'
 const OTHER_VISITOR = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
-const TOKEN = 'b6a1f0c2-3d4e-4f5a-9b8c-7d6e5f4a3b2c'
-const OTHER_TOKEN = 'c7b2a1d3-4e5f-4a6b-8c9d-0e1f2a3b4c5e'
+/**
+ * **Sentences, not UUIDs, and that is the point of them.**
+ *
+ * Nothing here parses a session token — `sessionTokenFromCookies` returns
+ * whatever is in the cookie and the digest hashes it — so the only thing these
+ * values have to be is *two strings that differ*. Written as UUIDs they scored
+ * high enough entropy for gitleaks to report them as `generic-api-key`, which is
+ * exactly what happened to U1's session-cookie fixture: see `.gitleaks.toml`,
+ * whose own note says the sentence `session-token-for-the-test` *"is what the
+ * test should have said in the first place"*. The repo's answer to this shape is
+ * to rename the value, never to allowlist it.
+ *
+ * `VISITOR` above cannot follow them: `visitorIdFromCookies` checks the UUID
+ * shape and a sentence would read as no device at all — which is itself asserted
+ * two tests down.
+ */
+const SESSION = 'the-session-token-for-this-test'
+const OTHER_SESSION = 'a-second-session-token-that-must-differ'
 
 /**
  * The scope for an address the **cookie** decides — a bare `/radar`, or
@@ -62,7 +78,7 @@ function jar(entries: Record<string, string>): string {
 describe('the device scope', () => {
   it('is the same for the same caller and different for every input that changes the answer', () => {
     const base = jar({
-      [SESSION_COOKIE]: TOKEN,
+      [SESSION_COOKIE]: SESSION,
       [VISITOR_COOKIE]: VISITOR,
       [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
     })
@@ -78,7 +94,7 @@ describe('the device scope', () => {
      */
     expect(deviceScope(jar({ [VISITOR_COOKIE]: VISITOR }), SECRET)).not.toBe(scope)
     expect(
-      deviceScope(jar({ [SESSION_COOKIE]: OTHER_TOKEN, [VISITOR_COOKIE]: VISITOR }), SECRET),
+      deviceScope(jar({ [SESSION_COOKIE]: OTHER_SESSION, [VISITOR_COOKIE]: VISITOR }), SECRET),
     ).not.toBe(scope)
 
     /*
@@ -89,7 +105,7 @@ describe('the device scope', () => {
     expect(
       deviceScope(
         jar({
-          [SESSION_COOKIE]: TOKEN,
+          [SESSION_COOKIE]: SESSION,
           [VISITOR_COOKIE]: VISITOR,
           [CNPJ_SCOPE_COOKIE]: cnpjTag(OTHER_CNPJ, SECRET),
         }),
@@ -102,7 +118,7 @@ describe('the device scope', () => {
     expect(
       deviceScope(
         jar({
-          [SESSION_COOKIE]: TOKEN,
+          [SESSION_COOKIE]: SESSION,
           [VISITOR_COOKIE]: OTHER_VISITOR,
           [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
         }),
@@ -129,8 +145,8 @@ describe('the device scope', () => {
      * for it and the scope must indeed equal the empty jar's.
      */
     const sample: Record<string, string> = {
-      [SESSION_COOKIE]: TOKEN,
-      [SESSION_COOKIE_SECURE]: TOKEN,
+      [SESSION_COOKIE]: SESSION,
+      [SESSION_COOKIE_SECURE]: SESSION,
       [VISITOR_COOKIE]: VISITOR,
       [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
     }
@@ -144,13 +160,13 @@ describe('the device scope', () => {
     // And the secure spelling of the session cookie wins over the plain one, so
     // production and localhost cannot disagree about who is asking.
     expect(
-      deviceScope(jar({ [SESSION_COOKIE]: TOKEN, [SESSION_COOKIE_SECURE]: OTHER_TOKEN }), SECRET),
-    ).toBe(deviceScope(jar({ [SESSION_COOKIE_SECURE]: OTHER_TOKEN }), SECRET))
+      deviceScope(jar({ [SESSION_COOKIE]: SESSION, [SESSION_COOKIE_SECURE]: OTHER_SESSION }), SECRET),
+    ).toBe(deviceScope(jar({ [SESSION_COOKIE_SECURE]: OTHER_SESSION }), SECRET))
   })
 
   it('cannot be read back into a CNPJ, a session token or a visitor id (§12)', () => {
     const header = jar({
-      [SESSION_COOKIE]: TOKEN,
+      [SESSION_COOKIE]: SESSION,
       [VISITOR_COOKIE]: VISITOR,
       [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
     })
@@ -160,7 +176,7 @@ describe('the device scope', () => {
      * This value is what goes into `sessionStorage`, and **the shape is the
      * load-bearing assertion**: 22 characters of base64url, with no separator
      * that could let a composed value be sliced apart. The review of this diff
-     * pointed out that `not.toContain(TOKEN)` was unfalsifiable — `TOKEN` is a
+     * pointed out that `not.toContain(SESSION)` was unfalsifiable — `SESSION` is a
      * 36-character UUID and `scope` is 22 characters, so a 22-char string cannot
      * contain it whatever the implementation does. The regex is what would
      * actually catch a `${visitorId}-${hash}` regression, so it is the one kept,
@@ -296,7 +312,7 @@ describe('the two scopes, and why there are two', () => {
 
     // Signing in is the one thing that must move it, and it cannot happen
     // mid-document: it is a navigation either way.
-    expect(viewerScope(jar({ [SESSION_COOKIE]: TOKEN }))).not.toBe(viewerScope(before))
+    expect(viewerScope(jar({ [SESSION_COOKIE]: SESSION }))).not.toBe(viewerScope(before))
   })
 
   it('moves the device scope across exactly that jar, because that list is the cookie’s', () => {
@@ -308,14 +324,14 @@ describe('the two scopes, and why there are two', () => {
 
   it('are never each other', () => {
     const header = jar({
-      [SESSION_COOKIE]: TOKEN,
+      [SESSION_COOKIE]: SESSION,
       [VISITOR_COOKIE]: VISITOR,
       [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
     })
     const scopes = listScopes(header, SECRET)
     expect(scopes.viewer).not.toBe(scopes.device)
     // Two labels, so even a jar with only a session token cannot collide them.
-    const sessionOnly = listScopes(jar({ [SESSION_COOKIE]: TOKEN }), SECRET)
+    const sessionOnly = listScopes(jar({ [SESSION_COOKIE]: SESSION }), SECRET)
     expect(sessionOnly.viewer).not.toBe(sessionOnly.device)
     for (const value of [scopes.viewer, scopes.device]) {
       expect(value).toMatch(/^[A-Za-z0-9_-]{22}$/)

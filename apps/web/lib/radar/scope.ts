@@ -83,17 +83,23 @@ import { visitorIdFromCookies, VISITOR_COOKIE, VISITOR_COOKIE_MAX_AGE_SECONDS } 
 
 /**
  * Domain separation, as `lib/telegram/token.ts` does it: `AUTH_SECRET` signs
- * Auth.js's own artefacts, so the key used here is derived from it with this
- * label and is not the same key.
+ * Auth.js's own artefacts, so the key used below is derived from it with one of
+ * these labels and is not the same key. Three of them, because there are three
+ * digests here and none of them may be any of the others — `RadarScopes` and
+ * `cnpjTag`.
  *
- * Two labels, because there are two scopes and they must never be each other —
- * see `RadarScopes`.
+ * **Named for what they are, which they were not for one commit.** These are the
+ * public, constant inputs to a key derivation; the key itself is the secret and
+ * never appears in this file. The first version called them *key labels*, and
+ * gitleaks reported one as a `generic-api-key` — not unreasonably, since an
+ * identifier saying *key* beside a fixed string is the shape of a credential.
+ * The repo's answer to that shape is to rename the value rather than allowlist
+ * it (`.gitleaks.toml`, and U1's fixture before it). A reviewer should be able to
+ * tell from the name alone that publishing these strings costs nothing.
  */
-const DEVICE_KEY_LABEL = 'licitaqui.radar.list-scope.v1'
-const VIEWER_KEY_LABEL = 'licitaqui.radar.viewer-scope.v1'
-
-/** The same, for the cookie below, so the two digests cannot be each other. */
-const CNPJ_KEY_LABEL = 'licitaqui.radar.cnpj-scope.v1'
+const DEVICE_SCOPE_LABEL = 'licitaqui.radar.list-scope.v1'
+const VIEWER_SCOPE_LABEL = 'licitaqui.radar.viewer-scope.v1'
+const CNPJ_TAG_LABEL = 'licitaqui.radar.cnpj-scope.v1'
 
 /**
  * The first 22 characters of the base64url of a 32-byte HMAC — **132 bits**, not
@@ -158,7 +164,7 @@ function digest(label: string, parts: readonly (string | null)[], env: ScopeEnv)
 
 /** What `CNPJ_SCOPE_COOKIE` carries. Opaque, stable, and never sent to a client. */
 export function cnpjTag(cnpj: string, env: ScopeEnv = process.env): string {
-  return digest(CNPJ_KEY_LABEL, [cnpj], env)
+  return digest(CNPJ_TAG_LABEL, [cnpj], env)
 }
 
 export function cnpjTagFromCookies(header: string | null): string | null {
@@ -293,9 +299,9 @@ export type RadarScopes = {
 export function listScopes(cookieHeader: string | null, env: ScopeEnv = process.env): RadarScopes {
   const session = sessionTokenFromCookies(cookieHeader)
   return {
-    viewer: digest(VIEWER_KEY_LABEL, [session], env),
+    viewer: digest(VIEWER_SCOPE_LABEL, [session], env),
     device: digest(
-      DEVICE_KEY_LABEL,
+      DEVICE_SCOPE_LABEL,
       [session, visitorIdFromCookies(cookieHeader), cnpjTagFromCookies(cookieHeader)],
       env,
     ),
