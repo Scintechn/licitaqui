@@ -563,17 +563,35 @@ describe('the product facts, against every file that quotes them', () => {
      * pattern built from the **actual value** — and a new string in any
      * phrasing fails here rather than slipping past the list.
      *
+     * **One row, two nouns.** `basico/screening` is sold as both
+     * *"N triagens … por mês"* and *"ler N editais por mês"*, and a ratchet
+     * on the first noun alone would miss a new string using the second —
+     * which is D74(4)'s *"a guard a synonym defeats is a guard against one
+     * phrasing"*, one noun earlier. So each row lists the nouns the catalogue
+     * actually uses for it. `editais por mês` is safe to sweep and the bare
+     * `editais` is not: the catalogue says `3 editais` of the weekly digest
+     * and `8 editais` of the sample copy, and only the tokenised Básico
+     * sentences put a count of editais *per month*. Adding a noun here needs
+     * that same check.
+     *
      * `{$diasVisitante}` has no equivalent and cannot get one. That gap is
      * named in {@link QUOTA_CLAIMS} and in D69's row.
      */
     const screeningRatchet = [
-      [QUOTA.visitorScreenings, 'visitor/screening', '{$triagensVisitante}'],
-      [QUOTA.basicoScreenings, 'basico/screening', '{$triagensBasico}'],
+      [QUOTA.visitorScreenings, 'visitor/screening', '{$triagensVisitante}', ['triagens']],
+      [
+        QUOTA.basicoScreenings,
+        'basico/screening',
+        '{$triagensBasico}',
+        ['triagens', 'editais por mês'],
+      ],
     ] as const
-    const handwrittenScreenings = screeningRatchet.flatMap(([quantity, row, token]) =>
-      [...rawStrings]
-        .filter(([, value]) => new RegExp(`(?<![\\d.,])${quantity} triagens`).test(value))
-        .map(([path]) => `${path} types "${quantity} triagens" (${row} — use ${token})`),
+    const handwrittenScreenings = screeningRatchet.flatMap(([quantity, row, token, nouns]) =>
+      nouns.flatMap((noun) =>
+        [...rawStrings]
+          .filter(([, value]) => new RegExp(`(?<![\\d.,])${quantity} ${noun}`).test(value))
+          .map(([path]) => `${path} types "${quantity} ${noun}" (${row} — use ${token})`),
+      ),
     )
     expect(
       handwrittenScreenings,
