@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { Suspense } from 'react'
 import { messages } from '@/lib/messages'
+import { listScope } from '@/lib/radar/scope'
 import { loadingStatus } from './bare-radar'
 import { RadarScreen } from './radar-screen'
 import { RadarView } from './radar-view'
@@ -18,6 +20,24 @@ import { RadarView } from './radar-view'
  * The page itself renders nothing but the shell: everything below depends on
  * the visitor cookie and on three fetches, so it lives in the client component
  * and the server sends the frame it will fill.
+ *
+ * ## One thing it does know, and only the server can (D58, D60)
+ *
+ * **Who the answer will belong to** — `listScope`, an opaque digest of this
+ * request's cookies. The Radar's snapshot cache keys by it, because two of the
+ * things the list route answers are facts about the caller rather than about the
+ * search: the stars (`favourites`, D23) and the company it grouped by
+ * (`?cnpj= ?? visitors.cnpj`, D19). Without it, signing out and returning to the
+ * same search inside sixty seconds restored the previous identity's stars with
+ * no request made, and bare `/radar` could not be cached at all.
+ *
+ * It is computed **here** and not in the screen because the cookies carrying it
+ * are `httpOnly` — the same reason D19 and D55 exist. It is computed here and
+ * not asked of a route because the restore happens in a `useState` initializer,
+ * before the first paint and before any request. And it costs one HMAC and no
+ * query: `lib/radar/scope.ts` explains what the cookie jar already states and
+ * why reading `visitors.cnpj` here would have been both a round trip and a
+ * second copy of the route's own resolution.
  */
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +48,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-export default function RadarPage() {
+export default async function RadarPage() {
+  const scope = listScope((await headers()).get('cookie'))
   return (
     <Suspense
       fallback={
@@ -62,7 +83,7 @@ export default function RadarPage() {
         />
       }
     >
-      <RadarScreen />
+      <RadarScreen scope={scope} />
     </Suspense>
   )
 }

@@ -239,8 +239,40 @@ function valid(value: unknown): value is ListSnapshot {
  * same failure the group guard in `restoreList` was written for, except that
  * `ListSnapshot` carries no filters, so there is no second lock here — only
  * this one.
+ *
+ * ## `scope` is not a parameter, and it is first (D58, D60)
+ *
+ * The six fields below are the *search*. `scope` is the **caller**, and two
+ * things the route answers are facts about them rather than about the search:
+ * `favourites` belongs to a viewer (D23), and `groupedBy`, `counts` and which
+ * tab each row lands in come from `?cnpj= ?? visitors.cnpj` — a column behind
+ * an `httpOnly` cookie, which D19 kept out of `GroupedBy` so that no identifier
+ * reaches `sessionStorage` (§12). Both were therefore outside this key, and the
+ * sentence above about "a list restored under another list's name" was true of
+ * them too: bare `/radar` had a key that constrained *nothing*, and D55 could
+ * only switch the cache off for it.
+ *
+ * `lib/radar/scope.ts` builds it — an opaque digest of the request's cookies,
+ * computed by the server on every render of `/radar` and handed to the screen,
+ * because the restore happens before the first request and so can never wait
+ * for one.
+ *
+ * **In the key rather than checked after the hit**, which is what closes D55's
+ * documented dead end. A snapshot of another caller's list is not *rejected*
+ * here, it is **never found**: so there is no path on which `revalidate` merges
+ * page 1 by id (`refreshTenders`) over rows that belonged to another company,
+ * which is what D19's own fix recreated when D55's first attempt tried to make
+ * the restore revalidate instead. It also means two callers' lists coexist, so
+ * signing out and back in — or working two clients in one afternoon — restores
+ * each list rather than each overwriting the other's entry.
  */
 export function listKey(query: {
+  /**
+   * `lib/radar/scope.ts`. `''` has exactly one caller — `radar-view.tsx`, which
+   * wants this string as a React identity for the favourite notices and not as
+   * a cache key; nothing is ever stored under it.
+   */
+  scope: string
   cnpj: string | null
   state: string | null
   q: string | null
@@ -250,6 +282,7 @@ export function listKey(query: {
   sort?: TenderSort | null
 }): string {
   return [
+    query.scope,
     query.cnpj ?? '',
     query.state ?? '',
     query.q ?? '',
@@ -307,6 +340,8 @@ export function readList(key: string, now: number = Date.now()): RestoredList | 
 }
 
 export type ListQuery = {
+  /** The caller, opaquely — see `listKey`. */
+  scope: string
   cnpj: string | null
   state: string | null
   q: string | null

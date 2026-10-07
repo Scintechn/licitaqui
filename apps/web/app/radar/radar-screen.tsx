@@ -40,7 +40,7 @@ import {
 import { appendTenders } from '@/lib/radar/pagination'
 import { waitForData } from '@/lib/radar/poll'
 import { useAppMenu } from '@/components/app-shell'
-import { wholeListFromCookie, isCnpjRequired, loadingStatus } from './bare-radar'
+import { isCnpjRequired, loadingStatus } from './bare-radar'
 import { RadarView, type RadarQuery, type RadarStatus } from './radar-view'
 
 /** The drawer's accessible name lives on the menu's own hidden heading. */
@@ -91,6 +91,20 @@ import { normaliseUf } from '@/lib/radar/ufs'
  * card — instead of a button that spins on a page the user is about to leave.
  * It also makes `/radar?cnpj=…` a real, shareable, reloadable address.
  *
+ * ## The cache knows who it is caching for (D58, D60)
+ *
+ * `scope` arrives as a prop from `app/radar/page.tsx`: an opaque digest of this
+ * request's cookies, and the first field of every `listKey` below. Two of the
+ * things the list route answers are facts about the **caller** and not about the
+ * search — the stars (D23) and the company it grouped by (`?cnpj= ??
+ * visitors.cnpj`, D19) — and neither was in the key, so signing out and
+ * returning to the same search inside sixty seconds restored the previous
+ * identity's stars with no request made, and a bare `/radar` could not be cached
+ * at all. It is a prop because the cookies that decide it are `httpOnly` and
+ * because the restore happens in the `useState` initializer below, before the
+ * first paint and before any request: nothing this screen could fetch would be
+ * in time to guard it. See `lib/radar/scope.ts`.
+ *
  * ## Bare `/radar` asks before it refuses (D55)
  *
  * `needCnpj` is an **answer**, never a precondition. This screen used to
@@ -104,6 +118,19 @@ import { normaliseUf } from '@/lib/radar/ufs'
  * when the route says `cnpjRequired` — `bare-radar.ts` holds the three
  * decisions and the reasoning.
  */
+
+export type RadarScreenProps = {
+  /**
+   * Who the route's answer will belong to, opaquely — `listScope` in
+   * `lib/radar/scope.ts`, computed by the page on the server.
+   *
+   * It is never rendered and never decoded; its only use is as the first field
+   * of `listKey`. §12 allows neither a CNPJ nor a user id in client storage, and
+   * this is neither: 22 characters of keyed HMAC over three opaque cookie values,
+   * which is what reaches `sessionStorage` in their place.
+   */
+  scope: string
+}
 
 const EMPTY_COUNTS = null
 
@@ -246,7 +273,7 @@ function fromSnapshot(snapshot: ListSnapshot, key: string): Data {
   }
 }
 
-export function RadarScreen() {
+export function RadarScreen({ scope }: RadarScreenProps) {
   const router = useRouter()
   const params = useSearchParams()
   const [attempt, setAttempt] = useState(0)
@@ -269,7 +296,7 @@ export function RadarScreen() {
   // Never `null`: an absent `?sort=` is the deadline order, which is the order
   // this list has always come back in (D51).
   const sort = readSort(params.get('sort'))
-  const key = listKey({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+  const key = listKey({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
 
   /**
    * The snapshot is read here, in the initializer, and not in the effect: the
@@ -279,9 +306,7 @@ export function RadarScreen() {
    * and those mounts have no server-rendered HTML to disagree with.
    */
   const [data, setData] = useState<Data>(() => {
-    const restored = wholeListFromCookie(cnpj, q)
-      ? null
-      : restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+    const restored = restoreList({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
     if (restored) return fromSnapshot(restored.snapshot, key)
     // The first frame the reader sees — the page is `force-dynamic`, so this is
     // server-rendered — and it has to be honest about which read is outstanding.
@@ -399,36 +424,26 @@ export function RadarScreen() {
      * happen to be written in. This states the rule instead.
      */
     if (data.key !== key) return
-    /**
-     * **A cookie-resolved list is not cached at all (D55).**
+    /*
+     * **Every shape is cached now, including the cookie-resolved one (D60).**
      *
-     * `listKey` is every parameter that changes what the route returns, and for
-     * a bare `/radar` one of them is `visitors.cnpj` — which is `httpOnly` and
-     * cannot be put in the key. So the entry would be filed under a name that
-     * does not identify its contents, and `list-cache.ts` has both halves of
-     * what that costs: a direct key hit is trusted, and inside
+     * D55 had to return here for a bare `/radar`: `listKey` could not see
+     * `visitors.cnpj`, so the entry was filed under a name that did not identify
+     * its contents, and `list-cache.ts` trusts a direct key hit — inside
      * `REVALIDATE_AFTER_MS` it is served with **no request at all**. Search
-     * company B, press *Radar* in the rail, and Brilho's four editais come back
-     * under Brilho's name while the device is on Vida — right-looking, stale,
-     * and nothing on screen to say so. Past that minute it is worse, not
-     * better: `revalidate` merges page 1 **by id** (`refreshTenders`), so the
-     * answer would swap the header to the new company and leave the old
-     * company's rows beneath it, which is D19 recreated by its own fix.
+     * company B, press *Radar* in the rail, and company A's editais came back
+     * under A's name. The same was true one degree less badly of `/radar?q=…`
+     * with a cookie CNPJ, which the route groups by that company too.
      *
-     * Not caching it costs one list request on the way back from an edital and
-     * loses the scroll position there — carded as **D60**, because the only
-     * sound fix is a key that can see what the route resolved, and that is a
-     * contract change.
-     *
-     * **The line this draws is not the whole of the defect.** `/radar?q=…` with
-     * a cookie CNPJ is grouped by that company too — the route resolves the
-     * cookie before it looks for a keyword — so its snapshot is mis-keyed in the
-     * same way, one degree less badly. That predates D55 and taking the cache
-     * from every keyword search is a product cost rather than a correction, so
-     * D60 carries both shapes; `wholeListFromCookie` is named for what it
-     * actually tests.
+     * `key` now opens with `scope`, so what the route resolved **is** in the
+     * name: another caller's list is not rejected after the hit, it is never
+     * found. That is also why this is not fixed by forcing the restore to
+     * revalidate, which was D55's first attempt — `revalidate` merges page 1 by
+     * id (`refreshTenders`), so a changed company would have swapped the header
+     * and kept the previous company's rows beneath it, D19 recreated by its own
+     * fix. There is no such path: a changed scope means a miss, and a miss means
+     * the full read below.
      */
-    if (wholeListFromCookie(cnpj, q)) return
     const status = snapshotStatus(data.status)
     if (!status || data.tenders.length === 0 || data.readAt === 0) return
     saveList(key, {
@@ -444,7 +459,7 @@ export function RadarScreen() {
       savedAt: data.readAt,
       scrollY: scrollY.current,
     })
-  }, [key, data, cnpj, q])
+  }, [key, data])
 
   /**
    * Leaving: remember where they were, so coming back can put them there.
@@ -469,17 +484,19 @@ export function RadarScreen() {
    * empty `data.tenders` here means nothing was restored, and a later render
    * must never move a scroll position the reader now owns.
    *
-   * **Deliberately not guarded by `wholeListFromCookie`, unlike the other two
-   * `restoreList` calls.** The guard would be dead code here: the line below is
-   * only reached when something *was* restored, and for that shape the mount
-   * initializer never restores anything — so `data.tenders` is empty and this
-   * returns first. The load-bearing guard is the one on `saveList`, which is why
-   * no entry under such a key can exist for this call to find. If D60 ever gives
-   * that shape a snapshot, this is the third site to re-read.
+   * **This is the third site D55 left a note on, and D60 is what it was waiting
+   * for.** While a bare `/radar` was uncacheable the initializer never restored
+   * anything for it, so `data.tenders` was empty here and the scroll was never
+   * put back — which is precisely the cost D60's card names: *open an edital from
+   * a bare `/radar`, press Voltar, and the scroll position is lost*. Now that
+   * `key` carries the scope, the entry exists, the initializer finds it and this
+   * line moves the window. Nothing else changed: it still asks the cache rather
+   * than trusting `data`, because the snapshot's `scrollY` is written by
+   * `rememberScroll` after the state was last set.
    */
   useBeforePaint(() => {
     if (data.tenders.length === 0) return
-    const restored = restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+    const restored = restoreList({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
     if (restored && restored.snapshot.scrollY > 0) window.scrollTo(0, restored.snapshot.scrollY)
   }, [])
 
@@ -574,9 +591,7 @@ export function RadarScreen() {
        * who has no cookie — approved by Sci on 2026-10-06 as the price of the
        * entry point resuming the last company's list.
        */
-      const restored = wholeListFromCookie(cnpj, q)
-        ? null
-        : restoreList({ cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+      const restored = restoreList({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
       if (restored) {
         // The mount initializer may already have rendered this exact snapshot;
         // setting it again would replace an identical view model and re-render
@@ -744,7 +759,7 @@ export function RadarScreen() {
       controller.abort()
       moreRequest.current?.abort()
     }
-  }, [cnpj, state, q, modality, meEpp, chosenGroup, sort, key, attempt])
+  }, [scope, cnpj, state, q, modality, meEpp, chosenGroup, sort, key, attempt])
 
   /**
    * "Ver mais editais" — the next keyset page, appended.

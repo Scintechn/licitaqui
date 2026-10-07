@@ -97,7 +97,7 @@ function tender(id: string): TenderCard {
   }
 }
 
-const QUERY = { cnpj: '11222333000181', state: null, q: null, group: 'compatible' } as const
+const QUERY = { scope: 'scope-one', cnpj: '11222333000181', state: null, q: null, group: 'compatible' } as const
 
 function snapshot(over: Partial<ListSnapshot> = {}): ListSnapshot {
   return {

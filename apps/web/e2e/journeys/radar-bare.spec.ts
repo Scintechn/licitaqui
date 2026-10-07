@@ -129,9 +129,31 @@ test.describe('D55 · bare /radar uses the CNPJ it already has', () => {
     await expect(page.getByText(copy.states.needCnpjTitle)).toHaveCount(0)
   })
 
-  test('is never served from the cache, because its key cannot see the cookie', async ({
+  test('is never served another company’s list, now that it is cached at all', async ({
     page,
   }) => {
+    /*
+     * **This test used to assert the opposite, and the change is the card.**
+     *
+     * Until D60 it was called *"is never served from the cache, because its key
+     * cannot see the cookie"*, and it was right: `listKey` was the search and
+     * nothing else, so for an address carrying neither `?cnpj=` nor `?q=` it
+     * constrained **nothing** — Carla's two clients shared one key. D55
+     * therefore switched the snapshot off for this shape, and the assertion
+     * guarded that decision: a second visit *had* to ask the route again.
+     *
+     * The cost was the journey the cache exists for, which
+     * `radar-snapshot-identity.spec.ts` now covers: coming back from an edital
+     * opened here re-read page 1, lost the scroll and threw away every "Ver
+     * mais editais" page. `listKey` now opens with the caller's opaque scope, so
+     * the key names what the route resolved and the two clients' lists are two
+     * entries.
+     *
+     * What survives from the old test is the half that was never about caching:
+     * **a changed company is never served the previous one's rows.** It is the
+     * same journey, asserted the other way round — not "a request was made" but
+     * "this is the right company, and none of the other one's cards are here".
+     */
     const api = await installRadarApi(page, {
       companies: clients(),
       cookieCnpj: limpeza.cnpj,
@@ -141,25 +163,30 @@ test.describe('D55 · bare /radar uses the CNPJ it already has', () => {
     await expect(cards(page)).toHaveCount(4)
     await expect(page.getByText('Brilho Limpeza')).toBeVisible()
 
-    // She moves to her other client — which is what writes `visitors.cnpj`.
-    // The cookie is the route's business, so the world holds it.
-    api.world.cookieCnpj = hospitalar.cnpj
+    // She moves to her other client, which is what writes `visitors.cnpj` — and
+    // what stamps the cookie stating its generation. Both move together, which
+    // is what `setCookieCnpj` is for: assigning to `world.cookieCnpj` alone
+    // would move the answers and not the key, and *that* is the defect.
+    await api.setCookieCnpj(hospitalar.cnpj)
 
     // Back to the same bare address, seconds later — inside
-    // `REVALIDATE_AFTER_MS`, where `list-cache.ts` serves a direct key hit with
-    // **no request at all**. `listKey` has no CNPJ in it, so that snapshot
-    // would hand back Brilho's four editais under Brilho's name while the
-    // device is on Vida, and nothing on screen would say so.
-    const asked = api.calls.tenders.length
+    // `REVALIDATE_AFTER_MS`, where a direct key hit is served with **no request
+    // at all**. The old key would have handed back Brilho's four editais under
+    // Brilho's name while the device is on Vida, and nothing on screen would
+    // have said so.
     await page.goto('/radar')
 
     await expect(page.getByText('Vida Hospitalar')).toBeVisible()
     await expect(cards(page)).toHaveCount(9)
     await expect(page.getByText('Brilho Limpeza')).toHaveCount(0)
-    expect(
-      api.calls.tenders.length,
-      'a list whose CNPJ is only in the cookie must not come from the cache',
-    ).toBeGreaterThan(asked)
+    await expect(page.getByText('4 CNAEs')).toHaveCount(0)
     assertBare(page.url())
+
+    // And the header has not been swapped over the previous company's rows,
+    // which is the shape D19 fixed and D55's first attempt at this card
+    // recreated: `revalidate` merges page 1 by id. A changed scope is a key
+    // miss, so that merge has no input — asserted on screen, where the mixture
+    // would be visible, rather than by counting requests.
+    await expect(page.getByText(processo(501)), 'Vida’s rows, not Brilho’s').toBeVisible()
   })
 })

@@ -1,0 +1,208 @@
+import { createHmac } from 'node:crypto'
+import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from '@/lib/auth/config'
+import { sessionTokenFromCookies } from '@/lib/auth/session'
+import { visitorIdFromCookies, VISITOR_COOKIE, VISITOR_COOKIE_MAX_AGE_SECONDS } from './visitor'
+
+/**
+ * **Who the Radar's answer belongs to, as one opaque string the client may key
+ * a cache by** — cards D58 and D60.
+ *
+ * ## The defect, in both its shapes
+ *
+ * `lib/radar/list-cache.ts` files a list under `listKey`, which its own
+ * docstring defines as "every thing that changes what the route returns". Two
+ * such things were missing, and both are facts about the *caller* rather than
+ * about the search:
+ *
+ *  * **The viewer (D58).** Since D23 the snapshot carries `favourites`, which
+ *    belongs to a person. Sign out in the same tab, return to the same search
+ *    inside `REVALIDATE_AFTER_MS`, and the restore is `fresh` — **no request is
+ *    made at all** — so the stars drawn are the previous identity's. The other
+ *    direction is the same bug: sign *in* and the stars come back empty for an
+ *    account that has marks.
+ *  * **The CNPJ the route resolved (D60).** `GET /api/radar/tenders` groups by
+ *    `?cnpj= ?? visitors.cnpj`, and the second one is behind an `httpOnly`
+ *    cookie. D19 deliberately kept it out of `GroupedBy` so that no identifier
+ *    reaches `sessionStorage` (§12), which left bare `/radar` — the address the
+ *    rail, the drawer, the signed-in landing, both `/fundadores` CTAs, `/conta`
+ *    and the 404 all point at — with a key that constrains **nothing**. D55
+ *    could only switch the cache off for it.
+ *
+ * ## What this is, and why it can be in a key
+ *
+ * A keyed digest of three **opaque** values this request already carries in its
+ * cookie header:
+ *
+ * | input | what changing it means |
+ * |---|---|
+ * | the Auth.js session token | signed in, signed out, or a different account |
+ * | `lq_visitor` | a different device identity, including the first one ever minted |
+ * | `lq_scope` | this device's remembered CNPJ changed — see `cnpjScopeCookie` |
+ *
+ * §12 allows neither a CNPJ nor a user id in client storage, and none of the
+ * three is either of those: two are random tokens and the third is itself a
+ * keyed digest. What the client receives, and the only thing that reaches
+ * `sessionStorage`, is 22 characters of HMAC over them. It cannot be read
+ * backwards into any of its inputs — which matters most for the session token,
+ * a bearer credential that is `httpOnly` precisely so page scripts cannot have
+ * it.
+ *
+ * ## No database read, which is the whole reason it works
+ *
+ * The restore decision is made in `RadarScreen`'s `useState` initializer,
+ * before the first paint and **before any request** — that is what makes a
+ * `fresh` restore free, and it is why a value the client has to fetch could
+ * never guard it. So the scope has to be computable from the request alone.
+ * It is: `app/radar/page.tsx` is `force-dynamic`, so every document and every
+ * RSC render of `/radar` passes through it with the cookie header in hand, and
+ * this function costs one HMAC. Resolving `visitors.cnpj` there instead would
+ * have cost a query on every `/radar`, and — worse — would have been a second
+ * implementation of the route's own resolution, which is D29's shape.
+ *
+ * `lq_scope` is what replaces that query: the one place that writes
+ * `visitors.cnpj` stamps a cookie in the same response, so the cookie header
+ * already states the generation of what the route will resolve.
+ *
+ * ## Over-invalidating is the safe direction, and it happens
+ *
+ * Two sessions of the same account are two tokens and therefore two scopes, so
+ * signing out and back in costs one list request for a list that was in fact
+ * still correct. That is the right way round: the cost of a scope that changed
+ * when it needed not have is one request, and the cost of one that did not
+ * change when it should have is the defect above.
+ */
+
+/**
+ * Domain separation, as `lib/telegram/token.ts` does it: `AUTH_SECRET` signs
+ * Auth.js's own artefacts, so the key used here is derived from it with this
+ * label and is not the same key.
+ */
+const KEY_LABEL = 'licitaqui.radar.list-scope.v1'
+
+/** The same, for the cookie below, so the two digests cannot be each other. */
+const CNPJ_KEY_LABEL = 'licitaqui.radar.cnpj-scope.v1'
+
+/**
+ * 16 bytes — 22 base64url characters. The digest is only ever compared with
+ * another digest produced the same way, so the bar is "two different callers
+ * must not collide", and 128 bits is far past it. Short because it is joined
+ * into a `sessionStorage` key.
+ */
+const DIGEST_CHARS = 22
+
+/** The same shape `lib/telegram/config.ts` takes, so `process.env` fits. */
+export type ScopeEnv = Record<string, string | undefined>
+
+/**
+ * `lq_scope` — **the generation of the CNPJ this device remembers**, and not
+ * the CNPJ.
+ *
+ * `visitors.cnpj` has exactly one writer, `attachCnpj`, called from exactly one
+ * place: `POST /api/radar/cnpj`, in the branch where the caller is a visitor.
+ * That response stamps this cookie with a keyed digest of the CNPJ it stored,
+ * so the value changes when, and only when, the thing the list route will
+ * resolve changes. A re-search of the same CNPJ writes the same digest, which
+ * is why it is a digest and not a nonce: nothing has to be read before it is
+ * written, and a lost cookie heals to the same value on the next search.
+ *
+ * `httpOnly`, because nothing in the browser needs it — the server reads it to
+ * build `listScope`, and the client only ever sees that digest. 30 days and
+ * `SameSite=Lax`, matching `lq_visitor`, whose row it describes; losing one
+ * without the other costs a list request and nothing else.
+ */
+export const CNPJ_SCOPE_COOKIE = 'lq_scope'
+
+function key(label: string, env: ScopeEnv): Buffer {
+  /*
+   * An absent `AUTH_SECRET` is **not** a special case here, deliberately.
+   *
+   * Every input to `listScope` is already a high-entropy opaque token, so an
+   * unkeyed digest of them is not a dictionary to be looked up — unlike
+   * `visitor.ts`'s `hash()` of an IP address, whose own comment says a salt
+   * would be better. The secret adds per-deployment separation where it exists;
+   * where it does not (a local tree with an empty `.env`), the Radar's cache
+   * keeps working rather than silently switching itself off.
+   *
+   * `cnpjTag` *does* digest a CNPJ, which is a dictionary — 10^14 before the
+   * check digits, and the list of real ones is public. It is keyed with the
+   * same material, and what protects it when there is no secret is that the
+   * value never leaves an `httpOnly` cookie: it reaches no page script, no
+   * `sessionStorage` and no response body.
+   */
+  return createHmac('sha256', env.AUTH_SECRET ?? label).update(label).digest()
+}
+
+function digest(label: string, parts: readonly (string | null)[], env: ScopeEnv): string {
+  return createHmac('sha256', key(label, env))
+    .update(parts.map((part) => part ?? '').join('\u0000'))
+    .digest('base64url')
+    .slice(0, DIGEST_CHARS)
+}
+
+/** What `CNPJ_SCOPE_COOKIE` carries. Opaque, stable, and never sent to a client. */
+export function cnpjTag(cnpj: string, env: ScopeEnv = process.env): string {
+  return digest(CNPJ_KEY_LABEL, [cnpj], env)
+}
+
+export function cnpjTagFromCookies(header: string | null): string | null {
+  if (!header) return null
+  for (const part of header.split(';')) {
+    const trimmed = part.trim()
+    const equals = trimmed.indexOf('=')
+    if (equals <= 0) continue
+    if (trimmed.slice(0, equals) !== CNPJ_SCOPE_COOKIE) continue
+    // Our own value is base64url, so it never needs decoding; anything that
+    // does is not ours and is compared as it arrived rather than thrown over.
+    // `session.ts` learned that the hard way — one unrelated `%` in the jar
+    // signed a paying subscriber out.
+    return trimmed.slice(equals + 1) || null
+  }
+  return null
+}
+
+/** The `Set-Cookie` for a CNPJ this request just attached to a `visitors` row. */
+export function cnpjScopeCookie(
+  cnpj: string,
+  options: { secure?: boolean; env?: ScopeEnv } = {},
+): string {
+  const env = options.env ?? process.env
+  const secure = options.secure ?? process.env.NODE_ENV === 'production'
+  const parts = [
+    `${CNPJ_SCOPE_COOKIE}=${cnpjTag(cnpj, env)}`,
+    'Path=/',
+    `Max-Age=${VISITOR_COOKIE_MAX_AGE_SECONDS}`,
+    'HttpOnly',
+    'SameSite=Lax',
+  ]
+  if (secure) parts.push('Secure')
+  return parts.join('; ')
+}
+
+/**
+ * The scope of every answer `GET /api/radar/tenders` would give this request.
+ *
+ * Pure, synchronous, no database, no `next/headers`: it takes the raw `Cookie`
+ * header, so a route handler, a server component and a test can all ask it the
+ * same question. The raw header and not `cookies().getAll()`, for the reason
+ * `lib/account/server-summary.ts` records — those values come back already
+ * percent-decoded.
+ */
+export function listScope(cookieHeader: string | null, env: ScopeEnv = process.env): string {
+  return digest(
+    KEY_LABEL,
+    [
+      sessionTokenFromCookies(cookieHeader),
+      visitorIdFromCookies(cookieHeader),
+      cnpjTagFromCookies(cookieHeader),
+    ],
+    env,
+  )
+}
+
+/** Re-exported so a reader of this file can see the whole cookie jar it reads. */
+export const SCOPE_INPUT_COOKIES = [
+  SESSION_COOKIE,
+  SESSION_COOKIE_SECURE,
+  VISITOR_COOKIE,
+  CNPJ_SCOPE_COOKIE,
+] as const
