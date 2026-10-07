@@ -47,6 +47,10 @@ import { visitorIdFromCookies, VISITOR_COOKIE, VISITOR_COOKIE_MAX_AGE_SECONDS } 
  * a bearer credential that is `httpOnly` precisely so page scripts cannot have
  * it.
  *
+ * **It is two digests and not one** — `RadarScopes` — and the reason is the one
+ * thing a single value could not do: be correct *while the document that uses it
+ * is changing the jar*. That story is at `listScopes`.
+ *
  * ## No database read, which is the whole reason it works
  *
  * The restore decision is made in `RadarScreen`'s `useState` initializer,
@@ -81,8 +85,12 @@ import { visitorIdFromCookies, VISITOR_COOKIE, VISITOR_COOKIE_MAX_AGE_SECONDS } 
  * Domain separation, as `lib/telegram/token.ts` does it: `AUTH_SECRET` signs
  * Auth.js's own artefacts, so the key used here is derived from it with this
  * label and is not the same key.
+ *
+ * Two labels, because there are two scopes and they must never be each other —
+ * see `RadarScopes`.
  */
-const KEY_LABEL = 'licitaqui.radar.list-scope.v1'
+const DEVICE_KEY_LABEL = 'licitaqui.radar.list-scope.v1'
+const VIEWER_KEY_LABEL = 'licitaqui.radar.viewer-scope.v1'
 
 /** The same, for the cookie below, so the two digests cannot be each other. */
 const CNPJ_KEY_LABEL = 'licitaqui.radar.cnpj-scope.v1'
@@ -198,16 +206,81 @@ export function cnpjScopeCookie(
  * `lib/account/server-summary.ts` records — those values come back already
  * percent-decoded.
  */
-export function listScope(cookieHeader: string | null, env: ScopeEnv = process.env): string {
-  return digest(
-    KEY_LABEL,
-    [
-      sessionTokenFromCookies(cookieHeader),
-      visitorIdFromCookies(cookieHeader),
-      cnpjTagFromCookies(cookieHeader),
-    ],
-    env,
-  )
+export type RadarScopes = {
+  /**
+   * **The caller, for a list whose CNPJ is in the URL.** The session token and
+   * nothing else.
+   *
+   * `GET /api/radar/tenders` uses `params.cnpj` when it is given and never
+   * reaches the cookie fallback, so for those addresses the cookie-derived half
+   * cannot change the answer: the rows, the groups and the header all come from
+   * a CNPJ `listKey` already carries, and the only caller fact left is whose
+   * stars they are. Narrower, and therefore stable.
+   */
+  viewer: string
+  /**
+   * **The caller, for a list the cookie decides** — a bare `/radar`, or
+   * `/radar?q=…`, where the route resolves `visitors.cnpj`. The session token,
+   * the device identity and the generation of the CNPJ that device remembers.
+   */
+  device: string
+}
+
+/**
+ * The scopes of the answers `GET /api/radar/tenders` would give this request —
+ * **two of them, and the split is a correctness fix, not an optimisation.**
+ *
+ * ## Why one value was wrong, and the first version of this file shipped it
+ *
+ * D58's argument for a single digest was that the snapshot is one object filled
+ * by one response, so the finest useful granularity is "could this response have
+ * differed". That is right about the *response* and wrong about **when the
+ * client can know the digest**, which is the thing that actually has to hold.
+ *
+ * The scope is computed once per render of `app/radar/page.tsx`. Our own
+ * `POST /api/radar/cnpj` then stamps `lq_scope` — and, on a device that has
+ * never searched, mints `lq_visitor` — **after** that render, from a request the
+ * screen itself makes. So on the first search of a device, and on every change
+ * of company, a single digest went stale *inside the document that was writing
+ * snapshots with it*: everything saved was filed under a scope that no longer
+ * existed, and the next document load missed it. The journey that broke is the
+ * one `list-cache.ts` was written for — `?cnpj=B`, three *Ver mais editais*, open
+ * an edital, **Voltar** — which went from 60 cards and 3 000 px of scroll back to
+ * 20 and zero. A regression on `main`, found by a review of this diff and by no
+ * test, because `e2e/fixtures/radar-api.ts` used to stamp the cookie before the
+ * first navigation and so only ever modelled the steady state.
+ *
+ * ## The split, and why it is exactly the right line
+ *
+ * `postCnpj` runs **only** inside `if (cnpj)` in `radar-screen.tsx`, where `cnpj`
+ * is the *URL's*. So the documents whose jar changes under us are precisely the
+ * documents whose answer the jar cannot influence, and the other way round:
+ *
+ * | the URL | what decides the answer | which scope | can the jar change mid-document? |
+ * |---|---|---|---|
+ * | names a CNPJ | `params.cnpj`, already in `listKey` | `viewer` | yes — and it does not matter |
+ * | names none | `visitors.cnpj`, which nothing here can read | `device` | **no**: with no `?cnpj=` nothing is posted |
+ *
+ * The client picks, in `RadarScreen`, because it is the one place that has
+ * already normalised `?cnpj=` — asking the page to decide would be a second copy
+ * of that decision, which is D29's shape.
+ *
+ * What `viewer` gives up is the visitor banner's numbers, which ride in the
+ * snapshot and are per-device: two anonymous devices searching the same CNPJ
+ * share a `viewer` scope. They do not share a browser, so they do not share a
+ * `sessionStorage`, and within one browser the visitor identity changes only by
+ * being minted — which is the transition this split exists to survive.
+ */
+export function listScopes(cookieHeader: string | null, env: ScopeEnv = process.env): RadarScopes {
+  const session = sessionTokenFromCookies(cookieHeader)
+  return {
+    viewer: digest(VIEWER_KEY_LABEL, [session], env),
+    device: digest(
+      DEVICE_KEY_LABEL,
+      [session, visitorIdFromCookies(cookieHeader), cnpjTagFromCookies(cookieHeader)],
+      env,
+    ),
+  }
 }
 
 /** Re-exported so a reader of this file can see the whole cookie jar it reads. */

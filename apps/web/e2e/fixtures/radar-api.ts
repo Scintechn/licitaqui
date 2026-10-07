@@ -341,6 +341,21 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
       // which costs no polling interval and no wall-clock wait. The `202` path
       // itself is exercised where it actually matters — the screening, where
       // the job really does outlive the deadline (#68).
+      /*
+       * **The cookie is stamped here, after the answer, exactly as the route
+       * does it — and that ordering is the whole point (D70/B1).**
+       *
+       * `POST /api/radar/cnpj` writes `visitors.cnpj` and sends `lq_scope` in the
+       * same response, which arrives **after** `app/radar/page.tsx` rendered and
+       * handed the screen its scopes. An earlier version of this fixture stamped
+       * the cookie once at install time, before the first navigation, so every
+       * journey ran against a jar that was already correct at render time: it
+       * modelled the end state and never the transition, and a regression that
+       * broke the *Voltar* journey for every first search passed the whole suite.
+       * Stamping it here is what lets these journeys fail.
+       */
+      await stampDeviceCnpj(page, cnpj)
+      api.world.cookieCnpj = cnpj
       return json(route, {
         state: 'ready',
         company: found.company,

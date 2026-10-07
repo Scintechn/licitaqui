@@ -9,6 +9,7 @@ import {
   MODALITY_PARAM,
   postCnpj,
 } from '@/lib/radar/client'
+import type { RadarScopes } from '@/lib/radar/scope'
 import type {
   CnpjResponse,
   CompanyView,
@@ -122,15 +123,22 @@ import { normaliseUf } from '@/lib/radar/ufs'
 
 export type RadarScreenProps = {
   /**
-   * Who the route's answer will belong to, opaquely — `listScope` in
+   * Who the route's answer will belong to, opaquely — `listScopes` in
    * `lib/radar/scope.ts`, computed by the page on the server.
    *
-   * It is never rendered and never decoded; its only use is as the first field
-   * of `listKey`. §12 allows neither a CNPJ nor a user id in client storage, and
-   * this is neither: 22 characters of keyed HMAC over three opaque cookie values,
+   * Never rendered and never decoded; the only use is the first field of
+   * `listKey`. §12 allows neither a CNPJ nor a user id in client storage, and
+   * these are neither: 22 characters of keyed HMAC over opaque cookie values,
    * which is what reaches `sessionStorage` in their place.
+   *
+   * **Two, and this screen is what picks between them**, because it is the one
+   * place that has already normalised `?cnpj=`. `scope.ts` carries the whole
+   * argument; the part that matters here is that the narrower `viewer` scope is
+   * used exactly where our own `POST /api/radar/cnpj` can change the cookie jar
+   * mid-document, so nothing is ever saved under a digest that has already
+   * stopped being the current one.
    */
-  scope: string
+  scopes: RadarScopes
 }
 
 const EMPTY_COUNTS = null
@@ -274,7 +282,7 @@ function fromSnapshot(snapshot: ListSnapshot, key: string): Data {
   }
 }
 
-export function RadarScreen({ scope }: RadarScreenProps) {
+export function RadarScreen({ scopes }: RadarScreenProps) {
   const router = useRouter()
   const params = useSearchParams()
   const [attempt, setAttempt] = useState(0)
@@ -297,6 +305,17 @@ export function RadarScreen({ scope }: RadarScreenProps) {
   // Never `null`: an absent `?sort=` is the deadline order, which is the order
   // this list has always come back in (D51).
   const sort = readSort(params.get('sort'))
+  /**
+   * Which of the two scopes names this list — see `RadarScreenProps.scopes`.
+   *
+   * With a CNPJ in the URL the route answers from `params.cnpj` and never reads
+   * `visitors.cnpj`, so the cookie-derived digest would discriminate on something
+   * that cannot change the answer — **and would go stale inside this very
+   * document**, because this is the shape that posts the CNPJ and the response
+   * stamps `lq_scope`. Without a CNPJ in the URL nothing is posted, the jar holds
+   * still, and the cookie is the only thing that names the list at all.
+   */
+  const scope = cnpj ? scopes.viewer : scopes.device
   const key = listKey({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
 
   /**

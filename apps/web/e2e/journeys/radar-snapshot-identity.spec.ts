@@ -446,7 +446,29 @@ test.describe('D70 · the scope can be behind, and the merge must not run on it'
       'the clock has to have moved past REVALIDATE_AFTER_MS, or this test proves nothing',
     ).toBeGreaterThan(60_000)
 
+    /*
+     * **The premise is asserted, not assumed** — and the first version of this
+     * test did assume it. If Next re-rendered the page on Back instead of reusing
+     * the segment, the scope would be *fresh*, the key would miss, and the screen
+     * would show Vida's list for an entirely different reason: the test would
+     * pass with the guard deleted and prove nothing. §4b's shape.
+     *
+     * So the list request is held open across the Back. While it is in flight the
+     * only thing on screen can be what was **restored** — and if the stale
+     * snapshot was restored, that is Brilho's list, under Brilho's name, on a
+     * device that is on Vida. That is the stale path, observed.
+     */
+    const gate = api.hold('tenders')
     await page.goBack()
+    await gate.reached
+
+    await expect(
+      page.getByText('Brilho Limpeza'),
+      'the stale snapshot was restored — which is the path this test exists for',
+    ).toBeVisible()
+    await expect(cards(page)).toHaveCount(20)
+
+    gate.open()
 
     /*
      * Whatever the scope says, the screen must agree with itself. The failure

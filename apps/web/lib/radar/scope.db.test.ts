@@ -4,7 +4,7 @@ import { POST as postCnpj } from '@/app/api/radar/cnpj/route'
 import { closeDb, pool } from '@/lib/db'
 import { testDatabaseUrl } from '@/lib/db/test-url'
 import { resetRateLimits } from '@/lib/rate-limit'
-import { CNPJ_SCOPE_COOKIE, cnpjTag, listScope } from './scope'
+import { CNPJ_SCOPE_COOKIE, cnpjTag, listScopes } from './scope'
 import { VISITOR_COOKIE } from './visitor'
 
 /**
@@ -183,9 +183,19 @@ suite('the CNPJ generation cookie (database)', () => {
      * exists for — a changed company is a changed key, so the snapshot of the
      * previous company is not found rather than merged into.
      */
-    const before = listScope(`${VISITOR_COOKIE}=${visitorId}; ${CNPJ_SCOPE_COOKIE}=${firstTag}`)
-    const after = listScope(`${VISITOR_COOKIE}=${visitorId}; ${CNPJ_SCOPE_COOKIE}=${secondTag}`)
-    expect(after).not.toBe(before)
+    const before = listScopes(`${VISITOR_COOKIE}=${visitorId}; ${CNPJ_SCOPE_COOKIE}=${firstTag}`)
+    const after = listScopes(`${VISITOR_COOKIE}=${visitorId}; ${CNPJ_SCOPE_COOKIE}=${secondTag}`)
+    expect(after.device, 'the scope a bare /radar keys by').not.toBe(before.device)
+    /*
+     * And the **viewer** scope is unmoved, which is the other half of the fix
+     * this cookie's ordering forced (see `listScopes`): the document that posts
+     * the CNPJ is the document this response changes the jar of, so a list keyed
+     * by `?cnpj=` must not depend on it or every snapshot that document writes is
+     * filed under a digest that has already stopped being current.
+     */
+    expect(after.viewer, 'and a list whose CNPJ is in the URL does not key by it').toBe(
+      before.viewer,
+    )
   })
 
   it('re-stamps the same value when the same company is searched again', async () => {

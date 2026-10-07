@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { Suspense } from 'react'
 import { messages } from '@/lib/messages'
-import { listScope } from '@/lib/radar/scope'
+import { listScopes } from '@/lib/radar/scope'
 import { loadingStatus } from './bare-radar'
 import { RadarScreen } from './radar-screen'
 import { RadarView } from './radar-view'
@@ -23,8 +23,12 @@ import { RadarView } from './radar-view'
  *
  * ## One thing it does know, and only the server can (D58, D60)
  *
- * **Who the answer will belong to** — `listScope`, an opaque digest of this
- * request's cookies. The Radar's snapshot cache keys by it, because two of the
+ * **Who the answer will belong to** — `listScopes`, two opaque digests of this
+ * request's cookies: one for the addresses that name a CNPJ and one for the
+ * addresses the cookie decides. `listScopes` says why it is two and not one; the
+ * short version is that our own `POST /api/radar/cnpj` changes the jar *after*
+ * this render, so a single digest went stale inside the document that was
+ * writing snapshots with it. The Radar's snapshot cache keys by it, because two of the
  * things the list route answers are facts about the caller rather than about the
  * search: the stars (`favourites`, D23) and the company it grouped by
  * (`?cnpj= ?? visitors.cnpj`, D19). Without it, signing out and returning to the
@@ -39,7 +43,7 @@ import { RadarView } from './radar-view'
  * why reading `visitors.cnpj` here would have been both a round trip and a
  * second copy of the route's own resolution.
  *
- * **The value the screen holds is therefore only as fresh as the last render of
+ * **The values the screen holds are therefore only as fresh as the last render of
  * this component**, and Next reuses a page segment on a browser back/forward
  * without re-rendering it. That is **D70**; `regrouped` in `lib/radar/list-cache.ts`
  * is the guard for the half of it an answer can reach.
@@ -54,7 +58,7 @@ export const metadata: Metadata = {
 }
 
 export default async function RadarPage() {
-  const scope = listScope((await headers()).get('cookie'))
+  const scopes = listScopes((await headers()).get('cookie'))
   return (
     <Suspense
       fallback={
@@ -88,7 +92,7 @@ export default async function RadarPage() {
         />
       }
     >
-      <RadarScreen scope={scope} />
+      <RadarScreen scopes={scopes} />
     </Suspense>
   )
 }

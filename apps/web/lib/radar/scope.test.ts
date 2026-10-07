@@ -5,7 +5,7 @@ import {
   cnpjScopeCookie,
   cnpjTag,
   cnpjTagFromCookies,
-  listScope,
+  listScopes,
   SCOPE_INPUT_COOKIES,
   type ScopeEnv,
 } from './scope'
@@ -38,6 +38,20 @@ const OTHER_VISITOR = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
 const TOKEN = 'b6a1f0c2-3d4e-4f5a-9b8c-7d6e5f4a3b2c'
 const OTHER_TOKEN = 'c7b2a1d3-4e5f-4a6b-8c9d-0e1f2a3b4c5e'
 
+/**
+ * The scope for an address the **cookie** decides — a bare `/radar`, or
+ * `/radar?q=…`. Most of this file is about that one, because it is the one with
+ * three inputs; `the two scopes` below holds the other.
+ */
+function deviceScope(cookieHeader: string | null, env: ScopeEnv = SECRET): string {
+  return listScopes(cookieHeader, env).device
+}
+
+/** The scope for an address that names its own CNPJ: the session, and no more. */
+function viewerScope(cookieHeader: string | null, env: ScopeEnv = SECRET): string {
+  return listScopes(cookieHeader, env).viewer
+}
+
 /** A cookie header, written the way a browser sends one. */
 function jar(entries: Record<string, string>): string {
   return Object.entries(entries)
@@ -45,26 +59,26 @@ function jar(entries: Record<string, string>): string {
     .join('; ')
 }
 
-describe('listScope', () => {
+describe('the device scope', () => {
   it('is the same for the same caller and different for every input that changes the answer', () => {
     const base = jar({
       [SESSION_COOKIE]: TOKEN,
       [VISITOR_COOKIE]: VISITOR,
       [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
     })
-    const scope = listScope(base, SECRET)
+    const scope = deviceScope(base, SECRET)
 
     // Stable: a second render of the same request must restore, not re-read.
-    expect(listScope(base, SECRET)).toBe(scope)
+    expect(deviceScope(base, SECRET)).toBe(scope)
 
     /*
      * D58 — the viewer. Both directions, because both were wrong: after a
      * sign-out the stars drawn were the previous identity's, and after a sign-in
      * they came back empty for an account that has marks on another device.
      */
-    expect(listScope(jar({ [VISITOR_COOKIE]: VISITOR }), SECRET)).not.toBe(scope)
+    expect(deviceScope(jar({ [VISITOR_COOKIE]: VISITOR }), SECRET)).not.toBe(scope)
     expect(
-      listScope(jar({ [SESSION_COOKIE]: OTHER_TOKEN, [VISITOR_COOKIE]: VISITOR }), SECRET),
+      deviceScope(jar({ [SESSION_COOKIE]: OTHER_TOKEN, [VISITOR_COOKIE]: VISITOR }), SECRET),
     ).not.toBe(scope)
 
     /*
@@ -73,7 +87,7 @@ describe('listScope', () => {
      * generation `POST /api/radar/cnpj` stamped.
      */
     expect(
-      listScope(
+      deviceScope(
         jar({
           [SESSION_COOKIE]: TOKEN,
           [VISITOR_COOKIE]: VISITOR,
@@ -86,7 +100,7 @@ describe('listScope', () => {
     // A different device is a different `visitors` row, so a different CNPJ and
     // a different quota.
     expect(
-      listScope(
+      deviceScope(
         jar({
           [SESSION_COOKIE]: TOKEN,
           [VISITOR_COOKIE]: OTHER_VISITOR,
@@ -105,7 +119,7 @@ describe('listScope', () => {
      * different digest from the empty one: a cookie listed there but not read
      * fails here.
      */
-    const empty = listScope('', SECRET)
+    const empty = deviceScope('', SECRET)
     /*
      * A value each cookie's own reader accepts. `lq_visitor` is validated
      * against the UUID shape, and the first draft of this test used a
@@ -121,17 +135,17 @@ describe('listScope', () => {
       [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
     }
     for (const name of SCOPE_INPUT_COOKIES) {
-      expect(listScope(jar({ [name]: sample[name] }), SECRET), name).not.toBe(empty)
+      expect(deviceScope(jar({ [name]: sample[name] }), SECRET), name).not.toBe(empty)
     }
     // And the one input that is checked before it is used: a `lq_visitor` that
     // is not a UUID names no `visitors` row, so it must read as no device at
     // all rather than as a device of its own.
-    expect(listScope(jar({ [VISITOR_COOKIE]: 'not-a-uuid' }), SECRET)).toBe(empty)
+    expect(deviceScope(jar({ [VISITOR_COOKIE]: 'not-a-uuid' }), SECRET)).toBe(empty)
     // And the secure spelling of the session cookie wins over the plain one, so
     // production and localhost cannot disagree about who is asking.
     expect(
-      listScope(jar({ [SESSION_COOKIE]: TOKEN, [SESSION_COOKIE_SECURE]: OTHER_TOKEN }), SECRET),
-    ).toBe(listScope(jar({ [SESSION_COOKIE_SECURE]: OTHER_TOKEN }), SECRET))
+      deviceScope(jar({ [SESSION_COOKIE]: TOKEN, [SESSION_COOKIE_SECURE]: OTHER_TOKEN }), SECRET),
+    ).toBe(deviceScope(jar({ [SESSION_COOKIE_SECURE]: OTHER_TOKEN }), SECRET))
   })
 
   it('cannot be read back into a CNPJ, a session token or a visitor id (§12)', () => {
@@ -140,7 +154,7 @@ describe('listScope', () => {
       [VISITOR_COOKIE]: VISITOR,
       [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
     })
-    const scope = listScope(header, SECRET)
+    const scope = deviceScope(header, SECRET)
 
     /*
      * This value is what goes into `sessionStorage`, and **the shape is the
@@ -160,7 +174,7 @@ describe('listScope', () => {
     // Keyed, not merely hashed: the same jar under another deployment's secret
     // is another digest, so a value cannot be recomputed by anybody who holds a
     // guess at the inputs but not the key.
-    expect(listScope(header, OTHER)).not.toBe(scope)
+    expect(deviceScope(header, OTHER)).not.toBe(scope)
   })
 
   it('still works with no AUTH_SECRET, because its inputs are not a dictionary', () => {
@@ -171,9 +185,9 @@ describe('listScope', () => {
      * address, whose own comment says a salt would be better.
      */
     const header = jar({ [VISITOR_COOKIE]: VISITOR })
-    expect(listScope(header, {})).toMatch(/^[A-Za-z0-9_-]{22}$/)
-    expect(listScope(header, {})).toBe(listScope(header, {}))
-    expect(listScope(header, {})).not.toBe(listScope(jar({ [VISITOR_COOKIE]: OTHER_VISITOR }), {}))
+    expect(deviceScope(header, {})).toMatch(/^[A-Za-z0-9_-]{22}$/)
+    expect(deviceScope(header, {})).toBe(deviceScope(header, {}))
+    expect(deviceScope(header, {})).not.toBe(deviceScope(jar({ [VISITOR_COOKIE]: OTHER_VISITOR }), {}))
   })
 })
 
@@ -188,7 +202,7 @@ describe('the cookie that carries the CNPJ generation', () => {
     expect(cnpjTag(OTHER_CNPJ, SECRET)).not.toBe(tag)
     // A different key label from `listScope`'s, so the two digests of the same
     // bytes can never be each other.
-    expect(listScope(jar({ [CNPJ_SCOPE_COOKIE]: tag }), SECRET)).not.toBe(tag)
+    expect(deviceScope(jar({ [CNPJ_SCOPE_COOKIE]: tag }), SECRET)).not.toBe(tag)
   })
 
   it('is set `HttpOnly`, because nothing in the browser reads it', () => {
@@ -202,6 +216,18 @@ describe('the cookie that carries the CNPJ generation', () => {
     expect(cookie).not.toContain(CNPJ)
     // `Secure` is conditional, the way `visitorCookie`'s is: localhost is http.
     expect(cnpjScopeCookie(CNPJ, { secure: false, env: SECRET })).not.toContain('Secure')
+    /*
+     * **And the default, which is the branch production takes and no test
+     * covered** — found by the review of this diff. It is read from the `env`
+     * this function was handed rather than from `process.env` behind its back,
+     * which is the whole point of the parameter being injectable.
+     */
+    expect(cnpjScopeCookie(CNPJ, { env: { ...SECRET, NODE_ENV: 'production' } })).toContain(
+      'Secure',
+    )
+    expect(cnpjScopeCookie(CNPJ, { env: { ...SECRET, NODE_ENV: 'development' } })).not.toContain(
+      'Secure',
+    )
   })
 
   it('reads its own value back and is unmoved by a neighbour that will not decode', () => {
@@ -216,8 +242,8 @@ describe('the cookie that carries the CNPJ generation', () => {
      * request that was perfectly valid.
      */
     expect(cnpjTagFromCookies(jar({ junk: '%', [CNPJ_SCOPE_COOKIE]: tag }))).toBe(tag)
-    expect(listScope(jar({ junk: '%', [VISITOR_COOKIE]: VISITOR }), SECRET)).toBe(
-      listScope(jar({ [VISITOR_COOKIE]: VISITOR }), SECRET),
+    expect(deviceScope(jar({ junk: '%', [VISITOR_COOKIE]: VISITOR }), SECRET)).toBe(
+      deviceScope(jar({ [VISITOR_COOKIE]: VISITOR }), SECRET),
     )
     /*
      * **And the dangerous case, which the line above does not cover.** A
@@ -228,8 +254,64 @@ describe('the cookie that carries the CNPJ generation', () => {
      * of the whole screen, with no `error.tsx` under `app/radar/` to catch it.
      * Found by the review of this diff, not by this suite's first version.
      */
-    expect(() => listScope(jar({ [VISITOR_COOKIE]: '%' }), SECRET)).not.toThrow()
-    expect(listScope(jar({ [VISITOR_COOKIE]: '%' }), SECRET)).toBe(listScope('', SECRET))
-    expect(() => listScope(jar({ [CNPJ_SCOPE_COOKIE]: '%E0%A4%A' }), SECRET)).not.toThrow()
+    expect(() => deviceScope(jar({ [VISITOR_COOKIE]: '%' }), SECRET)).not.toThrow()
+    expect(deviceScope(jar({ [VISITOR_COOKIE]: '%' }), SECRET)).toBe(deviceScope('', SECRET))
+    expect(() => deviceScope(jar({ [CNPJ_SCOPE_COOKIE]: '%E0%A4%A' }), SECRET)).not.toThrow()
+  })
+})
+
+describe('the two scopes, and why there are two', () => {
+  /*
+   * **The regression a single digest caused, as a unit test.**
+   *
+   * `app/radar/page.tsx` computes the scope once per render. Our own
+   * `POST /api/radar/cnpj` then stamps `lq_scope` — and on a device that has
+   * never searched, mints `lq_visitor` — from a request the screen makes *after*
+   * that render. With one digest covering all three cookies, every snapshot
+   * written during that document was filed under a scope that no longer existed,
+   * and the next document load missed it: `?cnpj=B`, three *Ver mais editais*,
+   * open an edital, **Voltar** — 60 cards and 3 000 px became 20 and zero, which
+   * is the production failure `list-cache.ts` was written to prevent.
+   *
+   * The two tests below are that transition, from both ends.
+   */
+  const before = jar({})
+  const after = jar({
+    [VISITOR_COOKIE]: VISITOR,
+    [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
+  })
+
+  it('keeps the viewer scope still across the jar our own POST changes', () => {
+    // A device searching its first CNPJ: the page renders with an empty jar and
+    // the response fills it. The viewer scope — the one an address with
+    // `?cnpj=` keys by — must not notice.
+    expect(viewerScope(after)).toBe(viewerScope(before))
+
+    // Signing in is the one thing that must move it, and it cannot happen
+    // mid-document: it is a navigation either way.
+    expect(viewerScope(jar({ [SESSION_COOKIE]: TOKEN }))).not.toBe(viewerScope(before))
+  })
+
+  it('moves the device scope across exactly that jar, because that list is the cookie’s', () => {
+    // The other half: for a bare `/radar` the cookie is the only thing that
+    // names the list, and nothing posts a CNPJ on that address, so it is stable
+    // for the document and safe to key by.
+    expect(deviceScope(after)).not.toBe(deviceScope(before))
+  })
+
+  it('are never each other', () => {
+    const header = jar({
+      [SESSION_COOKIE]: TOKEN,
+      [VISITOR_COOKIE]: VISITOR,
+      [CNPJ_SCOPE_COOKIE]: cnpjTag(CNPJ, SECRET),
+    })
+    const scopes = listScopes(header, SECRET)
+    expect(scopes.viewer).not.toBe(scopes.device)
+    // Two labels, so even a jar with only a session token cannot collide them.
+    const sessionOnly = listScopes(jar({ [SESSION_COOKIE]: TOKEN }), SECRET)
+    expect(sessionOnly.viewer).not.toBe(sessionOnly.device)
+    for (const value of [scopes.viewer, scopes.device]) {
+      expect(value).toMatch(/^[A-Za-z0-9_-]{22}$/)
+    }
   })
 })
