@@ -85,13 +85,20 @@ import {
  * lie.
  *
  * **Reference data is read, and that is a different thing.** `cnae_segments`
- * (migration 0003) and `plan_limits` (0001) are seeded by migrations and are not
- * rows any run writes: `soleCnaeFor`, `unmappedCnae` and the quota literals read
- * them on purpose, and the first two already fail with a message naming the
- * migration rather than asserting against an empty table. `plan_limits` is the
- * one that is not fully closed — `plan-limits.db.test.ts` writes it, and would
- * share this database if `TEST_DATABASE_URL_R1` were ever unset — which is card
- * **D64**. What this card is about is rows a *run* leaves behind.
+ * (migration 0003) and `plan_limits` (0002) are seeded by migrations and are not
+ * rows any run writes, so `soleCnaeFor`, `unmappedCnae` and `planLimit` read them
+ * on purpose — and all three fail with a message naming the migration rather than
+ * asserting against an empty table. What D54 is about is rows a *run* leaves
+ * behind.
+ *
+ * `plan_limits` used to be the exception, and is card **D64**: its values were
+ * pinned here as literals (`limit: 2`, `interval '4 days'`) while
+ * `entitlement.db.test.ts` inserts and updates that table. D54 could leave it
+ * because the two were on different databases. **That protection is being
+ * removed on purpose** — Sci ruled on 2026-10-07 that there is one test database
+ * and the rest are dropped (**B31**, recorded in **D63**) — so with one database
+ * `RUN_ID` scoping is the only isolation left, and it cannot scope a read. The
+ * three literals are now reads; see `planLimit`.
  */
 
 const url = testDatabaseUrl('TEST_DATABASE_URL_R1') ?? testDatabaseUrl()
@@ -184,6 +191,98 @@ async function unmappedCnae(): Promise<string> {
   const cnae = found.rows[0]?.cnae
   if (!cnae) throw new Error('no unmapped CNAE in 1000000-1000200 — is migration 0003 applied?')
   return cnae
+}
+
+/**
+ * A `plan_limits` row, read in the same test as the assertion that uses it
+ * (card **D64**).
+ *
+ * ## Why read and not own
+ *
+ * The other half of D64's remedy — insert a run-scoped plan and assert against
+ * that, the way `entitlement.db.test.ts` does — **cannot work for any assertion
+ * in this file**, because every one of them goes through a route handler and the
+ * route chooses the plan name itself: `POST /api/tenders/:id/screening` looks up
+ * `VISITOR_PLAN` (`lib/radar/visitor.ts`) for an anonymous caller, so there is no
+ * input that would make it consult `plano-${RUN_ID}`. The alternative — writing
+ * `visitor`'s own row — is a run altering migration-seeded reference data in a
+ * database every other suite reads, which is the thing `entitlement.db.test.ts`
+ * warns against at length in its own header. So: read.
+ *
+ * ## By its own query, not through `readLimit`
+ *
+ * The route reads this row with `readLimit`. If the assertion did too, a
+ * regression inside that function would move both sides together and the test
+ * would stay green — the tautology `keyword-limits.db.test.ts` avoids for the
+ * same reason, and it is why the plan and feature names below are plain strings
+ * rather than `VISITOR_PLAN` and `FEATURES.*`: the test states the keys, the code
+ * under test does not get to agree with itself.
+ *
+ * Throws naming the migration when the row is absent, like `soleCnaeFor`. That
+ * matters more than it looks: `readLimit` reads a missing row as `quantity: 0`,
+ * so an unseeded table would otherwise make "the route refused" assertions pass
+ * for entirely the wrong reason.
+ */
+async function planLimit(plan: string, feature: string) {
+  const found = await pool().query<{ period: string | null; quantity: number | null }>(
+    'select period, quantity from plan_limits where plan = $1 and feature = $2',
+    [plan, feature],
+  )
+  const row = found.rows[0]
+  if (!row) throw new Error(`plan_limits has no ${plan}/${feature} row — is migration 0002 applied?`)
+  return { period: row.period, quantity: row.quantity === null ? null : Number(row.quantity) }
+}
+
+/**
+ * The same read, narrowed to a quantity the test can count to — `null` is
+ * "unlimited" and `0` is "the plan does not include this", and neither can be
+ * exhausted or waited out.
+ *
+ * **This is the half of the literal worth keeping.** `limit: 2` said two things at
+ * once: *the route reports what the table holds* and *the visitor plan is capped
+ * at a small number*. Reading the row keeps the first; refusing anything but a
+ * countable value keeps the second, without pinning which number it is.
+ *
+ * Every assertion below that reads `plan_limits` goes through here rather than
+ * through `planLimit` directly, and the §4b review of this work is why: the first
+ * version used the unguarded read for the `202` quota assertion, which would have
+ * stayed green on a visitor plan with `quantity: null` — the one thing `limit: 2`
+ * could not miss. Scoping an assertion and weakening it are one keystroke apart
+ * (D54), and that is the keystroke.
+ */
+async function countableLimit(plan: string, feature: string) {
+  const row = await planLimit(plan, feature)
+  if (row.quantity === null || !Number.isInteger(row.quantity) || row.quantity < 1) {
+    throw new Error(
+      `plan_limits ${plan}/${feature} is ${row.quantity}; this test needs a countable value of 1 or more`,
+    )
+  }
+  return { period: row.period, quantity: row.quantity }
+}
+
+/**
+ * Back-dates a visitor to one hour **inside** (`+1`) or one hour **outside**
+ * (`-1`) a window of `days` days.
+ *
+ * ## Which clock, exactly
+ *
+ * The back-dating arithmetic is the database's, from one `now()`, so the row's
+ * age is not a function of this laptop's clock. The **comparison** is not: the
+ * route reads `created_at` into a `Date` and `visitorView` measures it against
+ * Node's `new Date()`. Both sides are therefore absolute instants, which is why
+ * the three-clock problem CLAUDE.md names does not bite here — Portugal and
+ * Brasília are a display difference, not an epoch one, and only genuine skew
+ * between this machine and Neon could move the answer. An hour is roughly four
+ * orders of magnitude more margin than NTP skew, which is why the edge is an
+ * hour and not a minute.
+ */
+async function ageVisitorToWindowEdge(id: string, days: number, hours: 1 | -1) {
+  await pool().query(
+    `update visitors
+        set created_at = now() - ($2::int * interval '1 day') + ($3::int * interval '1 hour')
+      where id = $1`,
+    [id, days, hours],
+  )
 }
 
 type CompanyOptions = { mainCnae?: string | null; secondaryCnaes?: string[]; updatedAt?: Date }
@@ -1115,13 +1214,24 @@ suite('Radar read APIs (database)', () => {
     it('queues ai_screening at priority 1 and answers 202 with the quota', async () => {
       const visitor = await newVisitor()
       const fixture = openTenders[0] as SeedFixture
+      // The allowance comes from the table, not from memory (D64). `limit: 2` was
+      // a bet on a row this run does not write; what the route is actually
+      // responsible for is reporting the row it read, which is what is asserted —
+      // `period` with it, which the literal version never checked at all.
+      const screening = await countableLimit('visitor', 'screening')
 
       const response = await postScreening(request(visitor), params(fixture.id))
       const body = (await response.json()) as ScreeningResponse
 
       expect(response.status).toBe(202)
       if (body.state !== 'analyzing') throw new Error(`expected analyzing, got ${body.state}`)
-      expect(body.quota).toMatchObject({ feature: 'screening', plan: 'visitor', limit: 2, used: 1 })
+      expect(body.quota).toMatchObject({
+        feature: 'screening',
+        plan: 'visitor',
+        period: screening.period,
+        limit: screening.quantity,
+        used: 1,
+      })
 
       const queued = await jobsFor(`screening:${fixture.id}`)
       expect(queued).toHaveLength(1)
@@ -1150,8 +1260,13 @@ suite('Radar read APIs (database)', () => {
       expect(await jobsFor(`screening:${fixture.id}`)).toHaveLength(0)
     })
 
-    it('spends the visitor’s two screenings and then refuses', async () => {
+    it('spends every screening the visitor plan grants and then refuses', async () => {
       const visitor = await newVisitor()
+      // How many, from `plan_limits` (D64). The literal `2` was here three times
+      // over — twice in the assertion and once in the shape of the test, which
+      // wrote out exactly two allowed calls — so a row saying anything else broke
+      // this test for being right. The loop now runs as far as the row says.
+      const { quantity: granted } = await countableLimit('visitor', 'screening')
       // Tenders no earlier test has cached an analysis for: a cache hit answers
       // 200, and this test is about the 202 path running out.
       // Asserted, not assumed. Indexing blindly into `openTenders` is how
@@ -1159,21 +1274,29 @@ suite('Radar read APIs (database)', () => {
       // message said nothing about fixtures expiring.
       expect(
         openTenders.length,
-        'this test needs five open fixtures; re-dating keeps seven',
-      ).toBeGreaterThan(4)
-      const [first, second, third] = openTenders.slice(2)
+        `this test needs ${granted + 1} open fixtures after the first two; re-dating keeps seven`,
+      ).toBeGreaterThan(granted + 2)
+      const spendable = openTenders.slice(2)
 
-      expect((await postScreening(request(visitor), params((first as SeedFixture).id))).status).toBe(202)
-      expect((await postScreening(request(visitor), params((second as SeedFixture).id))).status).toBe(202)
+      for (let spent = 0; spent < granted; spent += 1) {
+        const allowed = await postScreening(
+          request(visitor),
+          params((spendable[spent] as SeedFixture).id),
+        )
+        expect(allowed.status, `screening ${spent + 1} of ${granted} was refused`).toBe(202)
+      }
 
-      const response = await postScreening(request(visitor), params((third as SeedFixture).id))
+      const response = await postScreening(
+        request(visitor),
+        params((spendable[granted] as SeedFixture).id),
+      )
       const body = (await response.json()) as ScreeningResponse
       expect(response.status).toBe(402)
       if (body.state !== 'error') throw new Error('expected an error')
       expect(body.error).toBe('quota_exceeded')
-      expect(body.quota).toMatchObject({ limit: 2, used: 2, left: 0 })
-      // Four sequential route calls against a remote Neon: comfortably past
-      // Vitest's 5 s default, and nothing here is waiting on the product.
+      expect(body.quota).toMatchObject({ limit: granted, used: granted, left: 0 })
+      // `granted + 1` sequential route calls against a remote Neon: comfortably
+      // past Vitest's 5 s default, and nothing here is waiting on the product.
     }, 60_000)
 
     it('does not charge again for the same tender — §3.1 tells the client to poll', async () => {
@@ -1200,21 +1323,55 @@ suite('Radar read APIs (database)', () => {
       // added a third concurrent suite.
     }, 60_000)
 
-    it('refuses once the visitor’s three days are up', async () => {
+    it('refuses once the visitor’s free days are up, and not an hour before', async () => {
+      // The window, read from `plan_limits (visitor, days)` rather than written
+      // into the SQL as `interval '4 days'` (D64) — a literal that was really
+      // "3 + 1" with the 3 taken from a row this run does not own.
+      const { quantity: days } = await countableLimit('visitor', 'days')
+      // The in-window half of this test **spends** a screening, which the version
+      // it replaces never did, so the visitor's screening row is now a
+      // precondition here too (§4b). Without this read a `0` in that row would
+      // answer 402 and the failure would blame a `${days}-day window` for a row
+      // that has nothing to do with the clock.
+      await countableLimit('visitor', 'screening')
       // Its own company: the window is counted per CNPJ as well as per device
       // (§8, decision 5 in §17), so ageing a visitor of the main one would
       // expire every visitor a later test creates.
       const visitor = await newVisitor(RUN_EXPIRED_CNPJ)
-      await pool().query('update visitors set created_at = now() - interval \'4 days\' where id = $1', [
-        visitor,
-      ])
+
+      /**
+       * **Both sides of the boundary, on the one row** — and this is the part that
+       * reading the number would otherwise have cost.
+       *
+       * `interval '4 days'` against a seeded `3` asserted two things: that an
+       * expired visitor is refused, *and* that the route's window is three days
+       * long. Ageing by `days + 1` keeps only the first: a route that read the
+       * row and then used some other number of days would still refuse a visitor
+       * that old, and the test would pass. So the window is pinned from both
+       * directions instead — an hour inside it must be served, an hour outside it
+       * must not — which says what the row says whatever the row holds, and is
+       * tighter than the literal was.
+       *
+       * The in-window call spends one of this visitor's screenings; the expired
+       * call is refused before the quota is ever consulted (the route checks
+       * tender → window → quota, in that order), so the second answer is a 403
+       * and not a 402 no matter what the first one cost. The same ordering is
+       * why both calls may name the same tender: which one it is cannot change
+       * the refusal.
+       */
+      await ageVisitorToWindowEdge(visitor, days, 1)
+      const inWindow = await postScreening(request(visitor), params((openTenders[0] as SeedFixture).id))
+      expect(inWindow.status, `an hour inside a ${days}-day window must still be served`).toBe(202)
+
+      await ageVisitorToWindowEdge(visitor, days, -1)
       const response = await postScreening(request(visitor), params((openTenders[0] as SeedFixture).id))
       const body = (await response.json()) as ScreeningResponse
 
-      expect(response.status).toBe(403)
+      expect(response.status, `an hour past a ${days}-day window must be refused`).toBe(403)
       if (body.state !== 'error') throw new Error('expected an error')
       expect(body.error).toBe('visitor_expired')
-    })
+      // Two sequential route calls against a remote Neon.
+    }, 60_000)
 
     it('answers 404 for a tender we do not hold, without spending a screening', async () => {
       const visitor = await newVisitor()
