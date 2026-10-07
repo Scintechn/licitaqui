@@ -290,6 +290,24 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
       const cnpj = url.searchParams.get('cnpj') ?? api.world.cookieCnpj ?? null
       const group = (url.searchParams.get('group') ?? 'compatible') as TenderGroup
       const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+
+      // The route's other rule, also verbatim: with no CNPJ resolved from
+      // either place and no keyword there is nothing to filter the whole of
+      // PNCP by, and it answers `400 cnpjRequired` rather than a random page.
+      // Modelled because D55 made that answer the **only** way the screen
+      // reaches `needCnpj` — without it this world would reply "ready, 0
+      // tenders" and a bare `/radar` with no cookie would draw an empty group.
+      if (!cnpj && !q) {
+        return json(
+          route,
+          {
+            state: 'error',
+            error: 'validation',
+            fields: { cnpj: 'cnpjRequired' },
+          } satisfies TenderListResponse,
+          400,
+        )
+      }
       const found = worldFor(cnpj)
       const all = found ? found.tenders : keywordOnly(api.world, q)
 
