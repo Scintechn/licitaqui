@@ -118,8 +118,8 @@ export async function POST(request: Request): Promise<NextResponse<CnpjResponse>
      *
      * Stamped in the same branch as `attachCnpj` and under the same condition,
      * so the cookie cannot describe a row the route did not write: an account
-     * keeps its CNPJ on `users.cnpj`, which this list route deliberately does
-     * **not** resolve from (see the comment at its fallback).
+     * keeps its CNPJ on `users.cnpj`, which the **list** route deliberately does
+     * not resolve from (see the comment at its fallback).
      *
      * Unconditionally within that branch, not only when the value changed:
      * the digest of a CNPJ is the same digest every time, so re-searching the
