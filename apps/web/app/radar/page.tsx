@@ -38,6 +38,11 @@ import { RadarView } from './radar-view'
  * query: `lib/radar/scope.ts` explains what the cookie jar already states and
  * why reading `visitors.cnpj` here would have been both a round trip and a
  * second copy of the route's own resolution.
+ *
+ * **The value the screen holds is therefore only as fresh as the last render of
+ * this component**, and Next reuses a page segment on a browser back/forward
+ * without re-rendering it. That is **D70**; `regrouped` in `lib/radar/list-cache.ts`
+ * is the guard for the half of it an answer can reach.
  */
 
 export const dynamic = 'force-dynamic'

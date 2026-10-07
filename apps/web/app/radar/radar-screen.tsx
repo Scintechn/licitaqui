@@ -29,6 +29,7 @@ import {
   readCompany,
   refreshFavourites,
   refreshTenders,
+  regrouped,
   rememberScroll,
   restoreList,
   saveCompany,
@@ -441,8 +442,13 @@ export function RadarScreen({ scope }: RadarScreenProps) {
      * revalidate, which was D55's first attempt — `revalidate` merges page 1 by
      * id (`refreshTenders`), so a changed company would have swapped the header
      * and kept the previous company's rows beneath it, D19 recreated by its own
-     * fix. There is no such path: a changed scope means a miss, and a miss means
-     * the full read below.
+     * fix.
+     *
+     * **A changed scope means a miss — while the scope is current.** It is a
+     * prop and a browser back/forward can leave it behind, which is **D70**; the
+     * guard for the answer when one does arrive is in `revalidate` below, and
+     * `readAt: 0` is what keeps a list read under a scope we have proven stale
+     * from being written back under that wrong key.
      */
     const status = snapshotStatus(data.status)
     if (!status || data.tenders.length === 0 || data.readAt === 0) return
@@ -551,6 +557,49 @@ export function RadarScreen({ scope }: RadarScreenProps) {
         signal,
       )
       if (signal.aborted) return
+
+      /*
+       * **The answer may not be a refresh of this list at all (D70).**
+       *
+       * `scope` keeps another caller's snapshot from being found — but it is a
+       * prop, so it is only as fresh as the last render of `app/radar/page.tsx`,
+       * and Next reuses a page segment on a browser back/forward without
+       * re-rendering it. Search company B in this tab, press **Back**, and the
+       * restored screen holds A's scope while the route resolves B.
+       *
+       * Merging that would be the worst available outcome and the one D19 is
+       * about: `refreshTenders` merges page 1 **by id**, B's ids match none of
+       * A's rows, so A's rows would stay under B's header and B's counts. So a
+       * regrouped answer **replaces** the list rather than refreshing it —
+       * `restoreList`'s rule for the group, applied to the company.
+       *
+       * Two things go with the replacement. The stale entry is dropped, because
+       * it is filed under a key that does not name its contents. And `readAt: 0`
+       * stops the save effect writing this list back under that same wrong key —
+       * the one thing that would otherwise outlive the correction, since nothing
+       * here can compute the key it *should* have had. That costs this document
+       * its cache, which is exactly what D55 did for this shape and is the safe
+       * direction.
+       *
+       * It cannot run inside `REVALIDATE_AFTER_MS`, where no request is made and
+       * there is no answer to compare. That half is D70.
+       */
+      if (list.state === 'ready' && regrouped(previous.grouping, list.groupedBy)) {
+        forgetList(key)
+        setData((current) => ({
+          ...current,
+          visitor,
+          grouping: list.groupedBy,
+          counts: list.counts,
+          freshness: list.freshness,
+          tenders: list.tenders,
+          favourites: list.favourites,
+          nextCursor: list.nextCursor,
+          loadingMore: false,
+          readAt: 0,
+        }))
+        return
+      }
 
       setData((current) => ({
         ...current,

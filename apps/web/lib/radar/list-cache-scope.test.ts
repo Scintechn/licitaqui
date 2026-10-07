@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TenderCard } from './contract'
+import type { CompanyView, GroupedBy } from './contract'
 import {
   clearSnapshots,
   listKey,
+  refreshTenders,
+  regrouped,
   restoreList,
   REVALIDATE_AFTER_MS,
   saveList,
@@ -100,6 +103,18 @@ function tender(id: string): TenderCard {
   }
 }
 
+/** The fields `regrouped` ignores, filled once so the ones it reads stand out. */
+const COMPANY: Omit<CompanyView, 'cnpj'> = {
+  legalName: null,
+  tradeName: null,
+  mainCnae: '8121400',
+  size: 'ME',
+  isMei: false,
+  state: 'SP',
+  city: 'Americana',
+  segments: [],
+}
+
 /** One reader, one company: `scope` is the only thing that differs below. */
 const SEARCH = { cnpj: null, state: null, q: null, group: 'compatible' } as const
 
@@ -181,22 +196,65 @@ describe('the caller is part of the key', () => {
     expect(storage.length).toBe(2)
   })
 
-  it('leaves no path on which a changed caller reaches the page-1 merge', () => {
+  it('does not destroy the entry it refuses: the owner still gets it', () => {
     /*
-     * D55's first attempt at D60 forced the restore to revalidate, and
-     * `refreshTenders` merges page 1 **by id**: the fresh answer swapped the
-     * header to the new company and left the old company's rows beneath it —
-     * D19 recreated by D19's own fix, caught by reading the diff and not by the
-     * suite.
-     *
-     * The guard is structural rather than a check, and this is the assertion
-     * that says so: the only input `revalidate` could have is a restored
-     * snapshot, and for a changed scope there is none to restore. Asserted at
-     * the two ages separately, because they fail differently — `fresh` draws the
-     * stale list with no request, `revalidate` merges into it.
+     * The ordinary case must cost nothing. A fix that made every restore miss
+     * would pass the two tests above and quietly delete the cache — §4b's shape,
+     * and the reason the positive case is asserted beside every negative one.
      */
-    saveList(listKey(MINE), snapshot())
-    expect(restoreList(THEIRS, NOW + REVALIDATE_AFTER_MS - 1)).toBeNull()
-    expect(restoreList(THEIRS, NOW + REVALIDATE_AFTER_MS + 1)).toBeNull()
+    saveList(listKey(MINE), snapshot({ nextCursor: 'page-2' }))
+    expect(restoreList(THEIRS, NOW + 1)).toBeNull()
+    expect(restoreList(MINE, NOW + 1)?.snapshot.nextCursor).toBe('page-2')
+  })
+})
+
+describe('regrouped — the guard for when the scope was behind (D70)', () => {
+  const brilho: GroupedBy = {
+    company: { ...COMPANY, legalName: 'BRILHO SERVICOS DE LIMPEZA LTDA' },
+    cnaeCount: 4,
+  }
+  const vida: GroupedBy = {
+    company: { ...COMPANY, legalName: 'VIDA COMERCIO DE PRODUTOS HOSPITALARES LTDA' },
+    cnaeCount: 2,
+  }
+
+  it('says no when the answer is about the same company', () => {
+    expect(regrouped(brilho, brilho)).toBe(false)
+    expect(regrouped(brilho, { ...brilho, company: { ...brilho.company! } })).toBe(false)
+    expect(regrouped(null, null)).toBe(false)
+  })
+
+  it('says yes to every shape of change the header would draw', () => {
+    expect(regrouped(brilho, vida)).toBe(true)
+    // A CNPJ stopped driving the list, or started: a keyword search and a
+    // grouped one are not the same list.
+    expect(regrouped(brilho, null)).toBe(true)
+    expect(regrouped(null, vida)).toBe(true)
+    // The CNAE count is what the header prints beside the name, and D19 is the
+    // card about those two disagreeing.
+    expect(regrouped(brilho, { ...brilho, cnaeCount: 7 })).toBe(true)
+    // A company read where none had been: "Sua empresa · sem CNAE lido" is a
+    // different header from a named one.
+    expect(regrouped({ company: null, cnaeCount: 0 }, { ...brilho, cnaeCount: 0 })).toBe(true)
+  })
+
+  it('is what keeps the page-1 merge from drawing one company over another', () => {
+    /*
+     * **Asserted against the thing it protects**, because the guard alone proves
+     * nothing: the defect is what `refreshTenders` does when it is allowed to
+     * run on an answer about another company. B's ids match none of A's rows, so
+     * the merge changes **nothing** and returns A's list — which the screen then
+     * draws under B's header and B's counts. D19, recreated.
+     */
+    const brilhoRows = [tender('a'), tender('b')]
+    const vidaRows = [tender('x'), tender('y')]
+
+    expect(refreshTenders(brilhoRows, vidaRows)).toBe(brilhoRows)
+    expect(refreshTenders(brilhoRows, vidaRows).map((row) => row.id)).toEqual(['a', 'b'])
+
+    // So the caller must not reach it, and `regrouped` is the sentence that
+    // says so. The result — the screen, after a browser Back — is
+    // `e2e/journeys/radar-snapshot-identity.spec.ts`.
+    expect(regrouped(brilho, vida)).toBe(true)
   })
 })

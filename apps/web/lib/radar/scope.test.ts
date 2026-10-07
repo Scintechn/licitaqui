@@ -142,13 +142,20 @@ describe('listScope', () => {
     })
     const scope = listScope(header, SECRET)
 
-    // This value is what goes into `sessionStorage`. Nothing identifying may be
-    // inside it — not the CNPJ, not the token, not the device id, and no
-    // separator that would let any of them be sliced back out.
-    expect(scope).not.toContain(CNPJ)
-    expect(scope).not.toContain(TOKEN)
-    expect(scope).not.toContain(VISITOR)
+    /*
+     * This value is what goes into `sessionStorage`, and **the shape is the
+     * load-bearing assertion**: 22 characters of base64url, with no separator
+     * that could let a composed value be sliced apart. The review of this diff
+     * pointed out that `not.toContain(TOKEN)` was unfalsifiable — `TOKEN` is a
+     * 36-character UUID and `scope` is 22 characters, so a 22-char string cannot
+     * contain it whatever the implementation does. The regex is what would
+     * actually catch a `${visitorId}-${hash}` regression, so it is the one kept,
+     * and the CNPJ is checked against the **longest** composition available
+     * rather than against the truncated digest.
+     */
     expect(scope).toMatch(/^[A-Za-z0-9_-]{22}$/)
+    expect(scope).not.toContain(CNPJ)
+    expect(cnpjTag(CNPJ, SECRET) + scope).not.toContain(CNPJ)
 
     // Keyed, not merely hashed: the same jar under another deployment's secret
     // is another digest, so a value cannot be recomputed by anybody who holds a
@@ -212,5 +219,17 @@ describe('the cookie that carries the CNPJ generation', () => {
     expect(listScope(jar({ junk: '%', [VISITOR_COOKIE]: VISITOR }), SECRET)).toBe(
       listScope(jar({ [VISITOR_COOKIE]: VISITOR }), SECRET),
     )
+    /*
+     * **And the dangerous case, which the line above does not cover.** A
+     * malformed *unrelated* cookie is skipped by name before anything decodes
+     * it; a malformed `lq_visitor` is decoded, and `visitorIdFromCookies` did it
+     * unguarded. Before D58 that was a 500 on one route; D58 put this function
+     * on the path of `app/radar/page.tsx`, where it would have failed the render
+     * of the whole screen, with no `error.tsx` under `app/radar/` to catch it.
+     * Found by the review of this diff, not by this suite's first version.
+     */
+    expect(() => listScope(jar({ [VISITOR_COOKIE]: '%' }), SECRET)).not.toThrow()
+    expect(listScope(jar({ [VISITOR_COOKIE]: '%' }), SECRET)).toBe(listScope('', SECRET))
+    expect(() => listScope(jar({ [CNPJ_SCOPE_COOKIE]: '%E0%A4%A' }), SECRET)).not.toThrow()
   })
 })

@@ -259,12 +259,18 @@ function valid(value: unknown): value is ListSnapshot {
  *
  * **In the key rather than checked after the hit**, which is what closes D55's
  * documented dead end. A snapshot of another caller's list is not *rejected*
- * here, it is **never found**: so there is no path on which `revalidate` merges
- * page 1 by id (`refreshTenders`) over rows that belonged to another company,
- * which is what D19's own fix recreated when D55's first attempt tried to make
- * the restore revalidate instead. It also means two callers' lists coexist, so
- * signing out and back in — or working two clients in one afternoon — restores
- * each list rather than each overwriting the other's entry.
+ * here, it is **never found** — so `revalidate` has nothing to merge page 1 by
+ * id into, which is what D19's own fix recreated when D55's first attempt tried
+ * to make the restore revalidate instead. It also means two callers' lists
+ * coexist, so signing out and back in — or working two clients in one
+ * afternoon — restores each list rather than each overwriting the other's entry.
+ *
+ * **That holds while the scope the client holds is current, and it is a prop:**
+ * `app/radar/page.tsx` computes it per render, and Next reuses a page segment on
+ * a browser back/forward without re-rendering it. So a changed caller *can*
+ * reach a hit — see `regrouped` below, which is the guard for the answer when
+ * one arrives, and **D70** for the half no guard can reach (inside
+ * `REVALIDATE_AFTER_MS` nothing is requested, so there is nothing to compare).
  */
 export function listKey(query: {
   /**
@@ -437,6 +443,50 @@ export function readCompany(cnpj: string, now: number = Date.now()): CompanySnap
     return null
   }
   return snapshot
+}
+
+/**
+ * **Is the list that just came back a different company's?** — D70's guard, and
+ * the one half of D70 that can be closed without a contract change.
+ *
+ * `scope` keeps another caller's snapshot from being *found* (see `listKey`), and
+ * that is airtight **only while the scope the client holds is current**. It is a
+ * prop, computed by `app/radar/page.tsx`, so it is as fresh as the last render of
+ * that server component — and Next reuses a page segment on a browser
+ * back/forward without re-rendering it (its own glossary: *"Pages are not cached
+ * by default but are reused during browser back/forward navigation"*). So: search
+ * company B in the same tab, press **Back**, and the restored `/radar` carries the
+ * scope of company A while the route now resolves B.
+ *
+ * Past `REVALIDATE_AFTER_MS` that produced the worst available outcome.
+ * `refreshTenders` merges page 1 **by id**; B's ids match none of A's rows, so
+ * nothing merged and A's rows stayed — under B's header and B's counts. That is
+ * D19 exactly: the header saying one company over another company's editais, and
+ * it is the dead end D55 recorded.
+ *
+ * This is what the caller asks before merging. When it answers `true` the
+ * refresh is not a refresh of this list at all and the whole list is replaced,
+ * which is the same rule `restoreList` already applies to the **group**: a
+ * snapshot that disagrees with the answer is not this list, whatever key it was
+ * filed under.
+ *
+ * **Compared on what the header renders**, not on a CNPJ — there is no CNPJ here
+ * to compare, by design (§12, and `GroupedCompany` exists for that reason). A
+ * company re-read from BrasilAPI could legitimately change its `legalName` or its
+ * `cnaeCount` between two reads and be reported as regrouped, which costs one
+ * full replace and the document's caching. That is the safe direction: the cost
+ * of a false `true` is a list the reader already has, re-drawn; the cost of a
+ * false `false` is D19.
+ *
+ * It does **not** close the other half of D70. Inside `REVALIDATE_AFTER_MS` the
+ * restore makes no request at all, so there is no answer to compare and nothing
+ * here can run. Only a scope the client can read at decision time fixes that.
+ */
+export function regrouped(previous: GroupedBy | null, incoming: GroupedBy | null): boolean {
+  if (previous === null || incoming === null) return previous !== incoming
+  if ((previous.company === null) !== (incoming.company === null)) return true
+  if (previous.cnaeCount !== incoming.cnaeCount) return true
+  return previous.company?.legalName !== incoming.company?.legalName
 }
 
 /**

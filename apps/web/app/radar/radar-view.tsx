@@ -1195,9 +1195,14 @@ function Body({
        the caller's identity the first field of the cache key; here the string
        is a **React identity** and not a cache key, and it never was one: it
        also carries the *rendered* group rather than the chosen one. Nothing is
-       stored under it, and the identity it would discriminate cannot change
-       while this subtree is mounted — a sign-in or a sign-out is a document
-       load. Passing the real scope would only make this string longer. */
+       stored under it.
+
+       And the identity cannot change without this string changing anyway, which
+       is the part worth stating precisely rather than half: a sign-in or a
+       sign-out is a document load, and the *company* — which `POST
+       /api/radar/cnpj` does change inside one document — always arrives with a
+       `?cnpj=` this string already carries. So the real scope would add nothing
+       but length. */
     <FavouriteNotices active={Boolean(onFavourite)} listKey={listKey({ ...query, group, scope: '' })}>
       <div className="@container">
         <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">

@@ -26,6 +26,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 11 | Whether a **closed** tender is ever re-read for its value, and the attempt bound | **B38** | medium |
 | 13 | Two Radar header sentences shipped as drafts: there is no approved copy for "no company" or "no CNAE to compare" | nothing — both render today | ~~medium~~ · **resolved 2026-10-06** — approved; gate moved to segments reached |
 | 14 | Two *Favoritar* failure sentences shipped as drafts: there is no approved copy for "we could not save this" or "too many, wait a moment" | nothing — both render today on `/radar` | ~~medium~~ · **resolved 2026-10-07** — approved as drafted, two sentences, no edital name |
+| 15 | A third necessary cookie exists (`lq_scope`) and the privacy policy's cookie list names two — and this one is derived from the CNPJ, not random | nothing in code; `/privacidade` renders the sentence at build time | **high** — it goes live with D58/D60 |
 
 ---
 
@@ -657,3 +658,79 @@ defect D56 exists to remove.
 opportunity screen and adds no key of its own**, so a rewording here lands in
 both places at once — which is a reason to decide before D66 is built rather
 than after.
+
+---
+
+## 15. The privacy policy lists two necessary cookies and there are now three — and the new one is not a random identifier
+
+Opened 2026-10-07 by D58/D60 (`task/d58-d60-snapshot-identity`). **Not a code
+question: nothing here is blocked on engineering, and the sentence is Sci's
+under legal brief §5. The wording is deliberately not drafted below.**
+
+### The three sentences, verbatim
+
+`docs/legal/politica-de-privacidade.md` §10:
+
+> Usamos **duas categorias** de cookies:
+> - **Necessários ao funcionamento:** sessão de login e um identificador
+>   aleatório do visitante, usado para aplicar os limites de 3 dias e 2 triagens
+>   do acesso sem conta.
+
+…and §4 a), on what is collected from a visitor:
+
+> Identificador aleatório gravado em cookie próprio, versão resumida (hash) do
+> seu IP e do navegador, para aplicar os limites de 3 dias e 2 triagens.
+
+…and §10 again, on the Google Analytics identifier:
+
+> essas métricas **não são anônimas**, ainda que não contenham o seu nome, o seu
+> e-mail nem **o CNPJ que você pesquisou**.
+
+**A reader of those three sentences concludes that nothing derived from their
+CNPJ is kept in their browser.** After D58/D60 that conclusion is wrong.
+
+### What `lq_scope` actually is
+
+| | |
+|---|---|
+| set by | `POST /api/radar/cnpj`, in the same branch that writes `visitors.cnpj` — so only for a visitor, never for an account |
+| value | `HMAC-SHA256(key, cnpj)`, base64url, truncated to 22 characters. The key is derived from `AUTH_SECRET` with its own label |
+| is it derived from the CNPJ? | **Yes.** It is not a random identifier, which is the word both §4 and §10 use for the cookie they do name |
+| reversible? | Not without `AUTH_SECRET`, which never leaves the server. A reader holding their own browser cannot read their CNPJ back out of it, and neither can anyone else |
+| readable by page scripts? | **No** — `httpOnly`. It is read only by the server, which turns it into an opaque digest for the Radar's cache key |
+| lifetime in the browser | `VISITOR_COOKIE_MAX_AGE_SECONDS` = **30 days**, `SameSite=Lax`, `Path=/`, `Secure` in production — the same attributes as `lq_visitor` |
+| what it is for | the Radar's `sessionStorage` list cache keys by it, so a device that searched company B is never served company A's editais under A's name. Without it that defect is D60, and with no cookie there is no way for the browser to tell the two lists apart — `visitors.cnpj` is `httpOnly` by design (§12, D19) |
+| where it is written down | `apps/web/lib/radar/scope.ts`, and card **D60** in `DEVELOPMENT_PLAN.md` §5 |
+
+### The two questions for Sci
+
+1. **Does the existing *"Necessários ao funcionamento"* bullet already cover it,
+   or does §10 need a third item?** The *categories* are still two — this is a
+   third cookie inside the first category, not a third category. But the bullet
+   enumerates its contents (*"sessão de login e um identificador aleatório"*),
+   and this cookie is neither of the two it names and is not random.
+2. **Is it *necessário ao funcionamento*?** This is the sharper half, because
+   §10 offers no consent choice for that category — it says only that the
+   browser's own settings can refuse them. The case for *necessary*: without it
+   the product shows one company's editais under another company's name, which
+   is a correctness and privacy defect rather than a convenience. The case
+   against: it exists to make a **cache** correct, and the product works without
+   any cache. If the answer is *not necessary*, the gap is larger than a missing
+   noun.
+
+A third thing worth ruling on at the same time, because it is one reading:
+§4 a) lists what is kept and would be the other place a third cookie is named.
+
+### What this is not
+
+Not a leak, and not a §12 breach: the value never reaches page JavaScript, never
+reaches `sessionStorage` and never reaches a response body, and it cannot be
+decoded. **The contradiction is a disclosure one** — the document describes the
+browser's contents less completely than the product now fills them, in the
+direction that matters (a reader would believe less is held than is).
+
+Also in `docs/CLAIMS.md`, under *"Due before the founders publicity"* — there
+because `/privacidade` is generated from this file at build time
+(`apps/web/lib/legal/document.ts`), so the incomplete sentence goes public with
+the merge, three days before the 08/10 opening. This row carries the question;
+that row carries the exposure and the date. Closing one closes both.

@@ -63,6 +63,11 @@ import { visitorIdFromCookies, VISITOR_COOKIE, VISITOR_COOKIE_MAX_AGE_SECONDS } 
  * `visitors.cnpj` stamps a cookie in the same response, so the cookie header
  * already states the generation of what the route will resolve.
  *
+ * **The cost of being a prop is that it is only as fresh as the last render of
+ * that page**, and a browser back/forward reuses a page segment without
+ * re-rendering it. That is **D70**, and `regrouped` in `list-cache.ts` is the
+ * guard for the half of it that an answer can reach.
+ *
  * ## Over-invalidating is the safe direction, and it happens
  *
  * Two sessions of the same account are two tokens and therefore two scopes, so
@@ -170,7 +175,9 @@ export function cnpjScopeCookie(
   options: { secure?: boolean; env?: ScopeEnv } = {},
 ): string {
   const env = options.env ?? process.env
-  const secure = options.secure ?? process.env.NODE_ENV === 'production'
+  // From the `env` this function was handed, not from `process.env` behind its
+  // back: the whole point of the parameter is that it is injectable.
+  const secure = options.secure ?? env.NODE_ENV === 'production'
   const parts = [
     `${CNPJ_SCOPE_COOKIE}=${cnpjTag(cnpj, env)}`,
     'Path=/',

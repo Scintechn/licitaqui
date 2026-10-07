@@ -184,7 +184,7 @@ test.describe('D58 · a restored list is not another identity’s', () => {
     expect(api.calls.tenders.length, 'the same caller, the same list, no request').toBe(asked)
   })
 
-  test('nothing identifying reaches sessionStorage (§12)', async ({ page }) => {
+  test('no identifier is handed to the client as data (§12)', async ({ page }) => {
     /*
      * **A bare `/radar`, and that is the point of the shape.**
      *
@@ -222,14 +222,30 @@ test.describe('D58 · a restored list is not another identity’s', () => {
 
     const lists = jar.filter((entry) => entry.key.startsWith('licitaqui.radar.list'))
     expect(lists.length, 'the snapshot is there to be checked at all').toBe(1)
+    /*
+     * **This test used to be called "nothing identifying reaches
+     * sessionStorage", and its own body explains why that title overclaimed** —
+     * see the MEI paragraph below. A title that promises more than it checks is
+     * `CLAIMS.md`'s shape one layer down, so it names the rule it actually holds.
+     */
 
     // The key: the scope is the only thing in it that could name this device,
     // and it is 22 characters of keyed HMAC. The search half is empty — this
     // URL carries no CNPJ, no UF and no keyword.
     expect(lists[0].key, 'no cookie CNPJ in the key').not.toContain(MARTA.cnpj)
 
-    // The value: `grouping.company` has no `cnpj` field at all (D19's fix,
-    // completed here — it had come back nested inside `company`).
+    /*
+     * The value: `grouping.company` has no `cnpj` field at all (D19's fix,
+     * completed here — it had come back nested inside `company`).
+     *
+     * **What produces this value is `e2e/fixtures/radar-api.ts`, not the route**:
+     * the journeys never let a request reach a route handler. So putting the
+     * field back in `app/api/radar/tenders/route.ts` would not fail this test.
+     * The route is guarded by `lib/radar/radar.db.test.ts`'s cookie-company
+     * assertion, which runs against a real Postgres in CI
+     * (`TEST_DATABASE_URL_D3`). What this test holds is the other half: that
+     * nothing between the envelope and storage puts it back.
+     */
     const snapshot = JSON.parse(lists[0].value) as {
       grouping: { company: Record<string, unknown> | null } | null
     }
@@ -349,5 +365,110 @@ test.describe('D60 · a bare /radar comes back where it was left', () => {
       api.calls.tenders.length,
       'a list grouped by another company is not this company’s list',
     ).toBeGreaterThan(listReads)
+  })
+})
+
+test.describe('D70 · the scope can be behind, and the merge must not run on it', () => {
+  test('a browser Back after changing company does not draw one company over another', async ({
+    page,
+  }) => {
+    /*
+     * **The path no other test in this suite can reach**, and the reason it had
+     * to be written: every journey here navigates with `goto` or clicks an
+     * `<a>` — both document loads, both of which re-render
+     * `app/radar/page.tsx` and hand the screen a **fresh** scope. Next reuses a
+     * page segment on a browser back/forward without re-rendering it (its own
+     * glossary: *"Pages are not cached by default but are reused during browser
+     * back/forward navigation"*), so Back is the one navigation that can leave
+     * the prop behind.
+     *
+     * Carla reads her cleaning client's list at a bare `/radar`, switches to her
+     * hospital client **inside the tab** (*Aplicar filtros* is `router.push`, not
+     * a form submit, once React has hydrated), and presses Back.
+     *
+     * Past `REVALIDATE_AFTER_MS` that was the worst outcome available:
+     * `refreshTenders` merges page 1 **by id**, Vida's ids match none of
+     * Brilho's rows, so Brilho's 60 cards would have stayed under *Vida
+     * Hospitalar · 2 CNAEs*. D19, recreated by the fix for D19 — which is the
+     * dead end D55 wrote down.
+     */
+    /*
+     * The clock is installed and **resumed** immediately: frozen time stalls
+     * hydration (the first version of this test timed out on a filter control
+     * that was rendered and hidden), and what is needed here is not a paused
+     * clock but the ability to move it forward once.
+     */
+    await page.clock.install()
+    await page.clock.resume()
+
+    const api = await installRadarApi(page, {
+      companies: clients(),
+      cookieCnpj: limpeza.cnpj,
+      pageSize: 20,
+    })
+
+    await page.goto('/radar')
+    await expect(page.getByText('Brilho Limpeza')).toBeVisible()
+    await expect(cards(page)).toHaveCount(20)
+
+    // Her other client, from the filter form on this screen: a client-side
+    // navigation, which is what keeps the stale prop alive.
+    // **The disclosure is already open here, and that is D61**: `FilterRow`
+    // expands on `!query.cnpj && !query.q`, so a bare `/radar` draws the whole
+    // search form with an empty CNPJ field under a named company. Clicking the
+    // summary would *close* it — the first version of this test did, and timed
+    // out on a control that was there and hidden.
+    await expect(page.getByLabel('Modalidade')).toBeVisible()
+    await page.getByLabel('CNPJ da empresa').fill(hospitalar.cnpj)
+    await page.getByRole('button', { name: 'Aplicar filtros' }).click()
+    await expect(page.getByText('Vida Hospitalar')).toBeVisible()
+    // What `POST /api/radar/cnpj` would have stamped, since the fixture answered
+    // it instead of the route.
+    await api.setCookieCnpj(hospitalar.cnpj)
+
+    /*
+     * Past the silent window, so the restore **revalidates** rather than being
+     * served with no request at all — which is the half this fix closes.
+     *
+     * **It has to be the clock and not a rewrite of `savedAt` in storage.** A
+     * browser Back is a *soft* navigation: the JavaScript context survives, so
+     * `list-cache.ts`'s Map still holds the snapshot and `readList` reads the Map
+     * **before** the storage mirror. Editing `sessionStorage` from the test
+     * therefore ages a copy nothing reads — the first version of this test did
+     * exactly that and the restore came back `fresh`, which is how the Map's
+     * precedence got written down here.
+     */
+    const before = await page.evaluate(() => Date.now())
+    await page.clock.fastForward('03:00')
+    const after = await page.evaluate(() => Date.now())
+    expect(
+      after - before,
+      'the clock has to have moved past REVALIDATE_AFTER_MS, or this test proves nothing',
+    ).toBeGreaterThan(60_000)
+
+    await page.goBack()
+
+    /*
+     * Whatever the scope says, the screen must agree with itself. The failure
+     * this asserts against is not staleness — it is the **mixture**: a header
+     * naming one company above another company's editais.
+     */
+    await expect(page.getByText('Vida Hospitalar')).toBeVisible()
+    await expect(page.getByText('Brilho Limpeza')).toHaveCount(0)
+    await expect(page.getByText('4 CNAEs')).toHaveCount(0)
+
+    /*
+     * **The rows, named** — and this is the assertion that does the work.
+     * Mutating the guard to compare the answer with itself leaves the header
+     * assertions above **passing**: `refreshTenders` replaces `grouping` and
+     * `counts` and keeps the rows, so the screen says *Vida Hospitalar · 2
+     * CNAEs* over Brilho's editais. The mixture is only visible in which
+     * editais are on the page, which is why the count and a named processo are
+     * both here rather than the names alone.
+     */
+    await expect(cards(page)).toHaveCount(9)
+    await expect(card(page, processo(501)), 'Vida’s own edital').toBeVisible()
+    await expect(card(page, processo(1)), 'and none of Brilho’s').toHaveCount(0)
+    expect(new URL(page.url()).search, 'and it is the bare address she came back to').toBe('')
   })
 })

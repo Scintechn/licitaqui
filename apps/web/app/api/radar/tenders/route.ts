@@ -88,7 +88,7 @@ const query = z.object({
 /**
  * The company, without the one field §12 keeps out of page JavaScript.
  *
- * Destructured rather than picked field by field, so a column added to
+ * A copy and a `delete` rather than a field-by-field pick, so a column added to
  * `CompanyView` tomorrow reaches the header without anybody editing this.
  */
 function groupedCompany(company: CompanyView | null): GroupedCompany | null {
