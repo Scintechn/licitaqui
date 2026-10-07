@@ -1,5 +1,5 @@
 import ptBR from '@/messages/pt-BR.json'
-import { brl, brlExact, FOUNDERS, NOTICE, PLAN_PRICES, PROMO } from './product'
+import { brl, brlExact, FOUNDERS, NOTICE, PLAN_LIMITS, PLAN_PRICES, PROMO } from './product'
 import { MIN_SAMPLE } from './radar/price-band'
 
 /**
@@ -69,6 +69,33 @@ const PRODUCT_FACTS: Readonly<Record<string, string>> = Object.freeze({
   // them previously typed into the catalogue by hand — the shape this whole
   // block exists to prevent.
   minEditais: String(MIN_SAMPLE),
+  /**
+   * **The three quota numbers the copy sells**, from `docs/product.json`'s
+   * `planLimits` — which mirrors `plan_limits`'s own `(plan, feature)` key.
+   *
+   * These are the **stated** values. The live quota is still a row in
+   * `plan_limits`, read per request by `readLimit`, because the spec says so
+   * twice: *"configurable without a deploy"* and *"Numbers live in
+   * `plan_limits`, not in code"*. Nothing here is read by a route; raising
+   * Básico from 5 to 8 is still one `UPDATE` and no deploy.
+   *
+   * What they close is the copy side. Until D69 the digits were typed into a
+   * dozen strings and asserted by nothing — D64 removed the last incidental
+   * literals — so a migration lowering Básico to 3 left every page promising
+   * five. `product.test.ts` now fails on a hand-typed one; `product.db.test.ts`
+   * fails when the table and `product.json` disagree.
+   *
+   * **`diasVisitante` is not the charge reminder.** The catalogue says `3 dias`
+   * nine times and only four are this fact. The other five are *"3 dias antes
+   * de cada cobrança"* — `notice.chargeReminderDays`, a different promise that
+   * happens to be three, and one that has **no token here at all**: it is
+   * typed by hand in all five, which is card D74. `telegram.connect.body`'s
+   * *"até 3 editais"* is a third meaning. Three facts, one digit — which is why
+   * the guard scopes by phrase and never by the number.
+   */
+  triagensVisitante: String(PLAN_LIMITS.visitor.screening.quantity),
+  diasVisitante: String(PLAN_LIMITS.visitor.days.quantity),
+  triagensBasico: String(PLAN_LIMITS.basico.screening.quantity),
 })
 
 /** `{$name}` → its value. An unknown name is **left in place**, never dropped. */

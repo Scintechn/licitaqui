@@ -2,7 +2,16 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { messages } from './messages'
-import { brl, brlExact, FOUNDERS, NOTICE, PLAN_PRICES, PROMO, REFUND } from './product'
+import {
+  brl,
+  brlExact,
+  FOUNDERS,
+  NOTICE,
+  PLAN_LIMITS,
+  PLAN_PRICES,
+  PROMO,
+  REFUND,
+} from './product'
 
 /**
  * **Does every file still agree with `docs/product.json`?**
@@ -60,6 +69,108 @@ const TEMPLATES = [
 
 /** Everything the money scan below looks at. */
 const MONEY_FILES = [COPY, TERMS, FAQ, BRIEF, 'docs/legal/README.md', ...TEMPLATES]
+
+/**
+ * The three `plan_limits` rows the copy sells, from `docs/product.json`.
+ *
+ * Read through {@link PLAN_LIMITS} rather than typed here, which is the whole
+ * point: the table is still the runtime authority and this is the **stated**
+ * value both the table and the prose must match. `product.db.test.ts` holds
+ * the half this file cannot reach.
+ */
+const QUOTA = {
+  visitorScreenings: PLAN_LIMITS.visitor.screening.quantity,
+  visitorDays: PLAN_LIMITS.visitor.days.quantity,
+  basicoScreenings: PLAN_LIMITS.basico.screening.quantity,
+} as const
+
+/**
+ * **Every catalogue sentence that names one of those three, by phrase.**
+ *
+ * `[phrase, where it lives, which row it is]`. Two assertions use it, and they
+ * are two halves of one guard:
+ *
+ *  - the **source** must contain none of these — a digit typed by hand is
+ *    exactly what D64 left unguarded;
+ *  - the **resolved** catalogue must contain every one of them — which proves
+ *    the token resolves back to the sentence that was approved, and that this
+ *    list has not been quietly defeated by a rewording. A sweep that matches
+ *    nothing passes for free (`memory: empty-result-is-not-absence`), and this
+ *    one walks copy somebody may reword.
+ *
+ * **Scoped by phrase, never by the digit, and `3 dias` is why.** The catalogue
+ * says `3 dias` nine times and only four are the visitor window:
+ *
+ *  - *"3 dias antes de cada cobrança"* — `notice.chargeReminderDays`, five
+ *    times (`foundersPage.founderValue.comparisonRows[3].us`,
+ *    `foundersPage.faq.columns[1][2].a`, `notifications.billingHelp`,
+ *    `radar.landing.plans.body`, `radar.landing.guarantees[2].body`). Approved
+ *    copy about a different promise that happens to be three.
+ *  - *"até 3 editais por semana"* — the digest size, a third three.
+ *
+ * A guard on the bare number would redden all of them.
+ */
+const QUOTA_CLAIMS: ReadonlyArray<readonly [string, string, string]> = [
+  // planLimits.visitor.screening — the two screenings before an account.
+  [
+    `suas ${QUOTA.visitorScreenings} triagens gratuitas`,
+    'plans.quota.visitorLeft',
+    'visitor/screening — inside the ICU `=0` branch, which is part of the surface',
+  ],
+  [
+    `${QUOTA.visitorScreenings} triagens de edital por inteligência artificial`,
+    'radar.landing.plans.basicVisitorScreenings',
+    'visitor/screening',
+  ],
+  [
+    `faz ${QUOTA.visitorScreenings} triagens por inteligência artificial`,
+    'radar.landing.faq.columns[0][0].a',
+    'visitor/screening',
+  ],
+  // planLimits.visitor.days — the three-day window. NOT the charge reminder.
+  [
+    `Sem cadastro · ${QUOTA.visitorDays} dias`,
+    'radar.landing.plans.basicVisitorGroup',
+    'visitor/days',
+  ],
+  [
+    `Não nos primeiros ${QUOTA.visitorDays} dias`,
+    'radar.landing.faq.columns[0][0].a',
+    'visitor/days — the same answer carries both visitor rows',
+  ],
+  [
+    `Seus ${QUOTA.visitorDays} dias de visitante acabaram`,
+    'radar.visitor.expiredTitle and radar.errors.visitorExpired',
+    'visitor/days — two strings, same sentence',
+  ],
+  // planLimits.basico.screening — five a month, and the period is the fact.
+  [
+    `${QUOTA.basicoScreenings} triagens de edital por mês`,
+    'founders.waitlist.basicNote',
+    'basico/screening',
+  ],
+  [
+    `${QUOTA.basicoScreenings} triagens de edital por inteligência artificial por mês`,
+    'plans.basic.feature2',
+    'basico/screening',
+  ],
+  [
+    `continue com ${QUOTA.basicoScreenings} triagens por mês`,
+    'plans.quota.visitorSpent',
+    'basico/screening',
+  ],
+  [
+    `suas ${QUOTA.basicoScreenings} triagens deste mês`,
+    'plans.quota.basicLeft',
+    'basico/screening — inside the ICU `=0` branch',
+  ],
+  [`tem ${QUOTA.basicoScreenings} triagens por mês`, 'billing.cancel.body', 'basico/screening'],
+  [
+    `ler ${QUOTA.basicoScreenings} editais por mês`,
+    'radar.visitor.expiredBody and radar.screening.quotaVisitorBody',
+    'basico/screening — two strings, same clause',
+  ],
+]
 
 /**
  * Amounts in those files that are **not** a plan price, each with the reason.
@@ -160,6 +271,32 @@ describe('the product facts, against every file that quotes them', () => {
     [`${PROMO.months + 1}º mês`, [COPY, TERMS, FAQ], 'the month the new price starts'],
     [`month ${PROMO.months + 1}`, [BRIEF], 'the month the new price starts, in the brief'],
     [String(NOTICE.priceChangeDays), [COPY, TERMS, BRIEF], 'the price-change notice period'],
+    /**
+     * **The three quota rows, in the terms' entitlement table (§5).**
+     *
+     * The catalogue is not listed here for the same reason the exact prices are
+     * not: since D69 it carries `{$triagensVisitante}`, `{$diasVisitante}` and
+     * `{$triagensBasico}`, so it cannot go stale — the catalogue half is the
+     * sweep at the bottom of this file. The terms are prose, because an
+     * entitlement table is a contract clause (legal brief §5), so they are
+     * exactly the file that *can* go stale, and `plan_limits` moving under
+     * them is what D69 was opened for.
+     *
+     * Each is the **phrase**, never the digit. `3` alone is in almost any
+     * document — the charge reminder, the digest size, the promo length — and
+     * `2` and `5` more so.
+     */
+    [
+      `até ${QUOTA.visitorDays} dias`,
+      [TERMS],
+      "the visitor window, in the terms' entitlement table",
+    ],
+    [`${QUOTA.visitorScreenings} triagens por IA`, [TERMS], "the visitor's screenings"],
+    [
+      `${QUOTA.basicoScreenings} triagens por IA por mês`,
+      [TERMS],
+      "Básico's screenings, per month",
+    ],
   ]
 
   it.each(REQUIRED)('%s is still in every file that must carry it (%s)', (value, files) => {
@@ -276,6 +413,41 @@ describe('the product facts, against every file that quotes them', () => {
     expect(
       source.includes(openingHour) ? [openingHour] : [],
       `the opening hour (${openingHour}) is typed into pt-BR.json — use {$aberturaHora}`,
+    ).toEqual([])
+
+    /**
+     * **The quota numbers, added by D69 because D64 removed the last guard on
+     * them.** `2 triagens`, `3 dias` and `5 triagens por mês` are
+     * `plan_limits` rows the copy *sells*, and they were pinned only
+     * incidentally — literals inside route-contract suites, which D64 was
+     * right to delete and which left nothing behind. A migration lowering
+     * Básico to 3 was silent while a dozen strings kept promising five.
+     *
+     * Two halves, and the second is not optional. See {@link QUOTA_CLAIMS} for
+     * why every entry is a phrase and which `3 dias` is which.
+     */
+    const typedByHand = QUOTA_CLAIMS.filter(([phrase]) => source.includes(phrase)).map(
+      ([phrase, where, row]) => `"${phrase}" at ${where} (${row})`,
+    )
+    expect(
+      typedByHand,
+      'a plan_limits quantity is typed into pt-BR.json — use {$triagensVisitante}, ' +
+        '{$diasVisitante} or {$triagensBasico} so one edit to docs/product.json ' +
+        'reaches every string, and product.db.test.ts can hold the table to it',
+    ).toEqual([])
+
+    // **And the sentences are still there.** Without this, deleting a swept
+    // string — or rewording it past the phrase — would make the half above
+    // pass for free, which is the failure mode it exists to catch.
+    const resolved = read(COPY)
+    const vanished = QUOTA_CLAIMS.filter(([phrase]) => !resolved.includes(phrase)).map(
+      ([phrase, where, row]) => `"${phrase}" no longer renders at ${where} (${row})`,
+    )
+    expect(
+      vanished,
+      'a quota sentence this guard sweeps no longer renders: either the token ' +
+        'binding broke, or the copy was reworded and QUOTA_CLAIMS must follow it ' +
+        '(a reworded sentence is a decision, not a silent loss of cover)',
     ).toEqual([])
   })
 

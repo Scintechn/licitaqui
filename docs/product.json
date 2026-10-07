@@ -61,6 +61,51 @@
     "pro": { "brl": 129 }
   },
 
+  "planLimits": {
+    "visitor": {
+      "screening": { "period": "total", "quantity": 2 },
+      "days": { "period": "total", "quantity": 3 }
+    },
+    "basico": {
+      "screening": { "period": "month", "quantity": 5 }
+    }
+  },
+  "$planLimitsComment": [
+    "THE QUOTA NUMBERS THE COPY SELLS. NOT THE RUNTIME AUTHORITY.",
+    "",
+    "`plan_limits` stays the table the product reads at request time —",
+    "TECHNICAL_SPEC.md:302 calls it 'configurable without a deploy' and :475",
+    "says 'Numbers live in `plan_limits`, not in code'. Nothing here is read by",
+    "a route, and no `readLimit` call was replaced by a constant. Raising",
+    "Básico from 5 to 8 is still one UPDATE.",
+    "",
+    "What this is: the **stated** value. Three rows are sold word-for-word in",
+    "about a dozen pt-BR strings and in the terms' entitlement table, and until",
+    "D69 nothing compared the sentence to the row. D64 removed the last",
+    "incidental assertions (literals inside route-contract suites), so a",
+    "migration lowering Básico to 3 was silent while every page kept promising",
+    "five. CDC art. 30 binds an advertised feature, so the sentence is a",
+    "promise, not a label.",
+    "",
+    "Keyed `(plan, feature)` — the table's own primary key, spelled the same",
+    "way — so the two sides can be joined by eye as well as by a test. The",
+    "`period` is here because `month` versus `total` is the difference between",
+    "'five a month' and 'five for life', and a quantity without its period is",
+    "half a fact.",
+    "",
+    "Only the rows the copy quotes. `deep_analysis`, `alert`, `keywords`,",
+    "`states` and `price_band` are also sold in sentences; `keywords` and",
+    "`alert` already have their own copy-versus-table guards",
+    "(`keyword-limits.db.test.ts`, `plan-limits.db.test.ts`), and the rest is",
+    "card D74. A row added here must be tokenised in the catalogue and swept in",
+    "the same PR, or the guard grows a hole it cannot see.",
+    "",
+    "Three readers: `apps/web/lib/product.ts` (PLAN_LIMITS, which feeds the",
+    "`{$triagensVisitante}`, `{$diasVisitante}` and `{$triagensBasico}` copy",
+    "tokens), `product.test.ts` (the catalogue and the terms must still say",
+    "this) and `product.db.test.ts` (the table must still hold it)."
+  ],
+
   "notice": {
     "priceChangeDays": 30,
     "chargeReminderDays": 3,
