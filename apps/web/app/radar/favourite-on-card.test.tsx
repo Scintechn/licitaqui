@@ -84,7 +84,10 @@ describe('where the star is', () => {
     const html = withStar()
     // It is on the card…
     expect(html).toContain('<button')
-    expect(html).toContain(`aria-label="${copy.add}"`)
+    // The action word as a *node*, not merely somewhere in the markup: a bare
+    // `toContain(copy.add)` is satisfied by the `title` attribute alone, so
+    // deleting the span that names the control would have left this green.
+    expect(html).toContain(`>${copy.add}</span>`)
     // …and not in the link. A `<button>` inside an `<a>` is what made the
     // "Objeto completo" `<details>` wrong, and it is why D23 left this control
     // off the card until the placement was decided rather than guessing.
@@ -134,15 +137,22 @@ describe('the space the top row gives up for it', () => {
 })
 
 describe('what the star says', () => {
+  /**
+   * These two used to assert `aria-label="Favoritar"` / `"Favoritado"`, which is
+   * the attribute **D57 deleted**: twenty stars with one name. The action word
+   * is now a node the composed name reads, so what is asserted here is that the
+   * word is on the control at all, and how it gets into the name is
+   * `favourite-feedback.test.tsx`'s subject.
+   */
   it('reads Favoritar when the tender is not marked, and is not pressed', () => {
     const html = withStar(false)
-    expect(html).toContain(`aria-label="${copy.add}"`)
+    expect(html).toContain(`>${copy.add}</span>`)
     expect(html).toContain('aria-pressed="false"')
   })
 
   it('reads Favoritado when it is, and fills the glyph', () => {
     const html = withStar(true)
-    expect(html).toContain(`aria-label="${copy.added}"`)
+    expect(html).toContain(`>${copy.added}</span>`)
     expect(html).toContain('aria-pressed="true"')
     // `aria-pressed` alone was D23's own defect on the opportunity screen: a
     // toggle that reports its state only to a screen reader.
@@ -153,10 +163,14 @@ describe('what the star says', () => {
     expect(withStar(false)).toContain('fill="none"')
   })
 
-  it('carries the label in `title` as well, so a pointer can reach it', () => {
-    // The star is an icon with no text; the refusal a visitor gets has nowhere
-    // else to go on a list card (D56).
+  it('carries the action word in `title` as well, so a pointer can reach it', () => {
+    // The star is an icon with no visible text, so `title` is the tooltip. It
+    // carries the **action**, never a failure: since D56 a refusal goes to the
+    // list's live region, because a `title` needs a hover and a thumb has none.
     expect(withStar(false)).toContain(`title="${copy.add}"`)
+    expect(withStar(false), 'the 401 sentence must not live in an attribute').not.toContain(
+      copy.signedOut,
+    )
   })
 
   it('is not busy before anything is pressed', () => {

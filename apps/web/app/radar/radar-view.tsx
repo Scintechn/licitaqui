@@ -35,7 +35,9 @@ import {
   type MeEppFilter,
   type ModalityFilter,
 } from '@/lib/radar/filters'
+import { listKey } from '@/lib/radar/list-cache'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
+import { FavouriteNotices } from './favourite-notice'
 import { FavouriteStar } from './favourite-star'
 import { TenderCardView } from './tender-card'
 
@@ -1177,33 +1179,46 @@ function Body({
        These widths are read from the source; `environment: 'node'` has no
        layout to measure them in. `e2e/journeys/radar-columns.spec.ts` is what
        actually looks. */
-    <div className="@container">
-      <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
-        {tenders.map((tender) => (
-          <li key={tender.id} className="flex">
-            {/* The card carries the search into the tender's URL, which is
-                where the Opportunity screen reads its "Voltar" link from. */}
-            <TenderCardView
-              tender={tender}
-              now={now}
-              href={tenderHref(tender.id, { ...query, group })}
-              /* D23. Seeded from the envelope, so it never paints the wrong
-                 state, and rendered outside the card's anchor — see
-                 `tender-card.tsx` for the box arithmetic. */
-              action={
-                onFavourite ? (
-                  <FavouriteStar
-                    tenderId={tender.id}
-                    marked={favourites?.has(tender.id) ?? false}
-                    onChange={onFavourite}
-                  />
-                ) : undefined
-              }
-            />
-          </li>
-        ))}
-      </ul>
-    </div>
+    /* D56's live region is a **sibling** of the container, after it, and that is
+       not tidiness: `container-type: inline-size` makes this div a containing
+       block for `position: fixed` descendants, so a region nested inside it
+       would anchor to the bottom of the grid instead of the bottom of the
+       window — off screen on a full page. The same trap `sheet.tsx` documents
+       at its `centre` box, and `favourite-feedback.test.tsx` asserts the
+       placement as an ancestor relation because no width changes with it.
+
+       `listKey` is what the notice is scoped to: a sentence about a press on
+       *Compatíveis* must not still be pinned to the window after a tab, a sort
+       or a filter change, and this subtree stays mounted across all three. */
+    <FavouriteNotices active={Boolean(onFavourite)} listKey={listKey({ ...query, group })}>
+      <div className="@container">
+        <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
+          {tenders.map((tender) => (
+            <li key={tender.id} className="flex">
+              {/* The card carries the search into the tender's URL, which is
+                  where the Opportunity screen reads its "Voltar" link from. */}
+              <TenderCardView
+                tender={tender}
+                now={now}
+                href={tenderHref(tender.id, { ...query, group })}
+                /* D23. Seeded from the envelope, so it never paints the wrong
+                   state, and rendered outside the card's anchor — see
+                   `tender-card.tsx` for the box arithmetic. */
+                action={
+                  onFavourite ? (
+                    <FavouriteStar
+                      tenderId={tender.id}
+                      marked={favourites?.has(tender.id) ?? false}
+                      onChange={onFavourite}
+                    />
+                  ) : undefined
+                }
+              />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </FavouriteNotices>
   )
 }
 
