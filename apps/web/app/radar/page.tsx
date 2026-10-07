@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { messages } from '@/lib/messages'
+import { loadingStatus } from './bare-radar'
 import { RadarScreen } from './radar-screen'
 import { RadarView } from './radar-view'
 
@@ -33,7 +34,20 @@ export default function RadarPage() {
       fallback={
         <RadarView
           query={{ cnpj: null, state: null, q: null, group: 'compatible' }}
-          status={{ kind: 'analyzing', what: 'company' }}
+          /* The status has to agree with the `query` on the line above it, and
+             it did not: this frame declares no CNPJ and then said "Consultando o
+             CNPJ…", which names a request that cannot have been made. Asked of
+             the same function the screen asks (D55) rather than written out a
+             second time — two copies of one decision in different files is D29's
+             shape, and this is the file D55 did not look in at first.
+
+             It is unreachable today, and only because of `force-dynamic` above:
+             a dynamically rendered route has `useSearchParams` on the server, so
+             `RadarScreen` itself renders the first frame and this fallback is
+             bypassed. That is a property of the rendering mode, not a guarantee
+             — so the value here is kept correct rather than left to be wrong if
+             the mode ever changes. */
+          status={loadingStatus(null)}
           /* Nothing is known before the client has asked: not the company, and
              not whether there is one — the CNPJ may be in the visitor cookie,
              which this server pass cannot resolve without becoming the read
