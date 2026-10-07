@@ -83,10 +83,14 @@ const KEY_LABEL = 'licitaqui.radar.list-scope.v1'
 const CNPJ_KEY_LABEL = 'licitaqui.radar.cnpj-scope.v1'
 
 /**
- * 16 bytes — 22 base64url characters. The digest is only ever compared with
- * another digest produced the same way, so the bar is "two different callers
- * must not collide", and 128 bits is far past it. Short because it is joined
- * into a `sessionStorage` key.
+ * The first 22 characters of the base64url of a 32-byte HMAC — **132 bits**, not
+ * 128: the truncation is of the encoded string, which carries six bits a
+ * character, and stating the wrong arithmetic in a comment about a digest is the
+ * kind of number this repo has been wrong about before.
+ *
+ * The value is only ever compared with another produced the same way, so the bar
+ * is "two different callers must not collide", and 132 bits is far past it. Short
+ * because it is joined into a `sessionStorage` key.
  */
 const DIGEST_CHARS = 22
 
