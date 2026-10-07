@@ -119,6 +119,31 @@ export function TenderTags({ tender }: { tender: TenderCard }) {
   )
 }
 
+/**
+ * The DOM id of one card's title node — card **D57**.
+ *
+ * Twenty stars on the Radar all answered to *Favoritar*, because the control was
+ * copied from the opportunity screen where one button on one screen needs no
+ * more. In a list that is twenty buttons with one name: listing the buttons
+ * gives *Favoritar* twenty times, and *"click Favoritar"* is ambiguous by
+ * construction.
+ *
+ * The fix that needs **no new string** is to point the control's
+ * `aria-labelledby` at text already on the screen, which is this node. So the id
+ * is derived from the tender id by both sides rather than threaded through as a
+ * prop — one function, no chance of the button naming a node that does not
+ * exist.
+ *
+ * A `numeroControlePNCP` is `51327708000192-1-000084/2026`: legal in an HTML id
+ * and legal in an IDREF (neither forbids `/`), but a `/` is a combinator in a
+ * CSS selector and `.` would be a class, so anything outside `[A-Za-z0-9_-]`
+ * becomes `-`. Ids are unique per page because the list keys its `<li>`s on the
+ * same tender id.
+ */
+export function tenderTitleId(tenderId: string): string {
+  return `tender-title-${tenderId.replace(/[^A-Za-z0-9_-]+/g, '-')}`
+}
+
 export function TenderCardView({
   tender,
   now = new Date(),
@@ -195,7 +220,15 @@ export function TenderCardView({
         )}
       </div>
 
-      <div className="text-lead leading-[1.3] font-semibold">{title}</div>
+      {/* The id is what names the star (D57), so it is written only when there
+          is a control to name: `/conta/favoritos` and the Landing's example
+          panel pass no action and keep exactly the markup they had. */}
+      <div
+        id={action ? tenderTitleId(tender.id) : undefined}
+        className="text-lead leading-[1.3] font-semibold"
+      >
+        {title}
+      </div>
 
       <div className="text-meta text-muted">{agencyLine(tender)}</div>
 
