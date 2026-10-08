@@ -4,7 +4,7 @@ channel: email
 subject: "Aviso: em {{data_mudanca}} sua mensalidade da LicitaQui passa de {{preco_promocional_exato}} para {{preco_essencial_exato}}"
 preheader: "Aviso com 30 dias de antecedência. Se não quiser continuar, dá para cancelar em um clique."
 status: draft
-placeholders: [data_mudanca, data_primeira_cobranca_nova, data_ultima_cobranca_promocional, email_contato, link_assinatura, link_cancelamento, nome, preco_essencial_exato, preco_promocional, preco_promocional_exato]
+placeholders: [data_mudanca, data_primeira_cobranca_nova, data_ultima_cobranca_promocional, email_contato, link_assinatura, link_cancelamento, meses_promocionais, nome, preco_essencial_exato, preco_promocional, preco_promocional_exato]
 partials: [partial-footer]
 notes: Legal obligation. Job promo_price_change, 30 days before promo_ends_on. The value may NEVER change before this email is confirmed as sent (spec section 10).
 ---
@@ -15,7 +15,7 @@ Este é o aviso, com 30 dias de antecedência, de que o preço da sua assinatura
 
 O QUE MUDA
 
-- Hoje você paga {{preco_promocional_exato}} por mês. Esse é o preço Promocional de fundador, combinado para os 6 primeiros meses.
+- Hoje você paga {{preco_promocional_exato}} por mês. Esse é o preço Promocional de fundador, combinado para os {{meses_promocionais}} primeiros meses.
 - A partir de {{data_mudanca}}, a mensalidade passa a ser {{preco_essencial_exato}} por mês, que é o preço do plano Essencial.
 - Sua última cobrança de {{preco_promocional_exato}} é em {{data_ultima_cobranca_promocional}}.
 - Sua primeira cobrança de {{preco_essencial_exato}} é em {{data_primeira_cobranca_nova}}.
