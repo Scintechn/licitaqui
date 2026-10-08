@@ -92,6 +92,12 @@ const SETTLED: readonly string[] = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH']
  *
  * `OVERDUE` is in the list and the `due_on >= today` filter is what keeps a
  * past-due charge out — the subscriber owes it, but it is not *next*.
+ *
+ * `AUTHORIZED` (a pre-authorised card charge) is deliberately **absent**: the
+ * money is committed and not captured, so it is neither settled nor waiting to
+ * be paid, and the safe answer is to leave `next_charge_on` and the checkout
+ * link on their previous values rather than to point either at it. That is the
+ * allow-list failing safe, which is the whole reason it is one.
  */
 const AWAITING: readonly string[] = [
   'PENDING',

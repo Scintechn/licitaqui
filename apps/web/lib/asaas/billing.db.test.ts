@@ -70,8 +70,20 @@ function stubClient(replies: Array<unknown>) {
   }
 }
 
-/** The three replies `startCheckout` makes in order, for a first subscribe. */
-function firstSubscribeReplies(invoiceUrl: string | null, dueDate = '2026-10-17') {
+/**
+ * The replies `startCheckout` reads in order, for a first subscribe.
+ *
+ * **`dueDate` defaults to today in the product's clock, not to a constant.**
+ * `startCheckout` asks Asaas for `today_brt` and Asaas echoes back the date it
+ * was given, so a stub answering a fixed `'2026-10-17'` hands the code a value
+ * production cannot produce at that moment. That is the shape review found one
+ * layer up, and it survived the first fix: the two tests written to catch the
+ * `ends_on` defect failed against the constant rather than against the code.
+ *
+ * A test that wants a specific calendar date passes one.
+ */
+async function firstSubscribeReplies(invoiceUrl: string | null, dueDate?: string) {
+  dueDate ??= await brtToday()
   return [
     { data: [] }, //                                   GET  /customers   -> none
     { id: CUS }, //                                    POST /customers
@@ -103,8 +115,14 @@ async function makeUser(options: { seat?: number | null; cnpj?: string | null } 
   return Number(user.rows[0].id)
 }
 
-const event = (name: string, over: Record<string, unknown> = {}) =>
-  readEvent({
+/**
+ * One Asaas envelope. Dates default to today in the product's clock, for the
+ * reason {@link firstSubscribeReplies} gives: the charge a first payment
+ * settles is the one `startCheckout` asked for, which is today.
+ */
+const event = async (name: string, over: Record<string, unknown> = {}) => {
+  const today = await brtToday()
+  return readEvent({
     id: `evt_${RUN_ID}_${name}_${(over.suffix as string) ?? '1'}`,
     event: name,
     payment: {
@@ -112,15 +130,16 @@ const event = (name: string, over: Record<string, unknown> = {}) =>
       subscription: SUB,
       status: name === 'PAYMENT_CONFIRMED' ? 'CONFIRMED' : 'PENDING',
       value: PLAN_PRICES.promocional,
-      dueDate: '2026-10-17',
-      paymentDate: name === 'PAYMENT_CONFIRMED' ? '2026-10-17' : null,
+      dueDate: today,
+      paymentDate: name === 'PAYMENT_CONFIRMED' ? today : null,
       ...over,
     },
   })!
+}
 
 /** The receiver's half: store the envelope, then apply it, in one transaction. */
 async function deliver(name: string, over: Record<string, unknown> = {}) {
-  const parsed = event(name, over)
+  const parsed = await event(name, over)
   return db().transaction(async (tx) => {
     const stored = await tx.execute<{ id: string }>(sql`
       insert into webhook_events (id, source, event, body)
@@ -153,7 +172,7 @@ async function brtToday(): Promise<string> {
  */
 async function subscribedAndPaid(seat: number): Promise<number> {
   const userId = await makeUser({ seat })
-  const { client } = stubClient(firstSubscribeReplies('https://x/i'))
+  const { client } = stubClient(await firstSubscribeReplies('https://x/i'))
   await startCheckout(userId, { client })
   const applied = await deliver('PAYMENT_CONFIRMED')
   expect(applied.outcome, 'the fixture must actually grant').toBe('granted')
@@ -193,7 +212,7 @@ suite('the subscription flow (database)', () => {
 
   it('charges a founder the promotional price and nobody else', async () => {
     const founder = await makeUser({ seat: 3 })
-    const { client } = stubClient(firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
+    const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
     const result = await startCheckout(founder, { client })
 
     expect(result.outcome).toBe('ready')
@@ -213,7 +232,7 @@ suite('the subscription flow (database)', () => {
   it('creates the Asaas customer with notifications disabled', async () => {
     // Spec §9: Asaas bills us per notification and they are on by default.
     const founder = await makeUser({ seat: 4 })
-    const { client } = stubClient(firstSubscribeReplies(null))
+    const { client } = stubClient(await firstSubscribeReplies(null))
     await startCheckout(founder, { client })
     // The request body itself is asserted in `client.test.ts`; what this adds
     // is that the real `startCheckout` path goes through that method at all.
@@ -233,7 +252,7 @@ suite('the subscription flow (database)', () => {
      * second Asaas id would violate it and throw.
      */
     const founder = await makeUser({ seat: 5 })
-    const first = stubClient(firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
+    const first = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
     await startCheckout(founder, { client: first.client })
 
     const again = stubClient([
@@ -287,7 +306,7 @@ suite('the subscription flow (database)', () => {
     // real subscription with nothing on our side pointing at it, and a cancel
     // could not reach it.
     const founder = await makeUser({ seat: 7 })
-    const { client } = stubClient(firstSubscribeReplies(null))
+    const { client } = stubClient(await firstSubscribeReplies(null))
     const result = await startCheckout(founder, { client })
     expect(result.outcome).toBe('ready')
     if (result.outcome !== 'ready') return
@@ -336,7 +355,7 @@ suite('what a webhook does to an account (database)', () => {
 
   async function subscribed(seat: number | null = 3) {
     const userId = await makeUser({ seat })
-    const { client } = stubClient(firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
+    const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
     await startCheckout(userId, { client })
     return userId
   }
@@ -396,8 +415,11 @@ suite('what a webhook does to an account (database)', () => {
     const row = await readSubscription(userId)
     expect(row.state).toBe('found')
     if (row.state !== 'found') return
-    // Paid 17/10/2026 + 3 months (`docs/product.json`) = 17/01/2027.
-    const expected = new Date(Date.UTC(2026, 9, 17))
+    // The charge's own due date + `PROMO.months`, both read rather than typed:
+    // the due date is today in BRT (the stub echoes what `startCheckout` asked
+    // for, as Asaas does) and the month count is `docs/product.json`'s.
+    const today = await brtToday()
+    const expected = new Date(`${today}T00:00:00Z`)
     expected.setUTCMonth(expected.getUTCMonth() + PROMO.months)
     expect(row.subscription.promoEndsOn).toBe(expected.toISOString().slice(0, 10))
 
@@ -696,7 +718,7 @@ suite('cancelling (database)', () => {
     // Terms §8's Prime model, and `billing.cancel.untilWhen` is the approved
     // sentence that states it.
     const userId = await makeUser({ seat: 2 })
-    const { client } = stubClient(firstSubscribeReplies('https://x/i', '2026-11-17'))
+    const { client } = stubClient(await firstSubscribeReplies('https://x/i', '2026-11-17'))
     await startCheckout(userId, { client })
 
     const result = await cancelSubscription(userId)
@@ -719,6 +741,14 @@ suite('cancelling (database)', () => {
    * Review found it. The fixture handed the code the one value that made the
    * arithmetic look right, which is §4b's *"a test that required its own bug
    * to pass"*, one step removed.
+   *
+   * **And this test then found the same defect a layer deeper.** Written
+   * against a stub whose `dueDate` still defaulted to the constant
+   * `'2026-10-17'`, it failed on its own precondition — `next_charge_on` was
+   * the constant, not today — which is why {@link firstSubscribeReplies} now
+   * echoes the date `startCheckout` asked for, as Asaas does. A fixture that
+   * answers a calendar constant will keep producing this class of bug for as
+   * long as it is allowed to.
    */
   it('honours the month a payment bought, even before Asaas schedules the next charge', async () => {
     const userId = await subscribedAndPaid(2)
@@ -747,7 +777,7 @@ suite('cancelling (database)', () => {
     // The floor. A cancel cannot retroactively end access that has not ended,
     // and a subscription that has never been paid has no period to honour.
     const userId = await makeUser({ seat: 11 })
-    const { client } = stubClient(firstSubscribeReplies(null))
+    const { client } = stubClient(await firstSubscribeReplies(null))
     await startCheckout(userId, { client })
 
     const result = await cancelSubscription(userId)
@@ -827,7 +857,7 @@ suite('cancelling (database)', () => {
 
   it('lets the same account subscribe again afterwards', async () => {
     const userId = await makeUser({ seat: 9 })
-    const first = stubClient(firstSubscribeReplies('https://x/i'))
+    const first = stubClient(await firstSubscribeReplies('https://x/i'))
     await startCheckout(userId, { client: first.client })
     await cancelSubscription(userId)
 
