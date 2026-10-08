@@ -37,3 +37,54 @@ description = "U1's session-cookie test fixture, already replaced at HEAD (see t
 condition = "AND"
 commits = ["9991357031634f4edbae1dbf0eabc233e5293429"]
 paths = ['''^apps/web/lib/auth/session\.test\.ts$''']
+
+# ──────────────────────────────────────────────────────────────────────────
+# D58/D60's scope digest: three constants that look like credentials and are
+# not. Added 2026-10-08.
+#
+# `apps/web/lib/radar/scope.ts` derives an opaque cache key from the request's
+# cookies. Two of the findings are **fixture session tokens** in its test and
+# the third is `CNPJ_KEY_LABEL`, a **domain-separation label** — a fixed public
+# string fed into `createHmac` alongside the real key, which is `AUTH_SECRET`
+# and appears in neither file. Publishing all three costs nothing: they are
+# inputs to a derivation, not the secret it is keyed with.
+#
+# gitleaks scored them `generic-api-key` on entropy alone, and it was not
+# unreasonable to: an identifier ending `_KEY_LABEL` beside a fixed string is
+# the shape of a credential. **They were renamed at HEAD before this entry was
+# written** — `SESSION`, `OTHER_SESSION`, and `DEVICE_SCOPE_LABEL` /
+# `VIEWER_SCOPE_LABEL` / `CNPJ_TAG_LABEL` — so nothing in the working tree
+# trips the rule today and no future commit can re-introduce it under these
+# names.
+#
+# ## Why an exemption and not a history rewrite
+#
+# `9c13716` is the first commit of `task/d58-d60-snapshot-identity`, and the
+# branch was merged into `main` with a **merge commit** (#256), so that commit
+# is now in `main`'s history. `security.yml` runs `gitleaks git .` on every
+# push to `main`, which scans everything reachable from HEAD — so `main` is red
+# until this entry exists. Squash-merging would have avoided it; the branch was
+# squashed locally and the force-push failed with a GitHub 500, after which the
+# PR was merged normally.
+#
+# ## This one is permanent, and says so
+#
+# The entry above promises to be deleted "after `task/u1-auth` is squash-merged
+# and the branch is deleted". That never happened: `9991357` is in `main`'s
+# history too, so the condition cannot be met and a note written as temporary
+# has been permanent since 2026-09. **Do not write that sentence again.** This
+# exemption goes when `main`'s history is rewritten, which is to say: not.
+#
+# What it does not weaken: pinned to one commit AND two paths, with
+# `condition = "AND"`, so a finding anywhere else in `9c13716` still fails, and
+# a finding in either file in any other commit — including every commit after
+# it — still fails.
+
+[[allowlists]]
+description = "D58/D60's scope-digest fixtures and labels, renamed at HEAD (see the note above)"
+condition = "AND"
+commits = ["9c137162b492740de54e37d5018c3d6429ade772"]
+paths = [
+  '''^apps/web/lib/radar/scope\.test\.ts$''',
+  '''^apps/web/lib/radar/scope\.ts$''',
+]
