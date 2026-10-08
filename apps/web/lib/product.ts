@@ -15,7 +15,12 @@ import facts from '../../../docs/product.json'
 
 export type PlanName = 'basico' | 'promocional' | 'essencial' | 'pro'
 
-/** Whole BRL per month, by plan. `promocional` is the first-6-months price. */
+/**
+ * Whole BRL per month, by plan. `promocional` is the founder price, charged
+ * for `PROMO.months` months and then `PROMO.thenBrl` — **not** a fixed six, as
+ * this line said until 2026-10-08. The count is in `docs/product.json` for
+ * exactly that reason: it moved from 6 to 3 and a sentence here did not.
+ */
 export const PLAN_PRICES: Readonly<Record<PlanName, number>> = Object.freeze({
   basico: facts.plans.basico.brl,
   promocional: facts.plans.promocional.brl,
@@ -154,7 +159,7 @@ export const REFUND = Object.freeze({
 })
 
 /**
- * `26` → `"R$ 26"`. The form used in running copy.
+ * `57` → `"R$ 57"`. The form used in running copy.
  *
  * Deliberately *not* `Intl.NumberFormat`: it emits a non-breaking space
  * (U+00A0) between the symbol and the digits, which reads identically and
@@ -165,7 +170,7 @@ export function brl(amount: number): string {
   return `R$ ${amount}`
 }
 
-/** `26` → `"R$ 26,00"`. The form the legal documents and receipts use. */
+/** `57` → `"R$ 57,00"`. The form the legal documents and receipts use. */
 export function brlExact(amount: number): string {
   return `R$ ${amount},00`
 }

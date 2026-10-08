@@ -25,12 +25,16 @@ import { db, type Executor } from '@/lib/db'
  *
  * ## What it does *not* do
  *
- * It does not change `users.plan`. A seat is the right to buy Promocional at
- * R$ 26 (§10); it is not the plan itself, and billing is task F2 at M5. Setting
- * `plan = 'promocional'` here would hand 48 people unlimited screenings for
- * free, six weeks before anything can charge them. The seat is recorded, the
- * plan stays `basico`, and F2 reads `users.founder_seat` to price the
- * subscription.
+ * It does not change `users.plan`. A seat is the right to buy Essencial at the
+ * founder price (§10, and `docs/product.json` for what that price is — this
+ * comment named R$ 26 until 2026-10-08, two price changes out of date); it is
+ * not the plan itself. Setting `plan = 'promocional'` here would hand everyone
+ * on the list unlimited screenings for free before anything had charged them.
+ * The seat is recorded, the plan stays `basico`, and **`lib/asaas/price.ts`
+ * reads `users.founder_seat` to price the subscription** — which makes this
+ * statement the only thing standing between a founder and the standard price,
+ * so the `and u.founder_seat is null` guard below is load-bearing for money as
+ * well as for uniqueness.
  *
  * ## LGPD (§12)
  *

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { messages } from './messages'
@@ -53,6 +53,27 @@ const read = (rel: string) => (rel === COPY ? JSON.stringify(messages) : rawFile
 const TERMS = 'docs/legal/termos-de-uso.md'
 const FAQ = 'docs/legal/faq-cobranca.md'
 const BRIEF = 'docs/legal/LEGAL_AND_BILLING_BRIEF.md'
+
+/**
+ * **The spec, added by F2 on 2026-10-08 because it was the file that was
+ * actually wrong.**
+ *
+ * `docs/TECHNICAL_SPEC.md` quoted the ladder at **six** sites — `:46`, `:337`,
+ * `:438`, `:465`, `:481`, `:582` — and every one of them still said R$ 26 for
+ * six months → R$ 57, Essencial R$ 57, Pro R$ 98, three weeks after
+ * `docs/product.json` moved to R$ 57 × 3 → R$ 75 / R$ 75 / R$ 129. `:438` is
+ * the line that specifies the route which creates the subscription, so the
+ * document a future implementer would read to find out what to charge named
+ * the wrong amount.
+ *
+ * It is in {@link REQUIRED} and deliberately **not** in {@link MONEY_FILES}:
+ * the spec also quotes infrastructure costs, a SearchApi tariff and the Neon
+ * bill, and classifying those here would move a cost argument into a price
+ * guard. The REQUIRED direction is the one that catches the defect this file
+ * exists for — a `docs/product.json` change that does not reach the spec turns
+ * red, because `brl(129)` stops appearing.
+ */
+const SPEC = 'docs/TECHNICAL_SPEC.md'
 
 const TEMPLATES = [
   'worker/templates/email/founders-welcome.md',
@@ -315,9 +336,9 @@ describe('the product facts, against every file that quotes them', () => {
    * here" — which is exactly the list a price change has to walk.
    */
   const REQUIRED: ReadonlyArray<readonly [string, string[], string]> = [
-    [brl(PLAN_PRICES.essencial), [COPY, TERMS, FAQ, BRIEF], 'the Essencial price'],
-    [brl(PLAN_PRICES.pro), [COPY, TERMS, BRIEF], 'the Pro price'],
-    [brl(PLAN_PRICES.promocional), [COPY, TERMS, FAQ, BRIEF], 'the founder price'],
+    [brl(PLAN_PRICES.essencial), [COPY, TERMS, FAQ, BRIEF, SPEC], 'the Essencial price'],
+    [brl(PLAN_PRICES.pro), [COPY, TERMS, BRIEF, SPEC], 'the Pro price'],
+    [brl(PLAN_PRICES.promocional), [COPY, TERMS, FAQ, BRIEF, SPEC], 'the founder price'],
     // Legal files only, deliberately. Since Layers 2 and 3 the catalogue and
     // the templates carry tokens, so they cannot go stale — a value that no
     // longer appears there means the binding broke, which the resolution test
@@ -334,7 +355,7 @@ describe('the product facts, against every file that quotes them', () => {
       [COPY, TERMS, FAQ],
       'how many months the founder price lasts',
     ],
-    [`${PROMO.months} months`, [BRIEF], 'the promo length, in the English brief'],
+    [`${PROMO.months} months`, [BRIEF, SPEC], 'the promo length, in the English brief and the spec'],
     [`${PROMO.months + 1}º mês`, [COPY, TERMS, FAQ], 'the month the new price starts'],
     [`month ${PROMO.months + 1}`, [BRIEF], 'the month the new price starts, in the brief'],
     [String(NOTICE.priceChangeDays), [COPY, TERMS, BRIEF], 'the price-change notice period'],
@@ -610,6 +631,100 @@ describe('the product facts, against every file that quotes them', () => {
     expect(
       [...new Set(unresolved)],
       'a {$token} in pt-BR.json has no matching fact in PRODUCT_FACTS (messages.ts)',
+    ).toEqual([])
+  })
+
+  /**
+   * **The billing code may hold no amount of its own — Gate 1, F2.**
+   *
+   * The sweeps above are about *sentences*. This one is about the number that
+   * is actually sent to Asaas, and it exists because the parked E8 worktree
+   * declared `PROMO_PRICE_CENTS = 2_600`, `ESSENCIAL_PRICE_CENTS = 5_700` and
+   * `PROMO_MONTHS = 6` next to a comment explaining why a screen promising one
+   * price while Asaas charges another *"is a chargeback and a CDC art. 30
+   * problem, not a display bug"*. By 2026-10-08 those constants were the wrong
+   * half: R$ 26 against a published R$ 57. A number duplicated into code is a
+   * number that drifts, and here it drifts into a charge.
+   *
+   * So `lib/asaas/` derives everything from `lib/product.ts`, and this refuses
+   * to let a literal back in. Three things fail it:
+   *
+   *  1. a numeric literal equal to any plan price, in reais or in centavos;
+   *  2. an `R$` string literal in code;
+   *  3. a declaration whose *name* says it holds one — `…_PRICE_CENTS`,
+   *     `…_PRICE`, `PROMO_MONTHS` — which is what catches a price written as
+   *     an expression the first two cannot see.
+   *
+   * **Comments are stripped before the scan**, deliberately: this file's own
+   * module docstring quotes "R$ 26" and "R$ 57" while explaining the defect,
+   * and a guard that forbade the explanation would be a guard against writing
+   * down what went wrong.
+   *
+   * **It asserts it found the files.** A path sweep that matches nothing passes
+   * for free — `memory: empty-result-is-not-absence`, and the reason the
+   * assertion below names `price.ts` explicitly.
+   */
+  it('lets no amount be written by hand in the billing code', () => {
+    const BILLING_SOURCES = [
+      'apps/web/lib/asaas',
+      'apps/web/app/api/subscribe',
+      'apps/web/app/api/asaas',
+      'apps/web/app/conta/plano',
+    ]
+
+    const sources = BILLING_SOURCES.flatMap((dir) => {
+      let names: string[]
+      try {
+        names = readdirSync(join(root, dir), { recursive: true }) as string[]
+      } catch {
+        // The directory does not exist yet. Not a pass: the assertion on the
+        // file list below is what turns that into a failure, with a message
+        // that says which path moved.
+        return []
+      }
+      return names
+        .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))
+        .map((name) => `${dir}/${name}`)
+    })
+
+    expect(
+      sources,
+      'the billing-code sweep found no files — a path in BILLING_SOURCES moved, ' +
+        'and a sweep that matches nothing passes for free',
+    ).toContain('apps/web/lib/asaas/price.ts')
+
+    /** Code only: block and line comments removed, strings kept. */
+    const codeOf = (text: string) =>
+      text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+
+    const forbidden = new Set<string>()
+    for (const price of Object.values(PLAN_PRICES)) {
+      if (price === 0) continue // `basico` is free; `0` is not an amount to hunt.
+      forbidden.add(String(price))
+      forbidden.add(String(price * 100))
+    }
+
+    const offences: string[] = []
+    for (const file of sources) {
+      const code = codeOf(rawFile(file))
+      for (const [, literal] of code.matchAll(/(?<![\w.])(\d[\d_]*)(?![\w.])/g)) {
+        if (forbidden.has(literal.replace(/_/g, ''))) {
+          offences.push(`${file} writes the literal ${literal}`)
+        }
+      }
+      if (/R\$/.test(code)) offences.push(`${file} writes an "R$" literal in code`)
+      for (const [, name] of code.matchAll(
+        /\b([A-Z][A-Z0-9_]*(?:_PRICE|_PRICE_CENTS|_MONTHS))\s*(?:[:=])/g,
+      )) {
+        offences.push(`${file} declares ${name}`)
+      }
+    }
+
+    expect(
+      offences,
+      'an amount is written by hand in the billing code — read it from ' +
+        'docs/product.json through lib/product.ts, so one edit reaches the ' +
+        'screen, the terms and what Asaas is actually told to charge',
     ).toEqual([])
   })
 
