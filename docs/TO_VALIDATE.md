@@ -26,7 +26,7 @@ Verified on **2026-09-21** against `main`, the live site and the legal brief v1.
 | 11 | Whether a **closed** tender is ever re-read for its value, and the attempt bound | **B38** | medium |
 | 13 | Two Radar header sentences shipped as drafts: there is no approved copy for "no company" or "no CNAE to compare" | nothing — both render today | ~~medium~~ · **resolved 2026-10-06** — approved; gate moved to segments reached |
 | 14 | Two *Favoritar* failure sentences shipped as drafts: there is no approved copy for "we could not save this" or "too many, wait a moment" | nothing — both render today on `/radar` | ~~medium~~ · **resolved 2026-10-07** — approved as drafted, two sentences, no edital name |
-| 15 | A third necessary cookie exists (`lq_scope`) and the privacy policy's cookie list names two — and this one is derived from the CNPJ, not random | nothing in code; `/privacidade` renders the sentence at build time | **high** — it goes live with D58/D60 |
+| 15 | A third necessary cookie exists (`lq_scope`) and the privacy policy's cookie list names two — and this one is derived from the CNPJ, not random | nothing in code; `/privacidade` renders the sentence at build time | ~~alta~~ · **resolved 2026-10-08** — §10 rewritten, approved by Sci |
 
 ---
 
@@ -661,7 +661,15 @@ than after.
 
 ---
 
-## 15. The privacy policy lists two necessary cookies and there are now three — and the new one is not a random identifier
+## 15. ~~The privacy policy lists two necessary cookies and there are now three~~ — **resolved 2026-10-08**
+
+> **Sci approved the replacement bullet on 2026-10-08**, drafted for his approval and pasted verbatim into `docs/legal/politica-de-privacidade.md` §10. Both questions this row asked are answered.
+>
+> **Does the *necessários* bullet cover it** — it does now, because the bullet was rewritten to name all three: the login session, the random visitor identifier, and the code derived from the CNPJ.
+>
+> **Is a cache-correctness cookie *necessário*** — **yes.** `docs/legal/README.md` records the product’s position (*"we use essential cookies only"*), and this one exists so a cached list of editais cannot be shown to a different person on the same device. That is a protection measure, not a convenience.
+>
+> **One thing the new sentence does beyond this card.** It also discloses that the visitor identifier *"lembra o CNPJ da sua última busca"*. That was never in the policy: §4 a) said the identifier existed only *"para aplicar os limites de 3 dias e 2 triagens"*, while the CNPJ it remembers is what the Radar groups by — live on production before this change. The wording was chosen to stay true after the *prefill, do not group* decision of 2026-10-07, so it will not need rewriting when that ships.
 
 Opened 2026-10-07 by D58/D60 (`task/d58-d60-snapshot-identity`). **Not a code
 question: nothing here is blocked on engineering, and the sentence is Sci's

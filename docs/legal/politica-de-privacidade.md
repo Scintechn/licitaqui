@@ -123,7 +123,7 @@ Alguns operadores acima processam dados fora do Brasil, principalmente nos Estad
 
 Usamos duas categorias de cookies:
 
-- **Necessários ao funcionamento:** sessão de login e um identificador aleatório do visitante, usado para aplicar os limites de 3 dias e 2 triagens do acesso sem conta.
+- **Necessários ao funcionamento:** a sessão de login; um identificador aleatório do visitante, usado para aplicar os limites de 3 dias e 2 triagens do acesso sem conta e para lembrar o CNPJ da sua última busca; e um código derivado desse CNPJ, que não permite recuperá-lo, usado para que a lista de editais já carregada não seja mostrada a outra pessoa no mesmo navegador. Os dois últimos ficam até 30 dias no seu navegador, são lidos apenas pelo nosso servidor e não vão para nenhum serviço de terceiros.
 - **Medição de audiência (Google Analytics 4):** cookies gravados pelo Google (`_ga`), que registram as páginas visitadas, a origem da visita e dados aproximados de dispositivo e de localização.
 
 O identificador do Google Analytics fica no seu navegador por até **2 anos** e distingue um visitante do outro. Por isso essas métricas **não são anônimas**, ainda que não contenham o seu nome, o seu e-mail nem o CNPJ que você pesquisou. Não usamos esses dados para publicidade, não montamos perfil seu e não ativamos os recursos de publicidade do Google Analytics.
