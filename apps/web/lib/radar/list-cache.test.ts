@@ -110,7 +110,12 @@ function snapshot(over: Partial<ListSnapshot> = {}): ListSnapshot {
   }
 }
 
-const QUERY = { cnpj: '36955612000185', state: null, q: null, group: null }
+/**
+ * `scope` is the caller, opaquely (D58/D60) — a constant here, because the
+ * tests in this file are about the *search* half of the key. What the scope
+ * itself does to the key is `list-cache-scope.test.ts`.
+ */
+const QUERY = { scope: 'scope-one', cnpj: '36955612000185', state: null, q: null, group: null }
 
 describe('listKey', () => {
   it('separates every query that returns a different list', () => {
@@ -385,7 +390,7 @@ describe('the server guard', () => {
  * for the same list.
  */
 describe('restoreList, and the key the way back actually uses', () => {
-  const unchosen = { cnpj: '36955612000185', state: null, q: null, group: null } as const
+  const unchosen = { scope: 'scope-one', cnpj: '36955612000185', state: null, q: null, group: null } as const
 
   it('restores a list saved unchosen when the way back names its group', () => {
     saveList(listKey(unchosen), snapshot({ group: 'compatible' }))

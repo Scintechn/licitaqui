@@ -5,7 +5,7 @@ import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { normaliseCnpj } from '@/lib/cnpj'
 import { db } from '@/lib/db'
 import { readCompany, segmentsByFit } from '@/lib/radar/company'
-import { TENDER_GROUPS, TENDER_SORTS, DEFAULT_SORT, type TenderListResponse } from '@/lib/radar/contract'
+import { TENDER_GROUPS, TENDER_SORTS, DEFAULT_SORT, type CompanyView, type GroupedCompany, type TenderListResponse } from '@/lib/radar/contract'
 import { ME_EPP_FILTERS, MODALITY_SLUGS } from '@/lib/radar/filters'
 import { countGroups, listFreshness, listTenders, MAX_LIMIT } from '@/lib/radar/tenders'
 import { loadVisitor } from '@/lib/radar/visitor'
@@ -84,6 +84,22 @@ const query = z.object({
    */
   sort: z.enum(TENDER_SORTS).default(DEFAULT_SORT),
 })
+
+/**
+ * The company, without the one field §12 keeps out of page JavaScript.
+ *
+ * A copy and a `delete` rather than a field-by-field pick, so a column added to
+ * `CompanyView` tomorrow reaches the header without anybody editing this.
+ */
+function groupedCompany(company: CompanyView | null): GroupedCompany | null {
+  if (!company) return null
+  // A copy and a `delete`, rather than destructuring the field into a name
+  // nothing uses: a column added to `CompanyView` tomorrow reaches the header
+  // without anybody editing this, and there is no unused binding to explain.
+  const rest: GroupedCompany & { cnpj?: string } = { ...company }
+  delete rest.cnpj
+  return rest
+}
 
 function fail(body: TenderListResponse, status: number, headers?: HeadersInit) {
   return NextResponse.json(body, {
@@ -204,9 +220,13 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
         // cannot resolve `visitors.cnpj` itself — the cookie is `httpOnly` —
         // so before this field existed the screen guessed from `?cnpj=` and
         // said "sem CNAE lido" over a list grouped by a real company.
+        // `groupedCompany` and not `company.data.company`: the CNPJ is dropped
+        // on the way out, because for a cookie-resolved list the browser never
+        // typed it and the client snapshot would write it to `sessionStorage`
+        // (§12). See `GroupedCompany`.
         groupedBy: cnpj
           ? {
-              company: company?.data.company ?? null,
+              company: groupedCompany(company?.data.company ?? null),
               cnaeCount: company?.data.cnaeCount ?? 0,
             }
           : null,

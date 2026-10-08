@@ -1189,8 +1189,21 @@ function Body({
 
        `listKey` is what the notice is scoped to: a sentence about a press on
        *Compatíveis* must not still be pinned to the window after a tab, a sort
-       or a filter change, and this subtree stays mounted across all three. */
-    <FavouriteNotices active={Boolean(onFavourite)} listKey={listKey({ ...query, group })}>
+       or a filter change, and this subtree stays mounted across all three.
+
+       `scope: ''` — and this is the one caller that passes that. D58/D60 made
+       the caller's identity the first field of the cache key; here the string
+       is a **React identity** and not a cache key, and it never was one: it
+       also carries the *rendered* group rather than the chosen one. Nothing is
+       stored under it.
+
+       And the identity cannot change without this string changing anyway, which
+       is the part worth stating precisely rather than half: a sign-in or a
+       sign-out is a document load, and the *company* — which `POST
+       /api/radar/cnpj` does change inside one document — always arrives with a
+       `?cnpj=` this string already carries. So the real scope would add nothing
+       but length. */
+    <FavouriteNotices active={Boolean(onFavourite)} listKey={listKey({ ...query, group, scope: '' })}>
       <div className="@container">
         <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
           {tenders.map((tender) => (

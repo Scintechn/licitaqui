@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { messages } from '@/lib/messages'
 import type { TenderListResponse } from '@/lib/radar/contract'
-import { wholeListFromCookie, isCnpjRequired, loadingStatus } from './bare-radar'
+import { isCnpjRequired, loadingStatus, scopeFor } from './bare-radar'
 import { RadarView, type RadarStatus, type RadarViewProps } from './radar-view'
 
 /**
@@ -20,9 +20,28 @@ import { RadarView, type RadarStatus, type RadarViewProps } from './radar-view'
  *
  * This suite is `environment: 'node'` with no jsdom (CLAUDE.md §4c): the whole
  * cause needs a cookie, a mount and a response, and no effect runs here. So
- * what is pinned is the **mechanism** — the three decisions of `bare-radar.ts`
- * as functions of their inputs, and the two states the screen may render while
- * it does not yet know. The **result** is `e2e/journeys/radar-bare.spec.ts`,
+ * what is pinned is the **mechanism** — the decisions of `bare-radar.ts` as
+ * functions of their inputs, and the two states the screen may render while it
+ * does not yet know.
+ *
+ * **D60 deleted a decision from this file and D58/D60's review put one back.**
+ * `scopeFor` is the last `describe` below, and it is here for exactly the reason
+ * the rest of this file is: it spent one commit inline in `radar-screen.tsx`,
+ * where a mutation to the pre-fix behaviour — the one that took the *Voltar*
+ * journey from 60 cards to 20 — left **all 101 unit tests green**, because
+ * `environment: 'node'` cannot mount a client component. Only a 20-minute
+ * `next build` could see it.
+ *
+ * **D60 deleted a test from this file too**, and that is worth stating rather
+ * than leaving as a shorter suite. `wholeListFromCookie` was the third decision here:
+ * which query shapes have their whole list decided by the cookie, and therefore
+ * had the snapshot cache switched off. Its last assertion recorded that
+ * `/radar?q=…` answering `false` was deliberate. Both shapes are now keyed by
+ * the caller instead of excluded (`lib/radar/scope.ts`), so there is no
+ * predicate left to assert; what replaced those assertions is
+ * `lib/radar/scope.test.ts` for the digest, `lib/radar/list-cache-scope.test.ts`
+ * for what it does to the key, and the two journeys in
+ * `e2e/journeys/radar-snapshot-identity.spec.ts`. The **result** is `e2e/journeys/radar-bare.spec.ts`,
  * which opens `/radar` with no `?cnpj=` and no `?q=` in either direction.
  *
  * The one thing deliberately asserted twice over is that the in-flight state is
@@ -115,32 +134,35 @@ describe('D55 · what a bare /radar may decide for itself', () => {
     // company, so here the header may say so (D19's `cnaeState`).
     expect(out).toContain(list.noCompany)
   })
+})
 
-  it('knows the one shape whose key constrains nothing at all', () => {
-    // `listKey` cannot see `visitors.cnpj` — `httpOnly`, and D19 took it out of
-    // `GroupedBy` so it never reaches `sessionStorage`. With neither half in the
-    // URL the key constrains nothing: the rows, the groups and the header are
-    // all the cookie's, so the snapshot is filed under another list's name.
-    expect(wholeListFromCookie(null, null)).toBe(true)
+describe('D58/D60 · which scope names this list', () => {
+  /** Two values that could not be mistaken for each other in a failure message. */
+  const scopes = { viewer: 'viewer-scope', device: 'device-scope' } as const
 
-    // A CNPJ in the URL and the route never reads the cookie at all.
-    expect(wholeListFromCookie(CNPJ, null)).toBe(false)
-    expect(wholeListFromCookie(CNPJ, 'expediente')).toBe(false)
-
+  it('keys by the viewer when the CNPJ is in the URL', () => {
     /*
-     * **A keyword alone is `false`, and that is a line drawn on purpose rather
-     * than a complete answer** — found by a review of this diff.
-     *
-     * `GET /api/radar/tenders` resolves the cookie *before* it checks for a
-     * keyword, so `/radar?q=expediente` with a cookie CNPJ is grouped by that
-     * company: `groupedBy`, `counts` and which tab each row lands in are the
-     * cookie's, and only the row set is the keyword's. Its snapshot is mis-keyed
-     * the same way, one degree less badly, and it has been since before D55 —
-     * so switching it off here would take the cache from every keyword search,
-     * including D19's own journey, which is a product cost and not a fix. D60
-     * carries both shapes. This assertion exists to record that the `false` is
-     * deliberate: if it ever becomes `true`, D60 is what did it.
+     * The route uses `params.cnpj` and never reaches the `visitors.cnpj`
+     * fallback, so the cookie cannot change this answer — and this is the only
+     * address that posts a CNPJ, whose response stamps `lq_scope` and can mint
+     * `lq_visitor` **after** the page computed both digests. Keying on the
+     * cookie here discriminated on something that cannot change the answer and
+     * went stale inside the document doing the saving: that was B1.
      */
-    expect(wholeListFromCookie(null, 'expediente')).toBe(false)
+    expect(scopeFor(CNPJ, scopes)).toBe(scopes.viewer)
+  })
+
+  it('keys by the device when the URL names no CNPJ', () => {
+    // Both halves invert: nothing is posted, the jar holds still, and the
+    // cookie is the only thing that names the list at all (D60).
+    expect(scopeFor(null, scopes)).toBe(scopes.device)
+  })
+
+  it('never returns the other one, which is the whole of the regression', () => {
+    // Stated as an inequality as well as an equality, so a function that
+    // returned `scopes.device` for every address — the pre-fix behaviour —
+    // fails here rather than only in a browser.
+    expect(scopeFor(CNPJ, scopes)).not.toBe(scopes.device)
+    expect(scopeFor(null, scopes)).not.toBe(scopes.viewer)
   })
 })

@@ -3,6 +3,7 @@ import type {
   CnpjResponse,
   CompanyView,
   Freshness,
+  GroupedCompany,
   JobResponse,
   QuotaView,
   ScreeningAvailability,
@@ -16,6 +17,8 @@ import type {
 } from '@/lib/radar/contract'
 import { TENDER_GROUPS } from '@/lib/radar/contract'
 import { tenderChecklist } from '@/lib/radar/checklist'
+import { CNPJ_SCOPE_COOKIE, cnpjTag } from '@/lib/radar/scope'
+import { E2E_BASE_URL, E2E_SERVER_ENV } from './server-env'
 import { visitor as defaultVisitor, visitorQuota } from './world'
 
 /**
@@ -74,6 +77,16 @@ export type WorldOptions = {
    * one — and the cookie carrying it is `httpOnly`, which is exactly why the
    * header could not see it and D19 happened. Modelled here because that state
    * is unreachable from the URL alone, and it is the state Sci screenshotted.
+   *
+   * **It is a real cookie as well as a fiction in the dispatcher (D60).**
+   * `installRadarApi` stamps `lq_scope` on the browser's jar with the keyed
+   * digest `POST /api/radar/cnpj` would have stamped, because the Radar's
+   * snapshot cache now keys by what the server computes from that jar: without
+   * the cookie, two different companies would share one key and the browser
+   * would restore the first one's list for the second. Change it mid-journey
+   * with `setCookieCnpj`, never by assigning to `world.cookieCnpj` — the
+   * assignment alone moves the answers and not the key, which is the defect
+   * rather than the fix.
    */
   cookieCnpj?: string
 }
@@ -159,6 +172,15 @@ export type RadarApi = {
   favourites: Set<string> | null
   /** Holds the next response of a route open until the test opens the gate. */
   hold(route: keyof Omit<Calls, 'unexpected'>): Gate
+  /**
+   * The device searches another company — `visitors.cnpj` and the cookie that
+   * states its generation, moved together (D60).
+   *
+   * `undefined` is a device that has never searched one. Both halves are needed:
+   * the dispatcher answers from `world.cookieCnpj`, and the server reads the
+   * cookie to build the scope the snapshot is keyed by.
+   */
+  setCookieCnpj(cnpj: string | undefined): Promise<void>
   /** Swap the whole world mid-journey (Carla changing client, say). */
   world: WorldOptions
 }
@@ -181,10 +203,48 @@ async function json(route: Route, body: unknown, status = 200): Promise<void> {
   }
 }
 
+/** The company as `GET /api/radar/tenders` reports it: no CNPJ (§12, D60). */
+function groupedCompany(company: CompanyView): GroupedCompany {
+  const rest: GroupedCompany & { cnpj?: string } = { ...company }
+  delete rest.cnpj
+  return rest
+}
+
 /** The single-segment `%2F` spelling the API routes use, decoded back. */
 function tenderIdFrom(pathname: string, suffix = ''): string {
   const raw = pathname.replace(/^\/api\/tenders\//, '').replace(new RegExp(`${suffix}$`), '')
   return decodeURIComponent(raw)
+}
+
+/**
+ * The cookie `POST /api/radar/cnpj` would have set, put in the jar by hand.
+ *
+ * The journeys never let a request reach a route handler, so nothing here can
+ * have stamped it — but `/radar` is server-rendered on every visit and reads the
+ * jar to compute the scope the snapshot cache keys by (`lib/radar/scope.ts`). So
+ * the fixture plays the part of the route that writes it.
+ *
+ * The real `cnpjTag`, with the server's own placeholder secret, rather than an
+ * opaque string of this file's invention: if that construction ever changes, the
+ * fixture follows it instead of drifting. Nothing depends on the two digests
+ * being *equal* — the server only ever hashes whatever is in the cookie — which
+ * is why these journeys also pass against a deployment whose secret this process
+ * does not know. `httpOnly`, like the route's, so no page script can read it
+ * even here.
+ */
+async function stampDeviceCnpj(page: Page, cnpj: string | undefined): Promise<void> {
+  const context = page.context()
+  await context.clearCookies({ name: CNPJ_SCOPE_COOKIE })
+  if (!cnpj) return
+  await context.addCookies([
+    {
+      name: CNPJ_SCOPE_COOKIE,
+      value: cnpjTag(cnpj, E2E_SERVER_ENV),
+      url: E2E_BASE_URL,
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ])
 }
 
 export async function installRadarApi(page: Page, world: WorldOptions): Promise<RadarApi> {
@@ -227,8 +287,16 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
       gates[name] = gate
       return gate
     },
+    setCookieCnpj: async (cnpj) => {
+      api.world.cookieCnpj = cnpj
+      await stampDeviceCnpj(page, cnpj)
+    },
     world,
   }
+
+  // Before the first `goto`, because `/radar` reads the jar on the server to
+  // decide which snapshot this visit may restore.
+  await stampDeviceCnpj(page, world.cookieCnpj)
 
   async function through(name: keyof Omit<Calls, 'unexpected'>, url: string): Promise<void> {
     api.calls[name].push(url)
@@ -273,6 +341,21 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
       // which costs no polling interval and no wall-clock wait. The `202` path
       // itself is exercised where it actually matters — the screening, where
       // the job really does outlive the deadline (#68).
+      /*
+       * **The cookie is stamped here, after the answer, exactly as the route
+       * does it — and that ordering is the whole point (D70/B1).**
+       *
+       * `POST /api/radar/cnpj` writes `visitors.cnpj` and sends `lq_scope` in the
+       * same response, which arrives **after** `app/radar/page.tsx` rendered and
+       * handed the screen its scopes. An earlier version of this fixture stamped
+       * the cookie once at install time, before the first navigation, so every
+       * journey ran against a jar that was already correct at render time: it
+       * modelled the end state and never the transition, and a regression that
+       * broke the *Voltar* journey for every first search passed the whole suite.
+       * Stamping it here is what lets these journeys fail.
+       */
+      await stampDeviceCnpj(page, cnpj)
+      api.world.cookieCnpj = cnpj
       return json(route, {
         state: 'ready',
         company: found.company,
@@ -335,7 +418,12 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
         freshness,
         groupedBy: cnpj
           ? {
-              company: found?.company ?? null,
+              // Without the CNPJ, exactly as the route sends it. `GroupedCompany`
+              // is `CompanyView` minus that one field (§12), and a `CompanyView`
+              // is *structurally assignable* to it — so `satisfies` cannot catch
+              // the fixture sending one field more than the real route does, and
+              // D60's §12 journey reads this out of `sessionStorage`.
+              company: found ? groupedCompany(found.company) : null,
               cnaeCount: found ? (found.cnaeCount ?? (found.company.mainCnae ? 1 : 0)) : 0,
             }
           : null,

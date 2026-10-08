@@ -61,13 +61,34 @@ export type Visitor = {
   isNew: boolean
 }
 
-/** Reads the cookie without pulling in `next/headers`, so tests can drive it. */
+/**
+ * Reads the cookie without pulling in `next/headers`, so tests can drive it.
+ *
+ * **It must not throw, and until D58 it could.** `decodeURIComponent` raises
+ * `URIError` on a lone `%`, and this function decoded its own cookie's value
+ * unguarded. That was survivable while only route handlers called it — a 500 on
+ * one request. D58 put it on the path of `app/radar/page.tsx`, through
+ * `listScope`, so a browser holding `lq_visitor=%` would fail the **render** of
+ * `/radar`, and there is no `error.tsx` under `app/radar/` to catch it. That is
+ * the incident `lib/auth/session.ts` records — a lone `%` in the jar signed a
+ * paying subscriber out — one layer up.
+ *
+ * A value that will not decode is used as it arrived, which then fails `UUID_RE`
+ * and reads as no visitor: the right answer, because a cookie that does not
+ * decode names no row either.
+ */
 export function visitorIdFromCookies(header: string | null): string | null {
   if (!header) return null
   for (const part of header.split(';')) {
     const [name, ...rest] = part.trim().split('=')
     if (name !== VISITOR_COOKIE) continue
-    const value = decodeURIComponent(rest.join('='))
+    const raw = rest.join('=')
+    let value: string
+    try {
+      value = decodeURIComponent(raw)
+    } catch {
+      value = raw
+    }
     return UUID_RE.test(value) ? value : null
   }
   return null

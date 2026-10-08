@@ -292,7 +292,7 @@ describe('the sort in the URL', () => {
 
   /** `listKey` keys the Back button, so the order has to be part of it. */
   it('keys a differently sorted list as a different list', () => {
-    const base = { cnpj: '1', state: null, q: null, group: 'compatible' } as const
+    const base = { scope: 'scope-one', cnpj: '1', state: null, q: null, group: 'compatible' } as const
     expect(listKey({ ...base, sort: 'deadline' })).toBe(listKey(base))
     expect(listKey({ ...base, sort: 'valueDesc' })).not.toBe(listKey(base))
     expect(listKey({ ...base, sort: 'valueDesc' })).not.toBe(listKey({ ...base, sort: 'valueAsc' }))

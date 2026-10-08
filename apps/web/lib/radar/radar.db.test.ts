@@ -967,9 +967,22 @@ suite('Radar read APIs (database)', () => {
         // No `?cnpj=` anywhere: the CNPJ came from `visitors.cnpj`, behind an
         // `httpOnly` cookie the browser cannot read. That is the address Sci
         // screenshotted, and the reason the route has to say what it grouped by.
-        expect(body.groupedBy?.company?.cnpj).toBe(RUN_COMPANY_CNPJ)
+        expect(body.groupedBy, 'a cookie CNPJ drove this list').not.toBeNull()
         expect(body.groupedBy?.cnaeCount).toBe(3)
         expect(body.groupedBy?.company?.segments).toHaveLength(2)
+        /*
+         * **And the CNPJ itself is not on the wire** (D60, one line changed in
+         * this file). This assertion used to read
+         * `expect(body.groupedBy?.company?.cnpj).toBe(RUN_COMPANY_CNPJ)` — it
+         * proved the route reported the right company, and it also proved the
+         * cookie's CNPJ reaching page JavaScript, which is the one thing D19
+         * removed `GroupedBy.cnpj` to prevent. It came back nested inside
+         * `company`, and `ListSnapshot.grouping` wrote it into `sessionStorage`.
+         * `GroupedCompany` is `CompanyView` without that field, so the identity
+         * of the company is now asserted by what the header renders.
+         */
+        expect(JSON.stringify(body.groupedBy)).not.toContain(RUN_COMPANY_CNPJ)
+        expect(body.groupedBy?.company?.legalName).toBeTruthy()
         // And it really did group by them, which is what made the header's
         // contradiction visible in the first place.
         expect(body.tenders.map((t) => t.id)).toContain(compatibleTender.id)

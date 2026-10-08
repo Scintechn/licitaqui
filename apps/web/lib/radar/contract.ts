@@ -69,7 +69,13 @@ export type SegmentFit = {
 }
 
 export type CompanyView = {
-  /** 14 digits. The browser already knows it — it typed it. */
+  /**
+   * 14 digits. The browser already knows it — it typed it, in the body of
+   * `POST /api/radar/cnpj`, which is the only route that answers with this type
+   * whole. The **list** route answers `GroupedCompany` instead: there the CNPJ
+   * may have come out of an `httpOnly` cookie and the browser knows nothing, so
+   * the field is dropped rather than handed over (§12 — see `GroupedBy`).
+   */
   cnpj: string
   legalName: string | null
   tradeName: string | null
@@ -220,19 +226,41 @@ export type TenderCard = {
  * | `company: null` | a CNPJ drove it (query or cookie) and nothing has been read for it yet |
  * | `company` set | that company's segments are what `compatible` and `check` were computed from |
  *
- * **There is deliberately no `cnpj` field.** It was the obvious thing to put
- * here and it would have been the only CNPJ this product sends to page
- * JavaScript that the page did not already know: `visitors.cnpj` reaches the
- * route through an `httpOnly` cookie precisely so the browser cannot read it,
- * and the client snapshot in `list-cache.ts` would then have written it into
- * `sessionStorage`. §12 puts a CNPJ in the same bucket as a CPF. Nothing in the
- * header needs it — *whether* a CNPJ drove the list is `groupedBy !== null`, and
- * when the company has been read its own `CompanyView.cnpj` is already on the
- * wire because the browser typed it.
+ * **There is deliberately no `cnpj` field, and `company` carries none either.**
+ * It was the obvious thing to put here and it would have been the only CNPJ this
+ * product sends to page JavaScript that the page did not already know:
+ * `visitors.cnpj` reaches the route through an `httpOnly` cookie precisely so
+ * the browser cannot read it, and the client snapshot in `list-cache.ts` would
+ * then have written it into `sessionStorage`. §12 puts a CNPJ in the same bucket
+ * as a CPF. Nothing in the header needs it — *whether* a CNPJ drove the list is
+ * `groupedBy !== null`.
+ *
+ * **D19 removed the field and then re-admitted the same value through
+ * `company`**, reasoning from a sentence its own change had just falsified: "its
+ * own `CompanyView.cnpj` is already on the wire because the browser typed it".
+ * For a cookie-resolved CNPJ the browser typed nothing — that is the whole of
+ * D19 — so the one identifier the field was removed to keep out came back
+ * nested one level down, and `ListSnapshot.grouping` wrote it to
+ * `sessionStorage` on every keyword search with a cookie CNPJ. Found by D60's
+ * own §12 journey, which reads the jar and would have failed on the same jar
+ * before this card touched it. `GroupedCompany` is the fix: the same view
+ * without the one field, and nothing in `radar-view.tsx` ever read it.
  */
+
+/**
+ * A company the **list** reports grouping by — `CompanyView` minus its `cnpj`.
+ *
+ * `Omit` rather than a second declaration, so the two cannot drift: everything
+ * the header renders stays exactly what `POST /api/radar/cnpj` answers with, and
+ * the one field §12 excludes is excluded by construction rather than by a
+ * reviewer remembering to look. The CNPJ is still on that *other* route's
+ * answer, which is correct — the caller put it in the request.
+ */
+export type GroupedCompany = Omit<CompanyView, 'cnpj'>
+
 export type GroupedBy = {
   /** `null` when `companies` holds no row for it yet. */
-  company: CompanyView | null
+  company: GroupedCompany | null
   /**
    * CNAEs on record — main plus secondary, deduplicated — **not** segments.
    * `radar.list.cnaeCount` says "CNAEs"; this is what it counts.

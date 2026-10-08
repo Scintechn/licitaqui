@@ -9,6 +9,7 @@ import { recordEventSafely } from '@/lib/events'
 import { companyOrLookup } from '@/lib/radar/company'
 import type { CnpjResponse } from '@/lib/radar/contract'
 import { countUsage, FEATURES, readLimit } from '@/lib/radar/quota'
+import { cnpjScopeCookie } from '@/lib/radar/scope'
 import { attachCnpj, visitorCookie, VISITOR_PLAN, windowStartedAt } from '@/lib/radar/visitor'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
@@ -95,9 +96,38 @@ export async function POST(request: Request): Promise<NextResponse<CnpjResponse>
       props: { cache: cached.state, manual_cnae: cached.data?.manualCnae ?? null },
     })
 
-    const headers: Record<string, string> = { 'cache-control': PRIVATE_NO_STORE }
+    /*
+     * A `Headers` and not an object literal, because there are now two cookies
+     * to set and `set-cookie` is the one header that may legitimately appear
+     * twice. An object would have let the second silently replace the first.
+     */
+    const headers = new Headers({ 'cache-control': PRIVATE_NO_STORE })
     if (viewer.kind === 'visitor' && viewer.visitor.isNew) {
-      headers['set-cookie'] = visitorCookie(viewer.visitor.id)
+      headers.append('set-cookie', visitorCookie(viewer.visitor.id))
+    }
+    /*
+     * **The one place `visitors.cnpj` is written is the one place that stamps
+     * its generation (D60).**
+     *
+     * `lq_scope` carries a keyed digest of the CNPJ just attached, so the cookie
+     * header of every later request states which CNPJ `GET /api/radar/tenders`
+     * will resolve for this device — without the browser ever being told it, and
+     * without `/radar` having to read the row to find out. `lib/radar/scope.ts`
+     * is where that is turned into the scope the Radar's cache keys by; the
+     * reason it cannot simply be a query on the page is in that file.
+     *
+     * Stamped in the same branch as `attachCnpj` and under the same condition,
+     * so the cookie cannot describe a row the route did not write: an account
+     * keeps its CNPJ on `users.cnpj`, which the **list** route deliberately does
+     * not resolve from (see the comment at its fallback).
+     *
+     * Unconditionally within that branch, not only when the value changed:
+     * the digest of a CNPJ is the same digest every time, so re-searching the
+     * same company rewrites the same value and a cookie lost to a cleared jar
+     * heals on the next search instead of staying wrong.
+     */
+    if (viewer.kind === 'visitor') {
+      headers.append('set-cookie', cnpjScopeCookie(cnpj))
     }
 
     const found = cached.data

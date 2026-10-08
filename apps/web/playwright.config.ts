@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { E2E_BASE_URL, E2E_PORT, E2E_SERVER_ENV } from './e2e/fixtures/server-env'
 
 /**
  * The persona journeys (`e2e/`) — Playwright, not Vitest and not Gherkin.
@@ -50,8 +51,13 @@ import { defineConfig, devices } from '@playwright/test'
  * `accounts` project is meant to be run.
  */
 
-const PORT = Number(process.env.E2E_PORT ?? 3100)
-const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`
+/**
+ * Both from `e2e/fixtures/server-env.ts`, which `radar-api.ts` also reads: the
+ * fixture has to put a cookie on this exact origin (D60), and two copies of a
+ * port number is the cheapest possible version of D29's defect.
+ */
+const PORT = E2E_PORT
+const baseURL = E2E_BASE_URL
 
 export default defineConfig({
   testDir: './e2e',
@@ -112,11 +118,12 @@ export default defineConfig({
    * and the Landing is written to drop its two server-read numbers rather than
    * fail when the database is unreachable (`lib/founders/seat-count.ts`).
    *
-   * The `AUTH_*` values below are **placeholders, not secrets** — they are
-   * here so `/conta/criar` renders the state a configured deployment renders
-   * (both ways in, per U2) instead of the "login não configurado" degradation.
-   * No sign-in is ever completed against them; nothing in this suite clicks
-   * through to Google.
+   * The `AUTH_*` values are **placeholders, not secrets** and live in
+   * `e2e/fixtures/server-env.ts`, where the Radar fixture can read them too —
+   * they are there so `/conta/criar` renders the state a configured deployment
+   * renders (both ways in, per U2) instead of the "login não configurado"
+   * degradation. No sign-in is ever completed against them; nothing in this
+   * suite clicks through to Google.
    */
   webServer: process.env.E2E_BASE_URL
     ? undefined
@@ -127,14 +134,6 @@ export default defineConfig({
         timeout: 300_000,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: {
-          NEXT_TELEMETRY_DISABLED: '1',
-          AUTH_SECRET: 'e2e-placeholder-not-a-secret',
-          AUTH_GOOGLE_ID: 'e2e-placeholder.apps.googleusercontent.com',
-          AUTH_GOOGLE_SECRET: 'e2e-placeholder-not-a-secret',
-          AUTH_MAGIC_LINK: '1',
-          RESEND_API_KEY: 're_e2e_placeholder',
-          AUTH_EMAIL_FROM: 'noreply@example.invalid',
-        },
+        env: { ...E2E_SERVER_ENV },
       },
 })

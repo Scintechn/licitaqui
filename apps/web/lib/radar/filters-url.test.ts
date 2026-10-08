@@ -100,7 +100,15 @@ describe('the request carries both filters', () => {
 })
 
 describe('the cache key carries both filters', () => {
-  const base = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'compatible' } as const
+  const base = {
+    // The caller, opaquely (D58/D60) — constant here; `list-cache-scope.test.ts`
+    // is where what it does to the key is asserted.
+    scope: 'scope-one',
+    cnpj: '51885242000140',
+    state: 'SP',
+    q: 'papel',
+    group: 'compatible',
+  } as const
 
   it('keys two differently-filtered lists apart', () => {
     const unfiltered = listKey(base)

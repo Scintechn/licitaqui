@@ -1,4 +1,7 @@
 import type { TenderListResponse } from '@/lib/radar/contract'
+// `import type`, deliberately: `lib/radar/scope.ts` pulls in `node:crypto`, and
+// this module is imported by a `'use client'` file. A type-only import is erased.
+import type { RadarScopes } from '@/lib/radar/scope'
 import type { RadarStatus } from './radar-view'
 
 /**
@@ -15,10 +18,36 @@ import type { RadarStatus } from './radar-view'
  * D19's defect one layer up: the client deciding from the URL what only the
  * route knows.
  *
- * The three decisions are here, as functions of their inputs, because
+ * **Three** decisions are here, as functions of their inputs, because
  * `vitest.config.mts` is `environment: 'node'` and runs no effects
  * (CLAUDE.md §4c): this file is what a unit test can hold. The **result** — a
  * cookie, a mount and a response — lives in `e2e/journeys/radar-bare.spec.ts`.
+ *
+ * **D60 removed `wholeListFromCookie`, which used to be the third decision in
+ * this file**, and the note is kept because the shape it named is still the one
+ * everything here is about.
+ *
+ * It answered "is the whole of this list the cookie's" — `!cnpj && !q` — and
+ * three call sites in `radar-screen.tsx` used it to switch the snapshot cache
+ * **off**, because `listKey` could not see `visitors.cnpj`: `httpOnly`, and kept
+ * out of `GroupedBy` so that no identifier reaches `sessionStorage` (D19,
+ * spec §12). A key that constrains nothing is a list filed under another list's
+ * name, and inside `REVALIDATE_AFTER_MS` `list-cache.ts` serves a direct hit with
+ * no request at all.
+ *
+ * Its last assertion recorded that `/radar?q=…` answering `false` was a decision
+ * and not an oversight: the route resolves the cookie **before** it looks for a
+ * keyword, so that list is grouped by the cookie's company too and was mis-keyed
+ * in the same way, one degree less badly. Switching *that* off would have taken
+ * the cache from every keyword search, which is a product cost rather than a
+ * correction.
+ *
+ * Both shapes are fixed, and neither by disabling anything: `listKey` now opens
+ * with an opaque `scope` the server computes from the request's cookies
+ * (`lib/radar/scope.ts`), so the key names what the route resolved without the
+ * browser ever being told what it is. There is nothing left for a predicate here
+ * to be narrow about — which is why the function is gone rather than left
+ * unused with a comment.
  */
 
 /**
@@ -61,48 +90,28 @@ export function isCnpjRequired(answer: TenderListResponse): boolean {
 }
 
 /**
- * **The whole of this list is the cookie's**, so it is not cached — neither
- * saved nor restored.
+ * **Which of the two scopes names this list** — the one line D58/D60 turn on.
  *
- * `listKey` is every parameter that changes what the route returns, and for a
- * bare `/radar` the deciding one is `visitors.cnpj` — `httpOnly`, and
- * deliberately kept out of `GroupedBy` so that it never reaches page JavaScript
- * or `sessionStorage` (D19, spec §12). The key for this shape therefore
- * constrains **nothing**: its rows, its groups and its header all come from a
- * fact it does not contain, which is what `listKey`'s own docstring calls "a
- * list restored under another list's name". And `list-cache.ts` trusts a direct
- * key hit: inside `REVALIDATE_AFTER_MS` it is served with **no request at
- * all**.
+ * `lib/radar/scope.ts` builds both and carries the whole argument; this is the
+ * choice, and it is here rather than inline in `radar-screen.tsx` for the reason
+ * this file exists at all. It lived inline for one commit, and the review of that
+ * commit mutated it to `scopes.device` — the pre-fix behaviour, the one that
+ * regressed the *Voltar* journey from 60 cards to 20 — and **all 101 unit tests
+ * stayed green**, because a client component is something `environment: 'node'`
+ * cannot mount (CLAUDE.md §4c). Only a 20-minute `next build` and a browser could
+ * see it. That is the inverse of what D55 did deliberately when it put its own
+ * decisions in this file.
  *
- * Both ages are wrong, in different ways. Under a minute: search company B,
- * press *Radar* in the rail, and company A's editais come back under A's name
- * while the device is on B — right-looking and stale. Over a minute is worse,
- * because `revalidate` merges page 1 **by id** (`refreshTenders`), so the fresh
- * answer swaps the header to B and leaves A's rows under it — D19's own defect,
- * recreated by D19's own fix.
- *
- * ## Why `?q=` is *not* in here, although it is also partly the cookie's
- *
- * The name of this function is exact and the boundary is narrower than
- * "anything the cookie decides". `GET /api/radar/tenders` resolves the cookie
- * **before** it checks for a keyword, so `/radar?q=expediente` with a cookie
- * CNPJ is grouped by that company too: its `groupedBy`, its `counts` and which
- * tab each row lands in are all the cookie's, and only the row set is the
- * keyword's. That snapshot is mis-keyed in exactly the same way, one degree
- * less badly — the key at least constrains which editais can appear.
- *
- * It is left alone here for two reasons, and neither is that it is fine.
- * It **predates D55** — a keyword list has been saved under an identity-less
- * key since the cache was written — and switching it off would take the
- * snapshot away from every keyword search, including the journey D19 ships,
- * which is a product cost rather than a correction. **D60** carries both
- * shapes, and its fix (a discriminator the route reports, rejected on mismatch)
- * covers them without that cost. What this function must not do is pretend the
- * line it draws is the whole of the problem.
- *
- * What the bare shape costs meanwhile is the way back from an edital opened
- * here: one list request, and the scroll position.
+ * The rule, in one sentence: **a CNPJ in the URL means the cookie cannot change
+ * the answer, so the key must not depend on it.** `GET /api/radar/tenders` uses
+ * `params.cnpj` when it is given and never reaches the `visitors.cnpj` fallback;
+ * and that same address is the only one that posts a CNPJ, whose response stamps
+ * `lq_scope` and can mint `lq_visitor` — **after** the page computed these
+ * digests. So keying on the cookie there would discriminate on something that
+ * cannot change the answer *and* would go stale inside the document doing the
+ * saving. With no CNPJ in the URL both halves invert: nothing is posted, the jar
+ * holds still, and the cookie is the only thing that names the list at all.
  */
-export function wholeListFromCookie(cnpj: string | null, q: string | null): boolean {
-  return !cnpj && !q
+export function scopeFor(cnpj: string | null, scopes: RadarScopes): string {
+  return cnpj ? scopes.viewer : scopes.device
 }
