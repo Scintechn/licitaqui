@@ -722,9 +722,16 @@ describe('the product facts, against every file that quotes them', () => {
 
     expect(
       offences,
-      'an amount is written by hand in the billing code — read it from ' +
-        'docs/product.json through lib/product.ts, so one edit reaches the ' +
-        'screen, the terms and what Asaas is actually told to charge',
+      // **No string here may begin with `docs/`.** `ci-triggers.test.ts`
+      // scans this file for `"docs/…"` to work out which paths `ci-web.yml`
+      // must trigger on, and a quote followed immediately by `docs/` is how
+      // it finds one — so a message that happened to wrap there invented a
+      // dependency on `docs/product.json through lib/product.ts, so one edit…`
+      // and failed that guard. Its own docstring records the same mistake
+      // finding a wireframe that does not exist.
+      'an amount is written by hand in the billing code — read it from the ' +
+        'product facts through lib/product.ts, so one edit reaches the screen, ' +
+        'the terms and what Asaas is actually told to charge',
     ).toEqual([])
   })
 

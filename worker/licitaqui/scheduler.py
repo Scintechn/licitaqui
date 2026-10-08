@@ -244,6 +244,44 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # **never** "0 queued", for B32's reason.
     ScheduleEntry(kind="coverage_check", daily_at="05:10", priority=8),
     ScheduleEntry(kind="weekly_digest", daily_at="07:00", priority=9, weekday=0),
+    # **F4's reminder, three days before each charge** (spec §10, terms §7).
+    #
+    # 07:05 BRT, five minutes behind the digest, and the hour is two decisions.
+    #
+    # *A civil hour, because it is a message about money.* The cheap slot would
+    # be inside the 03:00–05:10 cluster, where the worker and the Neon compute
+    # are awake anyway; an e-mail stamped 04:00 about a charge is not what
+    # somebody wants to find. Daily, so one extra wake a day — a five-minute
+    # suspend tail — is what the civility costs, and on Mondays it is free
+    # because `weekly_digest` has already opened the wake.
+    #
+    # *Priority 9*, behind every collector: a late reminder degrades a promise
+    # by minutes, a late `sync_open_tenders` loses an edital. The sweep itself
+    # makes no HTTP call — it claims a `billing_reminders` row per charge and
+    # enqueues one `send_billing_email` (priority 4, so it overtakes the
+    # backlog but not a user on screen).
+    #
+    # **The alarm on it is not "0 queued".** Three days before a charge there
+    # is usually nothing due, so zero is the normal answer; B32's lesson is
+    # that a feed which never enqueues also never fails. The signal that
+    # matters is the `billing.reminder_blocked` event this writes while
+    # `worker/templates/email/charge-reminder.md` is still a draft — which is
+    # today, and is deliberate: the copy is Sci's.
+    ScheduleEntry(kind="charge_reminder", daily_at="07:05", priority=9),
+    # **The other half of a one-click cancel (D8).** Terms §8: cancelling
+    # switches off auto-renewal and paid access runs to the last day already
+    # paid for. `subscriptions.ends_on` is that day;
+    # `0004_subscription_refunds.sql` added it with the sentence *"the
+    # downgrade job reads this every day"* and no such job existed, so the
+    # column was read by nothing.
+    #
+    # 03:50 BRT: inside the existing overnight cluster, because this is pure
+    # SQL and costs a job slot rather than a wake — and the boundary it acts on
+    # is a date, so any hour of the day after `ends_on` is the same answer. One
+    # statement, scoped to accounts with no *other* live subscription, so
+    # somebody who cancelled and subscribed again is not dropped by the expiry
+    # of the row they replaced.
+    ScheduleEntry(kind="expire_subscriptions", daily_at="03:50", priority=9),
     # The safety net under ADR-0001's fallback. Every tender the search sweep
     # ingests arrives with no `estimated_value` — the index does not publish one
     # — and the fallback's own follow-up is queued at the moment

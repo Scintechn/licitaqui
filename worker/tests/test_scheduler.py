@@ -101,6 +101,15 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
         # of those price jobs and being measured at an unpredictable hour.
         "coverage_check",
         "weekly_digest",
+        # **F4's two billing sweeps, on the clock in the same change as their
+        # handlers** — B32's rule again. `charge_reminder` is 07:05 BRT, five
+        # minutes behind the digest: a civil hour, because an e-mail stamped
+        # 04:00 about money is not what anybody wants to find, and on Mondays
+        # the wake is already open. `expire_subscriptions` is 03:50, inside the
+        # overnight cluster, because it is pure SQL and the boundary it acts on
+        # is a date — any hour of the day after `ends_on` is the same answer.
+        "charge_reminder",
+        "expire_subscriptions",
         # `sweep_tender_values` is on the clock for the same reason
         # `sweep_titles` is, and a sharper one: the per-tender follow-up that
         # would otherwise cover it is enqueued by the search fallback, which

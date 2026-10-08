@@ -68,6 +68,15 @@ OPENING_HOUR_BRT: Final = "12:00"
 #: Days of warning owed before a charge changes (terms §6, §13).
 PRICE_CHANGE_NOTICE_DAYS: Final = 30
 
+#: Days before **each** charge that the reminder goes out (spec §10, terms §7).
+#:
+#: A different promise from the one above and frequently confused with it: that
+#: one is 30 days before the *price* changes and is a contractual floor; this
+#: one is 3 days before *every* charge, and it is what `charge_reminder` sweeps
+#: for. `docs/product.json` holds both under `notice`, and
+#: `tests/test_product.py` holds this file to it.
+CHARGE_REMINDER_DAYS: Final = 3
+
 
 def brl(amount: int) -> str:
     """``26`` → ``"R$ 26"`` — the form running copy uses."""

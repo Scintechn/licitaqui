@@ -27,7 +27,12 @@ import type { QuotaView } from '@/lib/radar/contract'
  * with what a screening request will actually allow.
  */
 
-type Row = { plan: string; cnpj: string | null; founder_seat: number | null }
+type Row = {
+  plan: string
+  name: string | null
+  cnpj: string | null
+  founder_seat: number | null
+}
 
 export type AccountData = {
   /** The signed-in account. `readAccountData` has already redirected if none. */
@@ -39,6 +44,14 @@ export type AccountData = {
   cnpj: string | null
   companyName: string | null
   founderSeat: number | null
+  /**
+   * `users.name`, which may be null: a magic-link signup gives us only an
+   * address. Read here because **Asaas requires a name on a customer** and
+   * `/conta/plano` has to know whether this account can be billed at all
+   * before it offers a subscribe button (F2). Not rendered anywhere — §12
+   * keeps a person's name off the screens that do not need it.
+   */
+  userName: string | null
 }
 
 /**
@@ -60,7 +73,7 @@ export async function readAccountData(): Promise<AccountData> {
 
   const executor = db()
   const found = await executor.execute<Row>(sql`
-    select plan, cnpj, founder_seat from users where id = ${id}::bigint
+    select plan, name, cnpj, founder_seat from users where id = ${id}::bigint
   `)
   const user = found.rows[0]
   // The session names a user who is gone. Signing in again is the only honest
@@ -84,5 +97,6 @@ export async function readAccountData(): Promise<AccountData> {
     cnpj: user.cnpj,
     companyName: company?.rows[0]?.name ?? null,
     founderSeat: user.founder_seat === null ? null : Number(user.founder_seat),
+    userName: user.name,
   }
 }

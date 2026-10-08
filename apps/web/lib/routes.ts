@@ -76,19 +76,34 @@ export const FAVOURITES_PATH = '/conta/favoritos'
  * The plan screen. **F2's address for checkout, and now the plan summary.**
  *
  * It has named this path since U1 and was unbuilt until D22 split `/conta`.
- * That is why the split lands here rather than somewhere new: when billing
- * opens on 10-29 it has a page to open onto, and the menu entry that already
- * says "Plano e pagamento" already leads to it.
+ * That is why the split lands here rather than somewhere new: the menu entry
+ * that already says "Plano e pagamento" already leads to it.
+ *
+ * **F2 shipped here**, so this is now the address the terms of use name for
+ * cancelling and the screen a founder subscribes from. The date this comment
+ * used to carry — 10-29 — was never the one that mattered: `docs/product.json`
+ * says the charge starts **17/10** (`founders.opensOn`), and a comment naming
+ * a different day in a file about where billing lives is two numbers chosen in
+ * different cards that never met (D29's shape, in prose).
  */
 export const PLAN_PATH = '/conta/plano'
 
 /**
  * Where "assinar" and the locked blocks send someone today.
  *
- * `/conta/plano` belongs to F2, billing does not open until M5 (10-29), and
- * during founders week the honest upgrade path is the offer itself. Separate
- * name because it will stop pointing at the same place the day F2 ships — as
- * `ACCOUNT_HREF` just did.
+ * **Still `/fundadores` after F2, and that is a decision rather than an
+ * oversight.** Most readers of a locked block are visitors with no account,
+ * and `/conta/plano` would bounce them to `/conta/criar` — losing the sentence
+ * that explains what the plan is. The offer page is where somebody *comparing*
+ * plans belongs; `PLAN_PATH` is where somebody who has *chosen* one acts, and
+ * the plan screen links to this for the comparison.
+ *
+ * The date this comment used to carry (M5, 10-29) was wrong twice over: F2 has
+ * shipped, and the charge starts **17/10** per `docs/product.json`.
+ *
+ * Repointing this at `PLAN_PATH` once the founders window closes is a product
+ * decision, not a tidy-up — carded as **F12** so it is a choice rather than a
+ * discovery. The separate name is what makes it one line.
  */
 export const PLAN_HREF: string = '/fundadores'
 
