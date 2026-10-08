@@ -11,16 +11,26 @@
 -- by line and extended with F4's table.
 --
 --
--- ## A correction to two comments in 0001 that cannot be edited
+-- ## A correction to three comments in applied migrations, which cannot be edited
 --
 -- `0001_initial.sql:288-289` says `promo_ends_on` is "first charge + 6 months"
--- and `promo_notice_sent_at` is the "30-day notice before R$ 26 → R$ 57". Both
--- are stale: `docs/product.json` has said R$ 57 for **3** months → R$ 75 since
--- 2026-10-05 (#257). An applied migration is a historical record and editing
--- its text would change a file the migration runner has already accounted for,
--- so the correction is written here instead. `docs/TECHNICAL_SPEC.md` was
--- wrong at six sites for the same reason and is fixed in the F2 code PR, where
--- `apps/web/lib/product.test.ts` now holds it to `docs/product.json`.
+-- and `promo_notice_sent_at` is the "30-day notice before R$ 26 → R$ 57", and
+-- `0002_plan_limits.sql` is stale at **three** lines, not one — `:18` calls the
+-- promotional row "R$ 26 (founders, first 6 months)", `:23` says "Essencial
+-- R$ 57" and `:28` says "Pro R$ 98". The first version of this section named
+-- only `:18`, which review pointed out is the shape of the defect it exists to
+-- catch. All five are stale: `docs/product.json` has said R$ 57 for **3**
+-- months → R$ 75 since 2026-10-05 (#257). An applied migration is a historical
+-- record and editing its text would change a file the migration runner has
+-- already hashed, so the correction is written here instead.
+--
+-- **The same drift was in nine other places and every one of them is fixed in
+-- the F2 code PR**: `docs/TECHNICAL_SPEC.md` at six sites — including `:438`,
+-- the line specifying the route that creates the subscription —
+-- `docs/design/README.md` at four, and comments in `lib/admin/gates.ts`,
+-- `lib/auth/founder-seat.ts` and `app/(public)/fundadores/page.tsx`. The spec's
+-- three plan prices and its promo length are now held to `docs/product.json` by
+-- `apps/web/lib/product.test.ts`; the rest are prose and are not.
 --
 --
 -- ## 1. `subscriptions.checkout_url`

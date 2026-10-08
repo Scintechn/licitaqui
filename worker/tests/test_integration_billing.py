@@ -55,7 +55,9 @@ def clean(conn: psycopg.Connection) -> Iterator[None]:
 
 def _wipe(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
-        cur.execute("delete from billing_reminders where asaas_subscription_id like %s", (f"{SUB}%",))
+        cur.execute(
+            "delete from billing_reminders where asaas_subscription_id like %s", (f"{SUB}%",)
+        )
         cur.execute(
             "delete from subscription_payments where asaas_subscription_id like %s", (f"{SUB}%",)
         )
@@ -339,7 +341,8 @@ def test_the_message_is_a_dry_run_while_the_kill_switch_is_off(
     assert dry and dry[0]["subscription"] == subscription_id
     assert dry[0]["due_on"] == str(due)
     # And nothing claims it was sent.
-    assert not [row for row in _events(conn, "email.sent") if row.get("subscription") == subscription_id]
+    sent = [r for r in _events(conn, "email.sent") if r.get("subscription") == subscription_id]
+    assert sent == []
 
 
 def test_the_sweep_enqueues_a_kind_the_registry_can_run(
@@ -448,7 +451,9 @@ def test_it_is_idempotent(conn: psycopg.Connection, clean: None) -> None:
 
 def test_it_leaves_a_live_subscriber_alone(conn: psycopg.Connection, clean: None) -> None:
     today = _brt_today(conn)
-    user_id, _ = _subscriber(conn, label="live", status="active", next_charge_on=today + timedelta(days=10))
+    user_id, _ = _subscriber(
+        conn, label="live", status="active", next_charge_on=today + timedelta(days=10)
+    )
     assert billing.expire(conn) == 0
     with conn.cursor() as cur:
         cur.execute("select plan from users where id = %s", (user_id,))

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 import { recordEvent } from '@/lib/events'
 import { PROMO } from '@/lib/product'
+import { liveStatusLiteral } from './subscription'
 import { type AsaasEvent, effectOf } from './webhook'
 
 /**
@@ -34,12 +35,19 @@ import { type AsaasEvent, effectOf } from './webhook'
  * whole thing commits or none of it does, so a retry either finds the work
  * done or finds nothing done.
  *
- * ## Four layers of idempotency, each doing something the others cannot
+ * ## Three layers of idempotency, and one belt
+ *
+ * Counted honestly, because review counted it and found four claimed:
  *
  * 1. `webhook_events.id` — the Asaas event id. The receiver inserts `on
- *    conflict do nothing`, so a redelivery is recognised before this runs.
- * 2. `webhook_events.processed_at` — read and written here, inside the
- *    transaction, so two concurrent deliveries of the same id cannot both act.
+ *    conflict do nothing`, so a redelivery is recognised before this runs, and
+ *    the unique index is also what serialises two concurrent deliveries.
+ * 2. `webhook_events.processed_at` — read `for update` here. **Unreachable
+ *    from the receiver today**, because the route only calls this when its own
+ *    insert created the row, so `processed_at` is always null. It is a belt for
+ *    the second caller this function is going to get (**F10**'s sweep over
+ *    rows left unprocessed), together with the throw below for a caller that
+ *    forgets to persist. Not counted as a layer that is doing work.
  * 3. `subscription_payments.asaas_payment_id` — one row per *payment*. One
  *    payment produces several events with different ids (Asaas documents
  *    CREATED → CONFIRMED → RECEIVED, with a card's RECEIVED ~32 days after
@@ -72,20 +80,44 @@ import { type AsaasEvent, effectOf } from './webhook'
 const SETTLED: readonly string[] = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH']
 
 /**
- * `('CONFIRMED','RECEIVED',…)` for the one query that needs it as SQL.
+ * Asaas payment statuses that mean *"somebody still has to pay this"*.
  *
- * Built from {@link SETTLED} rather than typed a second time: the list was
- * duplicated in an earlier draft of this file and a duplicated vocabulary is
- * how `next_charge_on` ends up disagreeing with the grant that set it. Each
- * value is asserted to be an Asaas-shaped identifier, so `sql.raw` here cannot
+ * An **allow-list**, deliberately, and the opposite choice from
+ * `subscription_payments.status` having no CHECK. There, a status we do not
+ * recognise must still be storable, because it describes a payment that really
+ * happened. Here, a status we do not recognise must **not** become "the next
+ * charge": `next_charge_on` feeds a sentence a subscriber reads and a reminder
+ * the contract owes them, and the safe failure is to leave the column alone
+ * rather than to point it at a charge nobody owes.
+ *
+ * `OVERDUE` is in the list and the `due_on >= today` filter is what keeps a
+ * past-due charge out — the subscriber owes it, but it is not *next*.
+ */
+const AWAITING: readonly string[] = [
+  'PENDING',
+  'OVERDUE',
+  'AWAITING_RISK_ANALYSIS',
+  'APPROVED_BY_RISK_ANALYSIS',
+]
+
+/**
+ * `('CONFIRMED','RECEIVED',…)` for the queries that need a list as SQL.
+ *
+ * Built from the constants rather than typed a second time: the settled list
+ * was duplicated in an earlier draft and a duplicated vocabulary is how
+ * `next_charge_on` ends up disagreeing with the grant that set it. Each value
+ * is asserted to be an Asaas-shaped identifier, so `sql.raw` cannot
  * interpolate anything else.
  */
-function settledLiteral() {
-  for (const status of SETTLED) {
+function statusList(statuses: readonly string[]) {
+  for (const status of statuses) {
     if (!/^[A-Z_]+$/.test(status)) throw new Error(`asaas: unsafe status literal ${status}`)
   }
-  return sql.raw(`(${SETTLED.map((s) => `'${s}'`).join(',')})`)
+  return sql.raw(`(${statuses.map((s) => `'${s}'`).join(',')})`)
 }
+
+const settledLiteral = () => statusList(SETTLED)
+const awaitingLiteral = () => statusList(AWAITING)
 
 export type Applied =
   /** Access granted by this payment, for the first time. */
@@ -102,6 +134,12 @@ export type Applied =
   | { outcome: 'duplicate' }
   /** An event about a subscription we never created. Recorded, not acted on. */
   | { outcome: 'unknown_subscription' }
+  /**
+   * A payment settled for a subscription while **another** row of the same
+   * account is live. The payment is recorded and the plan granted; which row
+   * is `active` is left alone. See the grant path for why. Card F10.
+   */
+  | { outcome: 'stale_subscription'; userId: number }
   /** An event we have no rule for, or one carrying no payment. */
   | { outcome: 'ignored'; reason: string }
 
@@ -123,6 +161,17 @@ export async function applyEvent(
      where id = ${event.id}::text
        for update
   `)
+  /**
+   * **The envelope must already be stored.** Every caller persists it first —
+   * `POST /api/asaas/webhook` does it in the same transaction — and without
+   * that row `markProcessed` below updates zero rows silently, so a caller
+   * that forgot would lose both idempotency layers with no symptom. Named by
+   * review as latent today and a trap for F10's reconcile, which is the next
+   * caller this function will get.
+   */
+  if (already.rows.length === 0) {
+    throw new Error(`asaas: applyEvent called for an unpersisted event ${event.id}`)
+  }
   if (already.rows[0]?.processed_at) return { outcome: 'duplicate' }
 
   const effect = effectOf(event.event)
@@ -170,6 +219,7 @@ export async function applyEvent(
     { ...payment, asaasSubscriptionId: event.subscriptionId, userId },
     database,
   )
+  await refreshCheckoutUrl(event.subscriptionId, payment, database)
 
   if (effect === 'revoke') {
     const released = await database.execute<{ asaas_payment_id: string }>(sql`
@@ -190,6 +240,7 @@ export async function applyEvent(
            and entitled_at is not null
       ) as entitled
     `)
+    let ended = false
     if (!stillEntitled.rows[0]?.entitled) {
       await endSubscription(event.subscriptionId, database)
       await database.execute(sql`
@@ -199,10 +250,19 @@ export async function applyEvent(
         { name: 'cancelled', userId, props: { source: 'asaas', event: event.event } },
         database,
       )
+      ended = true
     }
     await refreshNextCharge(event.subscriptionId, database)
     await markProcessed(event.id, database)
-    return released.rows.length > 0
+    /**
+     * `revoked` when access actually moved, which is **either** of two things.
+     *
+     * The first version reported on `released` alone, so a refund of a payment
+     * we never recorded as entitling — the grant event lost, the refund
+     * arriving — took the plan away and logged `recorded`. A log line that
+     * says less than what happened is the thing somebody reads at 2 a.m.
+     */
+    return released.rows.length > 0 || ended
       ? { outcome: 'revoked', userId }
       : { outcome: 'recorded' }
   }
@@ -237,12 +297,46 @@ export async function applyEvent(
     return { outcome: 'already_entitled' }
   }
 
-  await database.execute(sql`
-    update subscriptions
+  /**
+   * **`status = 'active'` only while no *other* row of this account is live.**
+   *
+   * `0015`'s partial unique index on `(user_id) where status in (…)` forbids
+   * two live rows, and this update could violate it: cancel mid-cycle with a
+   * boleto outstanding (our row → `canceled`), subscribe again (second row →
+   * `pending`), then the old boleto is paid. `entitled_at` is still null so
+   * the claim succeeds, and the flip to `active` raises `23505` — which the
+   * route turns into a **500**, which Asaas retries, which fails identically,
+   * fifteen times, and then the delivery queue is paused and the events are
+   * deleted at fourteen days. The one outcome this whole file is written to
+   * avoid, reached by an index the same PR added. Found by review.
+   *
+   * So the predicate makes it impossible instead of catching it. The payment
+   * is recorded and the claim stands — the money arrived and the ledger says
+   * so — but neither this row's status nor `users.plan` is touched, because
+   * the account's **live** subscription is what governs its plan, and deciding
+   * otherwise from a unique violation would mean ending a subscription
+   * somebody may still be paying.
+   * The skipped case is logged, loudly, and `stale_subscription` comes back as
+   * the outcome so the route's log line names it. Card **F10** reconciles it.
+   */
+  const activated = await database.execute<{ asaas_subscription_id: string }>(sql`
+    update subscriptions s
        set status     = 'active',
            updated_at = now()
-     where asaas_subscription_id = ${event.subscriptionId}::text
+     where s.asaas_subscription_id = ${event.subscriptionId}::text
+       and not exists (
+         select 1 from subscriptions other
+          where other.user_id = s.user_id
+            and other.asaas_subscription_id <> s.asaas_subscription_id
+            and other.status = any(${liveStatusLiteral()})
+       )
+    returning s.asaas_subscription_id
   `)
+  if (activated.rows.length === 0) {
+    console.error(
+      'billing: a payment settled for a subscription while another is live for the same account',
+    )
+  }
 
   /**
    * The promotional window starts at the **first** payment, and only once.
@@ -258,6 +352,13 @@ export async function applyEvent(
       update subscriptions
          set promo_ends_on = (
                coalesce(
+                 -- **The charge's due date, not the day it was paid.** A
+                 -- founder who pays the 17/10 boleto on 25/10 would otherwise
+                 -- get promo_ends_on = 25/01, while the fourth charge falls
+                 -- due 17/01 — so F3 would let one cycle through at the
+                 -- promotional price. The due date is the billing cycle; the
+                 -- payment date is when the money moved. Found by review.
+                 ${payment.dueOn}::date,
                  ${payment.paidOn}::date,
                  (now() at time zone 'America/Sao_Paulo')::date
                )
@@ -270,20 +371,38 @@ export async function applyEvent(
     `)
   }
 
-  await database.execute(sql`
-    update users
-       set plan = ${row.plan}::text
-     where id = ${userId}::bigint
-       and plan <> ${row.plan}::text
-  `)
+  /**
+   * The plan follows the row that is `active`, so a stale row grants nothing.
+   *
+   * The comment above said the plan would be "the same plan either way"; it is
+   * an assumption and not always true — a seat revoked between a cancel and a
+   * re-subscribe flips `promocional` to `essencial`, and writing the stale
+   * row's plan would then downgrade a live subscriber. The live subscription
+   * governs `users.plan`, which is what `stale_subscription` means.
+   */
+  if (activated.rows.length > 0) {
+    await database.execute(sql`
+      update users
+         set plan = ${row.plan}::text
+       where id = ${userId}::bigint
+         and plan <> ${row.plan}::text
+    `)
+  }
 
   await refreshNextCharge(event.subscriptionId, database)
-  await recordEvent(
-    { name: 'subscription_active', userId, props: { plan: row.plan, event: event.event } },
-    database,
-  )
+  // §14's gate metric, and `lib/admin/gates.ts` counts a paid founder seat off
+  // `subscriptions.status`, so this must mean the same thing the column does:
+  // fired only where the row actually became `active`.
+  if (activated.rows.length > 0) {
+    await recordEvent(
+      { name: 'subscription_active', userId, props: { plan: row.plan, event: event.event } },
+      database,
+    )
+  }
   await markProcessed(event.id, database)
-  return { outcome: 'granted', userId, plan: row.plan }
+  return activated.rows.length > 0
+    ? { outcome: 'granted', userId, plan: row.plan }
+    : { outcome: 'stale_subscription', userId }
 }
 
 /**
@@ -314,7 +433,21 @@ async function refreshNextCharge(subscriptionId: string, database: Executor): Pr
                 from subscription_payments p
                where p.asaas_subscription_id = s.asaas_subscription_id
                  and p.entitled_at is null
-                 and upper(p.status) not in ${settledLiteral()}),
+                 -- **An allow-list, not "anything unsettled".** The first
+                 -- version excluded only the settled statuses, so a REFUNDED
+                 -- or DELETED charge — whose entitled_at the revoke path has
+                 -- just nulled — walked back into the set and dragged
+                 -- next_charge_on to a date in the **past**. Three readers
+                 -- then went wrong at once: the screen printed "Proxima
+                 -- cobranca" for a day that had gone, cancelSubscription
+                 -- computed ends_on from it, and the worker reminder matches
+                 -- next_charge_on = today + 3 by exact equality, so a stale
+                 -- value meant the charge arrived with **no warning** and the
+                 -- sweep logged zero due, looking healthy. Found by review. A
+                 -- status we do not recognise is not a charge somebody owes.
+                 and upper(p.status) in ${awaitingLiteral()}
+                 -- And never in the past, for the same reason.
+                 and p.due_on >= (now() at time zone 'America/Sao_Paulo')::date),
              s.next_charge_on
            ),
            updated_at = now()
@@ -351,6 +484,42 @@ type PaymentFacts = {
   netValue: number | null
   dueOn: string | null
   paidOn: string | null
+  /** The hosted invoice page for this charge. See {@link refreshCheckoutUrl}. */
+  invoiceUrl: string | null
+}
+
+/**
+ * **Point `subscriptions.checkout_url` at the charge that is actually payable.**
+ *
+ * It used to be written once, by `startCheckout`, and never again — so the
+ * plan screen's *"Ir para o pagamento"* for a `pending` or `overdue`
+ * subscription handed back the **month-1 invoice**, long settled or expired
+ * and regenerated by Asaas. A subscriber who went overdue in month 3 — exactly
+ * the state terms §7's grace period is about — had a dead link and no way to
+ * pay before suspension. Found by review, which also noted that
+ * `plan-view.test.tsx` asserted the dead link as correct behaviour.
+ *
+ * Every Asaas payment payload carries `invoiceUrl`, so the fix is to follow
+ * it — for a charge somebody can actually pay. That is {@link AWAITING}, the
+ * same allow-list `next_charge_on` uses and for the same reason: a settled
+ * invoice is a receipt, and a **refunded or deleted** one is nothing at all.
+ * The first version of this guard was "not settled", which would have pointed
+ * the pay-now button at a refunded charge.
+ *
+ * §12: never logged. It opens one named customer's invoice.
+ */
+async function refreshCheckoutUrl(
+  subscriptionId: string,
+  payment: PaymentFacts,
+  database: Executor,
+): Promise<void> {
+  if (!payment.invoiceUrl || !AWAITING.includes(payment.status)) return
+  await database.execute(sql`
+    update subscriptions
+       set checkout_url = ${payment.invoiceUrl}::text,
+           updated_at   = now()
+     where asaas_subscription_id = ${subscriptionId}::text
+  `)
 }
 
 /**
@@ -383,6 +552,7 @@ function readPayment(event: AsaasEvent): PaymentFacts | null {
     netValue: asNumber(row.netValue),
     dueOn: asDate(row.dueDate),
     paidOn: asDate(row.paymentDate) ?? asDate(row.clientPaymentDate) ?? asDate(row.confirmedDate),
+    invoiceUrl: typeof row.invoiceUrl === 'string' && row.invoiceUrl ? row.invoiceUrl : null,
   }
 }
 
@@ -408,7 +578,19 @@ async function upsertPayment(
       now()
     )
     on conflict (asaas_payment_id) do update
-       set status       = excluded.status,
+       -- **Forward only.** Asaas does not guarantee webhook ordering, and a
+       -- PAYMENT_CREATED arriving after PAYMENT_CONFIRMED carries a different
+       -- event id, so layer 1 does not dedupe it. Overwriting unconditionally
+       -- rewrote a settled charge back to PENDING: entitled_at survived so
+       -- access was safe, but the screen's last-payment line and the
+       -- value/net_value ledger both went wrong, and the row re-entered
+       -- refreshNextCharge's set. Found by review.
+       set status       = case
+                            when upper(subscription_payments.status) in ${settledLiteral()}
+                             and upper(excluded.status) not in ${settledLiteral()}
+                            then subscription_payments.status
+                            else excluded.status
+                          end,
            billing_type = coalesce(excluded.billing_type, subscription_payments.billing_type),
            value        = excluded.value,
            net_value    = coalesce(excluded.net_value, subscription_payments.net_value),

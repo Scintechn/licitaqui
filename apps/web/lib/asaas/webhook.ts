@@ -163,19 +163,37 @@ export const GRANTS: ReadonlySet<string> = new Set([
 
 export const REVOKES: ReadonlySet<string> = new Set([
   'PAYMENT_REFUNDED',
-  'PAYMENT_PARTIALLY_REFUNDED',
   'PAYMENT_CHARGEBACK_REQUESTED',
   'PAYMENT_CHARGEBACK_DISPUTE',
-  'PAYMENT_AWAITING_CHARGEBACK_REVERSAL',
   'PAYMENT_RECEIVED_IN_CASH_UNDONE',
   'PAYMENT_DELETED',
 ])
 
-/** Not a grant and not a revocation: a state to record on the row. */
+/**
+ * Not a grant and not a revocation: a state to record on the row.
+ *
+ * **Two of these were in {@link REVOKES} and are not any more**, both found by
+ * review:
+ *
+ *  * `PAYMENT_PARTIALLY_REFUNDED` — a partial refund is not the loss of a
+ *    month. A founder refunded the R$ 1,92 acquirer fee `docs/product.json`
+ *    describes would have lost the whole plan, because the revoke path nulls
+ *    `entitled_at` without looking at how much came back. Doing it properly
+ *    means comparing the refunded amount against `value`, which is **card
+ *    F13**; recording it is the safe half, and a full refund still revokes.
+ *  * `PAYMENT_AWAITING_CHARGEBACK_REVERSAL` — the chargeback is being reversed
+ *    **in our favour**. Taking access away on the news that we are getting the
+ *    money back is backwards. The dispute events still revoke, and re-granting
+ *    once a reversal completes is the other half of F13: nothing re-grants
+ *    today, because only a fresh `PAYMENT_*` grant restores `entitled_at` and
+ *    a reversal does not send one.
+ */
 export const RECORDS: ReadonlySet<string> = new Set([
   'PAYMENT_CREATED',
   'PAYMENT_UPDATED',
   'PAYMENT_OVERDUE',
+  'PAYMENT_PARTIALLY_REFUNDED',
+  'PAYMENT_AWAITING_CHARGEBACK_REVERSAL',
   'PAYMENT_AWAITING_RISK_ANALYSIS',
   'PAYMENT_APPROVED_BY_RISK_ANALYSIS',
   'PAYMENT_REPROVED_BY_RISK_ANALYSIS',

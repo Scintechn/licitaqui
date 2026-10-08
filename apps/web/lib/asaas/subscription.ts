@@ -58,12 +58,44 @@ export const SUBSCRIPTION_STATUS = {
 
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS]
 
-/** The statuses that mean "this account already has a subscription going". */
+/**
+ * The statuses that mean *"this account already has a subscription going"*.
+ *
+ * The same four as `0015`'s partial unique index, and deliberately: this is
+ * what "one live subscription per user" means, so the index and the read agree
+ * by construction. `canceled` is not here — see {@link READABLE_STATUSES} for
+ * the row the **screen** needs, which is not the same question.
+ */
 export const LIVE_STATUSES: readonly SubscriptionStatus[] = [
   SUBSCRIPTION_STATUS.pending,
   SUBSCRIPTION_STATUS.active,
   SUBSCRIPTION_STATUS.overdue,
   SUBSCRIPTION_STATUS.suspended,
+]
+
+/**
+ * **What the plan screen must be able to see, which is one state more.**
+ *
+ * A cancelled subscription whose paid period has not run out is not "no
+ * subscription": terms §8 says the reader keeps the paid plan until `ends_on`,
+ * and `billing.cancel.untilWhen` is the approved sentence that tells them so.
+ * Filtering to {@link LIVE_STATUSES} made that sentence, `billing.status.cancelled`
+ * and the whole cancelled branch of `plan-view.tsx` **unreachable in
+ * production** — three approved strings rendering nowhere, which is
+ * `radar.list.changeCompany`'s shape — and left the screen telling a founder
+ * who had just cancelled that they had no subscription and offering to sell
+ * them one, while `users.plan` was still `promocional`.
+ *
+ * Found by review. The component test passed a `canceled` subscription
+ * straight in; nothing asked whether the page could produce that prop, which
+ * is §4b's documented pattern word for word.
+ *
+ * A cancelled row **whose `ends_on` has passed** is filtered out, because by
+ * then `expire_subscriptions` has dropped the plan and the row is history.
+ */
+const READABLE_STATUSES: readonly SubscriptionStatus[] = [
+  ...LIVE_STATUSES,
+  SUBSCRIPTION_STATUS.canceled,
 ]
 
 /**
@@ -82,12 +114,15 @@ export const LIVE_STATUSES: readonly SubscriptionStatus[] = [
  * The values are module constants, and the assertion makes injection
  * impossible rather than unlikely: `sql.raw` interpolates text.
  */
-function liveStatusLiteral() {
-  for (const status of LIVE_STATUSES) {
+function statusLiteral(statuses: readonly string[]) {
+  for (const status of statuses) {
     if (!/^[a-z_]+$/.test(status)) throw new Error(`asaas: unsafe status literal ${status}`)
   }
-  return sql.raw(`array[${LIVE_STATUSES.map((s) => `'${s}'`).join(',')}]::text[]`)
+  return sql.raw(`array[${statuses.map((s) => `'${s}'`).join(',')}]::text[]`)
 }
+
+export const liveStatusLiteral = () => statusLiteral(LIVE_STATUSES)
+const readableStatusLiteral = () => statusLiteral(READABLE_STATUSES)
 
 export type Payment = {
   status: string
@@ -190,7 +225,18 @@ export async function readSubscription(
            limit 1
         ) p on true
        where s.user_id = ${userId}::bigint
-         and s.status = any(${liveStatusLiteral()})
+         and s.status = any(${readableStatusLiteral()})
+         -- A cancelled row whose paid period has run out is history: by then
+         -- expire_subscriptions has dropped the plan, and showing it would
+         -- tell a Basico reader they still have a subscription.
+         and (
+           s.status <> ${SUBSCRIPTION_STATUS.canceled}::text
+           or s.ends_on is null
+           or s.ends_on >= (now() at time zone 'America/Sao_Paulo')::date
+         )
+       -- A live row always wins over a cancelled one: somebody who cancelled
+       -- and subscribed again has both, and the live one is the current fact.
+       order by (s.status = ${SUBSCRIPTION_STATUS.canceled}::text), s.updated_at desc
        limit 1
     `)
     rows = result.rows
@@ -289,17 +335,38 @@ export async function upsertSubscription(
 }
 
 /**
- * Switch off auto-renewal: terms §8's Prime model.
+ * **The last day a cancelled subscription keeps the paid plan.**
  *
- * `ends_on` is the last day already paid for, which is the day before the next
- * charge would have been. A subscription that has never been paid has no
- * `next_charge_on` to count back from, so `ends_on` is today — there is no paid
- * period to honour.
+ * Terms §8 and `billing.cancel.untilWhen`: *"Você continua com o plano pago
+ * até {data}, que é o fim do período já pago."* Three candidates, and the
+ * **greatest** wins, because being generous by a day is a contract term met
+ * and being mean by a day is one broken:
  *
- * `0004_subscription_refunds.sql` added this column for exactly this, and said
+ *  1. `next_charge_on - 1` — the day before the charge Asaas has scheduled.
+ *     Right whenever Asaas has already generated the next invoice.
+ *  2. **the most recent settled charge's due date + one month - one day** —
+ *     the period that payment actually bought. This is the one that matters,
+ *     and the reason this function is no longer two lines: between a first
+ *     payment and Asaas generating month 2, `next_charge_on` is still the day
+ *     of the charge that was *just paid*, so candidate 1 alone said
+ *     **yesterday**. A founder who subscribed on 17/10, paid, and cancelled on
+ *     20/10 would have had `ends_on = 16/10`, and `expire_subscriptions` would
+ *     have dropped them to Básico the next morning — four days into a month
+ *     they had paid R$ 57 for. Found by review, not by a test: the fixture
+ *     supplied a `nextDueDate` a month out that Asaas would never return for a
+ *     subscription created that day.
+ *  3. today, in the **product's** clock — a floor, so a cancel can never
+ *     retroactively end access that has not ended.
+ *
+ *  One month is a derivation rather than Asaas's own number, and it is the
+ *  cycle **we** set (`cycle: 'MONTHLY'` in `client.ts`), corrected by
+ *  candidate 1 the moment Asaas tells us the real date. `greatest` ignores
+ *  nulls, so a subscription that has never been paid falls through to today.
+ *
+ * `0004_subscription_refunds.sql` added this column for exactly this and said
  * *"the downgrade job reads this every day"*. `expire_subscriptions` in
- * `worker/licitaqui/billing.py` is that job; without it this column would be
- * the shape CLAUDE.md names five times — a column nothing reads.
+ * `worker/licitaqui/billing.py` is that job, and the two agree on the
+ * boundary: `ends_on` is inclusive, and the sweep matches `ends_on < today`.
  *
  * Returns whether a row was actually cancelled, so the caller can tell "done"
  * from "there was nothing to cancel" instead of reporting success either way.
@@ -310,18 +377,24 @@ export async function cancelSubscription(
 ): Promise<{ cancelled: boolean; asaasSubscriptionId: string | null; endsOn: string | null }> {
   const result = await database.execute<{ asaas_subscription_id: string; ends_on: string | null }>(
     sql`
-      update subscriptions
+      update subscriptions s
          set status     = ${SUBSCRIPTION_STATUS.canceled}::text,
              -- The product's clock, not the database's: "o último dia do
              -- período que já pagou" is a day in Brasília (CLAUDE.md, Clocks).
-             ends_on    = coalesce(
-                            next_charge_on - 1,
+             ends_on    = greatest(
+                            s.next_charge_on - 1,
+                            (
+                              select (max(p.due_on) + interval '1 month' - interval '1 day')::date
+                                from subscription_payments p
+                               where p.asaas_subscription_id = s.asaas_subscription_id
+                                 and p.entitled_at is not null
+                            ),
                             (now() at time zone 'America/Sao_Paulo')::date
                           ),
              updated_at = now()
-       where user_id = ${userId}::bigint
-         and status = any(${liveStatusLiteral()})
-      returning asaas_subscription_id, ends_on::text as ends_on
+       where s.user_id = ${userId}::bigint
+         and s.status = any(${liveStatusLiteral()})
+      returning s.asaas_subscription_id, s.ends_on::text as ends_on
     `,
   )
   const row = result.rows[0]

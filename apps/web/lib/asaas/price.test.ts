@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PLAN_PRICES, PROMO } from '@/lib/product'
 import { moneyExact } from '@/lib/radar/format'
-import { CURRENCY, PLAN_ESSENCIAL, PLAN_PROMOCIONAL, priceFor } from './price'
+import { PLAN_ESSENCIAL, PLAN_PROMOCIONAL, priceFor } from './price'
 
 /**
  * **What a subscriber is charged, against `docs/product.json`.**
@@ -12,28 +12,27 @@ import { CURRENCY, PLAN_ESSENCIAL, PLAN_PROMOCIONAL, priceFor } from './price'
  *
  * Every expectation below is computed from `PLAN_PRICES`/`PROMO` rather than
  * typed, so changing `docs/product.json` changes the test with the code. A
- * test that asserted `5700` would be a second place to forget.
+ * test that asserted `57` would be a second place to forget.
+ *
+ * **It asserts two fields, because `Price` has two.** An earlier version
+ * asserted five more — `cents`, `currency`, `promotional`, `promoMonths`,
+ * `thenCents` — and was the only reader of any of them, which review named as
+ * `radar.opportunity.screeningCost`'s shape: written, tested, never passed. A
+ * test is not a reader. They are gone from the type, so they are gone here.
  */
 describe('priceFor', () => {
-  it('charges a founder seat the promotional price, for the promotional months', () => {
-    const price = priceFor(1)
-    expect(price.plan).toBe(PLAN_PROMOCIONAL)
-    expect(price.reais).toBe(PLAN_PRICES.promocional)
-    expect(price.cents).toBe(PLAN_PRICES.promocional * 100)
-    expect(price.promotional).toBe(true)
-    expect(price.promoMonths).toBe(PROMO.months)
-    expect(price.thenCents).toBe(PROMO.thenBrl * 100)
-    expect(price.currency).toBe(CURRENCY)
+  it('charges a founder seat the promotional price', () => {
+    expect(priceFor(1)).toEqual({
+      plan: PLAN_PROMOCIONAL,
+      reais: PLAN_PRICES.promocional,
+    })
   })
 
-  it('charges an account with no seat the Essencial price, with no later change', () => {
-    const price = priceFor(null)
-    expect(price.plan).toBe(PLAN_ESSENCIAL)
-    expect(price.reais).toBe(PLAN_PRICES.essencial)
-    expect(price.cents).toBe(PLAN_PRICES.essencial * 100)
-    expect(price.promotional).toBe(false)
-    expect(price.promoMonths).toBeNull()
-    expect(price.thenCents).toBeNull()
+  it('charges an account with no seat the Essencial price', () => {
+    expect(priceFor(null)).toEqual({
+      plan: PLAN_ESSENCIAL,
+      reais: PLAN_PRICES.essencial,
+    })
   })
 
   it('treats every seat number the same — the seat exists or it does not', () => {
@@ -41,8 +40,19 @@ describe('priceFor', () => {
     // signup. Seat 25 and seat 1 pay the same, and seat 0 is not a seat
     // `founders_list` can assign (the column CHECK starts at 1) but is also
     // not `null`, so it must not fall through to Essencial by accident.
-    for (const seat of [1, 17, 25, 48]) {
+    for (const seat of [0, 1, 17, 25, 48]) {
       expect(priceFor(seat).reais, `seat ${seat}`).toBe(PLAN_PRICES.promocional)
+    }
+  })
+
+  it('names a plan `users.plan` and `plan_limits` both allow', () => {
+    // The string goes into `subscriptions.plan` and then into `users.plan`,
+    // which `0001_initial.sql` documents as `basico | promocional | essencial
+    // | pro`. A fifth value would be a subscriber whose plan `readLimit` has
+    // no rows for — unlimited or zero, depending on which half of the product
+    // asked.
+    for (const seat of [null, 1]) {
+      expect(['promocional', 'essencial']).toContain(priceFor(seat).plan)
     }
   })
 

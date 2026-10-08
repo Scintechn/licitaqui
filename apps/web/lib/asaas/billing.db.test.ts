@@ -134,6 +134,32 @@ async function deliver(name: string, over: Record<string, unknown> = {}) {
   })
 }
 
+/** Today in the **product's** clock, read from the database rather than guessed. */
+async function brtToday(): Promise<string> {
+  const found = await db().execute<{ today: string }>(sql`
+    select (now() at time zone 'America/Sao_Paulo')::date::text as today
+  `)
+  return found.rows[0].today
+}
+
+/**
+ * Subscribe and pay, which is the state production actually produces.
+ *
+ * The subscription is created with a **same-day** due date — that is what
+ * `startCheckout` asks Asaas for — and the payment settles it, so
+ * `next_charge_on` is the day of the charge that was just paid until Asaas
+ * generates month 2. Several cases below depend on exactly that, and the
+ * fixture that supplied a due date a month out is why they were missing.
+ */
+async function subscribedAndPaid(seat: number): Promise<number> {
+  const userId = await makeUser({ seat })
+  const { client } = stubClient(firstSubscribeReplies('https://x/i'))
+  await startCheckout(userId, { client })
+  const applied = await deliver('PAYMENT_CONFIRMED')
+  expect(applied.outcome, 'the fixture must actually grant').toBe('granted')
+  return userId
+}
+
 async function planOf(userId: number): Promise<string> {
   const found = await db().execute<{ plan: string }>(sql`
     select plan from users where id = ${userId}::bigint
@@ -339,6 +365,9 @@ suite('what a webhook does to an account (database)', () => {
     const userId = await subscribed()
     expect((await deliver('PAYMENT_CONFIRMED')).outcome).toBe('granted')
     expect((await deliver('PAYMENT_RECEIVED')).outcome).toBe('already_entitled')
+    // The second event must not change the plan either — "granted once" is
+    // about access, not only about the claim row.
+    expect(await planOf(userId)).toBe('promocional')
 
     const claims = await db().execute<{ n: string }>(sql`
       select count(*)::text as n from subscription_payments
@@ -413,6 +442,148 @@ suite('what a webhook does to an account (database)', () => {
       dueDate: '2026-11-17',
     })
     await deliver('PAYMENT_REFUNDED', { suffix: 'r1' })
+    expect(await planOf(userId)).toBe('promocional')
+  })
+
+  /**
+   * **A partial refund is not the loss of a month.**
+   *
+   * `PAYMENT_PARTIALLY_REFUNDED` was in the revoking set and the revoke path
+   * is unconditional, so a founder refunded the R$ 1,92 acquirer fee that
+   * `docs/product.json` describes would have lost the whole plan. Review found
+   * it, and found that the test which claimed to cover this sent
+   * `PAYMENT_REFUNDED` — a *full* refund, with a second month already paid —
+   * so the partial event was never exercised at all. The arithmetic that would
+   * handle it properly is card **F13**; recording it is the safe half.
+   */
+  it('records a partial refund and leaves the plan alone', async () => {
+    const userId = await subscribed()
+    await deliver('PAYMENT_CONFIRMED')
+
+    const applied = await deliver('PAYMENT_PARTIALLY_REFUNDED', {
+      suffix: 'pr',
+      status: 'PARTIALLY_REFUNDED',
+    })
+    expect(applied.outcome).toBe('recorded')
+    expect(await planOf(userId)).toBe('promocional')
+    const row = await readSubscription(userId)
+    if (row.state !== 'found') throw new Error('subscription vanished')
+    expect(row.subscription.status).toBe('active')
+  })
+
+  it('does not revoke on the news that a chargeback is being reversed', async () => {
+    // `PAYMENT_AWAITING_CHARGEBACK_REVERSAL` means the money is coming back to
+    // us. Taking access away on it is backwards; the dispute events still do.
+    const userId = await subscribed()
+    await deliver('PAYMENT_CONFIRMED')
+    const applied = await deliver('PAYMENT_AWAITING_CHARGEBACK_REVERSAL', {
+      suffix: 'rev',
+      status: 'AWAITING_CHARGEBACK_REVERSAL',
+    })
+    expect(applied.outcome).toBe('recorded')
+    expect(await planOf(userId)).toBe('promocional')
+  })
+
+  /**
+   * **`next_charge_on` may never walk backwards.**
+   *
+   * The first version excluded only the settled statuses, so a refunded charge
+   * — whose `entitled_at` the revoke path had just nulled — re-entered the set
+   * and dragged the column onto its own past due date. Three readers go wrong
+   * at once, and the worst is silent: the worker's reminder matches
+   * `next_charge_on = today + 3` by exact equality, so a stale value means the
+   * next charge arrives with **no warning** while the sweep logs zero due and
+   * looks healthy. That reminder is a clause of the contract.
+   */
+  it('keeps next_charge_on out of the past after a refund', async () => {
+    await subscribed()
+    await deliver('PAYMENT_CONFIRMED')
+    // A second month, scheduled and unpaid: this is what "next" means.
+    await deliver('PAYMENT_CREATED', {
+      suffix: 'm2',
+      id: `${PAY}_m2`,
+      status: 'PENDING',
+      dueDate: '2027-06-17',
+      paymentDate: null,
+    })
+    await deliver('PAYMENT_REFUNDED', { suffix: 'r1', status: 'REFUNDED' })
+
+    const row = await db().execute<{ next_charge_on: string | null }>(sql`
+      select next_charge_on::text as next_charge_on from subscriptions
+       where asaas_subscription_id = ${SUB}
+    `)
+    // The scheduled future charge, not the refunded one's due date.
+    expect(row.rows[0].next_charge_on).toBe('2027-06-17')
+  })
+
+  /**
+   * **The checkout link follows the charge that is actually payable.**
+   *
+   * It used to be written once, by `startCheckout`, so the plan screen handed
+   * an overdue subscriber the **month-1 invoice** — settled, or expired and
+   * regenerated by Asaas. A subscriber who went overdue in month 3, which is
+   * exactly the state terms §7's grace period is about, had a dead link and no
+   * way to pay before suspension. Review found it, and found that
+   * `plan-view.test.tsx` asserted the dead link as correct behaviour.
+   */
+  it('points the checkout link at the newest unpaid invoice', async () => {
+    const userId = await subscribed()
+    await deliver('PAYMENT_CONFIRMED')
+
+    await deliver('PAYMENT_CREATED', {
+      suffix: 'm2url',
+      id: `${PAY}_m2`,
+      status: 'PENDING',
+      dueDate: '2027-07-17',
+      paymentDate: null,
+      invoiceUrl: 'https://sandbox.asaas.com/i/month-two',
+    })
+
+    const row = await readSubscription(userId)
+    if (row.state !== 'found') throw new Error('subscription vanished')
+    expect(row.subscription.checkoutUrl).toBe('https://sandbox.asaas.com/i/month-two')
+  })
+
+  it('does not point the link at a refunded charge', async () => {
+    // A refunded invoice is not a receipt and not payable: it is nothing. The
+    // first version of the guard was "not settled", which would have pointed
+    // the pay-now button at it.
+    await subscribed()
+    await deliver('PAYMENT_CONFIRMED')
+    await deliver('PAYMENT_REFUNDED', {
+      suffix: 'rf',
+      status: 'REFUNDED',
+      invoiceUrl: 'https://sandbox.asaas.com/i/refunded',
+    })
+    const row = await db().execute<{ checkout_url: string | null }>(sql`
+      select checkout_url from subscriptions where asaas_subscription_id = ${SUB}
+    `)
+    expect(row.rows[0].checkout_url).not.toBe('https://sandbox.asaas.com/i/refunded')
+  })
+
+  it('does not replace the link with a settled invoice', async () => {
+    // A paid charge's invoice is a receipt. The screen does not offer it for an
+    // active subscription, and the next PAYMENT_CREATED replaces it anyway.
+    const userId = await subscribed()
+    await deliver('PAYMENT_CONFIRMED', { invoiceUrl: 'https://sandbox.asaas.com/i/receipt' })
+    const row = await readSubscription(userId)
+    if (row.state !== 'found') throw new Error('subscription vanished')
+    expect(row.subscription.checkoutUrl).toBe('https://sandbox.asaas.com/i/one')
+  })
+
+  it('does not walk a settled payment status backwards', async () => {
+    // Asaas does not guarantee ordering, and a PAYMENT_CREATED arriving after
+    // PAYMENT_CONFIRMED carries a different event id, so nothing upstream
+    // dedupes it. Overwriting unconditionally corrupted the ledger and the
+    // screen's last-payment line.
+    const userId = await subscribed()
+    await deliver('PAYMENT_CONFIRMED')
+    await deliver('PAYMENT_CREATED', { suffix: 'late', status: 'PENDING', paymentDate: null })
+
+    const row = await db().execute<{ status: string }>(sql`
+      select status from subscription_payments where asaas_payment_id = ${PAY}
+    `)
+    expect(row.rows[0].status).toBe('CONFIRMED')
     expect(await planOf(userId)).toBe('promocional')
   })
 
@@ -521,7 +692,7 @@ suite('cancelling (database)', () => {
     await closeDb()
   })
 
-  it('sets the last paid day to the day before the next charge', async () => {
+  it('sets the last paid day to the day before the next charge Asaas scheduled', async () => {
     // Terms §8's Prime model, and `billing.cancel.untilWhen` is the approved
     // sentence that states it.
     const userId = await makeUser({ seat: 2 })
@@ -531,10 +702,118 @@ suite('cancelling (database)', () => {
     const result = await cancelSubscription(userId)
     expect(result.cancelled).toBe(true)
     expect(result.endsOn).toBe('2026-11-16')
+  })
 
-    // And it is no longer live, so the screen stops offering a cancel and the
-    // partial unique index lets the same person subscribe again later.
+  /**
+   * **The defect this test exists for, and the reason the one above could not
+   * see it.**
+   *
+   * The fixture above supplies `nextDueDate: '2026-11-17'` for a subscription
+   * created *today*, which Asaas will never return: `startCheckout` asks for a
+   * same-day due date, so a real `next_charge_on` is **today**. This case
+   * builds the state production actually produces — subscribe, pay, cancel —
+   * and the old arithmetic (`next_charge_on - 1`) made `ends_on` **yesterday**,
+   * so `expire_subscriptions` dropped a founder to Básico the next morning,
+   * days into a month they had paid for.
+   *
+   * Review found it. The fixture handed the code the one value that made the
+   * arithmetic look right, which is §4b's *"a test that required its own bug
+   * to pass"*, one step removed.
+   */
+  it('honours the month a payment bought, even before Asaas schedules the next charge', async () => {
+    const userId = await subscribedAndPaid(2)
+
+    const today = await brtToday()
+    const before = await db().execute<{ next_charge_on: string }>(sql`
+      select next_charge_on::text as next_charge_on from subscriptions
+       where user_id = ${userId}::bigint
+    `)
+    // The precondition that makes this the real case: `next_charge_on` is the
+    // charge that was just **paid**, because Asaas has not generated month 2.
+    expect(before.rows[0].next_charge_on).toBe(today)
+
+    const result = await cancelSubscription(userId)
+    expect(result.cancelled).toBe(true)
+    // One month from the charge's due date, minus a day — not yesterday.
+    expect(result.endsOn).not.toBeNull()
+    expect(result.endsOn! > today, `ends_on ${result.endsOn} must be after ${today}`).toBe(true)
+    const expected = new Date(`${today}T00:00:00Z`)
+    expected.setUTCMonth(expected.getUTCMonth() + 1)
+    expected.setUTCDate(expected.getUTCDate() - 1)
+    expect(result.endsOn).toBe(expected.toISOString().slice(0, 10))
+  })
+
+  it('never ends a subscription before today, whatever the dates say', async () => {
+    // The floor. A cancel cannot retroactively end access that has not ended,
+    // and a subscription that has never been paid has no period to honour.
+    const userId = await makeUser({ seat: 11 })
+    const { client } = stubClient(firstSubscribeReplies(null))
+    await startCheckout(userId, { client })
+
+    const result = await cancelSubscription(userId)
+    expect(result.endsOn).toBe(await brtToday())
+  })
+
+  /**
+   * **A cancelled subscription whose paid period has not run out is not "no
+   * subscription".**
+   *
+   * `readSubscription` filtered to the live statuses, so the screen saw
+   * `{ state: 'none' }` — and `billing.status.cancelled`,
+   * `billing.cancel.untilWhen` and the whole cancelled branch of
+   * `plan-view.tsx` were **unreachable in production**: three approved strings
+   * rendering nowhere. Worse, the post-cancel banner said *"sua conta está no
+   * plano Básico"* while `users.plan` was still `promocional`, and the next
+   * page load offered to sell them a subscription again with nothing saying
+   * they kept the paid plan until the end of the month.
+   *
+   * The component test passed a `canceled` subscription straight in; nothing
+   * asked whether the page could produce that prop. Review found it, and named
+   * it as §4b's documented pattern word for word.
+   */
+  it('keeps showing a cancelled subscription until its paid period runs out', async () => {
+    const userId = await subscribedAndPaid(12)
+    const cancelled = await cancelSubscription(userId)
+    expect(cancelled.cancelled).toBe(true)
+
+    const found = await readSubscription(userId)
+    expect(found.state).toBe('found')
+    if (found.state !== 'found') return
+    expect(found.subscription.status).toBe('canceled')
+    expect(found.subscription.endsOn).toBe(cancelled.endsOn)
+  })
+
+  it('stops showing it once that period has passed', async () => {
+    // By then `expire_subscriptions` has dropped the plan, and a Básico reader
+    // must not be told they still have a subscription.
+    const userId = await subscribedAndPaid(13)
+    await cancelSubscription(userId)
+    await db().execute(sql`
+      update subscriptions
+         set ends_on = (now() at time zone 'America/Sao_Paulo')::date - 1
+       where user_id = ${userId}::bigint
+    `)
     expect(await readSubscription(userId)).toEqual({ state: 'none' })
+  })
+
+  it('prefers a live subscription over a cancelled one', async () => {
+    // Somebody who cancelled and subscribed again has both rows, and the live
+    // one is the current fact.
+    const userId = await subscribedAndPaid(14)
+    await cancelSubscription(userId)
+    const again = stubClient([
+      { data: [{ id: CUS }] },
+      { data: [] },
+      { id: `${SUB}_b`, status: 'ACTIVE', nextDueDate: '2027-03-17' },
+      { data: [{ id: `${PAY}_b`, status: 'PENDING', value: 57, dueDate: '2027-03-17', invoiceUrl: 'https://x/b' }] },
+    ])
+    await startCheckout(userId, { client: again.client })
+
+    const found = await readSubscription(userId)
+    expect(found.state).toBe('found')
+    if (found.state !== 'found') return
+    expect(found.subscription.status).toBe('pending')
+    expect(found.subscription.asaasSubscriptionId).toBe(`${SUB}_b`)
   })
 
   it('says so when there was nothing to cancel', async () => {

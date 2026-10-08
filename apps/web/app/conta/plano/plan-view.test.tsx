@@ -358,6 +358,94 @@ describe('the banner after an action', () => {
   })
 })
 
+/**
+ * **Which `billing.*` keys reach a screen, counted rather than claimed.**
+ *
+ * The PR that wired this screen first said *"all 32 `billing.*` keys render"*.
+ * Twenty-three did. The §4b reality-check found it, and found the worse half:
+ * the old `docs/CLAIMS.md` row said *"the whole `billing.*` tree renders
+ * nowhere"*, so replacing it with the stronger sentence **erased the only
+ * record** that seven approved strings reached no screen and were uncarded.
+ * That is `radar.list.changeCompany`'s shape, and the PR that erased the
+ * record would have been the PR that caused it.
+ *
+ * So this walks the catalogue and asserts the exception list **exactly**. A
+ * string that stops rendering fails here; a new `billing.*` key that renders
+ * nowhere fails here; and removing a key from the list without rendering it
+ * fails here. The three that remain are each carded, and the list says which.
+ */
+describe('the billing catalogue', () => {
+  /** Rendered nowhere, each with the card that owns it. */
+  const UNRENDERED = new Map<string, string>([
+    [
+      'priceChange.noticeSent',
+      'F3/E11 — it says we e-mailed 30 days before the change, and the job that ' +
+        'would does not exist. Rendering it would be a sentence about something ' +
+        'the product does not do.',
+    ],
+    ['cancel.reasonLabel', 'F11 — a free-text field with no column to store its answer.'],
+    ['cancel.reasonHelp', 'F11 — the help line under that field.'],
+  ])
+
+  /** Every state this screen can be in, rendered once. */
+  const everything = [
+    render(),
+    render({ founderSeat: 7 }),
+    render({ canBill: false }),
+    render({ subscription: 'unavailable' }),
+    render({ subscription: ACTIVE }),
+    render({ subscription: { ...ACTIVE, status: 'pending', checkoutUrl: 'https://x/i' } }),
+    render({ subscription: { ...ACTIVE, status: 'overdue' } }),
+    render({ subscription: { ...ACTIVE, promoEndsOn: '2027-01-17' } }),
+    render({
+      subscription: {
+        ...ACTIVE,
+        lastPayment: { status: 'CONFIRMED', amount: '57.00', paidOn: '2026-10-17', dueOn: '2026-10-17' },
+      },
+    }),
+    render({ subscription: { ...ACTIVE, status: 'canceled', endsOn: '2026-11-16' } }),
+    render({ subscription: ACTIVE, confirmingCancel: true }),
+    ...(['ativo', 'aguardando', 'cancelado', 'erro'] as const).map((state) => render({ state })),
+  ].join('\n')
+
+  /** `billing.cancel.cta` → the leaf strings under it, as dotted paths. */
+  function leaves(node: unknown, path = ''): Array<readonly [string, string]> {
+    if (typeof node === 'string') return [[path, node] as const]
+    if (node === null || typeof node !== 'object') return []
+    return Object.entries(node).flatMap(([key, value]) =>
+      leaves(value, path ? `${path}.${key}` : key),
+    )
+  }
+
+  const KEYS = leaves(messages.billing)
+
+  it('has the 32 keys E8 counted', () => {
+    // Not decoration: the claim this test replaces was about a count, and a
+    // count nothing checks is how it went wrong.
+    expect(KEYS).toHaveLength(32)
+  })
+
+  it('renders every one of them except the three that are carded', () => {
+    const missing = KEYS.filter(([, value]) => {
+      // ICU plural bodies and token-bearing strings never appear verbatim; a
+      // distinctive fragment is what a reader would actually see.
+      const probe = value.replace(/\{[^}]*\}/g, '\u0000').split('\u0000')
+        .map((part) => part.trim()).filter((part) => part.length > 12)
+      const shown = probe.length === 0
+        ? everything.includes(value)
+        : probe.some((part) => everything.includes(part))
+      return !shown
+    }).map(([path]) => path)
+
+    expect(
+      missing.sort(),
+      'an approved billing sentence reaches no screen. Render it, or card it and ' +
+        'add it to UNRENDERED with the card id — this is the exact gap that was ' +
+        'papered over once already',
+    ).toEqual([...UNRENDERED.keys()].sort())
+  })
+})
+
 describe('across every state', () => {
   it('leaves no message placeholder unresolved', () => {
     const states = [

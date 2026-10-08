@@ -333,7 +333,7 @@ rendered, so nothing leaks to a user, but the review they ask for has not happen
 
 ## What checked out
 
-Visitor limits (3 days, 2 triagens), Básico's 5/month, the R$ 26 → R$ 57 change with its 30-day
+Visitor limits (3 days, 2 triagens), Básico's 5/month, the promotional price change with its 30-day
 notice, "sem fidelidade", "cancela em 1 clique", Pix/cartão via Asaas, the AI disclaimer and
 "não substitui assessoria jurídica ou contábil", and the footer identification — all consistent
 with the legal texts. No copy anywhere promises a nota fiscal, which brief §2 forbids until G13.

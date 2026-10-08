@@ -1,4 +1,4 @@
-import { PLAN_PRICES, PROMO } from '@/lib/product'
+import { PLAN_PRICES } from '@/lib/product'
 
 /**
  * What this account pays, resolved from its founder seat — task **F2**.
@@ -41,26 +41,28 @@ import { PLAN_PRICES, PROMO } from '@/lib/product'
  * is no live count to race against.
  */
 
-/** Brazilian real, ISO 4217. Stated so an amount is never a bare number. */
-export const CURRENCY = 'BRL'
-
 export const PLAN_PROMOCIONAL = 'promocional'
 export const PLAN_ESSENCIAL = 'essencial'
 
+/**
+ * **Two fields, because two is what anything reads.**
+ *
+ * The first draft also returned `cents`, `currency`, `promotional`,
+ * `promoMonths` and `thenCents`. `checkout.ts` reads `.plan` and `.reais`; the
+ * other five were read **only by this module's own test** — which is
+ * `radar.opportunity.screeningCost`'s shape exactly, one of the five CLAUDE.md
+ * names: written, tested, never passed. Review found it. They are gone rather
+ * than carded, because the right size for a thing nothing reads is nothing.
+ *
+ * The promotional window is not lost: `entitlement.ts` reads `PROMO.months`
+ * from `lib/product.ts` when it dates `promo_ends_on`, which is the only place
+ * that number decides anything.
+ */
 export type Price = {
   /** `promocional` or `essencial`. One of the four `users.plan` allows. */
   plan: typeof PLAN_PROMOCIONAL | typeof PLAN_ESSENCIAL
-  /** What is charged now, in centavos. Exact: `product.json` is whole BRL. */
-  cents: number
-  /** The same amount as reais, which is what the Asaas `value` field takes. */
+  /** Reais as a decimal — what the Asaas `value` field takes. */
   reais: number
-  currency: typeof CURRENCY
-  /** Whether this is the founder price, i.e. whether it changes later. */
-  promotional: boolean
-  /** How many months the promotional price lasts, or `null` when it does not. */
-  promoMonths: number | null
-  /** What it becomes after {@link promoMonths}, or `null`. */
-  thenCents: number | null
 }
 
 /**
@@ -71,29 +73,9 @@ export type Price = {
  * its caller is a discount waiting to be found.
  */
 export function priceFor(founderSeat: number | null): Price {
-  if (founderSeat === null) {
-    return {
-      plan: PLAN_ESSENCIAL,
-      cents: PLAN_PRICES.essencial * 100,
-      reais: PLAN_PRICES.essencial,
-      currency: CURRENCY,
-      promotional: false,
-      promoMonths: null,
-      thenCents: null,
-    }
-  }
-  return {
-    plan: PLAN_PROMOCIONAL,
-    cents: PLAN_PRICES.promocional * 100,
-    reais: PLAN_PRICES.promocional,
-    currency: CURRENCY,
-    promotional: true,
-    promoMonths: PROMO.months,
-    // `PROMO.thenBrl` and `PLAN_PRICES.essencial` are the same fact and
-    // `product.test.ts` already refuses to let them drift. The promo one is
-    // read here because it is the one that describes *this* subscription.
-    thenCents: PROMO.thenBrl * 100,
-  }
+  return founderSeat === null
+    ? { plan: PLAN_ESSENCIAL, reais: PLAN_PRICES.essencial }
+    : { plan: PLAN_PROMOCIONAL, reais: PLAN_PRICES.promocional }
 }
 
 /**

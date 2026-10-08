@@ -11,6 +11,7 @@ import { recordEventSafely } from '@/lib/events'
 import { rateLimitRequest } from '@/lib/rate-limit'
 import { ACCOUNT_CREATE_PATH, COMPANY_PATH, PLAN_PATH } from '@/lib/routes'
 import { withQuery } from '@/lib/url'
+import type { PlanState } from './states'
 
 /**
  * What `/conta/plano` actually *does* — tasks **F2** and **D8**.
@@ -61,21 +62,11 @@ import { withQuery } from '@/lib/url'
 const RATE_LIMIT = { limit: 8, windowMs: 60_000 }
 
 /**
- * `?estado=` values these actions redirect with. `plan-view.tsx` turns each
- * one into an already-approved `billing.*` sentence; a value not in this union
- * renders no banner rather than an empty one.
+ * The `?estado=` values live in `./states`, **not here**: a `'use server'` file
+ * may export only async functions, and Next rejects anything else at build
+ * time — not at `tsc --noEmit` and not under Vitest. A `const` beside these two
+ * functions would have been a green suite and a failed deploy.
  */
-export const PLAN_STATES = [
-  'ativo',
-  'aguardando',
-  'cancelado',
-  'sem-assinatura',
-  'erro',
-  'muitas-tentativas',
-] as const
-
-export type PlanState = (typeof PLAN_STATES)[number]
-
 const to = (state: PlanState) => withQuery(PLAN_PATH, `estado=${state}`)
 
 async function currentUserId(): Promise<number> {

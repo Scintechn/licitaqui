@@ -166,12 +166,19 @@ describe('POST /api/asaas/webhook', () => {
   })
 
   it('leaks no driver detail in the response', async () => {
+    /**
+     * **Asserted as a shape, not as the absence of one word.** The first
+     * version checked `not.toContain('subscriptions')` against a body that is
+     * always `{"ok":false}`, so it passed for a reason unrelated to its own
+     * claim — review named it. The body is now pinned exactly: anything a
+     * driver could add would change it.
+     */
     transaction.mockRejectedValue(
       Object.assign(new Error('relation "subscriptions" does not exist'), { code: '42P01' }),
     )
-    const text = JSON.stringify(await (await post()).json())
-    expect(text).not.toContain('subscriptions')
-    expect(text).not.toContain('relation')
+    const response = await post()
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({ ok: false })
   })
 
   it('answers 429 with a retry-after when the flood guard trips', async () => {

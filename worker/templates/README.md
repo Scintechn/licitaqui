@@ -128,6 +128,7 @@ whole string as a single placeholder (e.g. `{{lista_editais}}`).
 | `email/price-change-30-days.md` | email | `promo_price_change` job, 30 days before `promo_ends_on` | M5 |
 | `whatsapp/price-change-30-days.md` | WhatsApp | same day, **courtesy copy only** | M5 |
 | `email/payment-confirmation.md` | email | Asaas `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` webhook | M5 |
+| `email/charge-reminder.md` | email | `charge_reminder` job, 3 days before **each** charge (spec §10, terms §7) — **no body and no subject yet: the two sentences are Sci's.** While its `TODO(Sci):` is there, `ready_to_send` is false and the sweep claims nothing, enqueues nothing and writes `billing.reminder_blocked` | M5 |
 | `email/partial-footer.md` | email | end of every email | — |
 
 ## 6. Facts the copy is allowed to state

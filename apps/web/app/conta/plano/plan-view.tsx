@@ -8,7 +8,7 @@ import { COMPANY_PATH, PLAN_HREF, PLAN_PATH } from '@/lib/routes'
 import { withQuery } from '@/lib/url'
 import { AccountChrome } from '../account-chrome'
 import { screeningsLabel } from '../account-view'
-import type { PlanState } from './actions'
+import type { PlanState } from './states'
 
 /**
  * `/conta/plano` — what this plan includes, what is left of it, and the two
@@ -33,7 +33,9 @@ import type { PlanState } from './actions'
  * invention of this screen. It is a link to `?cancelar=1` rather than a dialog
  * because `vitest.config.mts` has no jsdom and a dialog's open state is
  * `useEffect` territory — invisible to the unit suite by construction (§4c).
- * The Playwright journey pins the result.
+ * `e2e/accounts/plano.spec.ts` pins the result, and **skips with its reason**
+ * unless the environment names a deployment and a session: a first draft of
+ * this comment claimed a journey that did not exist, which review caught.
  *
  * ## Every sentence here is already approved
  *
@@ -138,6 +140,14 @@ export function PlanView({
 }) {
   const banner = notice(state)
   const live = subscription !== null && subscription !== 'unavailable'
+  /**
+   * A cancelled subscription whose paid period has not run out. `readSubscription`
+   * returns it (it did not, which review found: three approved strings and the
+   * whole cancelled branch were unreachable), and the screen treats it as
+   * *both* — it states the status and the day the plan ends, **and** it offers
+   * the checkout again, because somebody who cancelled may change their mind.
+   */
+  const cancelled = live && subscription.status === 'canceled'
   const cancellable =
     live && subscription.status !== 'canceled' && subscription.status !== 'suspended'
   const nextCharge = live ? planDate(subscription.nextChargeOn) : null
@@ -153,6 +163,16 @@ export function PlanView({
         <Card accent>
           {banner.title ? <h2 className="text-lead font-semibold">{banner.title}</h2> : null}
           <p className={cn('text-meta leading-relaxed', banner.title && 'mt-1')}>{banner.body}</p>
+          {/* `billing.confirmed.cta` — "Voltar para o Radar". Approved with the
+              two sentences above it and rendered nowhere until now; a
+              confirmation with no way onward is a dead end. */}
+          {state === 'ativo' ? (
+            <div className="pt-3">
+              <Button href="/radar" iconEnd="arrowRight">
+                {billing.confirmed.cta}
+              </Button>
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
@@ -217,6 +237,25 @@ export function PlanView({
           <p className="mt-1 text-meta leading-relaxed text-muted">
             {format(billing.priceChange.bannerCancel, { data: promoEnds })}
           </p>
+          {/*
+            The detail block. Four approved strings that reached no screen
+            until review counted them; each is true whenever this banner is,
+            and all three figures arrive as `{$preco…}` tokens resolved from
+            `docs/product.json`, so nothing here types a price.
+
+            `billing.priceChange.noticeSent` is **not** here: it says we warned
+            by e-mail 30 days before, and the job that would is card **F3**,
+            due 09/12/2026. Rendering it would be this register's own worked
+            example — a sentence describing something the product does not do.
+          */}
+          <p className="mt-3 text-label font-mono uppercase tracking-[0.06em] text-muted">
+            {billing.priceChange.detailTitle}
+          </p>
+          <ul className="mt-1 list-none text-meta leading-relaxed text-muted">
+            <li>{billing.priceChange.detailNow}</li>
+            <li>{format(billing.priceChange.detailAfter, { data: promoEnds })}</li>
+            <li>{billing.priceChange.detailSame}</li>
+          </ul>
         </Card>
       ) : null}
 
@@ -224,11 +263,17 @@ export function PlanView({
         <Card>
           <h2 className="text-lead font-semibold">{billing.cancel.title}</h2>
           <p className="mt-1 text-meta leading-relaxed text-muted">{billing.cancel.body}</p>
-          {endsOn || nextCharge ? (
-            <p className="mt-1 text-meta leading-relaxed text-muted">
-              {format(billing.cancel.untilWhen, { data: (endsOn ?? nextCharge) as string })}
-            </p>
-          ) : null}
+          {/*
+            **`billing.cancel.untilWhen` is not rendered here, only after.**
+            Before cancelling, `ends_on` is null, so the only date this
+            component has is `next_charge_on` — and `cancelSubscription`
+            computes `ends_on` from three candidates, the greatest of which is
+            usually the settled charge's due date plus a month. The
+            confirmation said *"até 17/11"* while the row then said 16/11.
+            Found by review. Rather than reimplement that arithmetic in the
+            markup, the screen promises the date once, after the fact, from the
+            value that was actually written.
+          */}
           <div className="flex flex-col gap-2 pt-3 min-[560px]:flex-row">
             <form action={onCancel}>
               <Button type="submit" variant="primary" fullWidth>
@@ -242,8 +287,16 @@ export function PlanView({
         </Card>
       ) : null}
 
+      {/* `billing.subscribe.title` — the heading the subscribe control was
+          written with, and which reached no screen until review counted the
+          catalogue. Shown only where the control is: a heading over a button
+          that is not there would be the opposite defect. */}
+      {(!live || cancelled) && canBill && subscription !== 'unavailable' ? (
+        <h2 className="pt-2 text-lead font-semibold">{billing.subscribe.title}</h2>
+      ) : null}
+
       <div className="flex flex-col gap-2 pt-2 min-[560px]:flex-row">
-        {!live && canBill && subscription !== 'unavailable' ? (
+        {(!live || cancelled) && canBill && subscription !== 'unavailable' ? (
           <form action={onCheckout}>
             <Button type="submit" variant="primary" iconEnd="arrowRight" fullWidth>
               {billing.subscribe.cta}
@@ -279,7 +332,7 @@ export function PlanView({
           the silence is recorded in `docs/CLAIMS.md` rather than papered over
           with copy nobody approved.
         */}
-        {!live && !canBill ? (
+        {(!live || cancelled) && !canBill ? (
           <Button href={COMPANY_PATH} variant="secondary">
             {messages.radar.menu.company}
           </Button>
@@ -289,7 +342,7 @@ export function PlanView({
             page is still where somebody comparing plans should land, and this
             screen is where somebody who has chosen one acts. The two names
             exist so the link can move the day that stops being true. */}
-        {!live ? (
+        {!live || cancelled ? (
           <Button href={PLAN_HREF} variant="secondary">
             {copy.plans}
           </Button>
@@ -306,7 +359,7 @@ export function PlanView({
         <p className="text-meta leading-relaxed text-muted">{copy.founderNote}</p>
       ) : null}
 
-      {!live ? (
+      {!live || cancelled ? (
         <p className="text-meta leading-relaxed text-muted">{billing.subscribe.methods}</p>
       ) : null}
     </AccountChrome>

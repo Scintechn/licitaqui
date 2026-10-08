@@ -44,10 +44,25 @@
  * which no HTTP call is made and no money can move. A typo lands in the safe
  * direction, which is the same reasoning `resend.delivery_mode()` gives.
  *
- * It is named in `.env.example` alongside the other three. The draft's version
- * of this switch existed only in Python and in no `.env.example`, no README
- * and no doc, so a deploy that forgot it would have created no subscriptions
- * with no symptom but a `billing.dry_run` row.
+ * **It is NOT in `.env.example`, and this comment said it was.** The sentence
+ * that stood here claimed the file named it alongside the other three, two
+ * sentences after explaining that the parked draft's version of this switch
+ * *"existed only in Python and in no `.env.example`, no README and no doc, so
+ * a deploy that forgot it would have created no subscriptions with no
+ * symptom"*. The diagnosis was right and the fix was asserted rather than
+ * made — review caught it — and the consequence is the failure that paragraph
+ * describes: on 17/10 at 12:00 BRT every founder would read
+ * `billing.subscribe.error` while one `console.error` said why.
+ *
+ * It is not in the file because **an agent cannot write `.env*` here**: the
+ * permission layer refuses, deliberately, and the same deny rule has already
+ * left `S3_BUCKET` and the AWS keys undocumented (see `docs/STATUS.md`'s B4B
+ * row, which says so). So it is **Sci's line to add**, it is on the F2 PR, and
+ * `G12` carries it beside the production key:
+ *
+ * ```
+ * ASAAS_BILLING=          # live | anything else (dry run)
+ * ```
  *
  * ## What is never logged
  *

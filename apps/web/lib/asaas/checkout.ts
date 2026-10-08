@@ -197,6 +197,26 @@ export async function startCheckout(
       return { outcome: 'failed', reason: error.reason, retryable: error.retryable }
     }
     const code = (error as { code?: string } | null)?.code ?? 'unknown'
+    const constraint = (error as { constraint?: string } | null)?.constraint
+    /**
+     * **One reachable way to get permanently stuck, named so the log says
+     * which.** `23505` on `subscriptions_one_live_per_user` means this account
+     * already has a live row for a *different* Asaas subscription — which
+     * happens when ours was deleted in the Asaas console, so
+     * `findSubscription` finds nothing and we create a second one. Every later
+     * attempt fails the same way, and the reader only ever sees
+     * `billing.subscribe.error`.
+     *
+     * Not repaired here: ending our row automatically would mean deciding,
+     * from a unique-violation, that a subscription somebody may still be
+     * paying is over. **Card F10** is the repair — a daily reconcile that
+     * compares our rows against Asaas and ends the ones Asaas no longer has.
+     * This reason code is what makes the case findable in the meantime.
+     */
+    if (code === '23505' && constraint === 'subscriptions_one_live_per_user') {
+      console.error('billing: checkout blocked by another live subscription for this account')
+      return { outcome: 'failed', reason: 'another_live_subscription', retryable: false }
+    }
     console.error(`billing: checkout failed (db:${code})`)
     return { outcome: 'failed', reason: `database:${code}`, retryable: true }
   }

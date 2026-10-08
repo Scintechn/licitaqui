@@ -51,10 +51,10 @@ Exported from the approved "Wireframes LicitaQui" canvas on 2026-09-17. Claude C
 | 05 | `Preco.dc.html` | Price and margin — locked, leads to the plan | `/radar/edital/[id]/preco` | D4 |
 | 06 | `Cadastro.dc.html` | Create free account (Básico): Google + email link | `/conta/criar` | U1 |
 | 07 | `Telegram.dc.html` | Connect Telegram + alert example | `/conta/alertas` | E1 |
-| 08 | `Plano.dc.html` | Promocional R$ 26 (6 months) / Essencial R$ 57 + Asaas checkout | `/conta/plano` | F2 |
+| 08 | `Plano.dc.html` | Promocional / Essencial + Asaas checkout — **the prices and the promo length are in `docs/product.json`**, never here: until 2026-10-08 this row quoted a founder price and a promo length that were two changes out of date, on the row describing the screen that takes the money, and the numbers are deliberately not restated here | `/conta/plano` | F2 (shipped 2026-10-08) |
 | 09 | `Menu.dc.html` | Menu with Básico usage (3 de 5 triagens) | global drawer | U1 |
 
-### v1 · Essencial (web, R$ 57) — after Gate 0
+### v1 · Essencial (web — price in `docs/product.json`) — after Gate 0
 
 | # | File | Screen |
 |---|---|---|
@@ -62,7 +62,7 @@ Exported from the approved "Wireframes LicitaQui" canvas on 2026-09-17. Claude C
 | 11 | `Edital.dc.html` | Tender: winning price band and margin calculator |
 | 12 | `Alertas.dc.html` | Alerts by CNAE and keyword |
 
-### v2 · Pro (R$ 98)
+### v2 · Pro (price in `docs/product.json`)
 
 | # | File | Screen |
 |---|---|---|
@@ -78,7 +78,7 @@ Exported from the approved "Wireframes LicitaQui" canvas on 2026-09-17. Claude C
 **Access**
 - Visitor (no account, up to 3 days, counted per device **and** per CNPJ): search by CNPJ or keyword, 2 AI screenings; tender files and alerts locked.
 - Básico (R$ 0, with account): search, tender files, **5 AI screenings/month**, 1 Telegram alert per week (1 keyword, 1 state).
-- Locked price block → Promocional (25 founder seats) — see `docs/product.json` for the price and the months or Essencial R$ 57 → Asaas checkout.
+- Locked price block → Promocional (25 founder seats) — see `docs/product.json` for the price and the months or Essencial → Asaas checkout.
 - Login: Google + email magic link (email link enabled when a sending domain is verified).
 - No customer invoice (NF) promise anywhere in the UI for now.
 

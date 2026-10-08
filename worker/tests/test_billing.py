@@ -11,6 +11,8 @@ UTC, the product is Brasília and this process's clock is neither.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -19,10 +21,80 @@ import pytest
 
 from licitaqui import billing, product, templates
 
+#: Set by :func:`_synthetic_root` for the cases that need a template of their
+#: own. A module-level holder rather than a fixture argument so the helper
+#: below can be called from a test that did not ask for the directory.
+_TMP: Path | None = None
+
 
 @pytest.fixture(autouse=True)
-def _fresh_templates() -> None:
+def _synthetic_root(tmp_path: Path) -> Iterator[None]:
+    """Hand each test a private template root, and **put the real one back**.
+
+    `templates.TEMPLATES_DIR` is a module global. Leaving it pointed at a
+    `tmp_path` would make every later test in the same process read templates
+    that no longer exist — and `pytest` runs this file before the integration
+    ones, so the failure would land somewhere else entirely.
+    """
+    global _TMP
+    original = templates.TEMPLATES_DIR
+    _TMP = tmp_path
+    try:
+        yield
+    finally:
+        _TMP = None
+        templates.TEMPLATES_DIR = original  # type: ignore[misc]
+        templates.cache_clear()
+
+
+def _write_template(root: Path | None, body: str, *, subject: str | None) -> None:
+    """A `charge-reminder` under `root`, and point `templates` at it.
+
+    The real file is a draft awaiting Sci's two sentences, so a test that needs
+    one which *can* render has to supply it — the same seam
+    `test_integration_email.py` uses for the founders templates.
+    """
+    assert root is not None, "this test needs the synthetic template root"
+    folder = root / "templates" / "email"
+    folder.mkdir(parents=True, exist_ok=True)
+    front = ["---", "id: charge-reminder", "channel: email", "status: approved"]
+    if subject is not None:
+        front.append(f'subject: "{subject}"')
+    used = sorted(set(re.findall(r"\{\{(\w+)\}\}", body + (subject or ""))))
+    if used:
+        front.append(f"placeholders: [{', '.join(used)}]")
+    front.append("---")
+    (folder / "charge-reminder.md").write_text("\n".join(front) + "\n\n" + body, encoding="utf-8")
+    templates.TEMPLATES_DIR = root / "templates"  # type: ignore[misc]
     templates.cache_clear()
+
+
+def test_the_gate_requires_a_subject_as_well_as_a_body() -> None:
+    """**The hole review found, and the one that would have cost a cohort.**
+
+    ``Template.ready_to_send`` is only ``TODO_MARKER not in body``. The day Sci
+    writes the body and removes the marker **without adding a `subject:`**, a
+    gate that checked only that property would pass, claim a
+    ``billing_reminders`` row, enqueue, and ``render_subject`` would raise —
+    the job fails, the claim survives the retry, and tomorrow's sweep looks for
+    ``next_charge_on = today + 3`` and never sees that charge again.
+
+    So the gate requires both. This asserts it against a synthetic template
+    that has a body and no subject, which is the precise state that day
+    produces.
+    """
+    body_only = templates.parse(
+        "---\nid: charge-reminder\nchannel: email\nstatus: approved\n---\n\nOi.\n",
+        template_id="charge-reminder",
+    )
+    assert body_only.ready_to_send is True, "the library property is satisfied"
+    assert body_only.subject is None, "and there is still no subject to send"
+    # And the gate refuses it anyway. Asserted through `template_ready()`
+    # itself, against a real file, rather than by grepping this module's
+    # source: a test that reads the code it is testing passes for the wrong
+    # reason the first time somebody renames a local.
+    _write_template(_TMP, "Oi, {{nome}}.\n", subject=None)
+    assert billing.template_ready() is False
 
 
 def test_the_reminder_template_is_not_ready_to_send() -> None:

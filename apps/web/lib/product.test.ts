@@ -417,6 +417,98 @@ describe('the product facts, against every file that quotes them', () => {
     ).toEqual([])
   })
 
+  /**
+   * **The spec quotes the ladder at six places, and the check above pins one.**
+   *
+   * Review demonstrated it with a cumulative mutation: four of the six sites
+   * could be reverted to R$ 26 / R$ 57 / R$ 98 **at once** — `:438` included,
+   * the line this file's own note calls *"the document a future implementer
+   * would read to find out what to charge"* — and every assertion stayed
+   * green, because `:46` alone contains `R$ 57`, `R$ 75`, `R$ 129` and
+   * `3 months`, and {@link REQUIRED} is a whole-file substring search.
+   *
+   * That is `CLAIMS.md`'s *"why a passing guard is not closure evidence"* in
+   * its purest form: a guard for one phrasing, cited as a guard for a file.
+   *
+   * So each site is pinned **by the clause around it**, the technique the
+   * quota rows above already use and for the same stated reason. The anchor is
+   * a distinctive phrase that identifies the line; the values are what that
+   * line must carry. A reworded spec breaks the anchor and fails loudly rather
+   * than passing quietly, which is the trade this file makes everywhere.
+   */
+  const SPEC_SITES: ReadonlyArray<readonly [string, readonly string[], string]> = [
+    [
+      '| Plans & prices |',
+      [brl(PLAN_PRICES.promocional), brl(PROMO.thenBrl), brl(PLAN_PRICES.essencial),
+        brl(PLAN_PRICES.pro), `${PROMO.months} months`],
+      '§5, the stack table',
+    ],
+    [
+      'promo_ends_on date,',
+      [`+ ${PROMO.months} months`, `${PROMO.thenBrl}.00`],
+      "§6.3's subscriptions DDL comment",
+    ],
+    [
+      'Creates Asaas customer and subscription',
+      [brl(PLAN_PRICES.promocional), brl(PLAN_PRICES.essencial), brl(PLAN_PRICES.pro)],
+      '§8, the row that specifies what to charge',
+    ],
+    [
+      '| Feature | Visitor',
+      [brl(PLAN_PRICES.essencial), brl(PLAN_PRICES.pro)],
+      "§10's entitlement table header",
+    ],
+    [
+      '**Promocional price change:**',
+      [`${PLAN_PRICES.promocional}.00`, `${PROMO.thenBrl}.00`],
+      '§10, the job that moves the value',
+    ],
+    [
+      'Asaas subscriptions in production',
+      [brl(PLAN_PRICES.promocional), brl(PROMO.thenBrl), brl(PLAN_PRICES.essencial),
+        brl(PLAN_PRICES.pro), `${PROMO.months} months`],
+      '§16, the phase plan',
+    ],
+  ]
+
+  it.each(SPEC_SITES)('the spec quotes the ladder correctly at %s (%s)', (anchor, values) => {
+    const lines = read(SPEC).split('\n')
+    const matches = lines.filter((line) => line.includes(anchor))
+    // A sweep that matches nothing passes for free. This is the half that
+    // turns a reworded or deleted spec line into a failure.
+    expect(matches, `no line in ${SPEC} contains ${JSON.stringify(anchor)}`).toHaveLength(1)
+    const missing = values.filter((value) => !matches[0].includes(value))
+    expect(missing, `that line is missing: ${missing.join(', ')}`).toEqual([])
+  })
+
+  /**
+   * **And the old values are gone.** The direction {@link REQUIRED} cannot
+   * check: a file may carry the new price *and* the old one and satisfy every
+   * presence assertion. `R$ 57` is deliberately not forbidden — it is the
+   * current promotional price — which is exactly why a line still reading
+   * *"Essencial R$ 57"* is invisible to everything else here.
+   *
+   * Scoped to the files whose job is to state the current ladder. It does not
+   * cover `docs/DEVELOPMENT_PLAN.md` (a log of decisions, which records old
+   * prices on purpose), `docs/STATUS.md`, `db/migrations/` (applied history) or
+   * source comments explaining a past defect.
+   */
+  it('leaves no superseded price in the files that state the ladder', () => {
+    const SUPERSEDED = ['R$ 26', 'R$ 98', 'seis meses']
+    const offences: string[] = []
+    for (const file of [SPEC, COPY, TERMS, FAQ, ...TEMPLATES]) {
+      const text = read(file)
+      for (const stale of SUPERSEDED) {
+        if (text.includes(stale)) offences.push(`${file} still says ${stale}`)
+      }
+    }
+    expect(
+      offences,
+      'a price this product no longer charges is still written down where it ' +
+        'states what it charges',
+    ).toEqual([])
+  })
+
   it('keeps the refund arithmetic in the prose honest', () => {
     /**
      * **The rule Sci flagged: a clause with no number in it is invisible to a
@@ -727,8 +819,13 @@ describe('the product facts, against every file that quotes them', () => {
       // must trigger on, and a quote followed immediately by `docs/` is how
       // it finds one — so a message that happened to wrap there invented a
       // dependency on `docs/product.json through lib/product.ts, so one edit…`
-      // and failed that guard. Its own docstring records the same mistake
-      // finding a wireframe that does not exist.
+      // and failed that guard.
+      //
+      // **That is card D76**, not a new finding: it names this exact shape
+      // (*"a read from a message about a read"*) after `product.db.test.ts`
+      // hit it on 2026-10-07. Until it ships, reflowing the message is the
+      // workaround, and this comment is here so the next author does not
+      // spend the same ten minutes.
       'an amount is written by hand in the billing code — read it from the ' +
         'product facts through lib/product.ts, so one edit reaches the screen, ' +
         'the terms and what Asaas is actually told to charge',

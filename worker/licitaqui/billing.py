@@ -166,7 +166,17 @@ select s.asaas_subscription_id,
        s.next_charge_on,
        u.email,
        u.name,
-       s.status
+       s.status,
+       -- What Asaas will actually take on that date, when it has already told
+       -- us. `subscriptions.amount` is what we asked for at checkout and goes
+       -- stale the moment F3 changes the Asaas value or an overdue re-charge
+       -- carries interest. Spec §10: the reminder states the amount.
+       (select p.value
+          from subscription_payments p
+         where p.asaas_subscription_id = s.asaas_subscription_id
+           and p.due_on = s.next_charge_on
+         order by p.created_at desc
+         limit 1) as charge_value
   from subscriptions s
   join users u on u.id = s.user_id
  where s.user_id = %(user_id)s
@@ -292,18 +302,42 @@ def sweep(conn: psycopg.Connection, *, log: Logger | None = None) -> Sweep:
         if not claimed:
             continue
 
-        job_id = queue.enqueue(
-            conn,
-            SEND_KIND,
-            reminder_job_key(subscription, due_on),
-            priority=4,
-            payload={
-                "template": REMINDER_TEMPLATE,
-                "user_id": int(row["user_id"]),
-                "subscription": subscription,
-                "due_on": due_on,
-            },
-        )
+        # **The claim is committed before the enqueue, so a failed enqueue has
+        # to give it back.** ``ctx.conn`` is autocommit (``registry.py``), so
+        # the row above is already durable; if ``queue.enqueue`` raises, the
+        # primary key makes tomorrow's sweep skip this charge and it arrives
+        # with no warning — the exact outcome this module exists to prevent.
+        # ``RELEASE_REMINDER_SQL`` was written for this and was called from
+        # nowhere until review said so, which is the dead-constant shape
+        # CLAUDE.md names five worked examples of.
+        try:
+            job_id = queue.enqueue(
+                conn,
+                SEND_KIND,
+                reminder_job_key(subscription, due_on),
+                priority=4,
+                payload={
+                    "template": REMINDER_TEMPLATE,
+                    "user_id": int(row["user_id"]),
+                    "subscription": subscription,
+                    "due_on": due_on,
+                },
+            )
+        except Exception:
+            with conn.cursor() as cur:
+                cur.execute(
+                    RELEASE_REMINDER_SQL,
+                    {
+                        "subscription": subscription,
+                        "due_on": due_on,
+                        "kind": REMINDER_ROW_KIND,
+                    },
+                )
+            log.exception(
+                "charge_reminder could not enqueue; claim released",
+                extra={"subscription": subscription, "due_on": due_on},
+            )
+            raise
         if job_id is None:
             # The claim succeeded and the enqueue deduped, which means a live
             # job for this pair already exists. Leave the row; it is the record
@@ -328,16 +362,26 @@ def sweep(conn: psycopg.Connection, *, log: Logger | None = None) -> Sweep:
 
 
 def template_ready() -> bool:
-    """Whether the reminder template exists and can render at all.
+    """Whether the reminder template exists and can render **a whole e-mail**.
 
-    Separate from the render itself so the sweep can refuse **before** it
-    claims anything. A missing file and an unresolved ``TODO(Sci):`` are the
-    same answer here: there is no message to send.
+    Separate from the render itself so the sweep can refuse *before* it claims
+    anything. A missing file and an unresolved ``TODO(Sci):`` are the same
+    answer here: there is no message to send.
+
+    **It also requires a subject**, which ``Template.ready_to_send`` does not —
+    that property is only ``TODO_MARKER not in body``. ``charge-reminder.md``
+    has no ``subject:``, so the day Sci writes the body and removes the marker
+    without adding one, the sweep would pass, claim a ``billing_reminders``
+    row, enqueue, and ``render_subject`` would raise: the job fails, the claim
+    survives the retry, and tomorrow's sweep looks for ``next_charge_on =
+    today + 3`` and never sees that charge again. **One cohort of reminders,
+    lost silently, on the day the copy landed.** Found by review.
     """
     try:
-        return templates.load(EMAIL_CHANNEL, REMINDER_TEMPLATE).ready_to_send
+        template = templates.load(EMAIL_CHANNEL, REMINDER_TEMPLATE)
     except templates.TemplateError:
         return False
+    return template.ready_to_send and bool(template.subject)
 
 
 # -- the message --------------------------------------------------------------
@@ -469,11 +513,22 @@ def build_context(row: dict[str, Any]) -> dict[str, Any]:
     facts, not product facts: **the date of the charge and the amount**, which
     spec §10 requires the reminder to state.
     """
-    amount = row.get("amount")
-    # `numeric(10,2)` arrives as a Decimal. Rounded to whole reais for
-    # `brl_exact`, which is the form the terms and every receipt use, and which
-    # is exact here because every plan price in `docs/product.json` is whole.
-    charged = product.brl_exact(int(round(float(amount)))) if amount is not None else ""
+    # **The amount that will be charged, exactly, and preferring the charge
+    # itself.** Spec §10 requires the reminder to state it.
+    #
+    # Two corrections from review. `subscription_payments.value` is what Asaas
+    # will take — our `subscriptions.amount` is what we asked for at checkout,
+    # and the two diverge the moment F3 changes the Asaas value, or an overdue
+    # re-charge carries interest. And the first version went through
+    # `int(round(float(amount)))`, which silently rounds a non-whole value to
+    # the nearest real: a reminder saying R$ 58,00 for a charge of R$ 57,50.
+    #
+    # `numeric(10,2)` arrives as a Decimal and formats exactly, so the format
+    # is done here rather than through `product.brl_exact`, which takes whole
+    # reais only. `test_billing.py` asserts the two agree on the whole case so
+    # they cannot drift into two spellings of one price.
+    amount = row.get("charge_value") or row.get("amount")
+    charged = f"R$ {amount:.2f}".replace(".", ",") if amount is not None else ""
     return {
         **product.template_context(),
         "nome": row.get("name") or "",

@@ -50,7 +50,8 @@ vi.mock('@/lib/asaas/client', async () => {
   }
 })
 
-const { confirmCancel, goToCheckout, PLAN_STATES } = await import('./actions')
+const { confirmCancel, goToCheckout } = await import('./actions')
+const { PLAN_STATES } = await import('./states')
 
 const SUBSCRIPTION = {
   asaasSubscriptionId: 'sub_1',
@@ -168,12 +169,21 @@ describe('goToCheckout', () => {
   })
 
   it('awaits the rate-limit decision', async () => {
-    // The parked routes read `rateLimitRequest(...)` with no `await` while the
-    // function is `async`, so `decision.ok` was `undefined` and **every**
-    // request answered 429. A promise is not `{ ok: true }`.
+    /**
+     * The parked routes read `rateLimitRequest(...)` with no `await` while the
+     * function is `async`, so `decision.ok` was `undefined`, `!decision.ok`
+     * was true, and **every** request answered 429.
+     *
+     * **The assertion is the destination, not the shape of the mock's return.**
+     * A first version only checked that the mock returned a Promise — which a
+     * `mockResolvedValue` always does, so it asserted the mock and would have
+     * passed with the `await` dropped. Review named it, and named it after the
+     * defect it did not catch. Landing on `ativo` rather than
+     * `muitas-tentativas` is what proves the decision was read.
+     */
     startCheckout.mockResolvedValue({ outcome: 'already_active' })
-    await where(goToCheckout)
-    expect(rateLimitRequest.mock.results[0]?.value).toBeInstanceOf(Promise)
+    expect(await where(goToCheckout)).toBe('/conta/plano?estado=ativo')
+    expect(rateLimitRequest).toHaveBeenCalledTimes(1)
   })
 })
 

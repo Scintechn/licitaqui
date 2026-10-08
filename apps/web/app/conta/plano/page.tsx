@@ -3,7 +3,8 @@ import { readSubscription } from '@/lib/asaas/subscription'
 import { messages } from '@/lib/messages'
 import { FOUNDERS } from '@/lib/product'
 import { readAccountData } from '../account-data'
-import { confirmCancel, goToCheckout, PLAN_STATES, type PlanState } from './actions'
+import { confirmCancel, goToCheckout } from './actions'
+import { planState } from './states'
 import { PlanView } from './plan-view'
 
 /**
@@ -22,19 +23,6 @@ export const metadata: Metadata = {
 }
 
 type Search = Promise<{ [key: string]: string | string[] | undefined }>
-
-/**
- * `?estado=` → one of the action module's states, or `null`.
- *
- * Deliberately **not** `app/conta/notice.ts`'s `noticeFrom`: that one returns
- * `AccountNotice`, a two-value union about the company form, and widening it
- * would make every screen that reads it know about billing. The states here
- * are declared beside the actions that redirect with them.
- */
-function planState(value: string | string[] | undefined): PlanState | null {
-  const one = Array.isArray(value) ? value[0] : value
-  return PLAN_STATES.includes(one as PlanState) ? (one as PlanState) : null
-}
 
 export default async function PlanPage({ searchParams }: { searchParams?: Search }) {
   const account = await readAccountData()
@@ -60,7 +48,13 @@ export default async function PlanPage({ searchParams }: { searchParams?: Search
       // condition `startCheckout` re-checks server-side; here it decides
       // whether the subscribe button is offered at all, so the action's own
       // `needs_company` branch is a guard rather than the normal path.
-      canBill={Boolean(account.cnpj) && Boolean(account.companyName || account.userName)}
+      // `.trim()` on both, matching `startCheckout`'s own guard exactly. The
+      // first version used `Boolean(...)`, which is true for a whitespace-only
+      // name, so an account with `users.name = ' '` was offered a button that
+      // bounced straight to `/conta/empresa` — the screen and the server
+      // disagreeing about the same condition, which review found.
+      canBill={Boolean(account.cnpj?.trim())
+        && Boolean((account.companyName ?? account.userName ?? '').trim())}
       state={planState(search.estado)}
       confirmingCancel={search.cancelar === '1'}
       onCheckout={goToCheckout}

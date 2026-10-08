@@ -108,19 +108,38 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const raw = await request.text()
-  // Authenticated but implausible. Nothing to retry, so 200 rather than one of
-  // Asaas's fifteen strikes.
-  if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) return ok()
+  /**
+   * **Three ways to answer 200 and do nothing, and each one now says so.**
+   *
+   * They are 200 because a retry cannot make an oversized, unparseable or
+   * unreadable body readable, and fifteen non-2xx answers pause Asaas's
+   * delivery queue. But the first version recorded *nothing* for any of them —
+   * no log, no `webhook_events` row, nothing to find. If Asaas ever changed
+   * the envelope shape, every payment would be dropped with a cheerful 200
+   * and the only symptom would be founders without plans. Review named it;
+   * B32's rule is the same one the worker's blocked sweep already follows: a
+   * run that produced no result has to say so loudly.
+   *
+   * §12: the body is never logged. Only its size, and why it was refused.
+   */
+  if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) {
+    console.error(`asaas webhook discarded: body over ${MAX_BODY_BYTES} bytes`)
+    return ok()
+  }
 
   let body: unknown
   try {
     body = JSON.parse(raw)
   } catch {
+    console.error('asaas webhook discarded: body is not JSON')
     return ok()
   }
 
   const event = readEvent(body)
-  if (!event) return ok()
+  if (!event) {
+    console.error('asaas webhook discarded: no usable id and event in the envelope')
+    return ok()
+  }
 
   try {
     const outcome = await db().transaction(async (tx) => {

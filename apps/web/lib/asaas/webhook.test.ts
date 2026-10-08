@@ -135,25 +135,39 @@ describe('effectOf', () => {
   })
 
   /**
-   * **Chargebacks revoke, which the draft got wrong.** It listed
+   * **Chargebacks revoke, which the parked draft got wrong.** It listed
    * `CHARGEBACK_REQUESTED` and `CHARGEBACK_DISPUTE` among the revoking
    * *statuses* and then listed neither among the *events* it handled — so a
    * charged-back account kept its paid plan and two constants were dead. A
    * status vocabulary and an event vocabulary are two lists, and only one of
    * them arrives in the webhook.
    */
-  it('revokes on a refund, a chargeback and a deleted charge', () => {
+  it('revokes on a full refund, a chargeback and a deleted charge', () => {
     for (const event of [
       'PAYMENT_REFUNDED',
-      'PAYMENT_PARTIALLY_REFUNDED',
       'PAYMENT_CHARGEBACK_REQUESTED',
       'PAYMENT_CHARGEBACK_DISPUTE',
-      'PAYMENT_AWAITING_CHARGEBACK_REVERSAL',
       'PAYMENT_RECEIVED_IN_CASH_UNDONE',
       'PAYMENT_DELETED',
     ]) {
       expect(effectOf(event), event).toBe('revoke')
     }
+  })
+
+  /**
+   * **And two that must not revoke, both of which did.**
+   *
+   * `PAYMENT_PARTIALLY_REFUNDED` was in the revoking set and the revoke path
+   * is unconditional, so a founder refunded the R$ 1,92 acquirer fee
+   * `docs/product.json` describes would have lost the whole month.
+   * `PAYMENT_AWAITING_CHARGEBACK_REVERSAL` is the news that the money is
+   * coming **back to us**, and taking access away on it is backwards. Review
+   * found both; the arithmetic that handles a partial refund properly, and the
+   * re-grant after a completed reversal, are card **F13**.
+   */
+  it('records a partial refund and a chargeback reversal rather than revoking', () => {
+    expect(effectOf('PAYMENT_PARTIALLY_REFUNDED')).toBe('record')
+    expect(effectOf('PAYMENT_AWAITING_CHARGEBACK_REVERSAL')).toBe('record')
   })
 
   it('records an overdue charge without touching access', () => {
