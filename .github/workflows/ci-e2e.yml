@@ -17,8 +17,11 @@
 # goes red because PNCP has weather is a gate everybody learns to ignore.
 #
 # The `accounts` project is deliberately **not** here. It needs a published
-# deployment, a session cookie for a test account and, for Seu Jorge, a real
-# inbox. Those are run by hand against a deployment — see the doc comments in
+# deployment, a session cookie for a test account, that account's own e-mail
+# address for D22's identity assertion (`E2E_SESSION_EMAIL` — without it that
+# one test skips while the rest of the file runs, so a green `accounts` run is
+# not evidence it was exercised) and, for Seu Jorge, a real inbox. Those are
+# run by hand against a deployment — see the doc comments in
 # `apps/web/e2e/accounts/`.
 #
 # ## Advisory until it has a week of green
