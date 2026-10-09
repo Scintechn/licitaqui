@@ -24,8 +24,9 @@ fallback state is carried by the columns that already exist:
   collide with a Receita status (``ATIVA``, ``SUSPENSA``, ``INAPTA``,
   ``BAIXADA``, ``NULA``): :data:`STATUS_NOT_FOUND` when the CNPJ does not exist
   (a typo — the user should fix the number, not invent a CNAE) and
-  :data:`STATUS_FAILED` when BrasilAPI was unreachable, slow, throttled or
-  behind an open circuit.
+  :data:`STATUS_FAILED` when **both** sources were unreachable, slow, throttled
+  or behind an open circuit: BrasilAPI first, then CNPJá's open endpoint
+  (:mod:`licitaqui.cnpja`), asked only when BrasilAPI could not answer.
 
 Two consequences worth stating, because they are easy to get wrong:
 
@@ -58,6 +59,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from logging import Logger
@@ -65,9 +67,10 @@ from typing import Any
 
 import psycopg
 
-from . import brasilapi, cnae, queue
+from . import brasilapi, cnae, cnpja, queue
 from .brasilapi import BrasilApiError, CompanyRecord
 from .breaker import CircuitOpen, get_breaker
+from .cnpja import CnpjaError
 from .observability import get_logger
 from .registry import REGISTRY, JobContext
 
@@ -142,6 +145,8 @@ class LookupResult:
     status: str
     reason: str | None = None
     called_api: bool = False
+    #: Which source answered, on a ``resolved`` result: ``brasilapi`` or ``cnpja``.
+    source: str | None = None
 
     @property
     def manual_cnae(self) -> bool:
@@ -184,7 +189,7 @@ def lookup(
     force: bool = False,
     log: Logger | None = None,
 ) -> LookupResult:
-    """Resolve one CNPJ against the cache, then BrasilAPI.
+    """Resolve one CNPJ against the cache, then BrasilAPI, then CNPJá.
 
     Never raises for a lookup that merely failed; see the module docstring.
     """
@@ -208,30 +213,35 @@ def lookup(
         return _finish(log, ref, result, None)
 
     started = time.monotonic()
-    outcome: CompanyRecord | BrasilApiError
-    try:
-        with get_breaker(brasilapi.BREAKER_NAME).guard():
-            try:
-                outcome = brasilapi.lookup(normalised)
-            except BrasilApiError as exc:
-                if not exc.not_found:
-                    raise
-                # A 404 is the endpoint working correctly — this CNPJ does not
-                # exist. Letting it out of the guard would open the circuit for
-                # everyone after two typos, so it is handled as a result.
-                outcome = exc
-    except CircuitOpen:
-        # Two consecutive failures already opened the circuit (§7.2). Do not
-        # spend a timeout budget proving it again; go straight to the form.
-        result = _fallback(conn, normalised, STATUS_FAILED, "circuit_open", called_api=False)
-        return _finish(log, ref, result, started)
-    except BrasilApiError as exc:
-        result = _fallback(conn, normalised, STATUS_FAILED, exc.reason)
-        return _finish(log, ref, result, started)
-
-    if isinstance(outcome, BrasilApiError):
-        result = _fallback(conn, normalised, STATUS_NOT_FOUND, outcome.reason)
-        return _finish(log, ref, result, started)
+    outcome = _ask(brasilapi.BREAKER_NAME, brasilapi.lookup, BrasilApiError, normalised)
+    source = "brasilapi"
+    if isinstance(outcome, _Miss):
+        # BrasilAPI could not answer, so ask the second source before sending
+        # anybody to the form. See `cnpja`'s docstring for the week that made
+        # this necessary. A BrasilAPI 404 is asked about too: its upstream is
+        # built from the Receita's periodic open-data dump (inferred from
+        # minhareceita.org's own description, not measured here), so a company
+        # opened since the last one can be "not found" there and perfectly
+        # real. Most typos never get this far — the check digits above catch
+        # every single-digit slip — though two wrong digits can still pass.
+        second = _ask(cnpja.BREAKER_NAME, cnpja.lookup, CnpjaError, normalised)
+        if isinstance(second, _Miss):
+            # "Does not exist" only when **both** sources say so. One 404 next
+            # to one outage is not enough: the 404 may be a source lagging the
+            # Receita (the reason a BrasilAPI 404 is asked again at all), and
+            # telling somebody to fix a number that is right is worse than
+            # telling them to try later.
+            both = outcome.not_found and second.not_found
+            status = STATUS_NOT_FOUND if both else STATUS_FAILED
+            result = _fallback(
+                conn,
+                normalised,
+                status,
+                f"brasilapi:{outcome.reason}; cnpja:{second.reason}",
+                called_api=outcome.called_api or second.called_api,
+            )
+            return _finish(log, ref, result, started)
+        outcome, source = second, "cnpja"
 
     _upsert(conn, outcome)
     # B6: the CNAEs have just changed, so `segments` (§6.2) is now stale. It is
@@ -249,7 +259,44 @@ def lookup(
             "segment refresh failed; CNAEs were stored",
             extra={"cnpj_ref": ref, "reason": type(exc).__name__},
         )
-    return _finish(log, ref, LookupResult(status="resolved", called_api=True), started)
+    return _finish(
+        log, ref, LookupResult(status="resolved", called_api=True, source=source), started
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Miss:
+    """One source that did not produce a record, and why."""
+
+    reason: str
+    not_found: bool = False
+    called_api: bool = True
+
+
+def _ask(
+    breaker_name: str,
+    fetch: Callable[[str], CompanyRecord],
+    error: type[BrasilApiError] | type[CnpjaError],
+    cnpj: str,
+) -> CompanyRecord | _Miss:
+    """One source under its own breaker. Never raises for a lookup that failed."""
+    try:
+        with get_breaker(breaker_name).guard():
+            try:
+                return fetch(cnpj)
+            except error as exc:
+                if not exc.not_found:
+                    raise
+                # A 404 is the endpoint working correctly — this CNPJ is not in
+                # it. Letting it out of the guard would open the circuit for
+                # everyone after two unknown CNPJs, so it is handled as a result.
+                return _Miss(exc.reason, not_found=True)
+    except CircuitOpen:
+        # Two consecutive failures already opened this circuit (§7.2). Do not
+        # spend a timeout budget proving it again.
+        return _Miss("circuit_open", called_api=False)
+    except error as exc:
+        return _Miss(exc.reason)
 
 
 def _fallback(
@@ -313,6 +360,8 @@ def _write_fallback(conn: psycopg.Connection, cnpj: str, status: str) -> bool:
 
 def _finish(log: Logger, ref: str, result: LookupResult, started: float | None) -> LookupResult:
     extra: dict[str, Any] = {"cnpj_ref": ref, "status": result.status}
+    if result.source:
+        extra["source"] = result.source
     if result.reason:
         extra["reason"] = result.reason
     if started is not None:

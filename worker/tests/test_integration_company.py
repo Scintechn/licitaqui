@@ -1,9 +1,12 @@
 """``company_lookup`` against the real `companies` table.
 
 These run on ``TEST_DATABASE_URL_B5`` — B5's own already-migrated database — and
-skip without it. BrasilAPI is **never** called: every test substitutes
-``brasilapi.lookup``, so the suite stays offline and deterministic. The live
-check is ``worker/scripts/check_company_lookup_live.py``.
+skip without it. Neither source is **ever** called: every test substitutes
+``brasilapi.lookup``, and an autouse fixture substitutes ``cnpja.lookup`` with
+one that is down unless a test says otherwise — so every test written before
+the fallback existed still describes "BrasilAPI failed and so did the second
+source", and nothing here can reach the network by forgetting to patch it. The
+live check is ``worker/scripts/check_company_lookup_live.py``.
 
 The CNPJs below are synthetic (a 999 root nobody is registered under) with valid
 check digits, and only those exact rows are deleted — the database is shared
@@ -20,8 +23,9 @@ from pathlib import Path
 import psycopg
 import pytest
 
-from licitaqui import breaker, cnae, company, db, queue
+from licitaqui import breaker, cnae, cnpja, company, db, queue
 from licitaqui.brasilapi import BrasilApiError
+from licitaqui.cnpja import CnpjaError
 from licitaqui.company import STATUS_FAILED, STATUS_NOT_FOUND
 from licitaqui.consumer import Consumer
 from licitaqui.registry import REGISTRY
@@ -140,6 +144,19 @@ def api(monkeypatch):
         monkeypatch.setattr(company.brasilapi, "lookup", fake)
         return fake
 
+    return install
+
+
+@pytest.fixture(autouse=True)
+def second(monkeypatch):
+    """``cnpja.lookup``, down by default. Call it to give it other outcomes."""
+
+    def install(*outcomes):
+        fake = FakeApi(*outcomes)
+        monkeypatch.setattr(company.cnpja, "lookup", fake)
+        return fake
+
+    install(CnpjaError("unexpected_status", status=500))
     return install
 
 
@@ -272,8 +289,9 @@ def test_a_failed_lookup_does_not_fail_the_job(b5_conn, api):
     company.lookup(b5_conn, FALLBACK)  # must not raise
 
 
-def test_an_unknown_cnpj_says_so_rather_than_blaming_brasilapi(b5_conn, api):
+def test_an_unknown_cnpj_says_so_rather_than_blaming_brasilapi(b5_conn, api, second):
     api(BrasilApiError("not_found", status=404, not_found=True))
+    second(CnpjaError("not_found", status=404, not_found=True))
 
     assert company.lookup(b5_conn, THIRD).manual_cnae
     assert row(b5_conn, THIRD)["registration_status"] == STATUS_NOT_FOUND
@@ -329,6 +347,125 @@ def test_a_fallback_row_is_replaced_by_real_data_when_the_api_recovers(b5_conn, 
     got = row(b5_conn, FALLBACK)
     assert got["main_cnae"] == "4649408"
     assert got["registration_status"] == "ATIVA"
+
+
+# -- the second source ---------------------------------------------------
+
+
+def test_when_brasilapi_fails_the_second_source_resolves_the_company(b5_conn, api, second):
+    """2026-10-09: BrasilAPI 500 for every uncached CNPJ, CNPJá answering in 0.4 s."""
+    api(BrasilApiError("unexpected_status", status=500))
+    fake = second(record("micro_mei", FALLBACK))
+
+    result = company.lookup(b5_conn, FALLBACK)
+
+    assert fake.calls == 1
+    assert result.status == "resolved"
+    assert result.source == "cnpja"
+    got = row(b5_conn, FALLBACK)
+    assert got["main_cnae"] == "8219999", "the user must not land on the manual form"
+    assert got["registration_status"] == "ATIVA"
+
+
+def test_a_resolved_fallback_lasts_thirty_days_like_any_other_company(b5_conn, api, second):
+    brasil = api(BrasilApiError("timeout"))
+    second(record("micro_mei", FALLBACK))
+    company.lookup(b5_conn, FALLBACK)
+
+    age(b5_conn, FALLBACK, company.FALLBACK_TTL + timedelta(hours=1))
+    assert company.lookup(b5_conn, FALLBACK).status == "cached"
+    assert brasil.calls == 1
+
+
+def test_the_second_source_is_not_asked_when_brasilapi_answers(b5_conn, api, second):
+    api(record("micro_mei"))
+    fake = second(record("micro_mei"))
+
+    assert company.lookup(b5_conn, RESOLVED).source == "brasilapi"
+    assert fake.calls == 0
+
+
+def test_a_brasilapi_404_is_asked_again_because_a_new_company_may_be_missing(b5_conn, api, second):
+    api(BrasilApiError("not_found", status=404, not_found=True))
+    second(record("micro_mei", THIRD))
+
+    result = company.lookup(b5_conn, THIRD)
+
+    assert result.status == "resolved"
+    assert row(b5_conn, THIRD)["main_cnae"] == "8219999"
+
+
+@pytest.mark.parametrize(
+    "first, other",
+    [
+        (
+            BrasilApiError("unexpected_status", status=500),
+            CnpjaError("not_found", status=404, not_found=True),
+        ),
+        (BrasilApiError("not_found", status=404, not_found=True), CnpjaError("timeout")),
+    ],
+    ids=["brasilapi-down-cnpja-404", "brasilapi-404-cnpja-down"],
+)
+def test_one_404_beside_one_outage_is_not_called_a_typo(b5_conn, api, second, first, other):
+    """A lagging source's 404 must not tell somebody to fix a number that is right."""
+    api(first)
+    second(other)
+
+    assert company.lookup(b5_conn, THIRD).manual_cnae
+    assert row(b5_conn, THIRD)["registration_status"] == STATUS_FAILED
+
+
+def test_when_both_fail_the_reason_names_both(b5_conn, api):
+    api(BrasilApiError("timeout"))
+
+    result = company.lookup(b5_conn, FALLBACK)
+
+    assert result.manual_cnae
+    assert result.reason == "brasilapi:timeout; cnpja:unexpected_status"
+    assert row(b5_conn, FALLBACK)["registration_status"] == STATUS_FAILED
+
+
+def test_an_open_brasilapi_circuit_still_asks_the_second_source(b5_conn, api, second):
+    """The outage that opens BrasilAPI's breaker is exactly when the fallback matters."""
+    brasil = api(BrasilApiError("timeout"))
+    company.lookup(b5_conn, FOURTH)
+    company.lookup(b5_conn, FIFTH)
+    assert get_state() == "open"
+    # The default second source was down for those two lookups too, so its own
+    # breaker opened alongside. This test is about one source being down while
+    # the other is not: close the second one, as a recovered probe would.
+    breaker.get_breaker(cnpja.BREAKER_NAME).record_success()
+    fake = second(record("micro_mei", SIXTH))
+
+    result = company.lookup(b5_conn, SIXTH)
+
+    assert brasil.calls == 2, "the open circuit spent no request"
+    assert fake.calls == 1
+    assert result.status == "resolved"
+
+
+def test_both_circuits_open_spends_no_request_at_all(b5_conn, api):
+    brasil = api(BrasilApiError("timeout"))
+    company.lookup(b5_conn, FOURTH)
+    company.lookup(b5_conn, FIFTH)
+
+    result = company.lookup(b5_conn, SIXTH)
+
+    assert brasil.calls == 2
+    assert result.called_api is False
+    assert result.reason == "brasilapi:circuit_open; cnpja:circuit_open"
+
+
+def test_a_typo_reaches_neither_source(b5_conn, api, second):
+    brasil = api(record("micro_mei"))
+    fake = second(record("micro_mei"))
+    typo = "99900001000151"
+
+    try:
+        assert company.lookup(b5_conn, typo).manual_cnae
+        assert (brasil.calls, fake.calls) == (0, 0)
+    finally:
+        b5_conn.execute("delete from companies where cnpj = %s", (typo,))
 
 
 # -- the circuit breaker --------------------------------------------------
