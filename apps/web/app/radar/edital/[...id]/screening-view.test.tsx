@@ -482,10 +482,23 @@ describe('an edital the triagem could not read keeps the rest of the screen', ()
     }
   })
 
-  it('a link to Exigências lands on Resumo, since that tab is not drawn', () => {
+  it('a tab still on Exigências shows Resumo, and the tabs say so too', () => {
+    // `tab` is state that can outlive a change of edital; Exigências is not
+    // drawn here, so the selected tab and the panel must both be Resumo.
     const html = render({ status: { kind: 'noText' }, model: null, tab: 'requirements' })
     expect(html).toContain('id="screening-panel-summary"')
+    expect(html).toMatch(/id="screening-tab-summary"[^>]*aria-selected="true"/)
     expect(html).toContain(page.noTextTitle)
+  })
+
+  it('offers the way back once — in the bar, not again in the card', () => {
+    const html = render({ status: { kind: 'noText' }, model: null })
+    expect(html).not.toContain(page.openTender)
+    expect(html.slice(html.indexOf('sticky bottom-0'))).toContain(messages.common.tender)
+    // Outside the frame the card keeps it, as before.
+    expect(render({ status: { kind: 'analyzing' }, model: null, onRetry: undefined })).not.toContain(
+      'sticky bottom-0',
+    )
   })
 
   it('offers the price in the action bar too', () => {

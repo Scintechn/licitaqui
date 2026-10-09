@@ -366,6 +366,7 @@ function Pending({
   search,
   quota,
   onRetry,
+  inShell = false,
 }: {
   status: Exclude<ScreeningStatus, { kind: 'ready' }>
   tenderId: string
@@ -373,6 +374,8 @@ function Pending({
   search: RadarSearch
   quota: QuotaView | null
   onRetry?: () => void
+  /** Drawn inside the unreadable frame, whose action bar already goes back to the edital. */
+  inShell?: boolean
 }) {
   const back = (
     <Button variant="link" href={backHref} className="px-0" iconEnd="arrowRight">
@@ -402,7 +405,14 @@ function Pending({
         />
       )
     case 'noText':
-      return <StateCard kind="empty" title={page.noTextTitle} description={page.noTextBody} action={back} />
+      return (
+        <StateCard
+          kind="empty"
+          title={page.noTextTitle}
+          description={page.noTextBody}
+          action={inShell ? undefined : back}
+        />
+      )
     case 'failed':
       return (
         <StateCard kind="empty" title={page.failedTitle} description={page.failedBody} action={retry} />
@@ -493,6 +503,14 @@ export function ScreeningView({
    */
   const unreadable = !ready && (pending.kind === 'noText' || pending.kind === 'failed')
   const shell = ready || unreadable
+  /**
+   * The tab actually drawn. Exigências is not offered here, so a `tab` still set
+   * to it — state carried over from another triagem, since `tab` is a
+   * `useState` that outlives a change of edital — shows Resumo, and the tabs and
+   * the panel are both told so; otherwise no tab is `aria-selected` and the
+   * panel is labelled by a tab marked unselected (found in review).
+   */
+  const shown: ScreeningTab = unreadable && tab === 'requirements' ? 'summary' : tab
   const filesPanel = (
     <TabPanel idPrefix={TAB_PREFIX} id="files" className="flex flex-col gap-3">
       {/* The same component the Edital screen draws, so the two
@@ -552,7 +570,7 @@ export function ScreeningView({
 
         {shell ? (
           <ScreeningTabs
-            active={tab}
+            active={shown}
             onSelect={onSelectTab}
             signedIn={signedIn}
             withRequirements={ready}
@@ -608,13 +626,12 @@ export function ScreeningView({
               <p className="m-0">{disclaimer}</p>
             </div>
           </>
-        ) : unreadable && tab === 'files' ? (
+        ) : unreadable && shown === 'files' ? (
           filesPanel
         ) : unreadable ? (
-          // *Resumo* — also for `tab=requirements` arriving from a link, since
-          // that tab is not drawn here.
           <TabPanel idPrefix={TAB_PREFIX} id="summary" className="flex flex-col gap-3">
             <Pending
+              inShell
               status={pending}
               tenderId={tenderId}
               backHref={backHref}
