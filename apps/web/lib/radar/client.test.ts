@@ -6,6 +6,7 @@ import {
   priceHref,
   radarHref,
   readSearch,
+  readSearchRecord,
   screeningHref,
   tenderApiPath,
   tenderHref,
@@ -17,7 +18,7 @@ import { listKey } from './list-cache'
 const TENDER_ID = '51885242000140-1-000744/2026'
 
 /** What a user who searched a CNPJ, a state and a word, on a chosen tab, has. */
-const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+const SEARCH = { cnpj: '51885242000140', states: ['SP'], q: 'papel', group: 'check' } as const
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -58,7 +59,7 @@ describe('radarHref', () => {
     expect(radarHref({ cnpj: '12345678000195', group: 'compatible' })).toBe(
       '/radar?cnpj=12345678000195&group=compatible',
     )
-    expect(radarHref({ cnpj: '1', state: 'SP', q: 'material hospitalar', group: 'check' })).toBe(
+    expect(radarHref({ cnpj: '1', states: ['SP'], q: 'material hospitalar', group: 'check' })).toBe(
       '/radar?cnpj=1&uf=SP&q=material+hospitalar&group=check',
     )
   })
@@ -125,7 +126,7 @@ describe('readSearch', () => {
     })
     expect(readSearch(params)).toEqual({
       cnpj: '51885242000140',
-      state: 'SP',
+      states: ['SP'],
       q: 'papel',
       // D52's two filters travel too, and read as `null` when absent: `item`
       // and `cursor` still do not travel at all.
@@ -193,7 +194,7 @@ describe('no screen builds a Radar URL by hand', () => {
 describe('tendersUrl', () => {
   it('always names the group, and only the filters that are set', () => {
     expect(tendersUrl({ group: 'compatible' })).toBe('/api/radar/tenders?group=compatible')
-    expect(tendersUrl({ group: 'keyword', cnpj: '1', state: 'SP', q: 'papel', limit: 20 })).toBe(
+    expect(tendersUrl({ group: 'keyword', cnpj: '1', states: ['SP'], q: 'papel', limit: 20 })).toBe(
       '/api/radar/tenders?group=keyword&cnpj=1&state=SP&q=papel&limit=20',
     )
   })
@@ -286,15 +287,46 @@ describe('the sort in the URL', () => {
     // The whole hop, as `radar-screen.tsx` makes it: address → search → request.
     const search = readSearch(new URLSearchParams('cnpj=1&uf=SP&q=papel&sort=valueAsc'))
     expect(
-      tendersUrl({ group: 'keyword', cnpj: search.cnpj, state: search.state, q: search.q, sort: search.sort }),
+      tendersUrl({ group: 'keyword', cnpj: search.cnpj, states: search.states, q: search.q, sort: search.sort }),
     ).toBe('/api/radar/tenders?group=keyword&cnpj=1&state=SP&q=papel&sort=valueAsc')
   })
 
   /** `listKey` keys the Back button, so the order has to be part of it. */
   it('keys a differently sorted list as a different list', () => {
-    const base = { scope: 'scope-one', cnpj: '1', state: null, q: null, group: 'compatible' } as const
+    const base = { scope: 'scope-one', cnpj: '1', states: [], q: null, group: 'compatible' } as const
     expect(listKey({ ...base, sort: 'deadline' })).toBe(listKey(base))
     expect(listKey({ ...base, sort: 'valueDesc' })).not.toBe(listKey(base))
     expect(listKey({ ...base, sort: 'valueDesc' })).not.toBe(listKey({ ...base, sort: 'valueAsc' }))
+  })
+})
+
+describe('more than one UF (2026-10-09)', () => {
+  it('writes one `uf` per state on the Radar and one `state` per state on the route', () => {
+    expect(radarHref({ cnpj: '1', states: ['SP', 'RJ'] })).toBe('/radar?cnpj=1&uf=RJ&uf=SP')
+    expect(tendersUrl({ group: 'compatible', states: ['SP', 'RJ'] })).toBe(
+      '/api/radar/tenders?group=compatible&state=RJ&state=SP',
+    )
+    // None is the whole country, and leaves no parameter behind.
+    expect(radarHref({ cnpj: '1', states: [] })).toBe('/radar?cnpj=1')
+  })
+
+  it('reads every `uf` back, so a link round-trips', () => {
+    const href = radarHref({ cnpj: '1', states: ['MG', 'SP', 'RJ'], group: 'check' })
+    const read = readSearch(new URL(href, 'https://x.test').searchParams)
+    expect(read.states).toEqual(['MG', 'RJ', 'SP'])
+    expect(radarHref(read)).toBe(href)
+  })
+
+  it('a Voltar out of an edital keeps every UF', () => {
+    const back = tenderHref('1-1-000001/2026', { cnpj: '1', states: ['SP', 'RJ'] })
+    expect(new URL(back, 'https://x.test').searchParams.getAll('uf')).toEqual(['RJ', 'SP'])
+  })
+
+  it('a server page reads every UF of its `searchParams` record, not the first', () => {
+    // Next hands a repeated key to a page as an array.
+    const search = readSearchRecord({ cnpj: '1', uf: ['SP', 'RJ'], q: 'papel' })
+    expect(search.states).toEqual(['RJ', 'SP'])
+    expect(search.q).toBe('papel')
+    expect(readSearchRecord({ uf: 'SP' }).states).toEqual(['SP'])
   })
 })

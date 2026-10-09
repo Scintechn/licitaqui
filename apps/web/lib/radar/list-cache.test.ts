@@ -115,12 +115,12 @@ function snapshot(over: Partial<ListSnapshot> = {}): ListSnapshot {
  * tests in this file are about the *search* half of the key. What the scope
  * itself does to the key is `list-cache-scope.test.ts`.
  */
-const QUERY = { scope: 'scope-one', cnpj: '36955612000185', state: null, q: null, group: null }
+const QUERY = { scope: 'scope-one', cnpj: '36955612000185', states: [], q: null, group: null }
 
 describe('listKey', () => {
   it('separates every query that returns a different list', () => {
     const base = listKey(QUERY)
-    expect(listKey({ ...QUERY, state: 'SP' })).not.toBe(base)
+    expect(listKey({ ...QUERY, states: ['SP'] })).not.toBe(base)
     expect(listKey({ ...QUERY, q: 'papel' })).not.toBe(base)
     expect(listKey({ ...QUERY, group: 'check' })).not.toBe(base)
     expect(listKey(QUERY)).toBe(base)
@@ -132,9 +132,22 @@ describe('listKey', () => {
 
   it('cannot be confused by a keyword that looks like the separator', () => {
     // A join on a printable character would let `q` forge a different query.
-    expect(listKey({ ...QUERY, q: 'a', state: 'b' })).not.toBe(
-      listKey({ ...QUERY, q: 'a\u0000b', state: null }),
+    expect(listKey({ ...QUERY, q: 'a', states: ['b'] })).not.toBe(
+      listKey({ ...QUERY, q: 'a\u0000b', states: [] }),
     )
+  })
+})
+
+describe('listKey with more than one UF', () => {
+  it('is one key however the UFs were ticked, and a different key per set', () => {
+    // `states` reaches `listKey` canonical (`canonicalUfs`), so the order is
+    // already settled; the key must still separate every set.
+    expect(listKey({ ...QUERY, states: ['RJ', 'SP'] })).not.toBe(listKey({ ...QUERY, states: ['SP'] }))
+    expect(listKey({ ...QUERY, states: ['RJ', 'SP'] })).not.toBe(listKey({ ...QUERY, states: [] }))
+  })
+
+  it('one UF keys exactly as the single-UF key did, so older snapshots are still found', () => {
+    expect(listKey({ ...QUERY, states: ['SP'] }).split('\u0000')[2]).toBe('SP')
   })
 })
 
@@ -402,7 +415,7 @@ describe('the server guard', () => {
  * for the same list.
  */
 describe('restoreList, and the key the way back actually uses', () => {
-  const unchosen = { scope: 'scope-one', cnpj: '36955612000185', state: null, q: null, group: null } as const
+  const unchosen = { scope: 'scope-one', cnpj: '36955612000185', states: [], q: null, group: null } as const
 
   it('restores a list saved unchosen when the way back names its group', () => {
     saveList(listKey(unchosen), snapshot({ group: 'compatible' }))

@@ -870,6 +870,16 @@
       "SE": "Sergipe",
       "TO": "Tocantins"
     },
+    "ufRegions": {
+      "N": "Norte",
+      "NE": "Nordeste",
+      "CO": "Centro-Oeste",
+      "SE": "Sudeste",
+      "S": "Sul"
+    },
+    "ufOne": "{nome} ({uf})",
+    "ufFew": "{inicio} e {ultimo}",
+    "ufMany": "{lista} e mais {n}",
     "list": {
       "title": "Radar",
       "companyFallback": "Sua empresa",

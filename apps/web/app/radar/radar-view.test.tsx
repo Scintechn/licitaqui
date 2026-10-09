@@ -63,7 +63,7 @@ const VISITOR: VisitorView = {
 
 function render(overrides: Partial<RadarViewProps> = {}): string {
   const props: RadarViewProps = {
-    query: { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible' },
+    query: { cnpj: '51885242000140', states: ['SP'], q: null, group: 'compatible' },
     status: { kind: 'ready' },
     grouping: { company: COMPANY, cnaeCount: 3 },
     visitor: null,
@@ -121,7 +121,7 @@ describe('the Radar frame', () => {
   })
 
   it('draws the three group tabs with their counts and marks the current one', () => {
-    const out = render({ query: { cnpj: '1', state: null, q: null, group: 'check' } })
+    const out = render({ query: { cnpj: '1', states: [], q: null, group: 'check' } })
     for (const label of Object.values(copy.list.groups)) expect(out).toContain(label)
     expect(out).toContain('>12<')
     expect(out).toContain('>7<')
@@ -131,13 +131,13 @@ describe('the Radar frame', () => {
 
   it('renders every filter control with a label, at 16px', () => {
     const out = render()
-    for (const id of ['radar-uf', 'radar-q']) {
-      expect(out).toContain(`for="${id}"`)
-      expect(out).toContain(`id="${id}"`)
-    }
+    expect(out).toContain('for="radar-q"')
+    expect(out).toContain('id="radar-q"')
+    // The UF picker is a `<summary>`, named by its label and its current value.
+    expect(out).toMatch(/<summary[^>]*id="radar-uf"[^>]*aria-labelledby="radar-uf-label radar-uf-value"/)
     // `text-base` is 16px. Below it, iOS Safari zooms the viewport on focus.
     expect(out.match(/<input[^>]*id="radar-q"[^>]*text-base/)).not.toBeNull()
-    expect(out.match(/<select[^>]*id="radar-uf"[^>]*text-base/)).not.toBeNull()
+    expect(out.match(/<summary[^>]*id="radar-uf"[^>]*text-base/)).not.toBeNull()
   })
 
   it('says how old the list is, and that it is being refreshed when stale', () => {
@@ -176,7 +176,7 @@ describe('a tender card', () => {
     // Linking to the bare `/radar/edital/…` is why the back link went to a
     // bare `/radar`: no CNPJ, no keyword, no tab — the search, lost.
     const out = render({
-      query: { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' },
+      query: { cnpj: '51885242000140', states: ['SP'], q: 'papel', group: 'check' },
       tenders: [{ ...TENDER, group: 'check' }],
     })
     expect(out).toContain(
@@ -225,12 +225,12 @@ describe('the states', () => {
 
   it('names the empty group it is talking about', () => {
     const check = render({
-      query: { cnpj: '1', state: null, q: null, group: 'check' },
+      query: { cnpj: '1', states: [], q: null, group: 'check' },
       tenders: [],
     })
     expect(check).toContain(copy.states.emptyCheckTitle)
     const keyword = render({
-      query: { cnpj: '1', state: null, q: 'papel', group: 'keyword' },
+      query: { cnpj: '1', states: [], q: 'papel', group: 'keyword' },
       tenders: [],
     })
     expect(keyword).toContain(copy.states.emptyKeywordTitle)
@@ -251,7 +251,7 @@ describe('the states', () => {
 describe('a CNPJ neither source could read', () => {
   const unread: RadarStatus = { kind: 'manualCnae', cnpjNotFound: false }
   const missing: RadarStatus = { kind: 'manualCnae', cnpjNotFound: true }
-  const keyword = { cnpj: '51885242000140', state: 'SP', q: 'baterias', group: 'keyword' as const }
+  const keyword = { cnpj: '51885242000140', states: ['SP'], q: 'baterias', group: 'keyword' as const }
 
   it('with no keyword, asks for one and lists nothing under the card', () => {
     const out = render({ status: unread, tenders: [] })
@@ -288,7 +288,7 @@ describe('a CNPJ neither source could read', () => {
   })
 
   it('opens the search when it asks for a keyword, and only then', () => {
-    const query = { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible' as const }
+    const query = { cnpj: '51885242000140', states: ['SP'], q: null, group: 'compatible' as const }
     expect(asksForKeyword(unread, query)).toBe(true)
     expect(asksForKeyword(unread, { ...query, q: 'baterias' })).toBe(false)
     expect(asksForKeyword(missing, query)).toBe(false)
@@ -434,7 +434,7 @@ describe('the next page', () => {
   })
 })
 
-const BASE_QUERY = { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible' } as const
+const BASE_QUERY = { cnpj: '51885242000140', states: ['SP'], q: null, group: 'compatible' } as const
 
 describe('the group hint, inside the Radar', () => {
   it('says what the selected tab means, under the tabs', () => {
@@ -549,10 +549,22 @@ describe('an empty tab, when the results are on another one', () => {
   }
 
   it('opens the search when there is no CNPJ and no keyword', () => {
-    const out = render({ query: { cnpj: null, state: null, q: null, group: 'compatible' } })
+    const out = render({ query: { cnpj: null, states: [], q: null, group: 'compatible' } })
     expect(detailsTag(out)).toContain('open')
     // …and the fields really are inside the part that is now open.
-    const body = out.slice(out.indexOf('<details'), out.indexOf('</details>'))
+    // To the **matching** close: the UF picker is a `<details>` nested inside,
+    // and the first `</details>` is its own.
+    const start = out.indexOf('<details')
+    let depth = 0
+    let end = start
+    for (const tag of out.slice(start).matchAll(/<details\b|<\/details>/g)) {
+      depth += tag[0] === '<details' ? 1 : -1
+      if (depth === 0) {
+        end = start + (tag.index ?? 0)
+        break
+      }
+    }
+    const body = out.slice(start, end)
     expect(body).toContain('name="cnpj"')
     expect(body).toContain('name="q"')
   })
@@ -563,7 +575,7 @@ describe('an empty tab, when the results are on another one', () => {
     expect(detailsTag(render())).not.toContain('open')
     // A keyword alone is also something to search by.
     expect(
-      detailsTag(render({ query: { cnpj: null, state: null, q: 'papel', group: 'keyword' } })),
+      detailsTag(render({ query: { cnpj: null, states: [], q: 'papel', group: 'keyword' } })),
     ).not.toContain('open')
   })
 

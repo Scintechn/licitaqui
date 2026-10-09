@@ -37,7 +37,7 @@ const TENDER: TenderCard = {
 }
 
 /** The card's whole job as a link: carry the search that found the tender. */
-const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+const SEARCH = { cnpj: '51885242000140', states: ['SP'], q: 'papel', group: 'check' } as const
 
 function render(over: Partial<TenderCard> = {}): string {
   return renderToStaticMarkup(

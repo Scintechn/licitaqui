@@ -71,7 +71,7 @@ const CNAES_ON_RECORD = 3
 
 function render(overrides: Partial<RadarViewProps> = {}): string {
   const props: RadarViewProps = {
-    query: { cnpj: null, state: null, q: 'canvas', group: 'compatible' },
+    query: { cnpj: null, states: [], q: 'canvas', group: 'compatible' },
     status: { kind: 'ready' },
     grouping: null,
     visitor: null,
@@ -176,7 +176,7 @@ describe('the Radar header and the tab help (D19)', () => {
     for (const group of TENDER_GROUPS) {
       const out = render({
         grouping: null,
-        query: { cnpj: null, state: null, q: 'canvas', group },
+        query: { cnpj: null, states: [], q: 'canvas', group },
       })
       expect(header(out)).toContain(list.noCompany)
       // "Sem empresa informada" is itself the zero claim — see `headerSays`.
@@ -186,7 +186,7 @@ describe('the Radar header and the tab help (D19)', () => {
     // The keyword tab's own sentence is about the search term, not about a
     // CNAE, so it survives intact — a company-less visitor's whole list is
     // `keyword` by construction (`labels([])` is `array[]::text[]`).
-    const keyword = render({ query: { cnpj: null, state: null, q: 'canvas', group: 'keyword' } })
+    const keyword = render({ query: { cnpj: null, states: [], q: 'canvas', group: 'keyword' } })
     expect(keyword).toContain(list.groupHint.keyword)
   })
 
@@ -237,7 +237,7 @@ describe('the Radar header and the tab help (D19)', () => {
   it('does not claim a match for CNAEs that reach no segment', () => {
     const out = render({
       grouping: { company: { ...COMPANY, segments: [] }, cnaeCount: CNAES_ON_RECORD },
-      query: { cnpj: COMPANY.cnpj, state: null, q: null, group: 'compatible' },
+      query: { cnpj: COMPANY.cnpj, states: [], q: null, group: 'compatible' },
     })
     // The header is unchanged: the CNAEs were read and there are three of them.
     expect(headerSays(out)).toBe('some')
@@ -254,7 +254,7 @@ describe('the Radar header and the tab help (D19)', () => {
         const out = render({
           status: state.status,
           grouping: state.grouping,
-          query: { cnpj: null, state: null, q: 'canvas', group },
+          query: { cnpj: null, states: [], q: 'canvas', group },
         })
         const where = `${state.name} / ${group}`
 
