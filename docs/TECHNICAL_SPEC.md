@@ -43,7 +43,7 @@
 | Slow data | **Cache first**: users always read from the database. Every call to PNCP writes to the cache. Stale data is served immediately and refreshed in the background |
 | Collector | **Python** worker (reusing the POCs) on AWS, inside the existing Easypanel |
 | AI | OpenRouter. Screening: `qwen/qwen3.7-flash`. Deep analysis: `openai/gpt-5.6-luna`, fallback `google/gemini-3.8-flash` |
-| Plans & prices | **Básico** R$ 0 · **Promocional** R$ 26/month for the first 6 months, then R$ 57 (founders only — seat count in `docs/product.json`) · **Essencial** R$ 57 · **Pro** R$ 98 — all monthly, no lock-in |
+| Plans & prices | **Básico** R$ 0 · **Promocional** R$ 57/month for the first 3 months, then R$ 75 (founders only — seat count in `docs/product.json`) · **Essencial** R$ 75 · **Pro** R$ 129 — all monthly, no lock-in. **`docs/product.json` is the source; this row is a copy and `apps/web/lib/product.test.ts` fails when it drifts** |
 | Messaging | Telegram Bot API (alerts on Básico and Essencial). WhatsApp **always via Evolution API** (already running on Easypanel): founders messages in Phase 0, alerts on Pro only. Both connected during development |
 | Payments | Asaas (sandbox + production accounts): hosted checkout (subscription link) + webhook. **Customer invoices (NF): to be defined later with the accountant** — no invoice promise in the product for now |
 | URL | Vercel default URL (`https://<project>.vercel.app`) until a domain is registered |
@@ -334,7 +334,7 @@ create table alert_deliveries (alert_id bigint, tender_id text, sent_at timestam
 
 create table subscriptions (user_id bigint, asaas_customer_id text, asaas_subscription_id text unique,
                             plan text, amount numeric(10,2), status text, next_charge_on date,
-                            promo_ends_on date,              -- promocional: first charge + 6 months; then amount → 57.00
+                            promo_ends_on date,              -- promocional: first charge + 3 months; then amount → 75.00
                             promo_notice_sent_at timestamptz, -- email 30 days before the price change
                             ends_on date,                    -- cancelled: paid access runs to this date (terms §8)
                             refunded_at timestamptz,         -- a refund was issued; null = never
@@ -435,7 +435,7 @@ Priority 1 = a user waiting on screen (the web also calls the worker's `POST /wa
 | `GET /api/jobs/:id` or SSE `/api/jobs/:id/stream` | owner | Job state |
 | `POST /api/telegram/webhook` | Telegram | Checks `X-Telegram-Bot-Api-Secret-Token`; `/start <token>` links the chat to the user |
 | `POST /api/asaas/webhook` | Asaas | Checks header token; idempotent by event id; updates `subscriptions` and `users.plan` |
-| `POST /api/subscribe` | user | Creates Asaas customer and subscription (Promocional R$ 26 for founders with a seat, otherwise Essencial R$ 57 or Pro R$ 98) and returns the checkout link. **Creates the customer with `notificationDisabled: true`** — see the Asaas row in §9.2 |
+| ~~`POST /api/subscribe`~~ → **Server Function on `/conta/plano`** | user | Creates Asaas customer and subscription (Promocional R$ 57 for founders with a seat, otherwise Essencial R$ 75 or Pro R$ 129 — read from `docs/product.json`, never typed here) and **redirects to the checkout link**. **Creates the customer with `notificationDisabled: true`** — see the Asaas row in §9. **Changed by F2, 2026-10-08:** this was a route and is now `goToCheckout` in `apps/web/app/conta/plano/actions.ts`, for three reasons — a route needs client JavaScript to fetch, read JSON and assign `window.location`, where a Server Function `redirect()`s straight to the Asaas invoice, so *"cancela/assina em um clique"* is one click with no client bundle; every other account mutation here is already a Server Function; and a route **and** an action would be two paths to money, the second of which nobody would test. The price is still never read from the request — there is no request body |
 | `GET /api/health` | monitor | DB, age of last `sync_open_tenders`, stuck queue |
 
 **Quota checks:** always server-side, in a transaction (`usage` in the period + `plan_limits`). Visitors are identified by a signed cookie (`httpOnly`, 30 days); the 3-day rule counts from `visitors.created_at` **and** from the first search of that CNPJ (decided: per device and per CNPJ), so resetting via incognito does not reset the CNPJ.
@@ -462,7 +462,7 @@ Priority 1 = a user waiting on screen (the web also calls the worker's `POST /wa
 
 ## 10. Plans, quotas and what each screen unlocks
 
-| Feature | Visitor (3 days) | Básico R$ 0 (with account) | Essencial R$ 57 · Promocional (founders — count in `docs/product.json`) | Pro R$ 98 |
+| Feature | Visitor (3 days) | Básico R$ 0 (with account) | Essencial R$ 75 · Promocional (founders — count in `docs/product.json`) | Pro R$ 129 |
 |---|---|---|---|---|
 | Search by CNPJ or keyword | yes | yes | yes | yes |
 | AI screening | 2 total | 5/month | unlimited | unlimited |
@@ -478,7 +478,7 @@ Numbers live in `plan_limits`, not in code.
 
 **Billing messages are ours, not Asaas's:** Asaas charges per customer notification, so customer notifications are **disabled** in the account. Every billing message — the reminder before each charge, the payment-failed notice and the suspension notice — is sent by our own `charge_reminder` / billing jobs. Baseline channel is e-mail (Resend, domain verified); WhatsApp and Telegram are extra channels when the user opted in. The reminder goes **3 days before each charge**, states the date and the amount that will be charged, is idempotent per (subscription, due date), and is never sent for a cancelled subscription.
 
-**Promocional price change:** a daily job `promo_price_change` (1) emails founders whose `promo_ends_on` is 30 days away, and (2) on `promo_ends_on` updates the Asaas subscription value from R$ 26.00 to R$ 57.00 and sets `plan = essencial`. Never charge the new price without the notice having been sent.
+**Promocional price change:** a daily job `promo_price_change` (1) emails founders whose `promo_ends_on` is 30 days away, and (2) on `promo_ends_on` updates the Asaas subscription value from R$ 57.00 to R$ 75.00 and sets `plan = essencial`. Never charge the new price without the notice having been sent.
 
 ---
 
@@ -579,7 +579,7 @@ Rules from that incident:
 7. Events and gate dashboard. Privacy policy.
 
 **Phase 0 continued (S4–S7, 10-12 → 11-06)**
-Public Landing (10-13), Asaas subscriptions in production (Promocional R$ 26 for 6 months → R$ 57; Essencial R$ 57; Pro R$ 98), webhook, 1-click cancellation, deep analysis with quota, awards for concierge segments. Subscription link to the founders on 10-29.
+Public Landing (10-13), Asaas subscriptions in production (Promocional R$ 57 for 3 months → R$ 75; Essencial R$ 75; Pro R$ 129), webhook, 1-click cancellation, deep analysis with quota, awards for concierge segments. Subscription link to the founders on **10-17** (`docs/product.json` `founders.opensOn`), not 10-29.
 
 **v1 · Essencial (6–8 weeks after gate 0)**
 Daily alerts, ME/EPP and value filters, `sync_awards` + winning price range by state, target price and margin calculator, (The 3-day charge reminder moved to Phase 0 / M5 — see §10, task F4.)

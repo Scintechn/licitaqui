@@ -277,15 +277,106 @@ export const cnaeSegments = pgTable(
   (table) => [primaryKey({ columns: [table.cnae, table.segment] })],
 )
 
+/**
+ * One subscription per account that is live (`0015`'s partial unique index).
+ *
+ * **This declaration had drifted from the migrations by three columns.**
+ * `0004_subscription_refunds.sql` added `ends_on`, `refunded_at` and
+ * `refund_reason` and is applied; nothing here knew about them, which is what
+ * this file's own header forbids (*"the schema is owned by `db/migrations`, so
+ * nothing here may drift from it"*). They are below, with `checkout_url` from
+ * 0015.
+ *
+ * `status` is **our** vocabulary, not Asaas's — see `lib/asaas/subscription.ts`
+ * for why, and `0015`'s CHECK for the five values.
+ */
 export const subscriptions = pgTable('subscriptions', {
   userId: bigint('user_id', { mode: 'number' }).notNull(),
   asaasCustomerId: text('asaas_customer_id'),
   asaasSubscriptionId: text('asaas_subscription_id').primaryKey(),
   plan: text('plan'),
   amount: numeric('amount'),
+  /** pending | active | overdue | suspended | canceled. */
   status: text('status'),
   nextChargeOn: date('next_charge_on'),
   promoEndsOn: date('promo_ends_on'),
   promoNoticeSentAt: timestamp('promo_notice_sent_at', { withTimezone: true }),
+  /** 0004: the last day already paid for, after auto-renewal is switched off. */
+  endsOn: date('ends_on'),
+  /** 0004: null means never refunded, which the once-per-CNPJ check reads. */
+  refundedAt: timestamp('refunded_at', { withTimezone: true }),
+  /** 0004: `withdrawal_7d` (CDC art. 49) | `guarantee_30d`. */
+  refundReason: text('refund_reason'),
+  /** 0015: the Asaas `invoiceUrl` of the charge to pay. Personal data (§12). */
+  checkoutUrl: text('checkout_url'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+/**
+ * Every webhook delivery, verbatim, keyed by the provider's own event id —
+ * which is what makes a redelivery a no-op (spec §12: *"Webhooks: validate
+ * signature/token, store in `webhook_events`, process idempotently"*).
+ *
+ * In `0001_initial.sql` since the beginning with no reader and no writer; F2
+ * is its first. `body` carries the customer's name, document, e-mail and
+ * phone, so it is read only by the code that applies the event and never
+ * logged.
+ */
+export const webhookEvents = pgTable('webhook_events', {
+  id: text('id').primaryKey(),
+  source: text('source'),
+  event: text('event'),
+  body: jsonb('body'),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+})
+
+/**
+ * One row per Asaas **payment** (migration 0015).
+ *
+ * `webhook_events` dedupes by *event*; one payment produces several events
+ * with different ids, so "has this payment already granted access?" is a
+ * question about this table and `entitled_at` is where the answer lives.
+ *
+ * `status` is Asaas's own word, verbatim and uppercase, and deliberately
+ * unconstrained: their docs warn that new values arrive without a version
+ * bump, and a CHECK would turn a new status into a failed job on a payment
+ * that really happened.
+ */
+export const subscriptionPayments = pgTable('subscription_payments', {
+  asaasPaymentId: text('asaas_payment_id').primaryKey(),
+  asaasSubscriptionId: text('asaas_subscription_id').notNull(),
+  /** Written, read by nothing, and carded as **F15**: see `0015_billing_asaas.sql`. */
+  userId: bigint('user_id', { mode: 'number' }).notNull(),
+  status: text('status').notNull(),
+  billingType: text('billing_type'),
+  /** What the customer pays. `numeric` stays a string: money is never a float. */
+  value: numeric('value').notNull(),
+  /** What Asaas credits us, i.e. after their fee. */
+  netValue: numeric('net_value'),
+  dueOn: date('due_on'),
+  paidOn: date('paid_on'),
+  /** Set once, by the first event that grants access for this payment. */
+  entitledAt: timestamp('entitled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/**
+ * One billing message per charge (migration 0015, card F4).
+ *
+ * The primary key **is** spec §10's *"idempotent per (subscription, due
+ * date)"*: the worker's sweep inserts the row and sends only if the insert
+ * created it, so two sweeps on one day send one e-mail.
+ */
+export const billingReminders = pgTable(
+  'billing_reminders',
+  {
+    asaasSubscriptionId: text('asaas_subscription_id').notNull(),
+    dueOn: date('due_on').notNull(),
+    /** charge_reminder | payment_failed | suspension. */
+    kind: text('kind').notNull(),
+    jobId: bigint('job_id', { mode: 'number' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.asaasSubscriptionId, table.dueOn, table.kind] })],
+)

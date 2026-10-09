@@ -116,11 +116,24 @@ async function telegramLinked(database: Executor): Promise<GateReading> {
 /**
  * Founder seats paid.
  *
- * An active subscription on the Promocional plan — the R$ 26 price only a
- * founder seat can buy (§10). Task F2 owns the writing of these rows; the
- * plan string is assumed to be `promocional` and the Asaas status `ACTIVE`,
- * compared case-insensitively. If F2 settles on different values this query is
- * the one place to change, and the number to check on the day it goes live.
+ * An active subscription on the Promocional plan — the founder price only a
+ * seat can buy (§10, and `docs/product.json` for what it is; this comment used
+ * to name R$ 26, which stopped being the price on 2026-10-05).
+ *
+ * **F2 settled the vocabulary, so this narrowed from `in ('active',
+ * 'confirmed')` to `= 'active'`.** `status` is now our own five-word
+ * vocabulary rather than Asaas's, held by `0015`'s CHECK, and `confirmed` is
+ * not in it: an Asaas subscription is `ACTIVE` from the moment it is created,
+ * before anybody has paid, so storing Asaas's own word here would have made
+ * this gate count unpaid signups. `pending` is a created-and-unpaid
+ * subscription and this does not count it, which is the whole point of the
+ * separate vocabulary.
+ *
+ * `confirmed` was a guess made before any of that existed; nothing has ever
+ * written it, and the CHECK would now refuse it. A branch that can never match
+ * is worse than no branch, because it reads as cover.
+ *
+ * `lower(...)` stays: it costs nothing and the column has no CHECK on case.
  */
 async function founderSeatsPaid(database: Executor): Promise<GateReading> {
   const value = await scalar(
@@ -129,7 +142,7 @@ async function founderSeatsPaid(database: Executor): Promise<GateReading> {
       select count(*)::text as value
         from subscriptions
        where lower(coalesce(plan, '')) = 'promocional'
-         and lower(coalesce(status, '')) in ('active', 'confirmed')
+         and lower(coalesce(status, '')) = 'active'
     `,
   )
   // **Not a literal.** This read "of: 48" while `docs/product.json` sells 25,

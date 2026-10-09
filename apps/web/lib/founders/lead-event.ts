@@ -2,7 +2,16 @@
  * The Google Ads conversion signal for the founders list.
  *
  * Sci created the conversion action **"Lead · Lista de fundadores"** (lead
- * form, counted once per click, value R$ 26) on 2026-09-25. Tag Manager is
+ * form, counted once per click, value R$ 26) on 2026-09-25.
+ *
+ * **That value is now less than half the founder price**, and it is not in
+ * this repository: `docs/product.json` has said R$ 57 since 2026-10-05 and
+ * the conversion value lives in the Google Ads UI, which nothing here can
+ * read or hold to anything. Nothing in this module sends a value — the push
+ * is `{ event }` and nothing else — so this is a bidding figure to correct in
+ * Google Ads rather than a defect in the code. Noted on the F2 PR for Sci.
+ *
+ * Tag Manager is
  * already on the page (`app/layout.tsx`, container `GTM-5V6M75R7`), but it had
  * nothing to detect: **the signup is a dialog, so a successful submit changes
  * no URL** and the usual thank-you-page trigger cannot exist. That is the same

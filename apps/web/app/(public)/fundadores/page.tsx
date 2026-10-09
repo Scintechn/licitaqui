@@ -1271,9 +1271,12 @@ function Screening() {
 function FounderValue() {
   const { founderValue } = page
   /**
-   * The first benefit **is** the price — "R$ 26 por mês durante 6 meses" — and
-   * it was set at 17px in a list of four evenly weighted items, so the cheapest
-   * thing on the page was also the quietest. It is lifted out of the list and
+   * The first benefit **is** the price — the founder price for the founder
+   * months, which the string itself quotes from `docs/product.json` through
+   * `{$precoPromocional}` and `{$mesesPromocionais}`; this comment used to
+   * name R$ 26 and six months, which stopped being true on 2026-10-05 — and
+   * it was set at 17px in a list of four evenly weighted items, so the
+   * cheapest thing on the page was also the quietest. It is lifted out and
    * given `--text-stat`, the size this page already gives a figure that carries
    * a section; the three that remain keep the list.
    *

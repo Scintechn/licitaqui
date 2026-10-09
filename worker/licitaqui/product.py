@@ -68,9 +68,24 @@ OPENING_HOUR_BRT: Final = "12:00"
 #: Days of warning owed before a charge changes (terms §6, §13).
 PRICE_CHANGE_NOTICE_DAYS: Final = 30
 
+#: Days before **each** charge that the reminder goes out (spec §10, terms §7).
+#:
+#: A different promise from the one above and frequently confused with it: that
+#: one is 30 days before the *price* changes and is a contractual floor; this
+#: one is 3 days before *every* charge, and it is what `charge_reminder` sweeps
+#: for. `docs/product.json` holds both under `notice`, and
+#: `tests/test_product.py` holds this file to it.
+CHARGE_REMINDER_DAYS: Final = 3
+
 
 def brl(amount: int) -> str:
-    """``26`` → ``"R$ 26"`` — the form running copy uses."""
+    """``57`` → ``"R$ 57"`` — the form running copy uses.
+
+    The example was ``26`` until 2026-10-09. Its web twin in ``lib/product.ts``
+    was corrected to 57 in this same PR and the Python copy was missed, which is
+    the exact drift this PR is cleaning up: ``product.test.ts``'s money-literal
+    sweep covers ``apps/web`` and cannot see ``worker/``.
+    """
     return f"R$ {amount}"
 
 

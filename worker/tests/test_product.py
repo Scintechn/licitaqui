@@ -46,6 +46,18 @@ def test_the_notice_period_matches() -> None:
     assert FACTS["notice"]["priceChangeDays"] == product.PRICE_CHANGE_NOTICE_DAYS
 
 
+def test_the_charge_reminder_period_matches() -> None:
+    """The **other** notice, and the one F4's sweep reads.
+
+    Two promises frequently confused: 30 days before the *price* changes, and 3
+    days before *every* charge. `docs/product.json` holds both under `notice`,
+    and this file is where the worker's copy of each is held to it — the whole
+    reason `product.py` duplicates these numbers rather than reading the JSON
+    (`docs/` is outside the Docker build context).
+    """
+    assert FACTS["notice"]["chargeReminderDays"] == product.CHARGE_REMINDER_DAYS
+
+
 def test_the_successor_price_is_the_essencial_price() -> None:
     """Two names for one number, and they have drifted before."""
     assert product.PLAN_PRICES["essencial"] == product.PROMO_THEN_BRL

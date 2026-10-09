@@ -1,0 +1,455 @@
+import { sql } from 'drizzle-orm'
+import { db, type Executor } from '@/lib/db'
+
+/**
+ * Reading and writing the `subscriptions` row — task **F2**.
+ *
+ * This module makes no Asaas call: `lib/asaas/client.ts` is the only thing
+ * that does. What it does is own the one row per account that says what is
+ * being charged, and the vocabulary of its `status` column.
+ *
+ * ## The status vocabulary is ours, not Asaas's
+ *
+ * An Asaas subscription is `ACTIVE` from the moment it is created, before
+ * anybody has paid. `lib/admin/gates.ts` counts a **paid** founder seat off
+ * this column, so storing Asaas's own word there would make the Gate 0
+ * dashboard count unpaid signups. `pending` is a subscription that exists and
+ * has not been paid; `active` is one that has. `0015_billing_asaas.sql` holds
+ * the column to the five values with a CHECK, so a sixth cannot appear
+ * quietly and fall out of the partial unique index that stops double charges.
+ *
+ * ## Degrading when migration 0015 has not been applied
+ *
+ * `db/migrations/0015_billing_asaas.sql` is its own PR, per CLAUDE.md, so this
+ * has to work on a database where `subscriptions.checkout_url` and
+ * `subscription_payments` do not exist. It does it the way `lib/rate-limit.ts`
+ * and `lib/admin/gates.ts` already do: **catch, log a code, answer with
+ * less** — never by matching SQLSTATE `42P01`, which this repo deliberately
+ * does nowhere, because a missing table and an unreachable database deserve
+ * the same treatment.
+ *
+ * The degraded answer is `{ state: 'unavailable' }` and it is honest on
+ * screen: `/conta/plano` shows the plan and says the checkout cannot be opened
+ * right now (`billing.subscribe.error`, already-approved copy). What it must
+ * never do is offer a subscribe button that then creates a real Asaas
+ * subscription we cannot record.
+ *
+ * ## §12
+ *
+ * `checkoutUrl` is an Asaas `invoiceUrl`: it opens one named customer's
+ * invoice, so it is personal data. It is returned to the account that owns the
+ * row and to nothing else, and it is never logged — not in an error line, not
+ * in an event prop.
+ */
+
+/** Our own subscription lifecycle. See the docstring and `0015`'s CHECK. */
+export const SUBSCRIPTION_STATUS = {
+  /** Created at Asaas, not yet paid. The checkout link is live. */
+  pending: 'pending',
+  /** A payment was confirmed or received. The plan is granted. */
+  active: 'active',
+  /** A charge passed its due date unpaid. Access continues; terms §7. */
+  overdue: 'overdue',
+  /** Terms §7's 10-day suspension. **Nothing writes this yet — card F4.** */
+  suspended: 'suspended',
+  /** Auto-renewal is off. `ends_on` is the last paid day. */
+  canceled: 'canceled',
+} as const
+
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS]
+
+/**
+ * The statuses that mean *"this account already has a subscription going"*.
+ *
+ * The same four as `0015`'s partial unique index, and deliberately: this is
+ * what "one live subscription per user" means, so the index and the read agree
+ * by construction. `canceled` is not here — see {@link READABLE_STATUSES} for
+ * the row the **screen** needs, which is not the same question.
+ */
+export const LIVE_STATUSES: readonly SubscriptionStatus[] = [
+  SUBSCRIPTION_STATUS.pending,
+  SUBSCRIPTION_STATUS.active,
+  SUBSCRIPTION_STATUS.overdue,
+  SUBSCRIPTION_STATUS.suspended,
+]
+
+/**
+ * **What the plan screen must be able to see, which is one state more.**
+ *
+ * A cancelled subscription whose paid period has not run out is not "no
+ * subscription": terms §8 says the reader keeps the paid plan until `ends_on`,
+ * and `billing.cancel.untilWhen` is the approved sentence that tells them so.
+ * Filtering to {@link LIVE_STATUSES} made that sentence, `billing.status.cancelled`
+ * and the whole cancelled branch of `plan-view.tsx` **unreachable in
+ * production** — three approved strings rendering nowhere, which is
+ * `radar.list.changeCompany`'s shape — and left the screen telling a founder
+ * who had just cancelled that they had no subscription and offering to sell
+ * them one, while `users.plan` was still `promocional`.
+ *
+ * Found by review. The component test passed a `canceled` subscription
+ * straight in; nothing asked whether the page could produce that prop, which
+ * is §4b's documented pattern word for word.
+ *
+ * A cancelled row **whose `ends_on` has passed** is filtered out, because by
+ * then `expire_subscriptions` has dropped the plan and the row is history.
+ */
+const READABLE_STATUSES: readonly SubscriptionStatus[] = [
+  ...LIVE_STATUSES,
+  SUBSCRIPTION_STATUS.canceled,
+]
+
+/**
+ * `array['pending','active',…]::text[]`, built by hand.
+ *
+ * **Not `= any(${LIVE_STATUSES})`.** Drizzle expands a bare JS array in an
+ * `sql` template into `($1, $2, $3, $4)` — a row constructor, not an array —
+ * so the comparison fails with *"cannot cast type record"*. This repository
+ * has already paid for that lesson twice: `lib/radar/fixtures.ts:135-139`
+ * records it in a comment and `lib/jobs/index.ts:271` builds the literal the
+ * same way. The 2026-09-25 draft of this module wrote the bare array, and
+ * because the only caller swallowed the throw and answered `unavailable`, the
+ * whole checkout would have read as *"migration not applied"* for ever —
+ * including the 30-second cooldown that stopped it retrying.
+ *
+ * The values are module constants, and the assertion makes injection
+ * impossible rather than unlikely: `sql.raw` interpolates text.
+ */
+function statusLiteral(statuses: readonly string[]) {
+  for (const status of statuses) {
+    if (!/^[a-z_]+$/.test(status)) throw new Error(`asaas: unsafe status literal ${status}`)
+  }
+  return sql.raw(`array[${statuses.map((s) => `'${s}'`).join(',')}]::text[]`)
+}
+
+export const liveStatusLiteral = () => statusLiteral(LIVE_STATUSES)
+const readableStatusLiteral = () => statusLiteral(READABLE_STATUSES)
+
+/**
+ * **The last day a subscription that is ending keeps the paid plan**, as one
+ * expression, because there are two ways a subscription ends and they must not
+ * disagree about the date.
+ *
+ * `cancelSubscription` is the reader pressing "Cancelar"; `endSubscription` in
+ * `entitlement.ts` is Asaas telling us the subscription is gone — a cancel or
+ * an inactivation done in the Asaas console, which `F9` says is where refunds
+ * are issued, so it is an expected operator action and not a corner. Both have
+ * to answer *"the end of the period already paid for"*, and until 2026-10-09
+ * only one of them did.
+ *
+ * {@link cancelSubscription}'s docstring is the full argument for the three
+ * candidates. The short version: `next_charge_on - 1` alone is **yesterday**
+ * for a cancel in month 1, because between a first payment and Asaas
+ * generating month 2 `next_charge_on` is still the day of the charge that was
+ * just paid. Review found that in `cancelSubscription` and it was fixed there
+ * with `greatest()` of three candidates — and the identical two-line version
+ * survived in `endSubscription`, where it would have set `ends_on` to
+ * yesterday for any founder whose subscription was ended from the console in
+ * its first month, after which `expire_subscriptions` drops them to Básico the
+ * next morning and `readSubscription` filters the row out, so the screen
+ * offers to sell them the plan they are paying for.
+ *
+ * That is the §4b shape exactly: the covering test asserted
+ * `ends_on is not null`, which yesterday satisfies. Two tests in
+ * `billing.db.test.ts` now assert the **day**, one per path, and both fail
+ * against the two-line version.
+ *
+ * `s.ends_on` is the fourth candidate so the value can only ever move
+ * **later**: `confirmCancel` writes the local row first and the webhook
+ * arrives afterwards, and the second write must not undo the first. `greatest`
+ * ignores nulls, so a subscription that was never paid falls through to today.
+ *
+ * @param alias the `subscriptions` alias in the calling statement.
+ */
+export function lastPaidDay(alias: string) {
+  if (!/^[a-z_][a-z0-9_]*$/.test(alias)) throw new Error(`asaas: unsafe alias ${alias}`)
+  return sql.raw(`greatest(
+                   ${alias}.ends_on,
+                   ${alias}.next_charge_on - 1,
+                   (
+                     select (max(p.due_on) + interval '1 month' - interval '1 day')::date
+                       from subscription_payments p
+                      where p.asaas_subscription_id = ${alias}.asaas_subscription_id
+                        and p.entitled_at is not null
+                   ),
+                   (now() at time zone 'America/Sao_Paulo')::date
+                 )`)
+}
+
+export type Payment = {
+  status: string
+  /** Exact decimal as a string, straight from `numeric(10,2)`. Never a float. */
+  amount: string
+  paidOn: string | null
+  dueOn: string | null
+}
+
+export type Subscription = {
+  asaasSubscriptionId: string
+  status: SubscriptionStatus
+  plan: string | null
+  amount: string | null
+  nextChargeOn: string | null
+  promoEndsOn: string | null
+  endsOn: string | null
+  /** The Asaas invoice page. Null before the first charge exists. */
+  checkoutUrl: string | null
+  lastPayment: Payment | null
+}
+
+export type SubscriptionView =
+  /** No live subscription, and the database answered. Offer the checkout. */
+  | { state: 'none' }
+  /** There is one. */
+  | { state: 'found'; subscription: Subscription }
+  /**
+   * The database could not answer — migration 0015 is not applied, or Postgres
+   * is unreachable. Not the same as `none`: offering a checkout here would
+   * create a real Asaas subscription we could not record.
+   */
+  | { state: 'unavailable'; reason: string }
+
+/** Until when {@link readSubscription} stops trying Postgres after a failure. */
+const DB_DOWN_UNTIL = Symbol.for('licitaqui.billing.dbDownUntil')
+
+/**
+ * How long one failure buys of skipping the query. The same 30 seconds and the
+ * same reasoning as `lib/rate-limit.ts`: one failure must not make every
+ * request pay a failed round trip, and the next request after the window
+ * retries, so the moment migration 0015 lands this self-heals with no deploy.
+ */
+const DB_RETRY_COOLDOWN_MS = 30_000
+
+type Holder = { [DB_DOWN_UNTIL]?: number }
+const holder = globalThis as unknown as Holder
+
+type Row = {
+  asaas_subscription_id: string
+  status: string | null
+  plan: string | null
+  amount: string | null
+  next_charge_on: string | null
+  promo_ends_on: string | null
+  ends_on: string | null
+  checkout_url: string | null
+  payment_status: string | null
+  payment_amount: string | null
+  payment_paid_on: string | null
+  payment_due_on: string | null
+}
+
+/**
+ * This account's live subscription, or why we cannot say.
+ *
+ * One statement, with the latest charge joined on, because the plan screen
+ * wants both and two round trips to Neon for one card is one too many.
+ */
+export async function readSubscription(
+  userId: number,
+  database: Executor = db(),
+  now: number = Date.now(),
+): Promise<SubscriptionView> {
+  const downUntil = holder[DB_DOWN_UNTIL]
+  if (downUntil !== undefined && downUntil > now) {
+    return { state: 'unavailable', reason: 'cooldown' }
+  }
+  let rows: Row[]
+  try {
+    const result = await database.execute<Row>(sql`
+      select s.asaas_subscription_id,
+             s.status,
+             s.plan,
+             s.amount::text            as amount,
+             s.next_charge_on::text    as next_charge_on,
+             s.promo_ends_on::text     as promo_ends_on,
+             s.ends_on::text           as ends_on,
+             s.checkout_url,
+             p.status                  as payment_status,
+             p.value::text             as payment_amount,
+             p.paid_on::text           as payment_paid_on,
+             p.due_on::text            as payment_due_on
+        from subscriptions s
+        left join lateral (
+          select status, value, paid_on, due_on
+            from subscription_payments
+           where asaas_subscription_id = s.asaas_subscription_id
+           order by coalesce(paid_on, due_on) desc nulls last
+           limit 1
+        ) p on true
+       where s.user_id = ${userId}::bigint
+         and s.status = any(${readableStatusLiteral()})
+         -- A cancelled row whose paid period has run out is history: by then
+         -- expire_subscriptions has dropped the plan, and showing it would
+         -- tell a Basico reader they still have a subscription.
+         and (
+           s.status <> ${SUBSCRIPTION_STATUS.canceled}::text
+           or s.ends_on is null
+           or s.ends_on >= (now() at time zone 'America/Sao_Paulo')::date
+         )
+       -- A live row always wins over a cancelled one: somebody who cancelled
+       -- and subscribed again has both, and the live one is the current fact.
+       order by (s.status = ${SUBSCRIPTION_STATUS.canceled}::text), s.updated_at desc
+       limit 1
+    `)
+    rows = result.rows
+  } catch (error) {
+    // A code, never a message: a Postgres detail line can echo a value back
+    // (§12). Missing table and unreachable database are the same case on
+    // purpose — see the module docstring.
+    const code = (error as { code?: string } | null)?.code ?? 'unknown'
+    console.error(`billing: subscriptions unreadable (${code})`)
+    holder[DB_DOWN_UNTIL] = now + DB_RETRY_COOLDOWN_MS
+    return { state: 'unavailable', reason: code }
+  }
+
+  const row = rows[0]
+  if (!row || !row.status) return { state: 'none' }
+  return { state: 'found', subscription: toSubscription(row) }
+}
+
+function toSubscription(row: Row): Subscription {
+  return {
+    asaasSubscriptionId: row.asaas_subscription_id,
+    status: row.status as SubscriptionStatus,
+    plan: row.plan,
+    amount: row.amount,
+    nextChargeOn: row.next_charge_on,
+    promoEndsOn: row.promo_ends_on,
+    endsOn: row.ends_on,
+    checkoutUrl: row.checkout_url,
+    lastPayment:
+      row.payment_status && row.payment_amount
+        ? {
+            status: row.payment_status,
+            amount: row.payment_amount,
+            paidOn: row.payment_paid_on,
+            dueOn: row.payment_due_on,
+          }
+        : null,
+  }
+}
+
+export type UpsertSubscription = {
+  userId: number
+  asaasCustomerId: string
+  asaasSubscriptionId: string
+  plan: string
+  /** Reais as a decimal. `numeric(10,2)` takes the string form. */
+  amount: number
+  nextChargeOn: string | null
+  checkoutUrl: string | null
+}
+
+/**
+ * Record the subscription we just created, or refresh the one that was already
+ * there.
+ *
+ * **`status` only ever moves forward.** The `case` refuses to walk an `active`,
+ * `overdue` or `suspended` row back to `pending`: a webhook granting access
+ * and a retried subscribe request can arrive in either order, and a second
+ * subscribe must not un-pay a subscriber. `next_charge_on` and `checkout_url`
+ * are `coalesce`d for the same reason — a later read that happens to find no
+ * charge yet must not erase the link somebody is about to open.
+ */
+export async function upsertSubscription(
+  input: UpsertSubscription,
+  database: Executor = db(),
+): Promise<void> {
+  await database.execute(sql`
+    insert into subscriptions (
+      user_id, asaas_customer_id, asaas_subscription_id,
+      plan, amount, status, next_charge_on, checkout_url, updated_at
+    )
+    values (
+      ${input.userId}::bigint,
+      ${input.asaasCustomerId}::text,
+      ${input.asaasSubscriptionId}::text,
+      ${input.plan}::text,
+      ${input.amount.toFixed(2)}::numeric,
+      ${SUBSCRIPTION_STATUS.pending}::text,
+      ${input.nextChargeOn}::date,
+      ${input.checkoutUrl}::text,
+      now()
+    )
+    on conflict (asaas_subscription_id) do update
+       set asaas_customer_id = excluded.asaas_customer_id,
+           plan              = excluded.plan,
+           amount            = excluded.amount,
+           status            = case
+                                 when subscriptions.status in ('active', 'overdue', 'suspended')
+                                 then subscriptions.status
+                                 else excluded.status
+                               end,
+           next_charge_on    = coalesce(excluded.next_charge_on, subscriptions.next_charge_on),
+           checkout_url      = coalesce(excluded.checkout_url, subscriptions.checkout_url),
+           updated_at        = now()
+  `)
+}
+
+/**
+ * **The last day a cancelled subscription keeps the paid plan.**
+ *
+ * Terms §8 and `billing.cancel.untilWhen`: *"Você continua com o plano pago
+ * até {data}, que é o fim do período já pago."* Three candidates, and the
+ * **greatest** wins, because being generous by a day is a contract term met
+ * and being mean by a day is one broken:
+ *
+ *  1. `next_charge_on - 1` — the day before the charge Asaas has scheduled.
+ *     Right whenever Asaas has already generated the next invoice.
+ *  2. **the most recent settled charge's due date + one month - one day** —
+ *     the period that payment actually bought. This is the one that matters,
+ *     and the reason this function is no longer two lines: between a first
+ *     payment and Asaas generating month 2, `next_charge_on` is still the day
+ *     of the charge that was *just paid*, so candidate 1 alone said
+ *     **yesterday**. A founder who subscribed on 17/10, paid, and cancelled on
+ *     20/10 would have had `ends_on = 16/10`, and `expire_subscriptions` would
+ *     have dropped them to Básico the next morning — four days into a month
+ *     they had paid R$ 57 for. Found by review, not by a test: the fixture
+ *     supplied a `nextDueDate` a month out that Asaas would never return for a
+ *     subscription created that day.
+ *  3. today, in the **product's** clock — a floor, so a cancel can never
+ *     retroactively end access that has not ended.
+ *
+ *  One month is a derivation rather than Asaas's own number, and it is the
+ *  cycle **we** set (`cycle: 'MONTHLY'` in `client.ts`), corrected by
+ *  candidate 1 the moment Asaas tells us the real date. `greatest` ignores
+ *  nulls, so a subscription that has never been paid falls through to today.
+ *
+ * `0004_subscription_refunds.sql` added this column for exactly this and said
+ * *"the downgrade job reads this every day"*. `expire_subscriptions` in
+ * `worker/licitaqui/billing.py` is that job, and the two agree on the
+ * boundary: `ends_on` is inclusive, and the sweep matches `ends_on < today`.
+ *
+ * Returns whether a row was actually cancelled, so the caller can tell "done"
+ * from "there was nothing to cancel" instead of reporting success either way.
+ */
+export async function cancelSubscription(
+  userId: number,
+  database: Executor = db(),
+): Promise<{ cancelled: boolean; asaasSubscriptionId: string | null; endsOn: string | null }> {
+  const result = await database.execute<{ asaas_subscription_id: string; ends_on: string | null }>(
+    sql`
+      update subscriptions s
+         set status     = ${SUBSCRIPTION_STATUS.canceled}::text,
+             -- The product's clock, not the database's: "o último dia do
+             -- período que já pagou" is a day in Brasília (CLAUDE.md, Clocks).
+             -- Shared with endSubscription, which had its own two-line copy
+             -- of this and got it wrong. See lastPaidDay.
+             ends_on    = ${lastPaidDay('s')},
+             updated_at = now()
+       where s.user_id = ${userId}::bigint
+         and s.status = any(${liveStatusLiteral()})
+      returning s.asaas_subscription_id, s.ends_on::text as ends_on
+    `,
+  )
+  const row = result.rows[0]
+  return {
+    cancelled: Boolean(row),
+    asaasSubscriptionId: row?.asaas_subscription_id ?? null,
+    endsOn: row?.ends_on ?? null,
+  }
+}
+
+/** Tests only: forget the cooldown so one case cannot leak into the next. */
+export function resetSubscriptionCooldown(): void {
+  delete holder[DB_DOWN_UNTIL]
+}

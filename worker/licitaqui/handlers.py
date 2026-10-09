@@ -35,6 +35,7 @@ httpx, pdfplumber and every collector to do it.
 from __future__ import annotations
 
 from . import ai_screening as _ai_screening  # noqa: F401 - registers `ai_screening`
+from . import billing as _billing  # noqa: F401 - F4's two sweeps and `send_billing_email`
 from . import catalog_prices as _catalog_prices  # noqa: F401 - `refresh_catalog_prices`
 from . import catalog_sync as _catalog_sync  # noqa: F401 - the two catalogue kinds
 from . import company as _company  # noqa: F401 - imported for its registration side effect
