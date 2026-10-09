@@ -222,12 +222,17 @@ def lookup(
         # built from the Receita's periodic open-data dump (inferred from
         # minhareceita.org's own description, not measured here), so a company
         # opened since the last one can be "not found" there and perfectly
-        # real. A typo never gets this far; the check digits above caught it.
+        # real. Most typos never get this far — the check digits above catch
+        # every single-digit slip — though two wrong digits can still pass.
         second = _ask(cnpja.BREAKER_NAME, cnpja.lookup, CnpjaError, normalised)
         if isinstance(second, _Miss):
-            # Either source saying "does not exist" is the more useful answer:
-            # the user should fix the number, not wait for an outage to pass.
-            status = STATUS_NOT_FOUND if outcome.not_found or second.not_found else STATUS_FAILED
+            # "Does not exist" only when **both** sources say so. One 404 next
+            # to one outage is not enough: the 404 may be a source lagging the
+            # Receita (the reason a BrasilAPI 404 is asked again at all), and
+            # telling somebody to fix a number that is right is worse than
+            # telling them to try later.
+            both = outcome.not_found and second.not_found
+            status = STATUS_NOT_FOUND if both else STATUS_FAILED
             result = _fallback(
                 conn,
                 normalised,

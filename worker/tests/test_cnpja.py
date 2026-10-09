@@ -77,6 +77,22 @@ def test_an_explicit_optant_false_is_a_fact():
     assert record.is_simples is False
 
 
+def test_never_in_the_regime_is_unknown_not_false():
+    """Measured 2026-10-09 on Petrobras: CNPJá's "no record" is ``optant: false``, no history.
+
+    BrasilAPI stores ``null`` for the same company; storing ``False`` here would
+    tell a MEI whose record happens to be thin "you are not a MEI" (ADR-0002).
+    """
+    payload = fixture()
+    payload["company"]["simei"] = {"optant": False, "since": None, "history": []}
+    payload["company"]["simples"] = {"optant": False, "since": None, "history": []}
+
+    record = cnpja.parse(CNPJ, payload)
+
+    assert record.is_mei is None
+    assert record.is_simples is None
+
+
 def test_a_current_mei_reads_true():
     payload = fixture()
     payload["company"]["simei"] = {"optant": True, "since": "2020-01-01", "history": []}
@@ -123,6 +139,23 @@ def test_a_payload_without_a_main_cnae_is_a_failed_lookup(main):
         cnpja.parse(CNPJ, payload)
 
 
+def test_accents_are_dropped_to_match_the_receitas_spelling():
+    """BrasilAPI writes ``SAO PAULO``; CNPJá writes ``São Paulo``."""
+    payload = fixture()
+    payload["address"]["city"] = "São Paulo"
+
+    assert cnpja.parse(CNPJ, payload).city == "SAO PAULO"
+
+
+def test_a_payload_for_another_cnpj_is_refused_not_stored():
+    """The upsert keys on the CNPJ asked for; another office's CNAEs must not land there."""
+    payload = fixture()
+    payload["taxId"] = "99900001000231"
+
+    with pytest.raises(CnpjaError, match="another cnpj"):
+        cnpja.parse(CNPJ, payload)
+
+
 def test_only_the_columns_we_store_are_read():
     """The partners, phones, e-mails and street never reach the record (§12)."""
     rendered = repr(cnpja.parse(CNPJ, fixture()))
@@ -165,6 +198,22 @@ def test_a_body_that_is_not_json_is_a_failure():
         cnpja.fetch(CNPJ, client=client_answering(200, text="<html>"))
 
     assert caught.value.reason == "invalid_json"
+
+
+def test_lookups_are_spaced_by_the_minimum_interval(monkeypatch):
+    """The spacing the ``no_spacing`` fixture turns off everywhere else."""
+    monkeypatch.setattr(cnpja, "MIN_INTERVAL_SECONDS", 12.0)
+    # As at process start: no earlier call for the first one to wait behind.
+    monkeypatch.setattr(cnpja, "_last_call_at", float("-inf"))
+    slept: list[float] = []
+    monkeypatch.setattr(cnpja.time, "sleep", slept.append)
+    client = client_answering(200, json=fixture())
+
+    cnpja.lookup(CNPJ, client=client)
+    cnpja.lookup(CNPJ, client=client)
+
+    assert len(slept) == 1, "the second call, and only the second, waits"
+    assert 11.0 < slept[0] <= 12.0
 
 
 def test_a_transport_error_never_carries_the_url(caplog):

@@ -289,8 +289,9 @@ def test_a_failed_lookup_does_not_fail_the_job(b5_conn, api):
     company.lookup(b5_conn, FALLBACK)  # must not raise
 
 
-def test_an_unknown_cnpj_says_so_rather_than_blaming_brasilapi(b5_conn, api):
+def test_an_unknown_cnpj_says_so_rather_than_blaming_brasilapi(b5_conn, api, second):
     api(BrasilApiError("not_found", status=404, not_found=True))
+    second(CnpjaError("not_found", status=404, not_found=True))
 
     assert company.lookup(b5_conn, THIRD).manual_cnae
     assert row(b5_conn, THIRD)["registration_status"] == STATUS_NOT_FOUND
@@ -394,13 +395,24 @@ def test_a_brasilapi_404_is_asked_again_because_a_new_company_may_be_missing(b5_
     assert row(b5_conn, THIRD)["main_cnae"] == "8219999"
 
 
-def test_the_second_source_saying_not_found_is_not_blamed_on_an_outage(b5_conn, api, second):
-    """The user should fix the number, not be told to wait for BrasilAPI."""
-    api(BrasilApiError("unexpected_status", status=500))
-    second(CnpjaError("not_found", status=404, not_found=True))
+@pytest.mark.parametrize(
+    "first, other",
+    [
+        (
+            BrasilApiError("unexpected_status", status=500),
+            CnpjaError("not_found", status=404, not_found=True),
+        ),
+        (BrasilApiError("not_found", status=404, not_found=True), CnpjaError("timeout")),
+    ],
+    ids=["brasilapi-down-cnpja-404", "brasilapi-404-cnpja-down"],
+)
+def test_one_404_beside_one_outage_is_not_called_a_typo(b5_conn, api, second, first, other):
+    """A lagging source's 404 must not tell somebody to fix a number that is right."""
+    api(first)
+    second(other)
 
     assert company.lookup(b5_conn, THIRD).manual_cnae
-    assert row(b5_conn, THIRD)["registration_status"] == STATUS_NOT_FOUND
+    assert row(b5_conn, THIRD)["registration_status"] == STATUS_FAILED
 
 
 def test_when_both_fail_the_reason_names_both(b5_conn, api):
@@ -430,6 +442,18 @@ def test_an_open_brasilapi_circuit_still_asks_the_second_source(b5_conn, api, se
     assert brasil.calls == 2, "the open circuit spent no request"
     assert fake.calls == 1
     assert result.status == "resolved"
+
+
+def test_both_circuits_open_spends_no_request_at_all(b5_conn, api):
+    brasil = api(BrasilApiError("timeout"))
+    company.lookup(b5_conn, FOURTH)
+    company.lookup(b5_conn, FIFTH)
+
+    result = company.lookup(b5_conn, SIXTH)
+
+    assert brasil.calls == 2
+    assert result.called_api is False
+    assert result.reason == "brasilapi:circuit_open; cnpja:circuit_open"
 
 
 def test_a_typo_reaches_neither_source(b5_conn, api, second):

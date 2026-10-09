@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import threading
 import time
+import unicodedata
 
 import httpx
 
@@ -65,26 +66,38 @@ class CnpjaError(RuntimeError):
 def _optant(entry: object) -> bool | None:
     """``company.simei`` / ``company.simples`` → three-state, like ``brasilapi.tri_state``.
 
-    CNPJá answers an object with ``optant`` when the company has a registry
-    entry and omits it (or sends ``null``) when it has none. Only an explicit
-    boolean is a fact; anything else is "no record", never ``False``.
+    **CNPJá has no "no record" value; it sends ``optant: false`` either way.**
+    Measured 2026-10-09: a company that was never in the regime (Petrobras)
+    comes back ``{"optant": false, "since": null, "history": []}``, while one
+    that left it comes back ``optant: false`` *with* a ``history``. BrasilAPI
+    writes ``null`` for the first, and ADR-0002 is explicit that collapsing it
+    to ``False`` tells a MEI "you are not a MEI". So ``False`` is only a fact
+    when there is a history behind it; with none, it is ``None``.
     """
     if not isinstance(entry, dict):
         return None
     value = entry.get("optant")
-    return value if isinstance(value, bool) else None
+    if value is True:
+        return True
+    if value is False and entry.get("history"):
+        return False
+    return None
 
 
 def _upper(value: object, *, limit: int | None = None) -> str | None:
-    """Trimmed and upper-cased, to match BrasilAPI's casing in the same columns.
+    """Trimmed, upper-cased and unaccented, to match BrasilAPI's spelling.
 
-    BrasilAPI writes ``ATIVA`` and ``PLANALTINA``; CNPJá writes ``Ativa`` and
-    ``Planaltina``. Two spellings of one status in ``companies`` would make
-    every later comparison on it wrong for whichever source it did not expect.
+    BrasilAPI writes ``ATIVA`` and ``PLANALTINA`` — the Receita's own unaccented
+    capitals; CNPJá writes ``Ativa`` and ``Planaltina``, and keeps accents
+    (``São Paulo``). Two spellings of one value in ``companies`` would make every
+    later comparison on it wrong for whichever source it did not expect.
     """
     if value is None:
         return None
-    text = str(value).strip().upper()
+    text = "".join(
+        ch for ch in unicodedata.normalize("NFKD", str(value)) if not unicodedata.combining(ch)
+    )
+    text = text.strip().upper()
     if not text:
         return None
     return text[:limit] if limit else text
@@ -98,7 +111,14 @@ def _text(value: object) -> str | None:
 
 
 def parse(cnpj: str, payload: dict) -> CompanyRecord:
-    """Normalise one payload. Raises :class:`CnpjaError` without a main CNAE."""
+    """Normalise one payload. Raises :class:`CnpjaError` without a main CNAE.
+
+    Also when the payload describes a different establishment than the one
+    asked for: the upsert is keyed on the CNPJ we asked about, so a redirect or
+    a matriz answered for a filial would file one company's CNAEs under another.
+    """
+    if "".join(ch for ch in str(payload.get("taxId") or "") if ch.isdigit()) != cnpj:
+        raise CnpjaError("payload is for another cnpj")
     main_activity = payload.get("mainActivity")
     main = cnae_code(main_activity.get("id") if isinstance(main_activity, dict) else None)
     if main is None:

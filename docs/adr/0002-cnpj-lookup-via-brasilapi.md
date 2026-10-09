@@ -180,10 +180,14 @@ no key) when BrasilAPI cannot answer — a 5xx, a timeout, an open circuit, or a
 stays first. `licitaqui/cnpja.py` returns the same `CompanyRecord`, under its own breaker, with
 the same one-request / no-retry / sanitised-error contract. A BrasilAPI 404 is asked again
 because its upstream is built from the Receita's periodic dump, so a newly opened company can be
-missing there (**inferred** from minhareceita's own description, not measured); a typo never
-reaches either source, the check digits stop it first. Either source saying "not found" records
-`lookup:not_found`; both failing records `lookup:failed`, and only then does the user see the
-manual path.
+missing there (**inferred** from minhareceita's own description, not measured). The mod-11 check
+digits stop every single-digit typo before either source is asked; a two-digit error can still
+pass them. Only **both** sources answering 404 records `lookup:not_found`; any other combination
+of misses records `lookup:failed`. Either way the row has no CNAE, and only then does the user see
+the manual-CNAE state. CNPJá sends `optant: false` with an empty history for a company that was
+never in Simples/SIMEI (measured on Petrobras), so that shape is stored as `null` — unknown — as
+BrasilAPI's rows are, and never as "not a MEI". A payload whose `taxId` is not the CNPJ asked for
+is rejected rather than stored.
 
 **Measured 2026-10-09**, same afternoon, same CNPJ: CNPJá 200 in 0.25–0.4 s with the main CNAE,
 all six secondary CNAEs, porte, Simples/SIMEI history, status, UF and city; `publica.cnpj.ws` 200
