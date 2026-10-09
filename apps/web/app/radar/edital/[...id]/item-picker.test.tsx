@@ -29,7 +29,7 @@ import {
 
 const page = messages.radar.price
 const itemCopy = messages.radar.opportunity.items
-const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+const SEARCH = { cnpj: '51885242000140', states: ['SP'], q: 'papel', group: 'check' } as const
 const TENDER_ID = '77817476000144-1-000034/2026'
 
 function make(number: number, overrides: Partial<TenderItemView> = {}): TenderItemView {

@@ -116,7 +116,7 @@ const COMPANY: Omit<CompanyView, 'cnpj'> = {
 }
 
 /** One reader, one company: `scope` is the only thing that differs below. */
-const SEARCH = { cnpj: null, state: null, q: null, group: 'compatible' } as const
+const SEARCH = { cnpj: null, states: [], q: null, group: 'compatible' } as const
 
 const MINE: ListQuery = { ...SEARCH, scope: 'scope-mine' }
 const THEIRS: ListQuery = { ...SEARCH, scope: 'scope-theirs' }

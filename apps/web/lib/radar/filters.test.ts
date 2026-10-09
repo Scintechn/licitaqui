@@ -265,7 +265,7 @@ describe('the counts are filtered by what the page is filtered by', () => {
     { modality: 'pregao-eletronico', meEpp: 'other' },
     { modality: null, meEpp: null },
   ] as const)('scopes the count exactly as the page for %o', async (filters) => {
-    const { list, counts } = await statementsFor({ q: 'papel', state: 'SP', ...filters })
+    const { list, counts } = await statementsFor({ q: 'papel', states: ['SP', 'RJ'], ...filters })
     expect(scopeOf(counts)).toEqual(scopeOf(list))
   })
 })

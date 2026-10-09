@@ -60,7 +60,7 @@ const TENDER: TenderDetail = {
 }
 
 /** A real search, so every outbound link in these views is asserted to carry it. */
-const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+const SEARCH = { cnpj: '51885242000140', states: ['SP'], q: 'papel', group: 'check' } as const
 
 /**
  * The common case, and the one Sci ruled must not change: someone opening a

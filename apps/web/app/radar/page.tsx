@@ -63,7 +63,7 @@ export default async function RadarPage() {
     <Suspense
       fallback={
         <RadarView
-          query={{ cnpj: null, state: null, q: null, group: 'compatible' }}
+          query={{ cnpj: null, states: [], q: null, group: 'compatible' }}
           /* The status has to agree with the `query` on the line above it, and
              it did not: this frame declares no CNPJ and then said "Consultando o
              CNPJ…", which names a request that cannot have been made. Asked of

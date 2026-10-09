@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { canonicalUfs, normaliseUf } from '@/lib/radar/ufs'
 import { readViewer } from '@/lib/auth/viewer'
 import { PRIVATE_NO_STORE } from '@/lib/cache'
 import { normaliseCnpj } from '@/lib/cnpj'
@@ -51,12 +52,6 @@ const RATE_LIMIT = { limit: 120, windowMs: 60_000 }
 
 const query = z.object({
   group: z.enum(TENDER_GROUPS).default('compatible'),
-  state: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{2}$/, 'stateInvalid')
-    .optional(),
   q: z.string().trim().max(200).optional(),
   /**
    * D52's two filters. Enums, not free text: the modality slug is mapped to one
@@ -131,6 +126,21 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
   }
   const params = parsed.data
 
+  /*
+   * **The UFs are read with `getAll`, not through the schema above**, because
+   * the schema is fed `Object.fromEntries(url.searchParams)` — which keeps only
+   * the **last** value of a repeated key. `state=SP&state=RJ` would have reached
+   * the query as RJ alone: a list missing a state the reader ticked, with
+   * nothing on the screen to say so. Each value must be a real UF; an unknown
+   * one is a 400, as a malformed one always was, rather than being dropped and
+   * silently widening the search to the whole country.
+   */
+  const rawStates = url.searchParams.getAll('state').flatMap((value) => value.split(','))
+  const states = canonicalUfs(rawStates)
+  if (rawStates.some((value) => normaliseUf(value) === null)) {
+    return fail({ state: 'error', error: 'validation', fields: { state: 'stateInvalid' } }, 400)
+  }
+
   try {
     const executor = db()
 
@@ -192,7 +202,7 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
     const match = { compatible, check, fits }
 
     const filters = {
-      state: params.state ?? null,
+      states,
       q: params.q ?? null,
       modality: params.modality ?? null,
       meEpp: params.meepp ?? null,
@@ -205,7 +215,7 @@ export async function GET(request: Request): Promise<NextResponse<TenderListResp
     const [page, counts, freshness] = await Promise.all([
       listTenders(match, params.group, filters, executor, viewerUserId),
       countGroups(match, filters, executor),
-      listFreshness({ state: filters.state }, { executor }),
+      listFreshness({ states: filters.states }, { executor }),
     ])
 
     return NextResponse.json(

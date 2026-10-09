@@ -126,7 +126,9 @@ test.describe('D51 · the Radar list can be ordered', () => {
     await expect(page).not.toHaveURL(/group=/)
 
     await filterLabel(page).click()
-    await page.getByLabel(messages.radar.landing.ufLabel).selectOption('MG')
+    // The UF control is a checkbox panel since 2026-10-09 (multi-UF).
+    await page.locator('#radar-uf').click()
+    await page.getByRole('checkbox', { name: 'Minas Gerais (MG)' }).check()
     await page.getByRole('button', { name: list.apply }).click()
 
     await expect(page).toHaveURL(/uf=MG/)

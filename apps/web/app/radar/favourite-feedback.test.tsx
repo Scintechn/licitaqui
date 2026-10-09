@@ -75,7 +75,7 @@ function card(row: TenderCard): string {
 
 function radar(overrides: Partial<RadarViewProps> = {}): string {
   const props: RadarViewProps = {
-    query: { cnpj: '51885242000140', state: null, q: null, group: 'compatible' as TenderGroup },
+    query: { cnpj: '51885242000140', states: [], q: null, group: 'compatible' as TenderGroup },
     status: { kind: 'ready' },
     grouping: null,
     visitor: null,
@@ -168,11 +168,10 @@ describe('D57 · one name per star, and it names the edital', () => {
       )
     }
     expect(out.match(/id="tender-title-/g), 'one title id per card').toHaveLength(3)
-    expect(
-      out.match(/aria-labelledby="[^"]+"/g)?.map((one) => one),
-      'three stars, three different labelledby pairs',
-    ).toHaveLength(3)
-    expect(new Set(out.match(/aria-labelledby="[^"]+"/g)).size).toBe(3)
+    // The stars' names only: the filter row's UF picker is named the same way.
+    const stars = out.match(/aria-labelledby="[^"]*tender-title-[^"]*"/g)
+    expect(stars, 'three stars, three different labelledby pairs').toHaveLength(3)
+    expect(new Set(stars).size).toBe(3)
   })
 
   it('writes no title id on a card that has no control to name', () => {

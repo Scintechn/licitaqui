@@ -37,7 +37,8 @@ import {
   type ModalityFilter,
 } from '@/lib/radar/filters'
 import { listKey } from '@/lib/radar/list-cache'
-import { UF_OPTIONS } from '@/lib/radar/ufs'
+import { UfPicker } from '@/components/uf-picker'
+import { readUfs, ufSummary } from '@/lib/radar/ufs'
 import { FavouriteNotices } from './favourite-notice'
 import { FavouriteStar } from './favourite-star'
 import { TenderCardView } from './tender-card'
@@ -87,7 +88,8 @@ export type RadarStatus =
 
 export type RadarQuery = {
   cnpj: string | null
-  state: string | null
+  /** Canonical UFs (`canonicalUfs`); empty is *Todo o Brasil*. */
+  states: readonly string[]
   q: string | null
   /** D52's modalidade filter, or `null` for *Todas*. */
   modality?: ModalityFilter | null
@@ -249,7 +251,7 @@ function CompanyLine({
   query: RadarQuery
   status: RadarStatus
 }) {
-  const where = query.state ?? copy.ufAll
+  const where = ufSummary(query.states)
   // No chevron. It used to draw one here, inside a `<p>` with no link, no
   // button and no handler — the universal "tap me" affordance on something
   // that could not be tapped, which is worse than no affordance at all: it
@@ -757,7 +759,11 @@ function FilterRow({
             method="get"
             action="/radar"
             className={cn(
-              'grid grid-cols-1 items-end gap-3 pt-1 pb-3',
+              // `items-start`, and `self-end` on the button: the UF picker opens
+              // **in flow** (see `UfPicker`), so its cell grows while it is open,
+              // and bottom-aligned neighbours would drop by the panel's height.
+              // Every label is one line, so closed this draws as `items-end` did.
+              'grid grid-cols-1 items-start gap-3 pt-1 pb-3',
               '@min-[560px]:grid-cols-2 @min-[880px]:grid-cols-4',
             )}
             onSubmit={
@@ -768,7 +774,7 @@ function FilterRow({
                     onNavigate(
                       radarHref({
                         cnpj: String(data.get('cnpj') ?? '') || null,
-                        state: String(data.get('uf') ?? '') || null,
+                        states: readUfs({ getAll: (name) => data.getAll(name).map(String) }),
                         q: String(data.get('q') ?? '').trim() || null,
                         // Read back through the same reader the URL is read with,
                         // so a hand-edited `<option>` cannot put a value in the
@@ -817,12 +823,15 @@ function FilterRow({
             {query.sort && query.sort !== DEFAULT_SORT ? (
               <input type="hidden" name="sort" value={query.sort} />
             ) : null}
-            <Select
+            {/* Keyed on the selection: `defaultValue` is read once, at mount, and
+                the Radar stays mounted across Back and Forward — without the key
+                the boxes kept the previous search's UFs, and the next *Aplicar*
+                posted them (found in review; the old `<select>` had the same). */}
+            <UfPicker
+              key={query.states.join(',')}
               id="radar-uf"
-              name="uf"
               label={copy.landing.ufLabel}
-              defaultValue={query.state ?? ''}
-              options={UF_OPTIONS}
+              defaultValue={query.states}
             />
             {/*
               D52 — modalidade and ME/EPP, the two filters Sci asked for on
@@ -882,7 +891,7 @@ function FilterRow({
               type="submit"
               variant="secondary"
               /* Full width where it has a row to itself, its own cell at ≥880. */
-              className="@min-[560px]:col-span-2 @min-[880px]:col-span-1"
+              className="self-end @min-[560px]:col-span-2 @min-[880px]:col-span-1"
             >
               {list.apply}
             </Button>

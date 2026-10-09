@@ -14,7 +14,7 @@ import { readMeEpp, readModality, type MeEppFilter, type ModalityFilter } from '
 import { readGroup } from './group'
 import { readSort } from './sort'
 import type { JobStatus } from './poll'
-import { normaliseUf } from './ufs'
+import { canonicalUfs, readUfs } from './ufs'
 
 /**
  * The browser's side of the Radar routes (spec §8).
@@ -67,7 +67,12 @@ export function tenderApiPath(id: string): string {
  */
 export type RadarSearch = {
   cnpj?: string | null
-  state?: string | null
+  /**
+   * The UFs, canonical (`canonicalUfs`); empty or absent is *Todo o Brasil*.
+   * Written as one `uf=` per state, which is also what the filter form's
+   * checkboxes post, so the form works before React has hydrated.
+   */
+  states?: readonly string[] | null
   q?: string | null
   /** D52's modalidade, by slug. `null` is *Todas* and is left out of the URL. */
   modality?: ModalityFilter | null
@@ -100,7 +105,7 @@ export const ME_EPP_PARAM = 'meepp'
 function searchParams(search: RadarSearch): URLSearchParams {
   const params = new URLSearchParams()
   if (search.cnpj) params.set('cnpj', search.cnpj)
-  if (search.state) params.set('uf', search.state)
+  for (const state of canonicalUfs(search.states ?? [])) params.append('uf', state)
   if (search.q) params.set('q', search.q)
   if (search.modality) params.set(MODALITY_PARAM, search.modality)
   if (search.meEpp) params.set(ME_EPP_PARAM, search.meEpp)
@@ -213,10 +218,13 @@ export function radarHref(search: RadarSearch): string {
  * (`readGroup`), which is a different address from `group=compatible` and must
  * stay one; `restoreList` already bridges the two when it looks for a snapshot.
  */
-export function readSearch(params: { get(name: string): string | null }): RadarSearch {
+export function readSearch(params: {
+  get(name: string): string | null
+  getAll(name: string): string[]
+}): RadarSearch {
   return {
     cnpj: (params.get('cnpj') ?? '').replace(/\D+/g, '') || null,
-    state: normaliseUf(params.get('uf')),
+    states: readUfs(params),
     q: (params.get('q') ?? '').trim() || null,
     modality: readModality(params.get(MODALITY_PARAM)),
     meEpp: readMeEpp(params.get(ME_EPP_PARAM)),
@@ -224,6 +232,23 @@ export function readSearch(params: { get(name: string): string | null }): RadarS
     // Never `null`: absent means the deadline order (`readSort`).
     sort: readSort(params.get('sort')),
   }
+}
+
+/**
+ * `readSearch` for a server page's `searchParams`, a record whose values may be
+ * repeated. Here and not in the page so it can be tested: it used to keep only
+ * `value[0]`, which read `?uf=SP&uf=RJ` as SP alone, and the edital's
+ * server-rendered "Voltar" then dropped every UF but one (multi-UF, 2026-10-09).
+ * A single-valued key still reads the same: `readSearch` asks it with `get`.
+ */
+export function readSearchRecord(query: Record<string, string | string[] | undefined>): RadarSearch {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    for (const one of Array.isArray(value) ? value : [value]) {
+      if (typeof one === 'string') params.append(key, one)
+    }
+  }
+  return readSearch(params)
 }
 
 async function envelope<T>(response: Response): Promise<T> {
@@ -245,7 +270,8 @@ export async function postCnpj(cnpj: string, signal?: AbortSignal): Promise<Cnpj
 export type TenderQuery = {
   group: TenderGroup
   cnpj?: string | null
-  state?: string | null
+  /** Canonical UFs; empty is every state. One `state=` each on the wire. */
+  states?: readonly string[] | null
   q?: string | null
   modality?: ModalityFilter | null
   meEpp?: MeEppFilter | null
@@ -257,7 +283,7 @@ export type TenderQuery = {
 export function tendersUrl(query: TenderQuery): string {
   const params = new URLSearchParams({ group: query.group })
   if (query.cnpj) params.set('cnpj', query.cnpj)
-  if (query.state) params.set('state', query.state)
+  for (const state of canonicalUfs(query.states ?? [])) params.append('state', state)
   if (query.q) params.set('q', query.q)
   if (query.modality) params.set(MODALITY_PARAM, query.modality)
   if (query.meEpp) params.set(ME_EPP_PARAM, query.meEpp)
