@@ -274,7 +274,7 @@ def check_gates(
 
     Read-only by construction: it writes no delivery row, opens no socket and
     sleeps for no pacing slot. That is what lets the opening preview
-    (:func:`preview_opening`) ask *who would receive this on 08/10* without
+    (:func:`preview_opening`) ask *who would receive this on the day* without
     answering it, from the **same** code the real send runs — so the two
     cannot drift, which is the whole reason this is a function and not a
     second copy of the checks in a script.
@@ -540,7 +540,7 @@ def send(
     client = client or default_client()
     common = {"founders_list_id": founders_list_id, "template": template}
 
-    # The gates themselves are in `check_gates`, read-only, so the 08/10
+    # The gates themselves are in `check_gates`, read-only, so the opening
     # preview can run exactly these checks without writing a delivery row.
     # Only the *recording* of a refusal lives here, because only a real send
     # has a job and an attempt to record it against.
@@ -720,7 +720,7 @@ BRT_ZONE = "America/Sao_Paulo"
 SEATED_FOUNDERS_SQL = "select id, seat from founders_list where seat is not null order by seat"
 
 #: The other half of the seat list, and the one no template covers. Counted
-#: rather than listed: the preview reports how many people the 08/10 send does
+#: rather than listed: the preview reports how many people the opening send does
 #: **not** reach, which is the open decision this card names.
 WAITLISTED_FOUNDERS_SQL = "select count(*) from founders_list where seat is null"
 
@@ -804,13 +804,13 @@ def founders_opening_broadcast(ctx: JobContext) -> None:
     Sends nothing itself.
 
     Reads the seat list at the moment it *runs*, not at the moment it was
-    scheduled, so a founder who takes a seat between now and 08/10 is still
+    scheduled, so a founder who takes a seat before the opening is still
     included — the same reason `weekly_digest` queries eligibility at send
     time rather than freezing a list when the sweep was enqueued.
 
     **Both channels from one sweep** (E12). `email/founders-opening.md`'s front
     matter said "Pairs with whatsapp/founders-opening" while nothing paired
-    them: this fanned out WhatsApp only, so on 08/10 the WhatsApp message would
+    them: this fanned out WhatsApp only, so on the day the WhatsApp message would
     have shipped and the e-mail carrying the identical promise would not —
     silently, to people whose consent box named *both* channels.
 
@@ -861,41 +861,90 @@ def founders_opening_broadcast(ctx: JobContext) -> None:
 #
 # So this is the rehearsal: for every seated founder, run the same
 # `check_gates` the send runs and render the same body, **reading only**. It
-# answers the question that matters on 07/10 — *who does 08/10 actually
+# answers the question that matters the week before — *who does the opening
 # reach, and who is silently skipped and why* — from the code that will
 # answer it for real, rather than from a second copy of the rules.
 
 
 @dataclass(frozen=True, slots=True)
 class ChannelPreview:
-    """What one channel would do for one founder on 08/10.
+    """What one channel would do for one founder on the opening day.
 
     ``body`` is the **rendered message**, which contains the person's first
     name — so, like the send itself, it is never logged and never written to
     `events` (§12). `scripts/preview_founders_opening.py` prints it to a
     terminal and nowhere else, and only when asked.
+
+    ## ``delivery_mode`` is part of the verdict, not context beside it
+
+    Found by this card's review, and it is the one asymmetry that makes a
+    rehearsal worse than no rehearsal. The gates and the render decide whether
+    a message is *built*; the kill switch decides whether it *leaves the
+    process*:
+
+        evolution.py:243   if not sending_enabled(): return SendResult(status=DELIVERY_DRY_RUN)
+        resend.py:224      if not sending_enabled(): return SendResult(status=DELIVERY_DRY_RUN)
+
+    `delivery_mode()` answers ``send`` for the exact string ``"send"`` and
+    ``dry_run`` for everything else, **unset included**. So with `EMAIL_DELIVERY`
+    absent from the deployed worker on the day, `email.send` renders the body,
+    writes `email.dry_run` and the founder receives nothing — while a preview
+    that asked only the gates printed `email=would_send` and counted that person
+    as reached. A founder opted out of WhatsApp whose e-mail switch is off would
+    have read `reached` and received **nothing at all**.
+
+    It has **no default**, deliberately. A new construction site that forgot to
+    pass it would otherwise claim the switch is on, which is the direction that
+    lies in favour of the send.
     """
 
     channel: str
+    #: ``evolution.delivery_mode()`` / ``resend.delivery_mode()`` for this
+    #: channel, read at preview time. Both modules spell the two values
+    #: identically, so one comparison serves both.
+    delivery_mode: str
     reason: str | None = None
     render_error: str | None = None
     body: str | None = None
 
     @property
-    def would_send(self) -> bool:
+    def delivery_on(self) -> bool:
+        return self.delivery_mode == evolution.DELIVERY_SEND
+
+    @property
+    def builds(self) -> bool:
+        """Gates passed and the body rendered — what the **sweep** will attempt.
+
+        Separate from :attr:`would_send` because the two answer different
+        questions and the script needs both: this one is "is this founder's
+        message ready", which is what a dry run proves, and `would_send` is
+        "will they receive it", which a dry run cannot.
+        """
         return self.reason is None and self.render_error is None
 
     @property
+    def would_send(self) -> bool:
+        """Whether this founder actually receives the message. The real answer."""
+        return self.builds and self.delivery_on
+
+    @property
     def outcome(self) -> str:
-        """One word for a summary line. Never contains personal data."""
+        """One word for a summary line. Never contains personal data.
+
+        The gate reason wins over `delivery_off` when both apply: a founder
+        without consent is a permanent fact about that founder, while the switch
+        is one environment variable away from changing for everybody.
+        """
         if self.render_error is not None:
             return "render_error"
-        return self.reason or "would_send"
+        if self.reason is not None:
+            return self.reason
+        return "would_send" if self.delivery_on else "delivery_off"
 
 
 @dataclass(frozen=True, slots=True)
 class OpeningPreview:
-    """One seated founder's 08/10, decided before the day.
+    """One seated founder's opening day, decided before it.
 
     Holds :class:`ChannelPreview` objects, so it carries rendered bodies: same
     rule, terminal only.
@@ -917,9 +966,13 @@ class OpeningPreview:
 
 
 def _preview_whatsapp(conn: psycopg.Connection, founders_list_id: int, seat: int) -> ChannelPreview:
+    # Read once per founder rather than once per run: the value cannot change
+    # mid-preview, and taking it here keeps every `ChannelPreview` self-contained
+    # so the switch travels with the verdict instead of beside it.
+    mode = evolution.delivery_mode()
     gate = check_gates(conn, founders_list_id=founders_list_id, template=OPENING_TEMPLATE)
     if gate.reason is not None:
-        return ChannelPreview(CHANNEL, reason=gate.reason)
+        return ChannelPreview(CHANNEL, mode, reason=gate.reason)
 
     # The fifth refusal, and the one `check_gates` cannot make: the number's
     # *shape* is checked by the transport (`evolution.normalise_number`), which
@@ -932,7 +985,7 @@ def _preview_whatsapp(conn: psycopg.Connection, founders_list_id: int, seat: int
     try:
         evolution.normalise_number(gate.number)
     except ValueError:
-        return ChannelPreview(CHANNEL, reason=SKIP_INVALID_NUMBER)
+        return ChannelPreview(CHANNEL, mode, reason=SKIP_INVALID_NUMBER)
 
     try:
         body = templates.load(CHANNEL, OPENING_TEMPLATE).render(
@@ -944,18 +997,21 @@ def _preview_whatsapp(conn: psycopg.Connection, founders_list_id: int, seat: int
         # Deliberately broad: one founder whose body will not build must not
         # end the survey of the other 47. The outcome word is `render_error`
         # and the type name is printed, so nothing is swallowed quietly.
-        return ChannelPreview(CHANNEL, render_error=f"{type(exc).__name__}: {exc}")
-    return ChannelPreview(CHANNEL, body=body)
+        return ChannelPreview(CHANNEL, mode, render_error=f"{type(exc).__name__}: {exc}")
+    return ChannelPreview(CHANNEL, mode, body=body)
 
 
 def _preview_email(conn: psycopg.Connection, founders_list_id: int, seat: int) -> ChannelPreview:
     # Deferred for the same reason the broadcast handler defers it: `email`
     # imports this module for `build_context`, so a module-scope import cycles.
-    from . import email
+    from . import email, resend
 
+    # The **e-mail** switch, which is a different variable from WhatsApp's and
+    # was the channel E12 found missing from this sweep altogether.
+    mode = resend.delivery_mode()
     gate = email.check_gates(conn, founders_list_id=founders_list_id, template=OPENING_TEMPLATE)
     if gate.reason is not None:
-        return ChannelPreview(email.CHANNEL, reason=gate.reason)
+        return ChannelPreview(email.CHANNEL, mode, reason=gate.reason)
     try:
         subject, body = email.render_email(
             OPENING_TEMPLATE,
@@ -964,12 +1020,12 @@ def _preview_email(conn: psycopg.Connection, founders_list_id: int, seat: int) -
             ),
         )
     except Exception as exc:  # broad on purpose; see `_preview_whatsapp`
-        return ChannelPreview(email.CHANNEL, render_error=f"{type(exc).__name__}: {exc}")
-    return ChannelPreview(email.CHANNEL, body=f"{subject}\n\n{body}")
+        return ChannelPreview(email.CHANNEL, mode, render_error=f"{type(exc).__name__}: {exc}")
+    return ChannelPreview(email.CHANNEL, mode, body=f"{subject}\n\n{body}")
 
 
 def preview_opening(conn: psycopg.Connection) -> list[OpeningPreview]:
-    """What the 08/10 broadcast would do, for every seated founder. Writes nothing.
+    """What the broadcast would do, for every seated founder. Writes nothing.
 
     Runs both channels because the sweep queues both (E12): previewing half of
     a two-channel send is how the e-mail came to be missing in the first place.
@@ -996,7 +1052,7 @@ def waitlisted_count(conn: psycopg.Connection) -> int:
     Not a detail: `email/founders-waitlist.md` promises these people the access
     link when the doors open and no template covers what they receive on the
     day. The preview prints this number so the gap is a figure somebody sees
-    before 08/10 rather than a sentence in a docstring (card E5).
+    before the opening rather than a sentence in a docstring (card E5).
     """
     with conn.cursor() as cur:
         cur.execute(WAITLISTED_FOUNDERS_SQL)
@@ -1035,7 +1091,7 @@ def pacing_estimate_seconds(count: int) -> tuple[float, float]:
 
     The first message does not wait, so it is ``count - 1`` intervals. At the
     schema's 48-seat ceiling that is 16–24 minutes, which is the number that
-    decides whether 19:00 BRT means the last founder reads it at 19:24.
+    decides whether 12:00 BRT means the last founder reads it at 12:24.
     """
     gaps = max(0, count - 1)
     return gaps * MIN_INTERVAL_SECONDS, gaps * MAX_INTERVAL_SECONDS

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rehearse the 08/10 founders-opening send without sending it (task E5).
+"""Rehearse the founders-opening send without sending it (task E5).
 
     python worker/scripts/preview_founders_opening.py
     python worker/scripts/preview_founders_opening.py --render
@@ -27,18 +27,20 @@ It reports, in this order:
    **UTC** (as `jobs.run_after` stores it) *and* **BRT** (the clock the product
    and the promise are in). CLAUDE.md's clocks table; mixing the two has
    produced a wrong answer in this repo before;
-2. both delivery switches, because a dry-run 08/10 and a delivered one differ
-   only by an event *name* (card E4);
+2. both delivery switches, and which way each one points — because a dry
+   run and a delivered send differ only by an event *name* (card E4), and
+   because the per-founder verdict below is computed *with* the switch
+   rather than printed beside it;
 3. one line per seated founder: the id, the seat, and what each channel would
    do — `would_send`, or the skip reason, or a render error;
 4. the summary, the **waitlisted** count (nobody has decided what they receive
    that day — card E5's open question), and the pacing estimate, because a full
-   seat list takes 16–24 minutes at §9's cadence and 19:00 BRT is when the
-   first message goes, not the last.
+   seat list takes 16–24 minutes at §9's cadence and the broadcast hour is
+   when the first message goes, not the last.
 
 ## It is also the verification, run again afterwards
 
-E5's first criterion asks that 08/10 be verified *"by a `whatsapp.sent` event
+E5's first criterion asks that the opening be verified *"by a `whatsapp.sent` event
 per recipient rather than by a job status"*. The already-sent gate is exactly
 that read, and it matches `whatsapp.sent` / `email.sent` alone — never
 `dry_run` — so running this again **after** the broadcast turns each line into
@@ -92,7 +94,12 @@ def report_schedule(conn: psycopg.Connection) -> None:
     row = whatsapp.scheduled_broadcast(conn, key=key)
     if row is None:
         print(f"dated run     : NOT QUEUED — no {whatsapp.BROADCAST_JOB_KIND} row with key {key}")
-        print("                nothing fires on 08/10; run schedule_founders_opening.py --commit")
+        # Interpolated, never a literal. This is the one line an operator acts
+        # on, and it named 08/10 for the nine days after Sci moved the opening.
+        print(
+            f"                nothing fires on {whatsapp.opening_date().isoformat()};"
+            " run schedule_founders_opening.py --commit"
+        )
         return
     job_id, status, run_after = row
     print(f"dated run     : job {job_id}, status {status}")
@@ -108,8 +115,22 @@ def report_schedule(conn: psycopg.Connection) -> None:
 
 
 def report_switches() -> None:
-    print(f"whatsapp      : {evolution.DELIVERY_VAR}={evolution.delivery_mode()}")
-    print(f"email         : {resend.DELIVERY_VAR}={resend.delivery_mode()}")
+    """Both kill switches, and **what each one means for the day**.
+
+    They were two unrelated lines above a report whose per-founder verdict
+    contradicted them: `would_send` asked the gates only, so a channel whose
+    switch was off printed `would_send` for every founder it would never reach.
+    The verdict now carries the switch (`whatsapp.ChannelPreview`), and these
+    lines say out loud which way they point, because joining two numbers by eye
+    is the step a rehearsal exists to remove.
+    """
+    for label, var, mode in (
+        ("whatsapp", evolution.DELIVERY_VAR, evolution.delivery_mode()),
+        ("email", resend.DELIVERY_VAR, resend.delivery_mode()),
+    ):
+        on = mode == evolution.DELIVERY_SEND
+        meaning = "delivers" if on else "DRY RUN — renders and sends nothing"
+        print(f"{label:<14}: {var}={mode} — {meaning}")
 
 
 def report_founders(rows: list[whatsapp.OpeningPreview], render: bool) -> None:
@@ -127,7 +148,14 @@ def report_founders(rows: list[whatsapp.OpeningPreview], render: bool) -> None:
 
 def report_summary(conn: psycopg.Connection, rows: list[whatsapp.OpeningPreview]) -> None:
     reached = sum(1 for preview in rows if preview.reached)
-    print(f"seated        : {len(rows)}; reached on at least one channel: {reached}")
+    # `builds` and `reached` are different questions and the gap between them is
+    # the kill switch. Printing only the second would have said "0 reached" with
+    # no reason; printing only the first is what this report used to do.
+    built = sum(1 for preview in rows if any(one.builds for one in preview.channels))
+    print(f"seated        : {len(rows)}; message builds for: {built}")
+    print(f"              : actually receives it: {reached}")
+    if built != reached:
+        print("                the difference is a kill switch, not a founder — see above")
     # The channel list is read off the preview rather than written here, so a
     # third channel added to the sweep appears in this summary by itself.
     for channel in dict.fromkeys(one.channel for preview in rows for one in preview.channels):
@@ -146,6 +174,10 @@ def report_summary(conn: psycopg.Connection, rows: list[whatsapp.OpeningPreview]
     # Paced from the **WhatsApp** count, not from `reached`: §9's cadence is
     # Evolution's constraint alone, and a founder who is opted out of WhatsApp
     # but reachable by e-mail is not a message that waits 20-30 s.
+    #
+    # And from `would_send`, not `builds`: `send()` only takes a pacing slot
+    # `if evolution.sending_enabled()` (`whatsapp.py`), so with the switch off
+    # the sweep does not wait at all and the honest estimate is zero.
     sending = sum(
         1
         for preview in rows
@@ -154,7 +186,11 @@ def report_summary(conn: psycopg.Connection, rows: list[whatsapp.OpeningPreview]
     )
     best, worst = whatsapp.pacing_estimate_seconds(sending)
     print(f"pacing (§9)   : {best / 60:.0f}-{worst / 60:.0f} min for {sending} WhatsApp messages")
-    print("                19:00 BRT is when the first one goes, not the last")
+    # The hour interpolated from the configuration, never a literal: this line
+    # said 19:00 for the nine days after Sci moved the opening to 12:00 BRT,
+    # seven lines under the `broadcast due` line that said 12:00.
+    first = whatsapp.broadcast_at().astimezone(BRT)
+    print(f"                {first:%H:%M} BRT is when the first one goes, not the last")
     print("after the day : `already_sent` is a founder the message reached (a `*.sent`")
     print("                event, never a dry run); `would_send` is one it did not")
 
@@ -170,6 +206,21 @@ def main() -> int:
         # Belt and braces: this script only ever reads, and the transaction a
         # write would need is refused before it can start.
         conn.execute("set default_transaction_read_only = on")
+        # **Asserted, not assumed** (CLAUDE.md §4b: put the verification inside
+        # the thing that must fail). A session-level `SET` issued under
+        # autocommit need not survive to the next statement through a
+        # transaction-pooling endpoint — and `WORKER_DSN_VARS` can resolve to
+        # Neon's pooled host — in which case the guard this script's docstring
+        # and `worker/README.md` both promise would be silently absent. Nothing
+        # here writes, so this is the guard failing quietly rather than a live
+        # risk; it still must not fail quietly.
+        guard = conn.execute("show transaction_read_only").fetchone()
+        if guard is None or guard[0] != "on":
+            raise SystemExit(
+                "refusing to run: the read-only guard did not take "
+                f"(transaction_read_only={None if guard is None else guard[0]}). "
+                "Use the unpooled DSN."
+            )
         report_schedule(conn)
         report_switches()
         print()

@@ -24,7 +24,7 @@ import httpx
 import psycopg
 import pytest
 
-from licitaqui import breaker, email, evolution, queue, whatsapp
+from licitaqui import breaker, email, evolution, queue, resend, whatsapp
 from licitaqui.consumer import Consumer
 from licitaqui.evolution import DELIVERY_SEND, DELIVERY_VAR, EvolutionClient
 from licitaqui.queue import Job
@@ -634,7 +634,7 @@ def test_the_broadcast_enqueues_the_opening_email_beside_the_whatsapp(
 ) -> None:
     """**E12.** `email/founders-opening.md`'s front matter said "Pairs with
     whatsapp/founders-opening" while nothing paired them: the sweep fanned out
-    WhatsApp only. On 08/10 the WhatsApp message would have shipped and the
+    WhatsApp only. On the day the WhatsApp message would have shipped and the
     e-mail carrying the identical promise would not — silently, to people whose
     consent box named *both* channels.
 
@@ -791,7 +791,8 @@ def test_the_opening_message_renders_with_the_access_link(
 # E5's second acceptance criterion: *"a dry run of the whole send is possible
 # before the date"*. The risk these tests exist for is not that the preview
 # crashes — it is that the preview and the real send **disagree**, which is the
-# only way a rehearsal is worse than none: it would say 08/10 is fine and 08/10
+# only way a rehearsal is worse than none: it would say the opening is fine
+# and the opening
 # would not be. So the first test below does not check the preview against a
 # list of expected strings; it checks it against what the send then actually
 # records, founder by founder, through the real consumer path.
@@ -854,7 +855,7 @@ def test_the_preview_says_exactly_what_the_send_then_does(
     """The anti-drift test, and the reason `check_gates` is a function.
 
     A rehearsal that disagrees with the performance is worse than no rehearsal:
-    it would report 08/10 healthy and 08/10 would not be. So the founder is put
+    it would report the opening healthy and it would not be. So the founder is put
     in one gate state, the preview is asked, and then the **real job** runs
     through the real consumer — and the reason the preview gave must be the
     reason the delivery log then records.
@@ -943,8 +944,20 @@ def test_the_preview_writes_nothing_and_opens_no_socket(
 
     before = _footprint(e2_conn, founder)
     rows = whatsapp.preview_opening(e2_conn)
-    assert preview_for(rows, founder).would_send is True
+    line = preview_for(rows, founder)
     assert _footprint(e2_conn, founder) == before
+
+    # **This assertion is the review's finding, turned the right way round.**
+    # `conftest._whatsapp_delivery_off` / `_email_delivery_off` are autouse and
+    # suite-wide, so *every* test in this file runs with both kill switches
+    # unset — the one configuration in which the real send delivers nothing. It
+    # used to assert `would_send is True` here, which is precisely the lie: the
+    # fixture that exists to stop a test sending was also hiding the fact that
+    # the preview could not tell. Written this way, that same fixture is what
+    # proves the switch reaches the verdict.
+    assert line.builds is True, "the message is ready; a dry run proves that much"
+    assert line.would_send is False, "and with the switch unset nobody receives it"
+    assert line.outcome == "delivery_off"
 
 
 def test_the_preview_renders_the_approved_copy_on_both_channels(
@@ -965,7 +978,11 @@ def test_the_preview_renders_the_approved_copy_on_both_channels(
 
     for channel in channels.values():
         assert channel.render_error is None, channel.render_error
-        assert channel.would_send is True
+        # `builds`, not `would_send`: this test is about the **body**, and the
+        # kill switches are unset suite-wide (`conftest`), which is a fact about
+        # delivery rather than about whether the copy renders. Conflating the
+        # two is what let the preview claim `would_send` with both switches off.
+        assert channel.builds is True
         assert channel.body is not None
         assert whatsapp.opening_link() in channel.body
 
@@ -974,10 +991,53 @@ def test_the_preview_renders_the_approved_copy_on_both_channels(
     assert whatsapp_body.endswith("Para não receber mais mensagens, responda SAIR.")
 
 
+def test_each_channel_is_judged_against_its_own_kill_switch(
+    e2_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`WHATSAPP_DELIVERY` and `EMAIL_DELIVERY` are **two** variables.
+
+    So half the promise can go dark on its own, and the rehearsal has to be able
+    to say which half. This is not a hypothetical misconfiguration:
+    `delivery_mode()` answers `send` for the exact string `"send"` and
+    `dry_run` for everything else, **unset included**, and getting the deployed
+    worker's e-mail variables right took three fixes in one morning on 2026-09-26
+    (`docs/CLAIMS.md`, E6) — none of them code.
+
+    The founder here passes every gate on both channels, so the *only* thing
+    separating the two outcomes is the switch. Run with WhatsApp on and e-mail
+    off, then the reverse, so neither direction can pass by accident.
+    """
+    founder = insert_seated_founder(e2_conn, "preview-switches", seat=PREVIEW_SEAT)
+
+    def outcomes() -> dict[str, str]:
+        preview = next(
+            row for row in whatsapp.preview_opening(e2_conn) if row.founders_list_id == founder
+        )
+        return {one.channel: one.outcome for one in preview.channels}
+
+    monkeypatch.setenv(DELIVERY_VAR, DELIVERY_SEND)
+    monkeypatch.delenv(resend.DELIVERY_VAR, raising=False)
+    assert outcomes() == {whatsapp.CHANNEL: "would_send", email.CHANNEL: "delivery_off"}
+
+    monkeypatch.delenv(DELIVERY_VAR, raising=False)
+    monkeypatch.setenv(resend.DELIVERY_VAR, resend.DELIVERY_SEND)
+    assert outcomes() == {whatsapp.CHANNEL: "delivery_off", email.CHANNEL: "would_send"}
+
+    # And `reached` follows the real answer rather than the gates: with one
+    # channel live this founder is still kept the promise, and with neither they
+    # are not — which is the sentence the summary line prints.
+    monkeypatch.delenv(resend.DELIVERY_VAR, raising=False)
+    both_off = next(
+        row for row in whatsapp.preview_opening(e2_conn) if row.founders_list_id == founder
+    )
+    assert both_off.reached is False
+    assert all(one.builds for one in both_off.channels), "nothing is wrong with the messages"
+
+
 def test_run_again_afterwards_the_preview_is_the_per_recipient_verification(
     e2_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """E5's first criterion: 08/10 verified *"by a `whatsapp.sent` event per
+    """E5's first criterion: the opening verified *"by a `whatsapp.sent` event per
     recipient rather than by a job status"*.
 
     The already-sent gate is that read. So the same command that rehearses the
@@ -985,9 +1045,13 @@ def test_run_again_afterwards_the_preview_is_the_per_recipient_verification(
     `already_sent`, and one it missed still reads `would_send` — per channel,
     and whatever `jobs` says about the run. Both halves are asserted here,
     because a gate that answered `already_sent` for everybody would look like
-    a clean 08/10 and be a broken query.
+    a clean opening and be a broken query.
     """
+    # **Both** switches, because they are two variables and the preview now
+    # reports each channel against its own. Safe: the preview constructs no
+    # transport and `email.send` is never called here.
     monkeypatch.setenv(DELIVERY_VAR, DELIVERY_SEND)
+    monkeypatch.setenv(resend.DELIVERY_VAR, resend.DELIVERY_SEND)
     founder = insert_seated_founder(e2_conn, "preview-verify", seat=PREVIEW_SEAT)
     client, _ = mock_client()
 

@@ -433,22 +433,45 @@ python worker/scripts/preview_founders_opening.py            # who 17/10 reaches
 python worker/scripts/preview_founders_opening.py --render   # and the message bodies
 ```
 
-Read-only — it sets `default_transaction_read_only` and constructs no transport
-— so it is safe against production, which is the only place the answer is true.
-It is **not** the same thing as either of the two dry runs that already existed:
-`schedule_founders_opening.py` without `--commit` rehearses the *scheduling*,
-and `WHATSAPP_DELIVERY` unset would rehearse a send that is now switched on in
-production, i.e. would send every seated founder a real message early.
+Read-only — it sets `default_transaction_read_only`, **asserts the guard took**
+and constructs no transport — so it is safe against production, which is the
+only place the answer is true. It is **not** the same thing as either of the two
+dry runs that already existed: `schedule_founders_opening.py` without `--commit`
+rehearses the *scheduling*, and `WHATSAPP_DELIVERY` unset would rehearse a send
+that is now switched on in production, i.e. would send every seated founder a
+real message early.
 
 It runs the same `whatsapp.check_gates` / `email.check_gates` the send runs, so
-the rehearsal cannot drift from the performance —
-`test_the_preview_says_exactly_what_the_send_then_does` asserts the reason it
-predicts is the reason the delivery log then records.
+the rehearsal cannot drift from the performance.
+`test_the_preview_says_exactly_what_the_send_then_does` asserts, **for
+WhatsApp**, that the reason the preview predicts is the reason the delivery log
+then records, over five gate states; for **e-mail** the two share
+`check_gates` by construction and the gate states are covered by
+`test_integration_email.py`, but no test runs an e-mail preview against an
+e-mail send. Card **E25**.
+
+**The verdict includes the kill switch**, which it did not until 2026-10-09.
+`would_send` means *this founder receives it*; `builds` means *the message is
+ready*, which is all a dry run can prove; `delivery_off` is the word when a
+channel is built and its switch is not `send`. `WHATSAPP_DELIVERY` and
+`EMAIL_DELIVERY` are separate variables, so each channel is judged against its
+own — a channel reporting `would_send` with its switch unset is exactly how a
+rehearsal becomes worse than none.
 
 Run it **again after the broadcast** and it is the per-recipient verification
 the paragraph above asks for: the already-sent gate matches `whatsapp.sent` /
 `email.sent` alone, never `dry_run`, so `already_sent` is a founder the message
 reached and `would_send` is one it did not — whatever the `jobs` row says.
+
+### Watching the dated row (E20)
+
+`opening_broadcast_check` runs twice a day, 09:00 and 15:00 BRT — three hours
+before the broadcast and three hours after — and writes one `events` row
+saying whether the dated `jobs` row is queued, for the right instant, and still
+claimable. `/admin`'s *Disparo da abertura* card reads it; a bad answer is also
+an `error` log line. It never re-queues anything: that is a person running
+`schedule_founders_opening.py --commit`, because enqueuing the broadcast sends
+real messages to real founders.
 
 ### Cloudflare blocks default HTTP clients
 

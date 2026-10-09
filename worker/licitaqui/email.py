@@ -45,23 +45,32 @@ with no such constraint stated anywhere in the spec, so unlike
 ``whatsapp.send()`` this does not call anything like ``wait_for_slot`` — there
 is not one to call.
 
-## What actually blocks a real send today
+## What blocks a real send today — and it is no longer the copy
 
-Every one of the three approved templates in ``worker/templates/email/``
-declares ``partials: [partial-footer]``, and ``partial-footer.md`` is
-``status: draft`` with two literal ``TODO(Sci):`` lines **in its body**
-(templates README §7 leaves those there on purpose — a question for Sci, not
-copy). :func:`render_email` walks a template's declared partials and renders
-each one, so a call for any of the three raises ``TemplateNotApproved`` from
-the footer — not a bug here, the same rule `whatsapp.send()` already lives by
-for ``optout-confirmation``. ``email/founders-opening.md`` carries a *second*,
-independent ``TODO(Sci):`` of its own (about the subscription price on
-08/10), so it is blocked twice over even once the footer is written.
+**This section said the opposite until 2026-10-09, and it was wrong.** It
+described ``partial-footer.md`` as ``status: draft`` with two literal
+``TODO(Sci):`` lines, and ``founders-opening.md`` as carrying a third, so that
+every e-mail raised ``TemplateNotApproved`` from the footer and this module was
+"proven against synthetic templates" ahead of real copy. Measured on that date:
+both files are ``status: approved`` — the footer's note is dated 2026-09-25 —
+and **neither carries a single** ``TODO(Sci)``. They render; the opening
+preview's own test depends on it. A reader reasoning about the 17/10 opening
+from the old paragraph would have concluded that no opening e-mail could be
+sent at all.
 
-Nobody may write that copy but Sci (legal brief §5), so this module is built
-and proven against synthetic templates in the test suite: the gates, the
-render pipeline (subject, body, footer) and the delivery log are all real and
-tested ahead of the copy that unblocks a first real send.
+What is left is the **switch**, and it is one variable rather than a copy
+question: ``EMAIL_DELIVERY`` must be the exact string ``send`` or
+:func:`licitaqui.resend.sending_enabled` is false and :func:`send` writes
+``email.dry_run`` having rendered the whole message. It is live on the deployed
+worker, proven per recipient on 2026-09-26 — Resend **Delivered**, footer and
+all three placeholders bound (`docs/CLAIMS.md`, E6). The thing that must not be
+assumed is the *other* direction, and `whatsapp.ChannelPreview` carries the mode
+into its verdict for exactly that reason: a rehearsal that reports
+``would_send`` while this switch is unset is a rehearsal that lies.
+
+One genuine gap stands, and it belongs to the footer's own note rather than to
+this file: ``link_preferencias`` resolves to a screen that requires a session,
+and a founder has no account.
 
 ## The delivery log
 
@@ -199,7 +208,7 @@ class Gate:
 def check_gates(conn: psycopg.Connection, *, founders_list_id: int, template: str) -> Gate:
     """The three gates and the already-sent check — **and nothing else**.
 
-    Read-only, and the same code :func:`send` runs, so the 08/10 preview
+    Read-only, and the same code :func:`send` runs, so the opening preview
     (`whatsapp.preview_opening`) cannot drift from the send it previews. The
     mirror of `whatsapp.check_gates`, minus the opt-out gate this channel does
     not have: a `SAIR` is a WhatsApp reply, and the e-mail revocation route is
@@ -323,7 +332,7 @@ def send(
     client = client or default_client()
     common = {"founders_list_id": founders_list_id, "template": template}
 
-    # The gates themselves are in `check_gates`, read-only, so the 08/10
+    # The gates themselves are in `check_gates`, read-only, so the opening
     # preview can run exactly these checks without writing a delivery row.
     gate = check_gates(conn, founders_list_id=founders_list_id, template=template)
     if gate.reason is not None:
