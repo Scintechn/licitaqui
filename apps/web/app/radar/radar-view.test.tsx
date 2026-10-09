@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { format, messages } from '@/lib/messages'
 import type { CompanyView, TenderCard, VisitorView } from '@/lib/radar/contract'
-import { RadarView, type RadarStatus, type RadarViewProps } from './radar-view'
+import { asksForKeyword, RadarView, type RadarStatus, type RadarViewProps } from './radar-view'
 
 /**
  * Canvas 02 in every state it can be in.
@@ -248,14 +248,61 @@ describe('the states', () => {
     expect(out).not.toContain(copy.states.emptyBody)
   })
 
-  it('a CNPJ BrasilAPI could not read says so, and keeps the keyword results', () => {
-    const blank = render({ status: { kind: 'manualCnae' }, tenders: [] })
-    only(blank, copy.states.manualCnaeTitle)
+describe('a CNPJ neither source could read', () => {
+  const unread: RadarStatus = { kind: 'manualCnae', cnpjNotFound: false }
+  const missing: RadarStatus = { kind: 'manualCnae', cnpjNotFound: true }
+  const keyword = { cnpj: '51885242000140', state: 'SP', q: 'baterias', group: 'keyword' as const }
 
-    const withResults = render({ status: { kind: 'manualCnae' } })
-    expect(withResults).toContain('Registro de preços de baterias e pilhas')
-    expect(withResults).not.toContain(copy.states.manualCnaeTitle)
+  it('with no keyword, asks for one and lists nothing under the card', () => {
+    const out = render({ status: unread, tenders: [] })
+    only(out, copy.states.manualCnaeTitle)
+    expect(out).toContain(copy.states.manualCnaeBodyNoKeyword)
+    // Nothing is listed, so the old sentence about "the ones below" is gone.
+    expect(out).not.toContain(copy.states.manualCnaeBodyKeyword)
+    expect(out).not.toContain(copy.states.emptyTitle)
   })
+
+  it('with a keyword, says so above the keyword\'s editais instead of hiding', () => {
+    const out = render({ status: unread, query: keyword })
+    expect(out).toContain(copy.states.manualCnaeTitle)
+    expect(out).toContain(copy.states.manualCnaeBodyKeyword)
+    expect(out).toContain('Registro de preços de baterias e pilhas')
+    // Above it, not below: the sentence is about what follows.
+    expect(out.indexOf(copy.states.manualCnaeTitle)).toBeLessThan(
+      out.indexOf('Registro de preços de baterias e pilhas'),
+    )
+  })
+
+  it('with a keyword that found nothing, the card still says why and the zero is explained', () => {
+    const out = render({ status: unread, query: keyword, tenders: [] })
+    expect(out).toContain(copy.states.manualCnaeBodyKeyword)
+  })
+
+  it('a CNPJ both sources say does not exist asks to check the number, not to wait', () => {
+    for (const query of [undefined, keyword]) {
+      const out = render({ status: missing, tenders: [], ...(query ? { query } : {}) })
+      expect(out).toContain(copy.states.manualCnaeBodyNotFound)
+      expect(out).not.toContain(copy.states.manualCnaeBodyNoKeyword)
+      expect(out).not.toContain(copy.states.manualCnaeBodyKeyword)
+    }
+  })
+
+  it('opens the search when it asks for a keyword, and only then', () => {
+    const query = { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible' as const }
+    expect(asksForKeyword(unread, query)).toBe(true)
+    expect(asksForKeyword(unread, { ...query, q: 'baterias' })).toBe(false)
+    expect(asksForKeyword(missing, query)).toBe(false)
+    expect(asksForKeyword({ kind: 'ready' }, query)).toBe(false)
+
+    // The disclosure is the one around the keyword field.
+    const disclosure = (out: string) => out.slice(out.indexOf('<details class="group"'))
+    expect(disclosure(render({ status: unread, tenders: [] }))).toMatch(/^<details class="group" open/)
+    expect(disclosure(render({ status: { kind: 'ready' } }))).not.toMatch(/^<details class="group" open/)
+    // "Confira os números": the CNPJ field is inside, so it opens for that too.
+    expect(disclosure(render({ status: missing, tenders: [] }))).toMatch(/^<details class="group" open/)
+  })
+})
+
 
   it('no CNPJ and no keyword asks for one instead of erroring', () => {
     const out = render({ status: { kind: 'needCnpj' }, grouping: null, tenders: [], counts: null })
@@ -287,7 +334,8 @@ describe('the states', () => {
       { kind: 'error', code: 'rate_limited' },
       { kind: 'needCnpj' },
       { kind: 'noSegments' },
-      { kind: 'manualCnae' },
+      { kind: 'manualCnae', cnpjNotFound: false },
+      { kind: 'manualCnae', cnpjNotFound: true },
     ]
     for (const status of states) {
       const out = render({ status, tenders: [] })

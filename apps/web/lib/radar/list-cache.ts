@@ -72,7 +72,12 @@ export const REVALIDATE_AFTER_MS = 60_000
 export const MAX_SNAPSHOTS = 8
 
 /** The states a restored list can be in; the rest are not worth restoring. */
-export type SnapshotStatus = 'ready' | 'manualCnae' | 'noSegments'
+/**
+ * `cnpjNotFound` is `manualCnae` with both sources answering 404 — kept apart
+ * because the two draw different sentences, and a restore must draw the one
+ * the reader was shown.
+ */
+export type SnapshotStatus = 'ready' | 'manualCnae' | 'cnpjNotFound' | 'noSegments'
 
 export type ListSnapshot = {
   /** The group actually on screen — which is not always the one in the URL. */
@@ -116,6 +121,8 @@ export type CompanySnapshot = {
   company: CompanyView | null
   visitor: VisitorView | null
   manualCnae: boolean
+  /** See `CnpjOk.cnpjNotFound`. */
+  cnpjNotFound: boolean
   savedAt: number
 }
 
@@ -213,6 +220,7 @@ function valid(value: unknown): value is ListSnapshot {
     'grouping' in snapshot &&
     (snapshot.status === 'ready' ||
       snapshot.status === 'manualCnae' ||
+      snapshot.status === 'cnpjNotFound' ||
       snapshot.status === 'noSegments')
   )
 }

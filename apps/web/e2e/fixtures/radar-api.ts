@@ -58,6 +58,12 @@ export type CompanyWorld = {
    * `company.segments.length` (D19). Defaults to one when there is a main CNAE.
    */
   cnaeCount?: number
+  /**
+   * Neither source could read its CNAEs (`main_cnae is null`). With
+   * `cnpjNotFound`, because both said the CNPJ does not exist.
+   */
+  manualCnae?: boolean
+  cnpjNotFound?: boolean
 }
 
 export type WorldOptions = {
@@ -361,7 +367,8 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
         company: found.company,
         freshness,
         visitor: visitorView(),
-        manualCnae: false,
+        manualCnae: found.manualCnae ?? false,
+        cnpjNotFound: (found.manualCnae ?? false) && (found.cnpjNotFound ?? false),
       } satisfies CnpjResponse)
     }
 

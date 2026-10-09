@@ -232,6 +232,7 @@ describe('the company half', () => {
       company: null,
       visitor: null,
       manualCnae: false,
+      cnpjNotFound: false,
       savedAt: NOW,
     })
     expect(readCompany('36955612000185', NOW + REVALIDATE_AFTER_MS - 1)).not.toBeNull()
@@ -289,6 +290,17 @@ describe('surviving a document navigation', () => {
     clearSnapshots()
     for (const [name, value] of saved) session.setItem(name, value)
   }
+
+  it('keeps "this CNPJ does not exist" apart from "could not read it" across a reload', () => {
+    // The two draw different sentences; `valid()` refusing the newer one would
+    // cost the list, and accepting it as the older one would show the wrong
+    // sentence for the half hour the snapshot lives.
+    for (const status of ['manualCnae', 'cnpjNotFound'] as const) {
+      saveList(key, snapshot({ status }))
+      reload()
+      expect(readList(key, NOW + 5_000)?.snapshot.status).toBe(status)
+    }
+  })
 
   it('restores the list, every page of it, from storage', () => {
     const many = Array.from({ length: 60 }, (_, i) => tender(`t${i}`))

@@ -52,6 +52,8 @@ export type CompanyRead = {
    * user has to pick their CNAE by hand.
    */
   manualCnae: boolean
+  /** See `CnpjOk.cnpjNotFound`. `STATUS_NOT_FOUND` in the worker's `company.py`. */
+  cnpjNotFound: boolean
   registrationStatus: string | null
   /**
    * How many **CNAEs** are on record: the main one plus `secondary_cnaes`,
@@ -73,6 +75,9 @@ export type CompanyRead = {
    */
   cnaeCount: number
 }
+
+/** The worker's `company.STATUS_NOT_FOUND`: both sources answered 404. */
+const CNPJ_NOT_FOUND = 'lookup:not_found'
 
 const SELECT = sql`
   select c.cnpj, c.legal_name, c.trade_name, c.main_cnae, c.size, c.is_mei,
@@ -127,6 +132,7 @@ export async function readCompany(
         segments: row.segments ?? [],
       },
       manualCnae,
+      cnpjNotFound: manualCnae && row.registration_status === CNPJ_NOT_FOUND,
       registrationStatus: row.registration_status,
       cnaeCount: Number(row.cnae_count ?? 0),
     },

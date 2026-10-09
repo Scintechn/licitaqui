@@ -166,22 +166,42 @@ Results land in `companies` (§6.2) and are good for **30 days** (§3.2); a fres
 row is served without touching BrasilAPI. Pass `force=True` to bypass the cache
 (a user pressing "try again").
 
-**When the lookup fails, the row still gets written, with `main_cnae` null.**
+**Two sources, asked in order (B45).** BrasilAPI first; when it errors, times
+out, has an open circuit or answers 404, **CNPJá's open endpoint**
+(`licitaqui.cnpja`, `open.cnpja.com`, no key) is asked next. Each has its own
+breaker, so BrasilAPI being down never stops CNPJá being asked. Added 2026-10-09
+after BrasilAPI went a week without resolving a lookup in production — see the
+ADR-0002 amendment for the measurements. A resolved row logs `source`
+(`brasilapi` or `cnpja`), so which one is carrying the product is a log query.
+
+**When both fail, the row still gets written, with `main_cnae` null.**
 That is the manual-CNAE flag — `company.MANUAL_CNAE_PREDICATE` — and
-`registration_status` says why: `lookup:not_found` (the CNPJ does not exist, so
-the user should fix the number) or `lookup:failed` (BrasilAPI was unreachable,
-slow, throttled, or its circuit was open). Neither value can collide with a
+`registration_status` says why: `lookup:not_found` (**both** sources answered
+404, so the user should fix the number — the Radar says *"Confira os números"*)
+or `lookup:failed` (any other pair of misses: unreachable, slow, throttled, an
+open circuit, or one 404 beside one outage — a lagging source's 404 is not
+proof the number is wrong). The failure log's `reason` names both, e.g.
+`brasilapi:unexpected_status; cnpja:timeout`. Neither value can collide with a
 Receita status. A failure never overwrites CNAEs we already have, and a fallback
 row expires in 6 hours rather than 30 days.
 
 `is_mei` is three-state on a resolved row: `true`, `false`, and **`null` for "no
 Simples/MEI registry entry"** — which is not "not a MEI" and must not be
-rendered as one (ADR-0002).
+rendered as one (ADR-0002). CNPJá has no null for this: it sends `optant: false`
+with an empty `history` for a company that was never in the regime, and
+`cnpja.parse` stores that as `null` too.
+
+To re-read one CNPJ now instead of waiting out the 6-hour fallback window (what
+was done for Sci's CNPJ on 2026-10-09, after B45 deployed):
+`company.enqueue(conn, cnpj, force=True)` against the production database.
 
 BrasilAPI calls are **single-threaded process-wide with a 1 s minimum gap**,
 whatever `WORKER_CONCURRENCY` is, because the uncached rate limit is unmeasured;
-see the note at the top of `licitaqui/brasilapi.py`. Nothing in `pytest` calls
-BrasilAPI. The live check is deliberate and separate:
+see the note at the top of `licitaqui/brasilapi.py`. CNPJá calls have their own
+lock and a **12 s** gap — five a minute, a polite figure **inferred, not
+measured** (it sends no rate-limit headers). Nothing in `pytest` calls either
+source: the integration tests substitute both, and CNPJá is down by default
+there, so a test that forgets it cannot reach the network. The live check is deliberate and separate:
 
 ```bash
 python scripts/check_company_lookup_live.py --sample cnpjs.json --limit 50
