@@ -146,6 +146,7 @@ export async function POST(request: Request): Promise<NextResponse<CnpjResponse>
         state: 'ready' as const,
         company: found.company,
         manualCnae: found.manualCnae,
+        cnpjNotFound: found.cnpjNotFound,
         freshness: {
           state: cached.state,
           updatedAt: cached.updatedAt?.toISOString() ?? null,

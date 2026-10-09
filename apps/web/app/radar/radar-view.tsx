@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { FocusKeyword } from './focus-keyword'
 import {
   AppBar,
   AppBarAction,
@@ -60,7 +61,7 @@ import { TenderCardView } from './tender-card'
  * |---|---|
  * | `analyzing` | `202` + a job: the CNPJ has never been looked up (§3.1 step 4) |
  * | `noSegments` | the CNAEs reach no segment — B6 leaves 777 of 1,332 codes unmapped on purpose |
- * | `manualCnae` | BrasilAPI had no answer, so the row has no CNAEs at all (§9) |
+ * | `manualCnae` | neither BrasilAPI nor CNPJá could read the CNAEs, or both said the CNPJ does not exist (§9) |
  * | `needCnpj` | nothing to search by: no CNPJ on the device and no keyword |
  * | `timeout` | 60 s passed with the job still queued (§3.1) |
  * | `error` | a code from the contract, including PNCP being down |
@@ -82,7 +83,7 @@ export type RadarStatus =
   | { kind: 'error'; code: ErrorCode; text?: string }
   | { kind: 'needCnpj' }
   | { kind: 'noSegments' }
-  | { kind: 'manualCnae' }
+  | { kind: 'manualCnae'; cnpjNotFound: boolean }
 
 export type RadarQuery = {
   cnpj: string | null
@@ -597,6 +598,21 @@ function SortMenu({ query }: { query: RadarQuery }) {
 }
 
 /**
+ * **The CNPJ could not be read and there is no keyword** — so nothing can be
+ * listed, and the one useful thing on the screen is the keyword field. The
+ * manual-CNAE card says *"busque por palavra-chave"*; this is what makes that
+ * sentence an instruction the reader can follow without hunting for it: the
+ * search opens, with the cursor already in the field (Sci, 2026-10-09).
+ *
+ * Not when both sources said the CNPJ does not exist: that card asks the reader
+ * to check the number, and moving their cursor to a different field would argue
+ * with it.
+ */
+export function asksForKeyword(status: RadarStatus, query: RadarQuery): boolean {
+  return status.kind === 'manualCnae' && !status.cnpjNotFound && !query.q
+}
+
+/**
  * "Trocar empresa ou filtros", and the sort control beside it. The filters are
  * a `<details>` holding a real GET form, so they work before React has
  * hydrated and the result is a URL the user can share or bookmark. **The order
@@ -624,9 +640,19 @@ function SortMenu({ query }: { query: RadarQuery }) {
  */
 function FilterRow({
   query,
+  askForKeyword = false,
+  checkTheNumber = false,
   onNavigate,
 }: {
   query: RadarQuery
+  /** See `asksForKeyword`: open, with the cursor in the keyword field. */
+  askForKeyword?: boolean
+  /**
+   * Both sources said the CNPJ does not exist, and the card asks the reader to
+   * check it. The CNPJ field is in here, so the search opens — without moving
+   * the cursor, which is a choice about *which* field that the reader makes.
+   */
+  checkTheNumber?: boolean
   onNavigate?: (href: string) => void
 }) {
   // **Open when there is nothing to search by.**
@@ -659,7 +685,8 @@ function FilterRow({
 
   return (
     <div className="relative px-gutter">
-      <details className="group" open={nothingToSearchBy}>
+      <details className="group" open={nothingToSearchBy || askForKeyword || checkTheNumber}>
+        {askForKeyword ? <FocusKeyword cnpj={query.cnpj} /> : null}
         <summary
           className={cn(
             'flex cursor-pointer list-none items-center py-1 text-body',
@@ -1110,15 +1137,50 @@ function Body({
           }
         />
       )
-    case 'manualCnae':
-      if (tenders.length > 0) break
-      return (
+    case 'manualCnae': {
+      /*
+       * **Drawn above the list, not instead of it.** It used to `break` as soon
+       * as there were editais, which meant the sentence about them — "the ones
+       * below come only from your keyword" — could only ever render with
+       * nothing below it, and the reader looking at a keyword's editais was
+       * never told the CNPJ had not been read. Approved by Sci 2026-10-09 with
+       * the three sentences; `manualCnaeBody` (which promised a retry "em
+       * alguns minutos" that a 6-hour cache could not keep) is gone.
+       */
+      const card = (
         <StateCard
           kind="empty"
           title={copy.states.manualCnaeTitle}
-          description={copy.states.manualCnaeBody}
+          description={
+            status.cnpjNotFound
+              ? copy.states.manualCnaeBodyNotFound
+              : query.q
+                ? copy.states.manualCnaeBodyKeyword
+                : copy.states.manualCnaeBodyNoKeyword
+          }
         />
       )
+      // No keyword and nothing found: the card is the page, and the open
+      // search above it (`FilterRow`) is what it asks the reader to use. An
+      // "empty group" card under it would only repeat the zero.
+      if (tenders.length === 0 && !query.q) return card
+      return (
+        <div className="flex flex-col gap-4">
+          {card}
+          <Body
+            status={{ kind: 'ready' }}
+            group={group}
+            counts={counts}
+            query={query}
+            tenders={tenders}
+            favourites={favourites}
+            now={now}
+            onRetry={onRetry}
+            onFavourite={onFavourite}
+          />
+        </div>
+      )
+    }
     case 'ready':
       break
   }
@@ -1314,7 +1376,12 @@ export function RadarView({
           segmentCount={segmentState(grouping)}
         />
 
-        <FilterRow query={query} onNavigate={onNavigate} />
+        <FilterRow
+          query={query}
+          askForKeyword={asksForKeyword(status, query)}
+          checkTheNumber={status.kind === 'manualCnae' && status.cnpjNotFound}
+          onNavigate={onNavigate}
+        />
 
         {showList ? <FreshnessLine freshness={freshness} /> : null}
 

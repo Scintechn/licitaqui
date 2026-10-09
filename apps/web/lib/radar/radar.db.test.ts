@@ -595,6 +595,24 @@ suite('Radar read APIs (database)', () => {
       expect(body.company.segments).toEqual([])
     })
 
+    it('tells "both sources said it does not exist" apart from "they were down"', async () => {
+      // The worker's STATUS_NOT_FOUND / STATUS_FAILED. The two draw different
+      // sentences on the Radar: check the number, or try later.
+      await upsertCompany({ mainCnae: null })
+      const answers: Record<string, boolean> = {}
+      for (const status of ['lookup:not_found', 'lookup:failed']) {
+        await pool().query('update companies set registration_status = $1 where cnpj = $2', [
+          status,
+          RUN_COMPANY_CNPJ,
+        ])
+        const body = (await (await postCnpj(request())).json()) as CnpjResponse
+        if (body.state !== 'ready') throw new Error(`expected ready, got ${body.state}`)
+        expect(body.manualCnae).toBe(true)
+        answers[status] = body.cnpjNotFound
+      }
+      expect(answers).toEqual({ 'lookup:not_found': true, 'lookup:failed': false })
+    })
+
     it('mints a visitor cookie and remembers the CNPJ against the device', async () => {
       await upsertCompany({ mainCnae: await soleCnaeFor(IT, 'compatible') })
 

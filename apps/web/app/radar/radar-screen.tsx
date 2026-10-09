@@ -43,6 +43,7 @@ import { appendTenders } from '@/lib/radar/pagination'
 import { waitForData } from '@/lib/radar/poll'
 import { useAppMenu } from '@/components/app-shell'
 import { isCnpjRequired, loadingStatus, scopeFor } from './bare-radar'
+import { matchStatus } from './match-status'
 import { RadarView, type RadarQuery, type RadarStatus } from './radar-view'
 
 /** The drawer's accessible name lives on the menu's own hidden heading. */
@@ -244,14 +245,14 @@ const useBeforePaint = typeof window === 'undefined' ? useEffect : useLayoutEffe
 
 const STATUS_FROM_SNAPSHOT: Record<SnapshotStatus, RadarStatus> = {
   ready: { kind: 'ready' },
-  manualCnae: { kind: 'manualCnae' },
+  manualCnae: { kind: 'manualCnae', cnpjNotFound: false },
+  cnpjNotFound: { kind: 'manualCnae', cnpjNotFound: true },
   noSegments: { kind: 'noSegments' },
 }
 
 function snapshotStatus(status: RadarStatus): SnapshotStatus | null {
-  if (status.kind === 'ready' || status.kind === 'manualCnae' || status.kind === 'noSegments') {
-    return status.kind
-  }
+  if (status.kind === 'manualCnae') return status.cnpjNotFound ? 'cnpjNotFound' : 'manualCnae'
+  if (status.kind === 'ready' || status.kind === 'noSegments') return status.kind
   return null
 }
 
@@ -538,6 +539,8 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
      */
     async function revalidate(previous: ListSnapshot) {
       let visitor = previous.visitor
+      /** `null`: nothing was posted, so the status on screen stands. */
+      let refreshedStatus: RadarStatus | null = null
 
       // Taken and cleared together: these are the presses this refresh must not
       // speak for, and leaving them in the live set would make every *later*
@@ -557,8 +560,13 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
             company: answer.company,
             visitor: answer.visitor,
             manualCnae: answer.manualCnae,
+            cnpjNotFound: answer.cnpjNotFound,
             savedAt: Date.now(),
           })
+          // The worker may have read the company since this list was saved —
+          // that is the whole reason a "could not read" list gets re-read. See
+          // `matchStatus` for why this line has to exist.
+          refreshedStatus = matchStatus(answer.company, answer, q)
         }
         // `analyzing` is not waited on and `error` is not shown: this refresh
         // is not the reason the screen exists.
@@ -601,6 +609,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
         setData((current) => ({
           ...current,
           visitor,
+          ...(refreshedStatus ? { status: refreshedStatus } : {}),
           grouping: list.groupedBy,
           counts: list.counts,
           freshness: list.freshness,
@@ -616,6 +625,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
       setData((current) => ({
         ...current,
         visitor,
+        ...(refreshedStatus ? { status: refreshedStatus } : {}),
         ...(list.state === 'ready'
           ? {
               grouping: list.groupedBy,
@@ -682,14 +692,14 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
 
       let company: CompanyView | null = null
       let visitor: VisitorView | null = null
-      let manualCnae = false
+      let read = { manualCnae: false, cnpjNotFound: false }
 
       if (cnpj) {
         const cached = readCompany(cnpj)
         if (cached) {
           company = cached.company
           visitor = cached.visitor
-          manualCnae = cached.manualCnae
+          read = cached
         } else {
           const { value, timedOut } = await waitForData<CnpjResponse>({
             read: () => postCnpj(cnpj, signal),
@@ -711,8 +721,14 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
           }
           company = value.company
           visitor = value.visitor
-          manualCnae = value.manualCnae
-          saveCompany(cnpj, { company, visitor, manualCnae, savedAt: Date.now() })
+          read = value
+          saveCompany(cnpj, {
+            company,
+            visitor,
+            manualCnae: value.manualCnae,
+            cnpjNotFound: value.cnpjNotFound,
+            savedAt: Date.now(),
+          })
         }
       }
 
@@ -786,14 +802,8 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
       }
 
       // The two honest "we could not match you" outcomes, both of which the
-      // list route reports as a perfectly successful empty page. They only
-      // apply when the CNPJ is what we searched by: with a keyword, the words
-      // found what the CNAEs could not, and that is a normal result.
-      const status: RadarStatus = manualCnae
-        ? { kind: 'manualCnae' }
-        : company && company.segments.length === 0 && !q
-          ? { kind: 'noSegments' }
-          : { kind: 'ready' }
+      // list route reports as a perfectly successful empty page.
+      const status = matchStatus(company, read, q)
 
       setData({
         grouping: answer.groupedBy,

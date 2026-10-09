@@ -104,11 +104,19 @@ export type CnpjOk = {
   freshness: Freshness
   visitor: VisitorView | null
   /**
-   * BrasilAPI has no SLA (§9) and answered "not found" or not at all, so the
-   * row has no CNAEs. The Radar must ask the user to pick their CNAE by hand
-   * rather than show an empty list of segments.
+   * The company row has no CNAEs: neither BrasilAPI nor the worker's second
+   * source (CNPJá) could read them (§9). The Radar says so instead of showing
+   * an empty list of segments.
    */
   manualCnae: boolean
+  /**
+   * `manualCnae` because **both** sources said this CNPJ does not exist
+   * (`registration_status = 'lookup:not_found'`), not because they were down.
+   * The two get different sentences: one asks the reader to check the number,
+   * the other to try later — and telling somebody to fix a number that is right
+   * is the worse mistake. Always `false` when `manualCnae` is `false`.
+   */
+  cnpjNotFound: boolean
 }
 
 export type CnpjResponse = CnpjOk | Analyzing | ApiError
