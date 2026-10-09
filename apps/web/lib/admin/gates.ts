@@ -22,6 +22,7 @@ import { db, type Executor } from '@/lib/db'
 export type GateKey =
   | 'founders_signed_up'
   | 'cnpjs_searched'
+  | 'cnpj_search_count'
   | 'telegram_linked'
   | 'concierge_paying'
   | 'founder_seats_paid'
@@ -43,8 +44,14 @@ export type Gate = {
   key: GateKey
   /** pt-BR, for the card. */
   label: string
-  /** The Phase 0 threshold. */
-  target: number
+  /**
+   * The Phase 0 threshold, or `null` for a card that reports a number nobody
+   * set a bar for. **Nullable rather than 0**: a `meta ≥ 0` is a bar that is
+   * always met, which is the D4d mistake — when a limit turns out not to
+   * exist, change the shape, not the constant. The card draws no target and
+   * no badge for a `null`.
+   */
+  target: number | null
   /** The denominator in "6 de 20", when the target has one. */
   targetOf?: number
   unit: 'count' | 'percent'
@@ -82,24 +89,57 @@ async function foundersSignedUp(database: Executor): Promise<GateReading> {
 }
 
 /**
- * Distinct CNPJs searched.
+ * Distinct businesses looked up — one row per CNPJ anybody has ever entered.
  *
- * A search writes a `visitors` row (spec §8, `POST /api/radar/cnpj`) and a
- * logged-in user's CNPJ sits on `users`, so the gate is the union of the two,
- * de-duplicated: the same CNPJ typed on a phone and then on a laptop is one
- * business, which is what the gate is asking about.
+ * **Corrected 2026-10-09. The old query counted identities, not searches, and
+ * could not move for a returning searcher.** It was the union of
+ * `visitors.cnpj` and `users.cnpj`, which is *the CNPJ currently attached to
+ * each identity* — one per row, and **both writers cap it at one**:
+ *
+ *  - `rememberUserCnpj` (`lib/auth/session.ts`) is `update users set cnpj = …
+ *    where … and cnpj is null`. It only ever fills a NULL. That is E3's
+ *    deliberate ruling — *changing a company is an account setting, not a side
+ *    effect of one search* — so it is the gate that was wrong, not the writer.
+ *    A signed-in person with a CNPJ already set moves this number **never**.
+ *  - `attachCnpj` (`lib/radar/visitor.ts`) overwrites the visitor's row, so a
+ *    browser that searches ten businesses still contributes one.
+ *
+ * Found by Sci on 2026-10-09: he searched several different CNPJs and the card
+ * stayed at 13.
+ *
+ * **Why `companies` and not the `cnpj_searched` event.** The event is fired on
+ * every search and is the right source for *how many searches* (see
+ * `cnpjSearchCount`), but it deliberately keeps the CNPJ out of `props`, so it
+ * cannot answer *how many distinct businesses*. `companies` can: it is the
+ * BrasilAPI cache, its primary key **is** the CNPJ, and `ensureCompanyRow`
+ * inserts into it on the search path with `on conflict do nothing`. Counting
+ * it needs no new column, no new event, and loses no history — every business
+ * ever searched already has its row.
+ *
+ * It also counts a CNPJ saved on an account at `/conta/empresa`, which takes
+ * the same path. That is still a business somebody entered, which is what the
+ * gate asks.
  */
 async function cnpjsSearched(database: Executor): Promise<GateReading> {
+  const value = await scalar(database, sql`select count(*)::text as value from companies`)
+  return { state: 'counted', value }
+}
+
+/**
+ * How many CNPJ searches were made — the activity number beside the reach one.
+ *
+ * `POST /api/radar/cnpj` records `cnpj_searched` on every search, including
+ * repeats and including a CNPJ already cached, so this moves when
+ * `cnpjsSearched` correctly does not. Two people searching the same business
+ * is two here and one there, and the pair is more useful than either alone.
+ *
+ * **No target.** Gate 0 asks for ≥ 300 *businesses*; this is context for that
+ * number, not a second bar to clear — and it counts our own testing too.
+ */
+async function cnpjSearchCount(database: Executor): Promise<GateReading> {
   const value = await scalar(
     database,
-    sql`
-      select count(*)::text as value
-        from (
-          select cnpj from visitors where cnpj is not null
-          union
-          select cnpj from users    where cnpj is not null
-        ) as searched
-    `,
+    sql`select count(*)::text as value from events where name = 'cnpj_searched'`,
   )
   return { state: 'counted', value }
 }
@@ -187,9 +227,10 @@ const CONCIERGE_NOTE =
   'Precisa da coorte (task O2) antes de virar número.'
 
 export async function readGates(database: Executor = db()): Promise<Gate[]> {
-  const [founders, cnpjs, telegram, seats, digest] = await Promise.all([
+  const [founders, cnpjs, searches, telegram, seats, digest] = await Promise.all([
     attempt(() => foundersSignedUp(database)),
     attempt(() => cnpjsSearched(database)),
+    attempt(() => cnpjSearchCount(database)),
     attempt(() => telegramLinked(database)),
     attempt(() => founderSeatsPaid(database)),
     attempt(() => digestOpenRate(database)),
@@ -209,8 +250,16 @@ export async function readGates(database: Executor = db()): Promise<Gate[]> {
       label: 'CNPJs pesquisados',
       target: 300,
       unit: 'count',
-      source: 'CNPJs distintos em visitors + users.',
+      source: 'Linhas em companies: um CNPJ distinto por empresa pesquisada.',
       reading: cnpjs,
+    },
+    {
+      key: 'cnpj_search_count',
+      label: 'Buscas por CNPJ',
+      target: null,
+      unit: 'count',
+      source: 'Eventos cnpj_searched, repetições incluídas.',
+      reading: searches,
     },
     {
       key: 'telegram_linked',
@@ -249,8 +298,15 @@ export async function readGates(database: Executor = db()): Promise<Gate[]> {
   ]
 }
 
-/** Whether a gate has already cleared its threshold. `null` when unknown. */
+/**
+ * Whether a gate has already cleared its threshold. `null` when unknown.
+ *
+ * **A gate with no target is `null`, not `true`.** It has nothing to clear, so
+ * "met" is not false — it is not a question. Returning `true` would accent the
+ * card and badge it as passed on a number nobody set a bar for.
+ */
 export function gateMet(gate: Gate): boolean | null {
+  if (gate.target === null) return null
   switch (gate.reading.state) {
     case 'counted':
       return gate.reading.value >= gate.target

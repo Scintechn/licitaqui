@@ -33,6 +33,12 @@ const CNPJ = '00.394.429/0001-00'
 /** Tags every event this file writes, so cleanup can find them and only them. */
 const MARKER = `o1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
+/** A gate's counted value, or `-1` if it is not a count — never a silent 0. */
+function gateValue(gates: readonly Awaited<ReturnType<typeof readGates>>[number][], key: string) {
+  const reading = gates.find((gate) => gate.key === key)?.reading
+  return reading?.state === 'counted' ? reading.value : -1
+}
+
 function founder(index: number, name = `Fundador O1 ${index}`) {
   return signupInput.parse({
     name,
@@ -77,12 +83,48 @@ suite('/admin reads (database)', () => {
     await closeDb()
   })
 
-  it('reads the six Phase 0 gates, every one of them rendered', async () => {
+  it('counts a business nobody has as their company — the defect Sci found', async () => {
+    // The old gate was `visitors.cnpj UNION users.cnpj`: the CNPJ *currently
+    // attached to an identity*, one per row. `rememberUserCnpj` only fills a
+    // NULL (E3's ruling) and `attachCnpj` overwrites, so a returning searcher
+    // could never move it. Sci searched several CNPJs on 2026-10-09 and the
+    // card stayed at 13.
+    //
+    // This row is the discriminating case: a `companies` row on **no**
+    // visitor and **no** user. The new query counts it; the old one cannot
+    // see it at all, so this test fails against the old code rather than
+    // merely passing against the new.
+    const cnpj = `99${String(Date.now()).slice(-9)}000`.slice(0, 14)
+    const before = gateValue(await readGates(), 'cnpjs_searched')
+    await pool().query(`insert into companies (cnpj, updated_at) values ($1, 'epoch') ` +
+      'on conflict (cnpj) do nothing', [cnpj])
+    try {
+      const after = gateValue(await readGates(), 'cnpjs_searched')
+      // A delta, not an absolute: this table is shared and another lane may
+      // insert while we run. One more than before is the floor, never the
+      // equality.
+      expect(after).toBeGreaterThanOrEqual(before + 1)
+
+      const rows = await pool().query(
+        'select 1 from visitors where cnpj = $1 union all select 1 from users where cnpj = $1',
+        [cnpj],
+      )
+      expect(rows.rowCount).toBe(0)
+    } finally {
+      await pool().query('delete from companies where cnpj = $1', [cnpj])
+    }
+  })
+
+  it('reads the seven gate cards, every one of them rendered', async () => {
     const gates = await readGates()
 
     expect(gates.map((gate) => gate.key)).toEqual([
       'founders_signed_up',
       'cnpjs_searched',
+      // Added 2026-10-09 beside `cnpjs_searched`, not instead of it: that one
+      // counts distinct businesses and is Gate 0's ≥ 300; this one counts
+      // searches, repeats included, and has no target at all.
+      'cnpj_search_count',
       'telegram_linked',
       'concierge_paying',
       'founder_seats_paid',
