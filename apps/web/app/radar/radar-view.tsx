@@ -641,11 +641,18 @@ export function asksForKeyword(status: RadarStatus, query: RadarQuery): boolean 
 function FilterRow({
   query,
   askForKeyword = false,
+  checkTheNumber = false,
   onNavigate,
 }: {
   query: RadarQuery
   /** See `asksForKeyword`: open, with the cursor in the keyword field. */
   askForKeyword?: boolean
+  /**
+   * Both sources said the CNPJ does not exist, and the card asks the reader to
+   * check it. The CNPJ field is in here, so the search opens — without moving
+   * the cursor, which is a choice about *which* field that the reader makes.
+   */
+  checkTheNumber?: boolean
   onNavigate?: (href: string) => void
 }) {
   // **Open when there is nothing to search by.**
@@ -678,8 +685,8 @@ function FilterRow({
 
   return (
     <div className="relative px-gutter">
-      <details className="group" open={nothingToSearchBy || askForKeyword}>
-        {askForKeyword ? <FocusKeyword /> : null}
+      <details className="group" open={nothingToSearchBy || askForKeyword || checkTheNumber}>
+        {askForKeyword ? <FocusKeyword cnpj={query.cnpj} /> : null}
         <summary
           className={cn(
             'flex cursor-pointer list-none items-center py-1 text-body',
@@ -1369,7 +1376,12 @@ export function RadarView({
           segmentCount={segmentState(grouping)}
         />
 
-        <FilterRow query={query} askForKeyword={asksForKeyword(status, query)} onNavigate={onNavigate} />
+        <FilterRow
+          query={query}
+          askForKeyword={asksForKeyword(status, query)}
+          checkTheNumber={status.kind === 'manualCnae' && status.cnpjNotFound}
+          onNavigate={onNavigate}
+        />
 
         {showList ? <FreshnessLine freshness={freshness} /> : null}
 

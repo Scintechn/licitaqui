@@ -39,6 +39,15 @@ test.describe('a CNPJ whose activities could not be read', () => {
     await expect(page.getByText(/alguns minutos/)).toHaveCount(0)
     await expect(page.locator('#radar-q')).toBeVisible()
     await expect(page.locator('#radar-q')).toBeFocused()
+
+    // Once per CNPJ, not once per load: another tab puts the screen through
+    // its loading state and back, and must not pull the cursor (and a phone's
+    // keyboard) back to the field after the reader moved it.
+    await page.locator('#radar-q').blur()
+    await page.getByRole('link', { name: /Verificar/ }).click()
+    await expect(page).toHaveURL(/group=check/)
+    await expect(page.getByText(copy.manualCnaeBodyNoKeyword)).toBeVisible()
+    await expect(page.locator('#radar-q')).not.toBeFocused()
   })
 
   test('with a keyword: the card sits above the keyword’s editais, and leaves the cursor alone', async ({
@@ -75,6 +84,8 @@ test.describe('a CNPJ whose activities could not be read', () => {
 
     await expect(page.getByText(copy.manualCnaeBodyNotFound)).toBeVisible()
     await expect(page.getByText(copy.manualCnaeBodyNoKeyword)).toHaveCount(0)
+    // The number it asks to check is in reach, and the cursor is left alone.
+    await expect(page.locator('input[name="cnpj"]')).toBeVisible()
     await expect(page.locator('#radar-q')).not.toBeFocused()
   })
 

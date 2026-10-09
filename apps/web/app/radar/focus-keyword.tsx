@@ -3,7 +3,18 @@
 import { useEffect } from 'react'
 
 /**
- * Puts the cursor in the Radar's keyword field once, when it mounts.
+ * The CNPJs whose keyword field has already been given the cursor, in this
+ * document. Module state rather than component state because the component
+ * does not survive what it has to survive: every tab, UF, order or retry puts
+ * the Radar through its loading status, which unmounts this and mounts it again
+ * when the answer comes back — and an effect that ran "once per mount" then
+ * pulled the cursor back to the field (and, on Android, the keyboard up) on every
+ * one of those presses. Found in review before the PR.
+ */
+const focusedFor = new Set<string>()
+
+/**
+ * Puts the cursor in the Radar's keyword field once per CNPJ, when it mounts.
  *
  * A component of its own because `RadarView` is also rendered by the server
  * page as the Suspense fallback, so it cannot hold an effect itself; this is
@@ -12,14 +23,17 @@ import { useEffect } from 'react'
  * paint (the CNPJ post has to answer first) — so `autoFocus` on the input,
  * which only acts at mount and the input mounted long before, would do nothing.
  *
- * `preventScroll`: the field is in the search block at the top of the screen,
- * a few rows under the header; letting the browser scroll to it would jump the
- * page past the card that explains why the cursor moved.
+ * `preventScroll`: a restored list may put the reader further down the page,
+ * and moving the cursor should not move them.
  */
-export function FocusKeyword() {
+export function FocusKeyword({ cnpj }: { cnpj: string | null }) {
   useEffect(() => {
+    const key = cnpj ?? ''
+    if (focusedFor.has(key)) return
     const input = document.getElementById('radar-q')
-    if (input instanceof HTMLInputElement) input.focus({ preventScroll: true })
-  }, [])
+    if (!(input instanceof HTMLInputElement)) return
+    focusedFor.add(key)
+    input.focus({ preventScroll: true })
+  }, [cnpj])
   return null
 }

@@ -298,7 +298,8 @@ describe('a CNPJ neither source could read', () => {
     const disclosure = (out: string) => out.slice(out.indexOf('<details class="group"'))
     expect(disclosure(render({ status: unread, tenders: [] }))).toMatch(/^<details class="group" open/)
     expect(disclosure(render({ status: { kind: 'ready' } }))).not.toMatch(/^<details class="group" open/)
-    expect(disclosure(render({ status: missing, tenders: [] }))).not.toMatch(/^<details class="group" open/)
+    // "Confira os números": the CNPJ field is inside, so it opens for that too.
+    expect(disclosure(render({ status: missing, tenders: [] }))).toMatch(/^<details class="group" open/)
   })
 })
 

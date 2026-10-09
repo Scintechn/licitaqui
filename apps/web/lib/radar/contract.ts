@@ -114,7 +114,7 @@ export type CnpjOk = {
    * (`registration_status = 'lookup:not_found'`), not because they were down.
    * The two get different sentences: one asks the reader to check the number,
    * the other to try later — and telling somebody to fix a number that is right
-   * is the worse mistake. Always `false` when `manualCnae` is.
+   * is the worse mistake. Always `false` when `manualCnae` is `false`.
    */
   cnpjNotFound: boolean
 }
