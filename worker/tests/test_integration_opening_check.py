@@ -48,7 +48,7 @@ from typing import Any
 import psycopg
 import pytest
 
-from licitaqui import opening_check, queue, whatsapp
+from licitaqui import evolution, opening_check, queue, resend, whatsapp
 from licitaqui.consumer import Consumer
 from licitaqui.queue import Job
 from tests.conftest import E2_BROADCAST_KEY_PREFIX, e2_email
@@ -375,6 +375,50 @@ def test_the_reading_counts_who_the_sweep_reaches_and_who_it_does_not(
     assert after["waitlisted"] == before["waitlisted"] + 1
     assert after["seated"] == before["seated"]
     assert after["seated"] >= 0
+
+
+def test_the_reading_records_both_kill_switches_as_the_worker_sees_them(
+    scope: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one production fact no other surface can report.
+
+    `preview_founders_opening.py` prints both switches too — but from the
+    environment of whatever process runs it, which from Sci's laptop is the
+    laptop. This job runs **on the worker**, so its two values are the real
+    ones, and a row perfectly queued for the right instant while
+    `WHATSAPP_DELIVERY` is unset is exactly the failure E20's card names:
+    nothing happening on the day while every signal stays green.
+
+    Kept as a **second dimension** rather than folded into `state`: the queue
+    is fixed with a command and a switch with an env change, and a card that
+    could not tell them apart would send somebody to do the wrong one.
+
+    The autouse fixtures (`conftest._whatsapp_delivery_off`,
+    `_email_delivery_off`) delete both switches suite-wide, so the off case is
+    the default here and the on case has to be set — which is the right way
+    round for the only irreversible thing this worker does.
+    """
+    conn = scope
+    place_broadcast(conn)
+
+    _, off = run_check(conn, "switchesOff")
+    assert off["state"] == "queued", "the row itself is fine"
+    assert off["whatsapp_delivery"] == "dry_run"
+    assert off["email_delivery"] == "dry_run"
+    assert off["delivery_ready"] is False
+    # The mode, never a credential (§12).
+    assert "apikey" not in json.dumps(off).lower()
+
+    monkeypatch.setenv(evolution.DELIVERY_VAR, evolution.DELIVERY_SEND)
+    _, half = run_check(conn, "switchesHalf")
+    assert half["whatsapp_delivery"] == "send"
+    assert half["email_delivery"] == "dry_run"
+    assert half["delivery_ready"] is False, "both channels carry the link; one is not enough"
+
+    monkeypatch.setenv(resend.DELIVERY_VAR, resend.DELIVERY_SEND)
+    _, both = run_check(conn, "switchesOn")
+    assert both["delivery_ready"] is True
+    assert both["alarm"] is False
 
 
 def test_the_check_reads_and_writes_only_its_own_event(scope: psycopg.Connection) -> None:

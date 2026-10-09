@@ -93,7 +93,11 @@ function countdown(hours: number): string {
 
 export function OpeningCard({ opening }: { opening: OpeningWatch }) {
   const { watch } = opening
-  const healthy = watch.kind === 'current' && !watch.reading.alarm
+  // **Two dimensions, both required.** The row being queued and a message
+  // being able to leave the process are different facts with different fixes,
+  // and a green accent over a dead switch is the failure E20's card names:
+  // nothing happening on the day while every signal stays green.
+  const healthy = watch.kind === 'current' && !watch.reading.alarm && watch.reading.deliveryReady
   return (
     <section className="flex flex-col gap-3.5">
       <div className="flex items-baseline gap-2">
@@ -117,6 +121,14 @@ export function OpeningCard({ opening }: { opening: OpeningWatch }) {
         </div>
 
         <OpeningNote watch={watch} />
+        {'reading' in watch && !watch.reading.deliveryReady ? (
+          <p className="text-meta leading-relaxed text-attention">
+            <strong>Uma das chaves de envio está desligada no worker.</strong> A linha pode
+            estar perfeita e ainda assim ninguém recebe nada: o envio renderiza a mensagem,
+            grava <span className="font-mono">dry_run</span> e para aí. Isto não é a mesma
+            coisa que a linha faltar — conserta-se com variável de ambiente, não com comando.
+          </p>
+        ) : null}
 
         {'reading' in watch ? <OpeningDetail reading={watch.reading} /> : null}
 
@@ -322,6 +334,17 @@ function OpeningDetail({ reading }: { reading: Omit<OpeningReading, 'state'> }) 
           {reading.dateMatchesProduct
             ? ''
             : ` ≠ ${reading.productOpeningDate} (product.json) — FOUNDERS_OPENING_DATE`}
+        </span>
+      </Row>
+      <Row label="chaves de envio (no worker)">
+        {/* The deployed worker's own values. The preview script prints these
+            from whatever process runs it, which from a laptop is the laptop —
+            so this row is the only place the production answer appears. */}
+        <span className={reading.whatsappDelivery === 'send' ? '' : 'text-attention'}>
+          WHATSAPP_DELIVERY={reading.whatsappDelivery ?? '—'}
+        </span>{' · '}
+        <span className={reading.emailDelivery === 'send' ? '' : 'text-attention'}>
+          EMAIL_DELIVERY={reading.emailDelivery ?? '—'}
         </span>
       </Row>
       <Row label="fundadores">

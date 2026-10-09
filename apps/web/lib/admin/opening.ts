@@ -104,6 +104,23 @@ export type OpeningReading = {
   dateMatchesProduct: boolean
   /** `HH:MM` BRT, the hour the broadcast fires. */
   hourBrt: string
+  /**
+   * Both kill switches **as the deployed worker sees them** — `'send'` or
+   * `'dry_run'`, never a credential.
+   *
+   * This is the only surface that can say so. `preview_founders_opening.py`
+   * prints them too, but it reads the environment of the process *it* runs in,
+   * so from a laptop its switch lines describe the laptop. The check runs on
+   * the worker.
+   */
+  whatsappDelivery: string | null
+  emailDelivery: string | null
+  /**
+   * Whether a message can leave the process at all. A **second dimension**, not
+   * a state: a perfectly queued row with a dead switch sends nothing, and the
+   * fix is an env change rather than a command.
+   */
+  deliveryReady: boolean
   /** The instant the broadcast is due, in UTC. The card prints both clocks. */
   dueAt: Date
   /** Negative once the instant has passed. */
@@ -208,6 +225,15 @@ function toReading(row: Row, now: Date): (Omit<OpeningReading, 'state'> & { stat
     // read as "the dates disagree" and raise an alarm about nothing.
     dateMatchesProduct: props.date_matches_product !== false,
     hourBrt: String(props.broadcast_hour_brt ?? ''),
+    whatsappDelivery:
+      typeof props.whatsapp_delivery === 'string' ? props.whatsapp_delivery : null,
+    emailDelivery: typeof props.email_delivery === 'string' ? props.email_delivery : null,
+    // `!== false` rather than `=== true`: a reading written before this field
+    // existed must not raise an alarm about a switch nothing measured. A real
+    // `false` arrives through `props->>` as the **string** `"false"`, which is
+    // truthy — so this reads the parsed JSON value, not a `->>` text cast, and
+    // `opening.db.test.ts` asserts that round trip against a real row.
+    deliveryReady: props.delivery_ready !== false,
     dueAt,
     // Recomputed when the row did not carry it, from the same two instants the
     // worker used — never defaulted to 0, which would read as "due now".

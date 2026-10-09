@@ -88,7 +88,7 @@ from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
 
-from . import product, whatsapp
+from . import evolution, product, resend, whatsapp
 from .registry import REGISTRY, JobContext
 
 CHECK_JOB_KIND = "opening_broadcast_check"
@@ -245,6 +245,33 @@ def opening_broadcast_check(ctx: JobContext) -> None:
         "product_opening_date": product.OPENING_DATE.isoformat(),
         "date_matches_product": day == product.OPENING_DATE,
         "broadcast_hour_brt": "{:02d}:{:02d}".format(*whatsapp.broadcast_hour()),
+        # **Both kill switches, as the deployed worker sees them**, and this is
+        # the only place that can say so.
+        #
+        # `preview_founders_opening.py` prints these too, but it reads
+        # `os.environ` in the process *it* runs in — so run from a laptop, its
+        # switch lines describe the laptop, and its `would_send` verdict is
+        # therefore "would this founder receive it **if the worker had my
+        # environment**". The database half of that script is true of production
+        # because it reads production's tables; the environment half is not, and
+        # the two sit in the same report.
+        #
+        # This job runs *on* the worker, so these two values are the real ones.
+        # A row that is perfectly queued for the right instant while
+        # `WHATSAPP_DELIVERY` is unset is exactly the failure E20's card names —
+        # nothing happening on the day while every other signal stays green —
+        # and before this field nothing on `/admin` could see it.
+        #
+        # The **mode**, never a key: `delivery_mode()` returns only `send` or
+        # `dry_run` (§12, and nothing here may log a credential).
+        "whatsapp_delivery": evolution.delivery_mode(),
+        "email_delivery": resend.delivery_mode(),
+        # A **second dimension**, deliberately not folded into `state`. The
+        # state is about the row; this is about whether a message that row fans
+        # out can leave the process. Collapsing them would make a perfect queue
+        # with a dead switch indistinguishable from a missing row, and they need
+        # different fixes — one is a command, the other is an env change.
+        "delivery_ready": evolution.sending_enabled() and resend.sending_enabled(),
         "job_id": found[0] if found else None,
         "job_status": found[1] if found else None,
         "job_run_after": found[2].isoformat() if found else None,
@@ -260,9 +287,12 @@ def opening_broadcast_check(ctx: JobContext) -> None:
         "insert into events (name, props) values (%s, %s)",
         (EVENT_NAME, Jsonb(props)),
     )
-    # No recipient, no number, no name — counts and a state word only (§12).
+    # No recipient, no number, no name — counts, a state word and two delivery
+    # modes only (§12).
     line = json.dumps(props)
-    if STATES[state]:
+    # Either dimension is enough to make the day fail: a missing row sends
+    # nothing, and a dead switch sends nothing from a perfect row.
+    if STATES[state] or not props["delivery_ready"]:
         ctx.log.error("founders opening broadcast check failed", extra={"opening": line})
     else:
         ctx.log.info("founders opening broadcast checked", extra={"opening": line})

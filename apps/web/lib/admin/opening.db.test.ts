@@ -132,6 +132,9 @@ suite('readOpening against Postgres', () => {
           product_opening_date: '2026-10-17',
           date_matches_product: true,
           broadcast_hour_brt: '12:00',
+          whatsapp_delivery: 'send',
+          email_delivery: 'dry_run',
+          delivery_ready: false,
           seated: 2,
           waitlisted: 0,
           ...props,
@@ -191,6 +194,10 @@ suite('readOpening against Postgres', () => {
      */
     const reading = await mine()
     expect(reading.dateMatchesProduct).toBe(false)
+    // Same trap, second field, and this one gates the card's whole accent.
+    expect(reading.deliveryReady).toBe(false)
+    expect(reading.emailDelivery).toBe('dry_run')
+    expect(reading.whatsappDelivery).toBe('send')
     expect(reading.openingDate).toBe('2026-10-24')
     expect(reading.productOpeningDate).toBe('2026-10-17')
   })

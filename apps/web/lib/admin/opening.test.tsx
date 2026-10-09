@@ -79,6 +79,9 @@ function reading(props: Row = {}, checkedAt = '2026-10-09T09:00:00+00:00'): Row 
       product_opening_date: '2026-10-17',
       date_matches_product: true,
       broadcast_hour_brt: '12:00',
+      whatsapp_delivery: 'send',
+      email_delivery: 'send',
+      delivery_ready: true,
       job_id: 103288,
       job_status: 'queued',
       job_run_after: DUE,
@@ -266,6 +269,51 @@ describe('OpeningCard', () => {
     expect(html).toContain('FOUNDERS_OPENING_DATE')
     expect(html).toContain('2026-10-24')
     expect(html).toContain('2026-10-17')
+  })
+
+  it('alarms when a kill switch is off, even with the row perfectly queued', async () => {
+    /**
+     * The second dimension, and the failure E20's card is named for: *nothing
+     * happening on the day while every signal stays green*. The row here is
+     * `queued` for the right instant and `alarm` is false — the only thing
+     * wrong is that a message cannot leave the process.
+     *
+     * This is also the one production fact no other surface can report.
+     * `preview_founders_opening.py` prints both switches, but from whatever
+     * process runs it, which from a laptop is the laptop; the check runs on the
+     * worker.
+     */
+    const dead = reading({ delivery_ready: false, email_delivery: 'dry_run' })
+    const watch = await readOpening(executor([dead]), NOW)
+    if (watch.watch.kind !== 'current') throw new Error('unreachable')
+
+    // The reader first, because `props->>` turns a JSON `false` into the string
+    // "false", which is truthy — the one field whose round trip could invert
+    // this whole alarm. `opening.db.test.ts` asserts the same against a real row.
+    expect(watch.watch.reading.deliveryReady).toBe(false)
+    expect(watch.watch.reading.emailDelivery).toBe('dry_run')
+    expect(watch.watch.reading.whatsappDelivery).toBe('send')
+    expect(watch.watch.reading.alarm).toBe(false)
+
+    const html = renderToStaticMarkup(<OpeningCard opening={watch} />)
+    // The warning itself, by a phrase that exists nowhere else on the card.
+    expect(html).toContain('Uma das chaves de envio está desligada no worker')
+    expect(html).toContain('EMAIL_DELIVERY=dry_run')
+    expect(html).toContain('WHATSAPP_DELIVERY=send')
+    // **The accent must be off.** `Card` renders `accent` as `border-blue-line`,
+    // and a blue-edged card over a dead switch is the failure this card is
+    // named for: nothing happening on the day while every signal stays green.
+    expect(html).not.toContain('border-blue-line')
+    // And not folded into the state: the row is still correctly queued, because
+    // the two need different fixes — a command against an env change.
+    expect(html).toContain('na fila')
+
+    // The control, so the assertion above is not passing because the accent is
+    // never rendered at all.
+    const ok = renderToStaticMarkup(
+      <OpeningCard opening={await readOpening(executor([reading()]), NOW)} />,
+    )
+    expect(ok).toContain('border-blue-line')
   })
 
   it('counts the waitlist the broadcast does not reach', async () => {

@@ -463,12 +463,24 @@ the paragraph above asks for: the already-sent gate matches `whatsapp.sent` /
 `email.sent` alone, never `dry_run`, so `already_sent` is a founder the message
 reached and `would_send` is one it did not — whatever the `jobs` row says.
 
+**Whose environment the report describes.** The database half is true of
+production because it reads production's tables. The environment half is not:
+both switches, `FOUNDERS_OPENING_DATE` and `FOUNDERS_OPENING_LINK` are read from
+the process running the script, so from a laptop they describe the laptop — and
+`would_send` means *would this founder receive it if the worker had my
+environment*. The deployed worker's real values are recorded by
+`opening_broadcast_check` and printed on `/admin` (E20). The script says so in
+its own output rather than leaving the reader to work it out.
+
 ### Watching the dated row (E20)
 
 `opening_broadcast_check` runs twice a day, 09:00 and 15:00 BRT — three hours
 before the broadcast and three hours after — and writes one `events` row
 saying whether the dated `jobs` row is queued, for the right instant, and still
-claimable. `/admin`'s *Disparo da abertura* card reads it; a bad answer is also
+claimable — **and both kill switches as the worker itself sees them**, which no
+other surface can report. A perfect row with a dead switch delivers nothing, so
+it is a second dimension on the card rather than a seventh state: one is fixed
+with a command, the other with an environment variable. `/admin`'s *Disparo da abertura* card reads it; a bad answer is also
 an `error` log line. It never re-queues anything: that is a person running
 `schedule_founders_opening.py --commit`, because enqueuing the broadcast sends
 real messages to real founders.

@@ -131,6 +131,15 @@ def report_switches() -> None:
         on = mode == evolution.DELIVERY_SEND
         meaning = "delivers" if on else "DRY RUN — renders and sends nothing"
         print(f"{label:<14}: {var}={mode} — {meaning}")
+    # **Whose environment this is.** The database half of this report is true of
+    # production because it reads production's tables. The *environment* half is
+    # not: these two values, `opening_date()` and `opening_link()` all come from
+    # `os.environ` in **this** process, so run from a laptop they describe the
+    # laptop — and `would_send` therefore means "would this founder receive it
+    # if the worker had my environment". `opening_broadcast_check` runs on the
+    # worker and records the real pair; `/admin` prints them.
+    print("                (these two are THIS process's environment, not the")
+    print("                 deployed worker's — /admin's card has the worker's)")
 
 
 def report_founders(rows: list[whatsapp.OpeningPreview], render: bool) -> None:
