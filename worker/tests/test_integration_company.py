@@ -404,7 +404,7 @@ def test_a_brasilapi_404_is_asked_again_because_a_new_company_may_be_missing(b5_
         ),
         (BrasilApiError("not_found", status=404, not_found=True), CnpjaError("timeout")),
     ],
-    ids=["brasilapi-down-cnpja-404", "brasilapi-404-cnpja-down"],
+    ids=["first-down-second-404", "first-404-second-down"],
 )
 def test_one_404_beside_one_outage_is_not_called_a_typo(b5_conn, api, second, first, other):
     """A lagging source's 404 must not tell somebody to fix a number that is right."""
