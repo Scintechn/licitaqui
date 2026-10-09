@@ -314,10 +314,13 @@ function ScreeningTabs({
   active,
   onSelect,
   signedIn,
+  withRequirements = true,
 }: {
   active: ScreeningTab
   onSelect?: (tab: ScreeningTab) => void
   signedIn: boolean
+  /** `false` when there is no analysis to list requirements from (`unreadable`). */
+  withRequirements?: boolean
 }) {
   /**
    * **The lock is for a visitor, not for everybody.**
@@ -342,7 +345,7 @@ function ScreeningTabs({
       // so the tab and the panel cannot disagree about who may read the edital.
       ...(signedIn ? {} : { icon: 'locked' as const }),
     },
-    { id: 'requirements', label: page.tabs.requirements },
+    ...(withRequirements ? [{ id: 'requirements' as const, label: page.tabs.requirements }] : []),
   ]
   return (
     <Tabs items={items} active={active} onSelect={onSelect} idPrefix={TAB_PREFIX} />
@@ -363,6 +366,7 @@ function Pending({
   search,
   quota,
   onRetry,
+  inShell = false,
 }: {
   status: Exclude<ScreeningStatus, { kind: 'ready' }>
   tenderId: string
@@ -370,6 +374,8 @@ function Pending({
   search: RadarSearch
   quota: QuotaView | null
   onRetry?: () => void
+  /** Drawn inside the unreadable frame, whose action bar already goes back to the edital. */
+  inShell?: boolean
 }) {
   const back = (
     <Button variant="link" href={backHref} className="px-0" iconEnd="arrowRight">
@@ -399,7 +405,14 @@ function Pending({
         />
       )
     case 'noText':
-      return <StateCard kind="empty" title={page.noTextTitle} description={page.noTextBody} action={back} />
+      return (
+        <StateCard
+          kind="empty"
+          title={page.noTextTitle}
+          description={page.noTextBody}
+          action={inShell ? undefined : back}
+        />
+      )
     case 'failed':
       return (
         <StateCard kind="empty" title={page.failedTitle} description={page.failedBody} action={retry} />
@@ -476,6 +489,48 @@ export function ScreeningView({
 
   const disclaimer = `${messages.ai.disclaimer} ${messages.ai.notLegalAdvice}`
 
+  /**
+   * **The files could not be read — but the edital still has documents and a
+   * price** (Sci, 2026-10-09). A scanned PDF (`noText`, §7.2: never sent to the
+   * model) or a failed reading used to replace the whole screen with one card,
+   * and with it went the Documentos tab, the price block and the action bar —
+   * none of which depends on the analysis. The price band is built from the
+   * items and past awards, and the files are the tender's. So the screen keeps
+   * its frame: *Resumo* holds the same card as before plus the price block,
+   * *Documentos* lists the files, and only *Exigências* — which is nothing but
+   * the analysis — is left out. OCR, which would turn the scan into a reading,
+   * is a separate card.
+   */
+  const unreadable = !ready && (pending.kind === 'noText' || pending.kind === 'failed')
+  const shell = ready || unreadable
+  /**
+   * The tab actually drawn. Exigências is not offered here, so a `tab` still set
+   * to it — state carried over from another triagem, since `tab` is a
+   * `useState` that outlives a change of edital — shows Resumo, and the tabs and
+   * the panel are both told so; otherwise no tab is `aria-selected` and the
+   * panel is labelled by a tab marked unselected (found in review).
+   */
+  const shown: ScreeningTab = unreadable && tab === 'requirements' ? 'summary' : tab
+  const filesPanel = (
+    <TabPanel idPrefix={TAB_PREFIX} id="files" className="flex flex-col gap-3">
+      {/* The same component the Edital screen draws, so the two
+          cannot disagree about one viewer — and so a visitor meets
+          the locked block here instead of being bounced to signup
+          on a page they did not ask for. */}
+      {tender ? (
+        <Files tender={tender} signupHref={accountHref(tenderHref(tenderId, search, 'files'))} />
+      ) : null}
+    </TabPanel>
+  )
+  const priceBlock = (
+    <LockedBlock
+      icon="margin"
+      href={priceHref(tenderId, search)}
+      title={page.priceTitle}
+      description={page.priceBody}
+    />
+  )
+
   return (
     <div className="flex min-h-dvh flex-col">
       {/* `actions` holds only the menu here: this screen has no per-tender
@@ -513,25 +568,19 @@ export function ScreeningView({
           ) : null}
         </div>
 
-        {ready ? (
-          <ScreeningTabs active={tab} onSelect={onSelectTab} signedIn={signedIn} />
+        {shell ? (
+          <ScreeningTabs
+            active={shown}
+            onSelect={onSelectTab}
+            signedIn={signedIn}
+            withRequirements={ready}
+          />
         ) : null}
 
         {ready && model ? (
           <>
             {tab === 'files' ? (
-              <TabPanel idPrefix={TAB_PREFIX} id="files" className="flex flex-col gap-3">
-                {/* The same component the Edital screen draws, so the two
-                    cannot disagree about one viewer — and so a visitor meets
-                    the locked block here instead of being bounced to signup
-                    on a page they did not ask for. */}
-                {tender ? (
-                  <Files
-                    tender={tender}
-                    signupHref={accountHref(tenderHref(tenderId, search, 'files'))}
-                  />
-                ) : null}
-              </TabPanel>
+              filesPanel
             ) : tab === 'summary' ? (
               <TabPanel idPrefix={TAB_PREFIX} id="summary" className="flex flex-col gap-3">
                 <Verdict model={model} />
@@ -541,12 +590,7 @@ export function ScreeningView({
                   <FindingRows findings={model.qualification} />
                 </section>
 
-                <LockedBlock
-                  icon="margin"
-                  href={priceHref(tenderId, search)}
-                  title={page.priceTitle}
-                  description={page.priceBody}
-                />
+                {priceBlock}
               </TabPanel>
             ) : (
               <TabPanel idPrefix={TAB_PREFIX} id="requirements" className="flex flex-col gap-3.5">
@@ -582,6 +626,21 @@ export function ScreeningView({
               <p className="m-0">{disclaimer}</p>
             </div>
           </>
+        ) : unreadable && shown === 'files' ? (
+          filesPanel
+        ) : unreadable ? (
+          <TabPanel idPrefix={TAB_PREFIX} id="summary" className="flex flex-col gap-3">
+            <Pending
+              inShell
+              status={pending}
+              tenderId={tenderId}
+              backHref={backHref}
+              search={search}
+              quota={quota}
+              onRetry={onRetry}
+            />
+            {priceBlock}
+          </TabPanel>
         ) : (
           <Pending
             status={pending}
@@ -612,10 +671,11 @@ export function ScreeningView({
           but the AppBar's "Voltar", which is a browser-history word and not a
           destination.
 
-          Only when the analysis is on screen: a bar offering the next step
-          under "Lendo o edital…" would be offering it before this step has
-          finished. */}
-      {ready ? (
+          Only when this step has an answer: a bar offering the next step under
+          "Lendo o edital…" would be offering it before this step has finished.
+          An unreadable edital *is* an answer, and the price does not depend on
+          it (see `unreadable`). */}
+      {shell ? (
         <ActionBar
           primary={{ href: priceHref(tenderId, search), label: page.barPrice }}
           secondary={{ href: backHref, label: messages.common.tender }}

@@ -157,3 +157,28 @@ test.describe('Dona Marta · Documentos', () => {
     await expect(page.getByRole('link', { name: /Termo_de_Referencia/ })).toBeVisible()
   })
 })
+
+/**
+ * Sci, 2026-10-09: a scanned edital — or a `.zip` of scans — could not be read
+ * by the triagem, and the screen then showed one card and nothing else: no
+ * Documentos, no price. Neither depends on the reading. This is the result a
+ * reader sees; `screening-view.test.tsx` pins which blocks are drawn.
+ */
+test.describe('an edital the triagem could not read', () => {
+  test('still opens Documentos in place and still leads to the price', async ({ page }) => {
+    const api = await world(page)
+    api.screening.state = 'noText'
+
+    await page.goto(`/radar/edital/${EDITAL}/triagem?cnpj=${MARTA.cnpj}&group=compatible`)
+    await expect(page.getByText('Este edital é um PDF digitalizado')).toBeVisible()
+    // Exigências is nothing but the reading, so it is not offered.
+    await expect(page.getByRole('tab', { name: 'Exigências' })).toHaveCount(0)
+
+    await page.getByRole('tab', { name: 'Documentos' }).click()
+    await expect(page.getByRole('link', { name: /Termo_de_Referencia/ })).toBeVisible()
+
+    await page.getByRole('tab', { name: 'Resumo' }).click()
+    await page.getByRole('link', { name: /Até quanto ofertar com lucro/ }).click()
+    await expect(page).toHaveURL(/\/preco\?/)
+  })
+})
