@@ -79,7 +79,13 @@ CHARGE_REMINDER_DAYS: Final = 3
 
 
 def brl(amount: int) -> str:
-    """``26`` → ``"R$ 26"`` — the form running copy uses."""
+    """``57`` → ``"R$ 57"`` — the form running copy uses.
+
+    The example was ``26`` until 2026-10-09. Its web twin in ``lib/product.ts``
+    was corrected to 57 in this same PR and the Python copy was missed, which is
+    the exact drift this PR is cleaning up: ``product.test.ts``'s money-literal
+    sweep covers ``apps/web`` and cannot see ``worker/``.
+    """
     return f"R$ {amount}"
 
 

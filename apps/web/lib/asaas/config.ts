@@ -118,6 +118,48 @@ function value(env: Env, name: string): string {
   return (env[name] ?? '').trim()
 }
 
+/** Asaas's own domain. Invoice pages are `https://{,sandbox.}asaas.com/i/<id>`. */
+export const INVOICE_HOST = 'asaas.com'
+
+/**
+ * An Asaas invoice URL, or `null` for anything that is not one.
+ *
+ * **`invoiceUrl` arrives in a webhook body, and the webhook body is not
+ * trustworthy in this particular way.** `webhook.ts` states the forgery bound
+ * as *"a forged body cannot invent a subscriber"*, which is true and
+ * incomplete: whoever holds `ASAAS_WEBHOOK_TOKEN` cannot invent a subscriber
+ * but could, until 2026-10-09, **repoint an existing subscriber's payment
+ * link**. `refreshCheckoutUrl` wrote the value straight into
+ * `subscriptions.checkout_url`, and that column is both `redirect()`ed to
+ * (`conta/plano/actions.ts`) and rendered as the pay-now `href`
+ * (`plan-view.tsx`) — an open redirect aimed at the one screen where somebody
+ * is about to type card or Pix details. Review found it; no test supplied a
+ * hostile URL, so the suite was green.
+ *
+ * Checked here rather than at each site so the two writers (`checkout.ts`'s
+ * first invoice and the webhook's refresh) cannot disagree, which is how the
+ * `AWAITING` allow-list came to be applied to one of them and not the other.
+ *
+ * `https` only, and the host must be `asaas.com` or a subdomain of it — the
+ * sandbox serves `sandbox.asaas.com`, so both environments pass without this
+ * needing to know which one is configured. A `userinfo` prefix cannot smuggle
+ * another host past it: `URL.hostname` is the host, and
+ * `https://asaas.com@evil.test/` parses with `hostname === 'evil.test'`.
+ */
+export function safeInvoiceUrl(candidate: string | null | undefined): string | null {
+  if (!candidate) return null
+  let url: URL
+  try {
+    url = new URL(candidate)
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'https:') return null
+  const host = url.hostname.toLowerCase()
+  if (host !== INVOICE_HOST && !host.endsWith(`.${INVOICE_HOST}`)) return null
+  return candidate
+}
+
 /** The configured API key, or `''` when it is unset. */
 export function apiKey(env: Env = process.env): string {
   return value(env, API_KEY_VAR)

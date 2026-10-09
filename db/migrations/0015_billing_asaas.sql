@@ -155,6 +155,22 @@ create table if not exists subscription_payments (
   -- know about would be stored as though it were ours.
   asaas_subscription_id text          not null
     references subscriptions(asaas_subscription_id) on delete cascade,
+
+  -- **Written by `upsertPayment` and read by nothing today. Carded as F15.**
+  -- Every query in `lib/asaas/` and in `worker/licitaqui/billing.py` filters on
+  -- `asaas_payment_id` or `asaas_subscription_id`; the one `user_id` in
+  -- `billing.py`'s join is `subscriptions.user_id`, not this column. The
+  -- cascade is redundant as well — this table cascades from `subscriptions`,
+  -- which cascades from `users`.
+  --
+  -- Review found it as the second reader-less column in this table, after
+  -- `net_value` (**F14**), and dropping it was the first instinct. It is kept
+  -- for one measured reason: this file was **already applied to the shared test
+  -- database on 2026-10-08 16:32:58 UTC** and the table there has the column
+  -- `not null`, so removing it here makes every `*.db.test.ts` run fail on a
+  -- constraint until somebody with rights on that database un-applies 0015.
+  -- F15 removes it in its own migration, which is what the house rule asks for
+  -- and costs one file.
   user_id               bigint        not null references users(id) on delete cascade,
 
   -- Asaas's payment status, verbatim and uppercase (PENDING, CONFIRMED,
@@ -195,9 +211,13 @@ create index if not exists subscription_payments_user_idx
   on subscription_payments (user_id, created_at desc);
 
 create table if not exists billing_reminders (
-  -- Which charge this reminder is about. `(subscription, due date)` is spec
-  -- §10's own phrasing of the idempotency, and the primary key is how it is
-  -- enforced rather than checked: a sweep that runs twice inserts once.
+  -- Which charge this reminder is about. Spec §10 phrases the idempotency as
+  -- `(subscription, due date)`; the primary key below adds `kind`, because
+  -- F4's three messages — the 3-day reminder, the payment-failed notice and
+  -- the suspension notice — are independent and one must not suppress
+  -- another. The key is how that is enforced rather than checked: a sweep that
+  -- runs twice inserts once, per kind. `worker/licitaqui/billing.py` agrees
+  -- (`on conflict (asaas_subscription_id, due_on, kind)`).
   asaas_subscription_id text        not null
     references subscriptions(asaas_subscription_id) on delete cascade,
   due_on                date        not null,

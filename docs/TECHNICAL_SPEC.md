@@ -579,7 +579,7 @@ Rules from that incident:
 7. Events and gate dashboard. Privacy policy.
 
 **Phase 0 continued (S4–S7, 10-12 → 11-06)**
-Public Landing (10-13), Asaas subscriptions in production (Promocional R$ 57 for 3 months → R$ 75; Essencial R$ 75; Pro R$ 129), webhook, 1-click cancellation, deep analysis with quota, awards for concierge segments. Subscription link to the founders on **17-10** (`docs/product.json` `founders.opensOn`), not 10-29.
+Public Landing (10-13), Asaas subscriptions in production (Promocional R$ 57 for 3 months → R$ 75; Essencial R$ 75; Pro R$ 129), webhook, 1-click cancellation, deep analysis with quota, awards for concierge segments. Subscription link to the founders on **10-17** (`docs/product.json` `founders.opensOn`), not 10-29.
 
 **v1 · Essencial (6–8 weeks after gate 0)**
 Daily alerts, ME/EPP and value filters, `sync_awards` + winning price range by state, target price and margin calculator, (The 3-day charge reminder moved to Phase 0 / M5 — see §10, task F4.)

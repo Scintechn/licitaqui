@@ -345,6 +345,7 @@ export const webhookEvents = pgTable('webhook_events', {
 export const subscriptionPayments = pgTable('subscription_payments', {
   asaasPaymentId: text('asaas_payment_id').primaryKey(),
   asaasSubscriptionId: text('asaas_subscription_id').notNull(),
+  /** Written, read by nothing, and carded as **F15**: see `0015_billing_asaas.sql`. */
   userId: bigint('user_id', { mode: 'number' }).notNull(),
   status: text('status').notNull(),
   billingType: text('billing_type'),

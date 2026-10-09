@@ -124,6 +124,57 @@ function statusLiteral(statuses: readonly string[]) {
 export const liveStatusLiteral = () => statusLiteral(LIVE_STATUSES)
 const readableStatusLiteral = () => statusLiteral(READABLE_STATUSES)
 
+/**
+ * **The last day a subscription that is ending keeps the paid plan**, as one
+ * expression, because there are two ways a subscription ends and they must not
+ * disagree about the date.
+ *
+ * `cancelSubscription` is the reader pressing "Cancelar"; `endSubscription` in
+ * `entitlement.ts` is Asaas telling us the subscription is gone — a cancel or
+ * an inactivation done in the Asaas console, which `F9` says is where refunds
+ * are issued, so it is an expected operator action and not a corner. Both have
+ * to answer *"the end of the period already paid for"*, and until 2026-10-09
+ * only one of them did.
+ *
+ * {@link cancelSubscription}'s docstring is the full argument for the three
+ * candidates. The short version: `next_charge_on - 1` alone is **yesterday**
+ * for a cancel in month 1, because between a first payment and Asaas
+ * generating month 2 `next_charge_on` is still the day of the charge that was
+ * just paid. Review found that in `cancelSubscription` and it was fixed there
+ * with `greatest()` of three candidates — and the identical two-line version
+ * survived in `endSubscription`, where it would have set `ends_on` to
+ * yesterday for any founder whose subscription was ended from the console in
+ * its first month, after which `expire_subscriptions` drops them to Básico the
+ * next morning and `readSubscription` filters the row out, so the screen
+ * offers to sell them the plan they are paying for.
+ *
+ * That is the §4b shape exactly: the covering test asserted
+ * `ends_on is not null`, which yesterday satisfies. Two tests in
+ * `billing.db.test.ts` now assert the **day**, one per path, and both fail
+ * against the two-line version.
+ *
+ * `s.ends_on` is the fourth candidate so the value can only ever move
+ * **later**: `confirmCancel` writes the local row first and the webhook
+ * arrives afterwards, and the second write must not undo the first. `greatest`
+ * ignores nulls, so a subscription that was never paid falls through to today.
+ *
+ * @param alias the `subscriptions` alias in the calling statement.
+ */
+export function lastPaidDay(alias: string) {
+  if (!/^[a-z_][a-z0-9_]*$/.test(alias)) throw new Error(`asaas: unsafe alias ${alias}`)
+  return sql.raw(`greatest(
+                   ${alias}.ends_on,
+                   ${alias}.next_charge_on - 1,
+                   (
+                     select (max(p.due_on) + interval '1 month' - interval '1 day')::date
+                       from subscription_payments p
+                      where p.asaas_subscription_id = ${alias}.asaas_subscription_id
+                        and p.entitled_at is not null
+                   ),
+                   (now() at time zone 'America/Sao_Paulo')::date
+                 )`)
+}
+
 export type Payment = {
   status: string
   /** Exact decimal as a string, straight from `numeric(10,2)`. Never a float. */
@@ -381,16 +432,9 @@ export async function cancelSubscription(
          set status     = ${SUBSCRIPTION_STATUS.canceled}::text,
              -- The product's clock, not the database's: "o último dia do
              -- período que já pagou" is a day in Brasília (CLAUDE.md, Clocks).
-             ends_on    = greatest(
-                            s.next_charge_on - 1,
-                            (
-                              select (max(p.due_on) + interval '1 month' - interval '1 day')::date
-                                from subscription_payments p
-                               where p.asaas_subscription_id = s.asaas_subscription_id
-                                 and p.entitled_at is not null
-                            ),
-                            (now() at time zone 'America/Sao_Paulo')::date
-                          ),
+             -- Shared with endSubscription, which had its own two-line copy
+             -- of this and got it wrong. See lastPaidDay.
+             ends_on    = ${lastPaidDay('s')},
              updated_at = now()
        where s.user_id = ${userId}::bigint
          and s.status = any(${liveStatusLiteral()})

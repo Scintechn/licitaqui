@@ -6,6 +6,7 @@ import {
   configFault,
   ENV_VAR,
   PRODUCTION,
+  safeInvoiceUrl,
   SANDBOX,
 } from './config'
 
@@ -292,5 +293,49 @@ describe('the answers it makes of a failure', () => {
   it('does not treat a 404 on anything else as success', async () => {
     const { client: c } = client([{ status: 404, body: {} }])
     await expect(c.payment('pay_gone')).rejects.toThrow(AsaasError)
+  })
+})
+
+/**
+ * **`invoiceUrl` is a URL we hand a subscriber's browser, and it arrives in a
+ * webhook body.**
+ *
+ * `webhook.ts` states the bound as *"a forged body cannot invent a
+ * subscriber"*, which is true and incomplete: whoever holds
+ * `ASAAS_WEBHOOK_TOKEN` cannot invent a subscriber but could repoint an
+ * existing one's payment link, because `refreshCheckoutUrl` wrote the value
+ * straight into `subscriptions.checkout_url` — a column that is `redirect()`ed
+ * to and rendered as the pay-now `href`. An open redirect aimed at the one
+ * screen where somebody is about to type card or Pix details.
+ *
+ * Review found it. No test had ever supplied a hostile URL, so the suite was
+ * green throughout — and a green suite is not evidence.
+ */
+describe('invoice URLs', () => {
+  it('accepts Asaas invoice pages in both environments', () => {
+    expect(safeInvoiceUrl('https://www.asaas.com/i/abc123')).toBe('https://www.asaas.com/i/abc123')
+    expect(safeInvoiceUrl('https://sandbox.asaas.com/i/abc')).toBe('https://sandbox.asaas.com/i/abc')
+    expect(safeInvoiceUrl('https://asaas.com/i/abc')).toBe('https://asaas.com/i/abc')
+  })
+
+  it('refuses another host, however much it looks like one', () => {
+    expect(safeInvoiceUrl('https://asaas.com.evil.test/i/abc')).toBeNull()
+    expect(safeInvoiceUrl('https://notasaas.com/i/abc')).toBeNull()
+    // `URL.hostname` is the host, so userinfo cannot smuggle one past it.
+    expect(safeInvoiceUrl('https://asaas.com@evil.test/i/abc')).toBeNull()
+  })
+
+  it('refuses a scheme that is not https', () => {
+    expect(safeInvoiceUrl('http://www.asaas.com/i/abc')).toBeNull()
+    // The one that would run script in the reader's page if it reached an href.
+    expect(safeInvoiceUrl('javascript:alert(1)')).toBeNull()
+    expect(safeInvoiceUrl('data:text/html,<script>1</script>')).toBeNull()
+  })
+
+  it('refuses nothing, empty and unparseable rather than throwing', () => {
+    expect(safeInvoiceUrl(null)).toBeNull()
+    expect(safeInvoiceUrl(undefined)).toBeNull()
+    expect(safeInvoiceUrl('')).toBeNull()
+    expect(safeInvoiceUrl('not a url at all')).toBeNull()
   })
 })

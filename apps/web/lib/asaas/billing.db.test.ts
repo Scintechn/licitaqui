@@ -35,6 +35,15 @@ import { readEvent } from './webhook'
  * cannot see each other's subscriptions — CLAUDE.md's per-run rule, and the
  * reason a task-scoped constant is not good enough.
  *
+ * **With one exception, and this paragraph used to deny it.** `founder_seat` is
+ * `int unique check (between 1 and 48)`, so `RUN_ID` cannot scope it and
+ * {@link makeUser} asks for nine of the 48 by literal number. A crashed run's
+ * leftover seat is released by {@link freeDebrisSeat}; two *live* runs still
+ * contend, and card **F17** carries the database-of-its-own that fixes it. The
+ * claim that "every row is scoped by `RUN_ID`" was true of everything this file
+ * writes except the one value that matters most, and it cost 20 of 35 tests on
+ * 2026-10-09.
+ *
  * ## It needs migration 0015
  *
  * `subscription_payments` and `subscriptions.checkout_url` arrive in
@@ -97,6 +106,66 @@ async function firstSubscribeReplies(invoiceUrl: string | null, dueDate?: string
   ]
 }
 
+/**
+ * How long a `.test.invalid` row must have sat there before another run may
+ * take its seat. Mirrors `CROSS_RUN_SWEEP_HOURS` in `worker/tests/conftest.py`,
+ * and for the same reason: a crashed run's `RUN_ID` is unknowable, so age is
+ * the only signal that tells its debris from a live run's fixtures.
+ *
+ * Two hours is safe here only because **nothing in this file backdates a
+ * user**. If a case ever ages one — to prove an expiry, say — this number must
+ * move above the oldest age it fabricates, exactly as the worker's note says.
+ */
+const SEAT_DEBRIS_HOURS = 2
+
+/**
+ * Free a seat held by a **crashed run's** leftover row, so this run can claim it.
+ *
+ * `users.founder_seat` is the one value in this file that `RUN_ID` cannot
+ * scope: `0001_initial.sql` declares it `int unique` with
+ * `check (founder_seat between 1 and 48)`, so there are 48 of them in the whole
+ * database and every run must take the same small integers. {@link makeUser}
+ * asks for nine of them by literal number.
+ *
+ * On 2026-10-09 that cost 20 of this file's 35 tests. A single row — one user
+ * on `@billing-<run>.test.invalid` holding seat 3, left behind when the
+ * previous lane's suite was killed at the harness cap — made every case that
+ * asks for seat 3 fail on `duplicate key value violates unique constraint
+ * "users_founder_seat_key"` before it reached an assertion. `cleanup()` could
+ * not clear it: it deletes by *this* run's e-mail domain, so a crashed run's
+ * debris is permanently invisible to it and wedges the suite for every run
+ * afterwards. The two cancellation-date failures the lane was actually chasing
+ * were underneath, unreachable.
+ *
+ * Both guards are load-bearing and neither is optional:
+ *
+ *  - **the domain**, so this can never touch a real account. `.test.invalid` is
+ *    a reserved TLD (RFC 2606) and matches nothing a person could register;
+ *  - **the age**, so it can never touch a *live* concurrent run of this same
+ *    file. Its rows are seconds old; only debris is older than
+ *    {@link SEAT_DEBRIS_HOURS}.
+ *
+ * It is `update … set founder_seat = null` rather than a delete, which is
+ * `u1.db.test.ts`'s `freeTheSeat` and the narrowest thing that works: the seat
+ * is released, the stale row stays, and nothing that might be somebody's
+ * fixture is removed.
+ *
+ * **What this does not fix**, and card **F17** says so rather than a comment:
+ * two runs of this file *inside* the age window still contend for the same nine
+ * seats, and the loser fails. 48 unique seats is a product constraint, not a
+ * fixture choice, so the answer is a database of its own
+ * (`TEST_DATABASE_URL_F2`, the escape hatch `test-url.ts` documents) and not a
+ * cleverer prefix.
+ */
+async function freeDebrisSeat(seat: number) {
+  await db().execute(sql`
+    update users set founder_seat = null
+     where founder_seat = ${seat}
+       and email like '%.test.invalid'
+       and created_at < now() - ${`${SEAT_DEBRIS_HOURS} hours`}::interval
+  `)
+}
+
 async function makeUser(options: { seat?: number | null; cnpj?: string | null } = {}) {
   const found = await db().execute<{ id: string }>(sql`
     insert into companies (cnpj, legal_name)
@@ -105,6 +174,7 @@ async function makeUser(options: { seat?: number | null; cnpj?: string | null } 
     returning cnpj
   `)
   void found
+  if (options.seat !== undefined && options.seat !== null) await freeDebrisSeat(options.seat)
   const user = await db().execute<{ id: string }>(sql`
     insert into users (email, name, cnpj, founder_seat)
     values (${`sub@${DOMAIN}`}, ${'Maria Teste'},
@@ -172,7 +242,7 @@ async function brtToday(): Promise<string> {
  */
 async function subscribedAndPaid(seat: number): Promise<number> {
   const userId = await makeUser({ seat })
-  const { client } = stubClient(await firstSubscribeReplies('https://x/i'))
+  const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/first'))
   await startCheckout(userId, { client })
   const applied = await deliver('PAYMENT_CONFIRMED')
   expect(applied.outcome, 'the fixture must actually grant').toBe('granted')
@@ -330,15 +400,15 @@ suite('the subscription flow (database)', () => {
       { id: SUB, status: 'ACTIVE', nextDueDate: '2026-10-17' },
       {
         data: [
-          { id: `${PAY}_nov`, status: 'PENDING', value: 57, dueDate: '2026-11-17', invoiceUrl: 'https://x/nov' },
-          { id: PAY, status: 'PENDING', value: 57, dueDate: '2026-10-17', invoiceUrl: 'https://x/out' },
+          { id: `${PAY}_nov`, status: 'PENDING', value: 57, dueDate: '2026-11-17', invoiceUrl: 'https://sandbox.asaas.com/i/nov' },
+          { id: PAY, status: 'PENDING', value: 57, dueDate: '2026-10-17', invoiceUrl: 'https://sandbox.asaas.com/i/out' },
         ],
       },
     ])
     const result = await startCheckout(founder, { client })
     expect(result.outcome).toBe('ready')
     if (result.outcome !== 'ready') return
-    expect(result.checkoutUrl).toBe('https://x/out')
+    expect(result.checkoutUrl).toBe('https://sandbox.asaas.com/i/out')
   })
 })
 
@@ -583,6 +653,36 @@ suite('what a webhook does to an account (database)', () => {
     expect(row.rows[0].checkout_url).not.toBe('https://sandbox.asaas.com/i/refunded')
   })
 
+  /**
+   * **A webhook cannot repoint a subscriber's payment link at another host.**
+   *
+   * `checkout_url` is `redirect()`ed to by `goToCheckout` and rendered as the
+   * pay-now `href`, so an attacker holding `ASAAS_WEBHOOK_TOKEN` could have
+   * sent a `PAYMENT_CREATED` carrying their own URL and had the plan screen
+   * send a subscriber there to type card or Pix details. `webhook.ts` said *"a
+   * forged body cannot invent a subscriber"*, which was true and not the whole
+   * bound.
+   *
+   * The unit assertions are in `client.test.ts`'s *invoice URLs*; this pins the
+   * **result** — the column is not changed — which is the thing that matters
+   * and the thing a validator could be bypassed without changing.
+   */
+  it('refuses a checkout link that is not an Asaas invoice', async () => {
+    const userId = await subscribed()
+    await deliver('PAYMENT_CREATED', {
+      suffix: 'evil',
+      id: `${PAY}_evil`,
+      status: 'PENDING',
+      dueDate: '2027-08-17',
+      paymentDate: null,
+      invoiceUrl: 'https://asaas.com.evil.test/i/pay-me',
+    })
+    const row = await readSubscription(userId)
+    if (row.state !== 'found') throw new Error('subscription vanished')
+    // Unchanged: still the invoice `startCheckout` read from Asaas itself.
+    expect(row.subscription.checkoutUrl).toBe('https://sandbox.asaas.com/i/one')
+  })
+
   it('does not replace the link with a settled invoice', async () => {
     // A paid charge's invoice is a receipt. The screen does not offer it for an
     // active subscription, and the next PAYMENT_CREATED replaces it anyway.
@@ -698,7 +798,100 @@ suite('what a webhook does to an account (database)', () => {
        where asaas_subscription_id = ${SUB}
     `)
     expect(row.rows[0].status).toBe('canceled')
-    expect(row.rows[0].ends_on).not.toBeNull()
+    /**
+     * **The day, not merely "a day".**
+     *
+     * `expect(ends_on).not.toBeNull()` is all this asserted, and *yesterday*
+     * satisfies it — which is what `endSubscription` wrote. It carried
+     * `coalesce(ends_on, next_charge_on - 1, today)`, the two-line version
+     * review had already corrected in `cancelSubscription`, and this is the
+     * month-1 fixture: the only payment is the one just settled, so
+     * `next_charge_on` is **today** and `next_charge_on - 1` is yesterday.
+     * `expire_subscriptions` then drops a paying founder to Básico the next
+     * morning, and `readSubscription` filters the row out so the screen offers
+     * to sell them the plan they are paying for.
+     *
+     * §4b's "the test exercised the unit, not the path", one step in from the
+     * fixture defect this file already documents. Asserting the date is what
+     * makes the two paths provably agree.
+     */
+    const today = await brtToday()
+    expect(
+      row.rows[0].ends_on! >= today,
+      `ends_on ${row.rows[0].ends_on} must not be before today ${today}`,
+    ).toBe(true)
+    const expected = new Date(`${today}T00:00:00Z`)
+    expected.setUTCMonth(expected.getUTCMonth() + 1)
+    expected.setUTCDate(expected.getUTCDate() - 1)
+    expect(row.rows[0].ends_on).toBe(expected.toISOString().slice(0, 10))
+    expect(await planOf(userId)).toBe('promocional')
+  })
+
+  /**
+   * **A grant must leave no `ends_on` behind, because F4's sweep reads that
+   * column to decide who gets a reminder.**
+   *
+   * `charge_reminder`'s `DUE_SQL` requires `s.ends_on is null`. A subscription
+   * that was ended and then restored by the next month's payment kept its old
+   * date, so the account was charged every month and was **permanently
+   * invisible** to the 3-day reminder — with the sweep logging `due = 0` and
+   * looking perfectly healthy. A clause of terms §7 failing in silence.
+   */
+  it('clears the end date when a payment brings a subscription back', async () => {
+    const userId = await subscribed()
+    await deliver('PAYMENT_CONFIRMED')
+    // End it, as a console cancel would.
+    await db().execute(sql`
+      update subscriptions set status = 'canceled', ends_on = (now() at time zone 'America/Sao_Paulo')::date - 40
+       where asaas_subscription_id = ${SUB}
+    `)
+    // ...then put it back the way only a *new* subscription can, so this is the
+    // restore case and not the cancelled-boleto case below.
+    await db().execute(sql`
+      update subscriptions set status = 'pending' where asaas_subscription_id = ${SUB}
+    `)
+    await deliver('PAYMENT_RECEIVED', { suffix: '2', id: `${PAY}_2` })
+    const row = await db().execute<{ status: string; ends_on: string | null }>(sql`
+      select status, ends_on::text as ends_on from subscriptions
+       where asaas_subscription_id = ${SUB}
+    `)
+    expect(row.rows[0].status).toBe('active')
+    expect(row.rows[0].ends_on).toBeNull()
+    expect(await planOf(userId)).toBe('promocional')
+  })
+
+  /**
+   * **A boleto that settles after a cancel buys a month; it does not undo the
+   * cancel.**
+   *
+   * The flip to `active` had no predicate on `s.status`, so a `canceled` row
+   * went straight back to `active`. Auto-renewal is off at Asaas,
+   * `expire_subscriptions` requires `canceled` and so no longer matched, and
+   * the account kept the paid plan **for ever** — never charged again, and
+   * never reminded either. The month the money bought is honoured by moving
+   * `ends_on`, which `expire_subscriptions` already knows how to reclaim.
+   */
+  it('honours a payment that settles after a cancel without reviving the subscription', async () => {
+    const userId = await subscribed()
+    await db().execute(sql`
+      update subscriptions set status = 'canceled',
+             ends_on = (now() at time zone 'America/Sao_Paulo')::date
+       where asaas_subscription_id = ${SUB}
+    `)
+    const applied = await deliver('PAYMENT_CONFIRMED')
+    expect(applied.outcome).toBe('granted')
+    const row = await db().execute<{ status: string; ends_on: string | null }>(sql`
+      select status, ends_on::text as ends_on from subscriptions
+       where asaas_subscription_id = ${SUB}
+    `)
+    // Still cancelled: the metric and the column must say the same thing.
+    expect(row.rows[0].status).toBe('canceled')
+    // And the month it bought is covered, so `expire_subscriptions` waits.
+    const today = await brtToday()
+    expect(
+      row.rows[0].ends_on! > today,
+      `ends_on ${row.rows[0].ends_on} must be after today ${today}`,
+    ).toBe(true)
     expect(await planOf(userId)).toBe('promocional')
   })
 })
@@ -718,7 +911,7 @@ suite('cancelling (database)', () => {
     // Terms §8's Prime model, and `billing.cancel.untilWhen` is the approved
     // sentence that states it.
     const userId = await makeUser({ seat: 2 })
-    const { client } = stubClient(await firstSubscribeReplies('https://x/i', '2026-11-17'))
+    const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/first', '2026-11-17'))
     await startCheckout(userId, { client })
 
     const result = await cancelSubscription(userId)
@@ -835,7 +1028,7 @@ suite('cancelling (database)', () => {
       { data: [{ id: CUS }] },
       { data: [] },
       { id: `${SUB}_b`, status: 'ACTIVE', nextDueDate: '2027-03-17' },
-      { data: [{ id: `${PAY}_b`, status: 'PENDING', value: 57, dueDate: '2027-03-17', invoiceUrl: 'https://x/b' }] },
+      { data: [{ id: `${PAY}_b`, status: 'PENDING', value: 57, dueDate: '2027-03-17', invoiceUrl: 'https://sandbox.asaas.com/i/b' }] },
     ])
     await startCheckout(userId, { client: again.client })
 
@@ -857,7 +1050,7 @@ suite('cancelling (database)', () => {
 
   it('lets the same account subscribe again afterwards', async () => {
     const userId = await makeUser({ seat: 9 })
-    const first = stubClient(await firstSubscribeReplies('https://x/i'))
+    const first = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/first'))
     await startCheckout(userId, { client: first.client })
     await cancelSubscription(userId)
 
@@ -865,7 +1058,7 @@ suite('cancelling (database)', () => {
       { data: [{ id: CUS }] },
       { data: [] }, //                                  the old subscription is gone at Asaas
       { id: `${SUB}_b`, status: 'ACTIVE', nextDueDate: '2027-01-17' },
-      { data: [{ id: `${PAY}_b`, status: 'PENDING', value: 57, dueDate: '2027-01-17', invoiceUrl: 'https://x/b' }] },
+      { data: [{ id: `${PAY}_b`, status: 'PENDING', value: 57, dueDate: '2027-01-17', invoiceUrl: 'https://sandbox.asaas.com/i/b' }] },
     ])
     const again = await startCheckout(userId, { client: second.client })
     expect(again.outcome).toBe('ready')

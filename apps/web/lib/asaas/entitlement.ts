@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 import { recordEvent } from '@/lib/events'
 import { PROMO } from '@/lib/product'
-import { liveStatusLiteral } from './subscription'
+import { safeInvoiceUrl } from './config'
+import { lastPaidDay, liveStatusLiteral, SUBSCRIPTION_STATUS } from './subscription'
 import { type AsaasEvent, effectOf } from './webhook'
 
 /**
@@ -99,7 +100,7 @@ const SETTLED: readonly string[] = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH']
  * link on their previous values rather than to point either at it. That is the
  * allow-list failing safe, which is the whole reason it is one.
  */
-const AWAITING: readonly string[] = [
+export const AWAITING: readonly string[] = [
   'PENDING',
   'OVERDUE',
   'AWAITING_RISK_ANALYSIS',
@@ -221,10 +222,7 @@ export async function applyEvent(
     return { outcome: 'ignored', reason: 'no_payment' }
   }
 
-  await upsertPayment(
-    { ...payment, asaasSubscriptionId: event.subscriptionId, userId },
-    database,
-  )
+  await upsertPayment({ ...payment, asaasSubscriptionId: event.subscriptionId, userId }, database)
   await refreshCheckoutUrl(event.subscriptionId, payment, database)
 
   if (effect === 'revoke') {
@@ -324,10 +322,42 @@ export async function applyEvent(
    * somebody may still be paying.
    * The skipped case is logged, loudly, and `stale_subscription` comes back as
    * the outcome so the route's log line names it. Card **F10** reconciles it.
+   *
+   * ## A payment that settles after a cancel buys a month; it does not undo the
+   * cancel
+   *
+   * The `case` is the second half of that same scenario, in its **one-row**
+   * variant — cancel mid-cycle with a boleto outstanding, then the boleto is
+   * paid, and no second subscription exists. Until 2026-10-09 the flip to
+   * `active` had no predicate on `s.status`, so a `canceled` row went straight
+   * back to `active`: auto-renewal is off at Asaas, `expire_subscriptions` no
+   * longer matches the row (it requires `canceled`), and the account kept the
+   * paid plan **for ever**, never charged again and — because of the
+   * `ends_on is null` clause in F4's `DUE_SQL` — never reminded either.
+   *
+   * Granting the month the boleto bought is right. Claiming a live
+   * subscription is not. So a cancelled row stays `canceled` and its
+   * {@link lastPaidDay} moves out to cover the charge that just settled, which
+   * is exactly the machinery that already exists: `users.plan` is granted
+   * below, and `expire_subscriptions` reclaims it the morning after the month
+   * runs out. Nothing new had to be built for it.
+   *
+   * ## `ends_on = null` on a genuine activation
+   *
+   * A row that is becoming `active` must have no `ends_on` left on it. A
+   * subscription that was ended and then restored by the next month's payment
+   * kept its old date, and F4's `charge_reminder` selects
+   * `where s.ends_on is null` — so that account was charged every month and
+   * was **permanently invisible** to the 3-day reminder, with the sweep
+   * logging `due = 0` and looking healthy. A clause of the contract (terms §7)
+   * failing silently, which is the shape this file keeps finding.
    */
-  const activated = await database.execute<{ asaas_subscription_id: string }>(sql`
+  const activated = await database.execute<{ asaas_subscription_id: string; status: string }>(sql`
     update subscriptions s
-       set status     = 'active',
+       set status     = case when s.status = ${SUBSCRIPTION_STATUS.canceled}::text
+                               then s.status else 'active' end,
+           ends_on    = case when s.status = ${SUBSCRIPTION_STATUS.canceled}::text
+                               then ${lastPaidDay('s')} else null end,
            updated_at = now()
      where s.asaas_subscription_id = ${event.subscriptionId}::text
        and not exists (
@@ -336,12 +366,17 @@ export async function applyEvent(
             and other.asaas_subscription_id <> s.asaas_subscription_id
             and other.status = any(${liveStatusLiteral()})
        )
-    returning s.asaas_subscription_id
+    returning s.asaas_subscription_id, s.status
   `)
   if (activated.rows.length === 0) {
     console.error(
       'billing: a payment settled for a subscription while another is live for the same account',
     )
+  }
+  /** True only where the row is now genuinely live, which the event must mean. */
+  const isActive = activated.rows[0]?.status === 'active'
+  if (activated.rows.length > 0 && !isActive) {
+    console.info('billing: a payment settled for a cancelled subscription; the month it bought is honoured')
   }
 
   /**
@@ -398,8 +433,10 @@ export async function applyEvent(
   await refreshNextCharge(event.subscriptionId, database)
   // §14's gate metric, and `lib/admin/gates.ts` counts a paid founder seat off
   // `subscriptions.status`, so this must mean the same thing the column does:
-  // fired only where the row actually became `active`.
-  if (activated.rows.length > 0) {
+  // fired only where the row actually became `active`. A cancelled row whose
+  // last boleto settled is **not** that, however much money arrived — the
+  // column says `canceled` and so must the metric.
+  if (isActive) {
     await recordEvent(
       { name: 'subscription_active', userId, props: { plan: row.plan, event: event.event } },
       database,
@@ -461,18 +498,24 @@ async function refreshNextCharge(subscriptionId: string, database: Executor): Pr
   `)
 }
 
-/** Auto-renewal off, paid access to the end of the period already paid for. */
+/**
+ * Auto-renewal off, paid access to the end of the period already paid for.
+ *
+ * The date is {@link lastPaidDay}, which is `cancelSubscription`'s expression
+ * and no longer a second copy of it. This function used to hold
+ * `coalesce(ends_on, next_charge_on - 1, today)` — the two-line version review
+ * had already corrected in `cancelSubscription` — and so set `ends_on` to
+ * **yesterday** for any subscription ended in its first month, which is every
+ * subscription a founder cancels or an operator inactivates in the Asaas
+ * console before Asaas has generated month 2.
+ */
 async function endSubscription(subscriptionId: string, database: Executor): Promise<void> {
   await database.execute(sql`
-    update subscriptions
+    update subscriptions s
        set status     = 'canceled',
-           ends_on    = coalesce(
-                          ends_on,
-                          next_charge_on - 1,
-                          (now() at time zone 'America/Sao_Paulo')::date
-                        ),
+           ends_on    = ${lastPaidDay('s')},
            updated_at = now()
-     where asaas_subscription_id = ${subscriptionId}::text
+     where s.asaas_subscription_id = ${subscriptionId}::text
   `)
 }
 
@@ -512,6 +555,11 @@ type PaymentFacts = {
  * The first version of this guard was "not settled", which would have pointed
  * the pay-now button at a refunded charge.
  *
+ * The value is checked against Asaas's own domain before it is stored — see
+ * {@link safeInvoiceUrl}. It arrives in a webhook body, and the column it
+ * lands in is redirected to and rendered as a payment link, so "Asaas sent it"
+ * is not on its own a reason to point a subscriber's browser at it.
+ *
  * §12: never logged. It opens one named customer's invoice.
  */
 async function refreshCheckoutUrl(
@@ -519,10 +567,17 @@ async function refreshCheckoutUrl(
   payment: PaymentFacts,
   database: Executor,
 ): Promise<void> {
-  if (!payment.invoiceUrl || !AWAITING.includes(payment.status)) return
+  if (!AWAITING.includes(payment.status)) return
+  const invoiceUrl = safeInvoiceUrl(payment.invoiceUrl)
+  if (!invoiceUrl) {
+    // Not logged with the value: §12, and a rejected URL is attacker-chosen
+    // text. The status is a fixed vocabulary and safe to name.
+    if (payment.invoiceUrl) console.error('billing: refusing a checkout URL that is not an Asaas invoice')
+    return
+  }
   await database.execute(sql`
     update subscriptions
-       set checkout_url = ${payment.invoiceUrl}::text,
+       set checkout_url = ${invoiceUrl}::text,
            updated_at   = now()
      where asaas_subscription_id = ${subscriptionId}::text
   `)
@@ -568,6 +623,8 @@ async function upsertPayment(
 ): Promise<void> {
   await database.execute(sql`
     insert into subscription_payments (
+      -- user_id is written here and read by nothing. Card F15 removes it; the
+      -- note in 0015_billing_asaas.sql says why it is still here.
       asaas_payment_id, asaas_subscription_id, user_id,
       status, billing_type, value, net_value, due_on, paid_on, updated_at
     )
