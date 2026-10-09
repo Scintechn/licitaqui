@@ -62,12 +62,10 @@ export type UfPickerProps = {
   label: ReactNode
   /** The UFs ticked on first render. Empty is *Todo o Brasil*. */
   defaultValue?: readonly string[]
-  /** Called with the canonical selection whenever it changes. */
-  onChange?: (states: string[]) => void
   className?: string
 }
 
-export function UfPicker({ id, label, defaultValue = [], onChange, className }: UfPickerProps) {
+export function UfPicker({ id, label, defaultValue = [], className }: UfPickerProps) {
   const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set(canonicalUfs(defaultValue)))
   const details = useRef<HTMLDetailsElement>(null)
   const labelId = `${id}-label`
@@ -76,7 +74,6 @@ export function UfPicker({ id, label, defaultValue = [], onChange, className }: 
 
   function update(next: Set<string>) {
     setTicked(next)
-    onChange?.(canonicalUfs(next))
   }
 
   function set(codes: readonly string[], on: boolean) {
@@ -115,14 +112,16 @@ export function UfPicker({ id, label, defaultValue = [], onChange, className }: 
       <span id={labelId} className="text-meta font-medium text-ink">
         {label}
       </span>
-      <details ref={details} className="group/uf relative">
+      <details ref={details} className="group/uf">
         <summary
           id={id}
           aria-labelledby={`${labelId} ${valueId}`}
           className={cn(
             // `Select`'s own box: the 48px height, the radius, the field border
             // and the 16px text — below 16px iOS Safari zooms on focus.
-            'flex min-h-control w-full cursor-pointer list-none items-center rounded-control border border-field-line bg-surface',
+            // `relative` here, not on `<details>`: the chevron is centred on the
+            // button, and `<details>` grows by the whole panel when it opens.
+            'relative flex min-h-control w-full cursor-pointer list-none items-center rounded-control border border-field-line bg-surface',
             'pr-10 pl-3 text-base text-ink [&::-webkit-details-marker]:hidden',
           )}
         >
@@ -153,7 +152,10 @@ export function UfPicker({ id, label, defaultValue = [], onChange, className }: 
                 <Row
                   id={regionId}
                   label={regionName(region)}
-                  checked={count === ufs.length && !everywhere}
+                  // All of its UFs, whatever the rest are. Tied to `everywhere` it
+                  // drew clear with all 27 ticked, and a press then added nothing
+                  // and could not untick the region (found in review).
+                  checked={count === ufs.length}
                   indeterminate={count > 0 && count < ufs.length}
                   onChange={(on) => set(ufs, on)}
                   strong

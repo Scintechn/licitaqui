@@ -91,6 +91,7 @@ test.describe('choosing several UFs', () => {
     // Escape closes the panel and gives the button back its focus.
     await page.keyboard.press('Escape')
     await expect(page.getByRole('checkbox', { name: 'Sudeste', exact: true })).toBeHidden()
+    await expect(page.locator('#radar-uf')).toBeFocused()
 
     await page.getByRole('button', { name: 'Aplicar filtros' }).click()
     await expect(page).toHaveURL(/uf=RJ/)
@@ -108,6 +109,52 @@ test.describe('choosing several UFs', () => {
     await expect(page.locator('#radar-uf-value')).toHaveText('Todo o Brasil')
     await page.getByRole('button', { name: 'Aplicar filtros' }).click()
     await expect.poll(() => new URL(page.url()).searchParams.getAll('uf')).toEqual([])
+  })
+
+  /** Three defects §4b found that every test above passed through. */
+  test('review fixes: the chevron stays on the button, regions work at all 27, and Back resets the boxes', async ({
+    page,
+  }) => {
+    await installRadarApi(page, {
+      companies: [{ company: MARTA.company, tenders: tenderRun(3) }],
+    })
+    await page.goto(`/radar?cnpj=${MARTA.cnpj}&uf=SP`)
+    await expect(cards(page).first()).toBeVisible()
+    await page.getByText('Trocar empresa ou filtros', { exact: true }).click()
+    await open(page, 'radar-uf')
+
+    // (1) The chevron is centred on the button, not on the button plus the
+    // open panel beneath it.
+    const button = await page.locator('#radar-uf').boundingBox()
+    const chevron = await page.locator('#radar-uf svg').boundingBox()
+    expect(button && chevron, 'both have boxes').toBeTruthy()
+    if (button && chevron) {
+      expect(chevron.y).toBeGreaterThanOrEqual(button.y)
+      expect(chevron.y + chevron.height).toBeLessThanOrEqual(button.y + button.height)
+    }
+
+    // (2) Every region ticked is all 27 — and each region box still reads as
+    // ticked, and still unticks its own UFs.
+    for (const region of ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul']) {
+      await page.getByRole('checkbox', { name: region, exact: true }).check()
+    }
+    await expect(page.locator('#radar-uf-value')).toHaveText('Todo o Brasil')
+    await expect(page.getByRole('checkbox', { name: 'Sudeste', exact: true })).toBeChecked()
+    await page.getByRole('checkbox', { name: 'Sudeste', exact: true }).uncheck()
+    await expect(page.getByRole('checkbox', { name: 'São Paulo (SP)' })).not.toBeChecked()
+    await expect(page.getByRole('checkbox', { name: 'Sudeste', exact: true })).not.toBeChecked()
+
+    // (3) Apply the whole country, press Back: the boxes follow the URL, so the
+    // next apply cannot quietly carry the search they no longer describe.
+    await page.getByRole('checkbox', { name: 'Todo o Brasil' }).check()
+    await page.getByRole('button', { name: 'Aplicar filtros' }).click()
+    await expect.poll(() => new URL(page.url()).searchParams.getAll('uf')).toEqual([])
+    await page.goBack()
+    await expect.poll(() => new URL(page.url()).searchParams.getAll('uf')).toEqual(['SP'])
+    if (!(await page.locator('#radar-uf').isVisible())) {
+      await page.getByText('Trocar empresa ou filtros', { exact: true }).click()
+    }
+    await expect(page.locator('#radar-uf-value')).toHaveText('São Paulo (SP)')
   })
 
   test('an old single-UF link still opens on that UF', async ({ page }) => {

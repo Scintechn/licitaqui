@@ -823,7 +823,16 @@ function FilterRow({
             {query.sort && query.sort !== DEFAULT_SORT ? (
               <input type="hidden" name="sort" value={query.sort} />
             ) : null}
-            <UfPicker id="radar-uf" label={copy.landing.ufLabel} defaultValue={query.states} />
+            {/* Keyed on the selection: `defaultValue` is read once, at mount, and
+                the Radar stays mounted across Back and Forward — without the key
+                the boxes kept the previous search's UFs, and the next *Aplicar*
+                posted them (found in review; the old `<select>` had the same). */}
+            <UfPicker
+              key={query.states.join(',')}
+              id="radar-uf"
+              label={copy.landing.ufLabel}
+              defaultValue={query.states}
+            />
             {/*
               D52 — modalidade and ME/EPP, the two filters Sci asked for on
               2026-10-06. Both are `Select`s and not chips: `modality_id` holds
