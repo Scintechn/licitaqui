@@ -1,6 +1,6 @@
 # gitleaks configuration (spec §12, `.github/workflows/security.yml`).
 #
-# The default rule set, plus exactly one exemption. Nothing here weakens the
+# The default rule set, plus exactly two exemptions, each pinned the same way. Nothing here weakens the
 # scan for any file, rule or commit other than the one named below.
 #
 # ## Why this file exists
@@ -88,3 +88,14 @@ paths = [
   '''^apps/web/lib/radar/scope\.test\.ts$''',
   '''^apps/web/lib/radar/scope\.ts$''',
 ]
+
+# The second, same shape. #261 merged a parametrize label,
+# `"brasilapi-404-cnpja-down"`, which `generic-api-key` scores at 3.855 entropy
+# because "api" sits in the same line. It is a test-case name. Renamed at HEAD
+# (`first-404-second-down`); the commit that introduced it reached `main`
+# through a merge commit and cannot leave history without a force-push.
+[[allowlists]]
+description = "#261's pytest parametrize label in the CNPJ fallback tests, renamed at HEAD"
+condition = "AND"
+commits = ["66f36923545a9077d57e48003b89c78a3c5df88a"]
+paths = ['''^worker/tests/test_integration_company\.py$''']
