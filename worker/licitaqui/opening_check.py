@@ -256,6 +256,16 @@ def opening_broadcast_check(ctx: JobContext) -> None:
         "expected_key": key,
         "opening_date": day.isoformat(),
         "due_at": due_at.isoformat(),
+        # **The same instant, said twice, and the card does not read this one.**
+        # `opening.ts` takes `due_at` and converts, so this field exists for the
+        # reader `events` actually has besides the card: a person running a
+        # `select props from events` on the day. CLAUDE.md's clocks table is why
+        # — a UTC timestamp read against a local clock is the mistake that
+        # declared a worker stalled for an hour on 2026-09-23, and Sci's laptop
+        # is four hours off the product. It is not a field awaiting wiring (the
+        # shape CLAUDE.md forbids): `test_integration_opening_check.py` asserts
+        # it is the same instant as `due_at` and carries a −03:00 offset, so a
+        # drift between the two is loud rather than invisible.
         "due_at_brt": due_at.astimezone(ZoneInfo(whatsapp.BRT_ZONE)).isoformat(),
         "checked_at": now.isoformat(),
         "hours_to_due": round((due_at - now).total_seconds() / 3600, 2),
