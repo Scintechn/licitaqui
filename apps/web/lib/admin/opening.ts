@@ -141,8 +141,20 @@ export type Opening =
    * last reading comes with it so the card can say what it was and how old.
    */
   | { kind: 'stale'; reading: OpeningReading }
-  /** Never checked, at any date. Not stale, not an error. */
+  /**
+   * Never checked, at any date — **the strongest absence this card has**, and
+   * for a while the quietest thing it drew. A worker whose deploy lost the
+   * handler, or whose scheduler never started, produces exactly this and
+   * nothing else, forever. `stale` at least means something looked once.
+   */
   | { kind: 'never'; note: string }
+  /**
+   * Rows exist under this name and **none of them is a reading** — a key
+   * renamed on the worker side, a shape change. Distinct from `never`, which
+   * was what this used to report: *"nunca conferiu"* over a table full of
+   * readings is a false sentence in the quiet direction.
+   */
+  | { kind: 'unreadable'; note: string }
   /** The reading carried a state this build does not know. */
   | { kind: 'unknown'; reading: Omit<OpeningReading, 'state'> & { state: string } }
   /** The query failed. A code, never a driver message. */
@@ -258,13 +270,26 @@ export async function readOpening(executor?: Executor, now = new Date()): Promis
     return { ...base, watch: { kind: 'error', reason: 'query_failed' } }
   }
 
-  const loose = rows.length === 0 ? null : toReading(rows[0], now)
-  if (loose === null) {
+  if (rows.length === 0) {
     return {
       ...base,
       watch: {
         kind: 'never',
         note: 'nunca conferiu — não é o mesmo que a linha estar na fila',
+      },
+    }
+  }
+
+  const loose = toReading(rows[0], now)
+  if (loose === null) {
+    // A row exists and is not a reading. **Not `never`** — that sentence would
+    // be false, and false in the quiet direction, which is the whole shape this
+    // card is built against.
+    return {
+      ...base,
+      watch: {
+        kind: 'unreadable',
+        note: 'a conferência gravou uma linha que esta tela não consegue ler',
       },
     }
   }

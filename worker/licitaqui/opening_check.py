@@ -165,11 +165,32 @@ def _state(
             return "late"
         return "queued"
     if status == "done":
-        # Against `run_after`, not against `due_at`. This asks whether the row
-        # ran at the time it was *queued* for, which is the only thing its own
-        # status can answer; a `done` row dated differently from the current
-        # configuration is a date change, and the card reports it from the
-        # recorded `job_run_after` rather than as an early send.
+        # **Against `due_at`, and this was the defect.** The first version asked
+        # only whether `now >= run_after` — whether the row ran at the time it
+        # was *queued* for — which made `fired_early` **unreachable in
+        # production**: `queue._claim_sql` requires `run_after <= now()`, so a
+        # `done` row can never carry a future `run_after`. The branch existed
+        # only because the unit test handed `_state` a tuple the database cannot
+        # produce, and the enumeration test was satisfied by that same tuple, so
+        # the dead branch looked covered. Found by this PR's second §4b review.
+        #
+        # The case that *can* happen is the one that matters: the row was queued
+        # for the wrong instant — a bad `FOUNDERS_OPENING_HOUR` when the script
+        # ran, or the date moving afterwards — and it has already gone out. That
+        # is a message in a founder's hand with an access link to a product that
+        # was not open, and it previously rendered as a green *disparado*.
+        drift = (run_after - due_at).total_seconds()
+        if drift < -RUN_AFTER_TOLERANCE_SECONDS:
+            return "fired_early"
+        if drift > RUN_AFTER_TOLERANCE_SECONDS:
+            # It ran, for an instant later than the one configured now. The
+            # broadcast happened; the configuration and the row disagree about
+            # when it was meant to, and only a person can say which is right.
+            return "misdated"
+        # Dated correctly and in the past: the one healthy `done`. The `now <
+        # run_after` guard is kept although the claim SQL makes it unreachable —
+        # a defensive `else` that costs nothing and would catch a future change
+        # to how rows are claimed.
         return "sent" if now >= run_after else "fired_early"
     return "failed"
 
@@ -290,9 +311,15 @@ def opening_broadcast_check(ctx: JobContext) -> None:
     # No recipient, no number, no name — counts, a state word and two delivery
     # modes only (§12).
     line = json.dumps(props)
-    # Either dimension is enough to make the day fail: a missing row sends
-    # nothing, and a dead switch sends nothing from a perfect row.
-    if STATES[state] or not props["delivery_ready"]:
+    # **Three dimensions, any one of which loses the day**, and they are kept
+    # apart because they need different fixes: a missing row is a command Sci
+    # runs, a dead switch is an environment variable, and a date that disagrees
+    # with `docs/product.json` is a deploy or an env change. They were not all
+    # here: `date_matches_product` was written into the row and read by nothing,
+    # which is the shape CLAUDE.md names — a field nothing acts on — on the one
+    # dimension whose failure is silent in **both** processes, because the
+    # scheduling script and this check read the same variable and agree.
+    if STATES[state] or not props["delivery_ready"] or not props["date_matches_product"]:
         ctx.log.error("founders opening broadcast check failed", extra={"opening": line})
     else:
         ctx.log.info("founders opening broadcast checked", extra={"opening": line})

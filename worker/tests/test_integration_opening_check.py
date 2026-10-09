@@ -198,7 +198,7 @@ def test_the_row_is_queued_then_deleted_and_the_check_turns_red(
 
 
 def test_a_bad_answer_is_logged_at_error_and_a_good_one_is_not(
-    scope: psycopg.Connection, caplog: pytest.LogCaptureFixture
+    scope: psycopg.Connection, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The half of the alarm that does not need `/admin` open.
 
@@ -223,9 +223,18 @@ def test_a_bad_answer_is_logged_at_error_and_a_good_one_is_not(
 
     caplog.clear()
     place_broadcast(conn)
+    # **Both switches on for the good-answer half**, because a dead switch is
+    # now an error in its own right (and the autouse fixtures delete both for
+    # the whole suite). Without this the assertion below would fail for the
+    # right reason and look like the wrong one. Nothing is sent: this test runs
+    # no send, only the read-only check.
+    monkeypatch.setenv(evolution.DELIVERY_VAR, evolution.DELIVERY_SEND)
+    monkeypatch.setenv(resend.DELIVERY_VAR, resend.DELIVERY_SEND)
     with caplog.at_level(logging.DEBUG):
         _, healthy = run_check(conn, "withrow")
     assert healthy["state"] == "queued"
+    assert healthy["delivery_ready"] is True
+    assert healthy["date_matches_product"] is True
     assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
 
 
@@ -311,7 +320,7 @@ def test_the_reading_names_the_date_it_asked_about_in_both_clocks(
 
 
 def test_an_env_override_that_disagrees_with_the_product_is_on_the_record(
-    scope: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+    scope: psycopg.Connection, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """E5 called this unverifiable from a laptop. It is a field in the row.
 
@@ -327,13 +336,25 @@ def test_an_env_override_that_disagrees_with_the_product_is_on_the_record(
     # worker is dated a week off the product is the whole finding.
     monkeypatch.setenv(whatsapp.OPENING_DATE_VAR, "2026-10-24")
     place_broadcast(conn, run_after=whatsapp.broadcast_at())
-    _, reading = run_check(conn, "override")
+    with caplog.at_level(logging.ERROR, logger="licitaqui.consumer"):
+        _, reading = run_check(conn, "override")
 
     assert reading["opening_date"] == "2026-10-24"
     assert reading["product_opening_date"] == "2026-10-17"
     assert reading["date_matches_product"] is False
     assert reading["state"] == "queued", "nothing about the row is wrong; only the date is"
     assert reading["expected_key"] == BROADCAST_KEY
+    # **And it has to alarm.** This pair of assertions used to end here, which
+    # *pinned the hole*: the mismatch was recorded and nothing acted on it, so
+    # `/admin` drew a blue card reading *na fila* over a worker dated for the
+    # wrong day. The state is deliberately still `queued` — the row is fine —
+    # which is why the alarm has to live on its own dimension.
+    assert reading["alarm"] is False, "the row itself is not the problem"
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert errors, "a worker dated off product.json must be an error, not an info line"
+    assert any(
+        json.loads(getattr(r, "opening", "{}")).get("date_matches_product") is False for r in errors
+    )
 
     # **And the direction that actually happened.** E5 measured that the stale
     # 08/10 default made `broadcast_at()` an instant in the *past*, which
@@ -343,6 +364,20 @@ def test_an_env_override_that_disagrees_with_the_product_is_on_the_record(
     # lying the moment the calendar moves past whatever literal was chosen.
     behind = (datetime.now(UTC) - timedelta(days=2)).date()
     monkeypatch.setenv(whatsapp.OPENING_DATE_VAR, behind.isoformat())
+    # **Kill the first row before placing the second.** `jobs_dedupe` is unique
+    # on (kind, key) `where status in ('queued','running')`, so a second
+    # `enqueue` under the same key while the first is still `queued` returns
+    # `None` and `place_broadcast`'s own assertion fires. That is exactly what
+    # happened on the first real run of this file, and the guard did its job:
+    # the setup failed loudly rather than silently testing the wrong row.
+    #
+    # `failed` rather than `delete`, so this also leaves a dead row beside the
+    # new live one — the shape the partial index permits and
+    # `scheduled_broadcast` exists to resolve.
+    conn.execute(
+        "update jobs set status = 'failed' where kind = %s and key = %s",
+        (whatsapp.BROADCAST_JOB_KIND, BROADCAST_KEY),
+    )
     place_broadcast(conn, run_after=whatsapp.broadcast_at())
     _, stale = run_check(conn, "overrideStale")
     assert stale["date_matches_product"] is False
@@ -363,18 +398,28 @@ def test_the_reading_counts_who_the_sweep_reaches_and_who_it_does_not(
     """
     conn = scope
     place_broadcast(conn)
-    before = run_check(conn, "countsBefore")[1]
-
     conn.execute(
         "insert into founders_list (name, email, whatsapp, contact_consent, seat)"
         " values (%s, %s, %s, true, null)",
         ("Waitlisted Zzyzx", e2_email("opening-check-waitlisted"), "+5511999990001"),
     )
-    after = run_check(conn, "countsAfter")[1]
+    _, reading = run_check(conn, "counts")
 
-    assert after["waitlisted"] == before["waitlisted"] + 1
-    assert after["seated"] == before["seated"]
-    assert after["seated"] >= 0
+    # **Not a delta across two runs.** Both counts are global — every row in
+    # `founders_list`, including rows a concurrent run of this suite owns — so
+    # `after == before + 1` would fail on somebody else's insert and teach
+    # people to ignore red. What is asserted instead is that the check reports
+    # the **same numbers the database holds at that moment**, which is the
+    # property that matters and is true whatever else is in the table.
+    counts = conn.execute(
+        "select count(*) filter (where seat is not null),"
+        "       count(*) filter (where seat is null)"
+        "  from founders_list"
+    ).fetchone()
+    assert counts is not None
+    assert reading["waitlisted"] >= 1, "this test just inserted one"
+    assert reading["waitlisted"] == counts[1]
+    assert reading["seated"] == counts[0]
 
 
 def test_the_reading_records_both_kill_switches_as_the_worker_sees_them(

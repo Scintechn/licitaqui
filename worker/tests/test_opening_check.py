@@ -16,6 +16,7 @@ docstrings which one they are.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -102,22 +103,55 @@ def test_a_row_claimed_within_the_grace_window_is_still_queued() -> None:
     assert opening_check._state((1, "queued", DUE), due_at=DUE, now=just_after) == "queued"
 
 
-def test_done_after_its_own_run_after_is_sent() -> None:
+def test_done_at_the_configured_instant_is_sent() -> None:
+    """The one healthy `done`: dated correctly, and in the past."""
     state = opening_check._state((1, "done", DUE), due_at=DUE, now=DUE + timedelta(hours=1))
     assert state == "sent"
     assert opening_check.STATES[state] is False
 
 
-def test_done_before_the_instant_it_was_queued_for_is_fired_early() -> None:
-    """The failure mode E5 measured: a stale date makes `run_after` already past,
-    `jobs.run_after <= now()` makes the row claimable immediately, and every
-    seated founder receives an access link to a product that is not open.
+def test_a_done_row_queued_for_an_earlier_instant_is_fired_early() -> None:
+    """The failure mode E5 measured, and **the version of it that can happen**.
 
-    `sent` and `fired_early` are the same `status = 'done'`. Only the clocks
-    tell them apart, and both sides come from the caller.
+    A stale date or hour makes `run_after` already past, `jobs.run_after <=
+    now()` makes the row claimable immediately, the sweep runs, and every seated
+    founder receives an access link to a product that is not open.
+
+    **This test used to be unreachable in production and did not say so.** It
+    asked `now < run_after` on a `done` row — but `queue._claim_sql` requires
+    `run_after <= now()`, so no `done` row can carry a future `run_after`, and
+    the branch existed only because this test handed `_state` a tuple the
+    database cannot produce. The enumeration test below was satisfied by the
+    same tuple, which is why the dead branch looked covered. Found by this PR's
+    second review.
+
+    The real question is whether the row ran for an instant **earlier than the
+    one configured now**, which is exactly what a wrong `FOUNDERS_OPENING_HOUR`
+    at scheduling time produces — and which used to render a green *disparado*.
     """
-    state = opening_check._state((1, "done", DUE), due_at=DUE, now=DUE - timedelta(days=9))
+    nine_days_early = DUE - timedelta(days=9)
+    state = opening_check._state(
+        (1, "done", nine_days_early), due_at=DUE, now=nine_days_early + timedelta(hours=1)
+    )
     assert state == "fired_early"
+    assert opening_check.STATES[state] is True
+
+    # Twelve hours is enough; this does not need a wrong *date* to bite.
+    half_day = opening_check._state(
+        (1, "done", DUE - timedelta(hours=12)), due_at=DUE, now=DUE - timedelta(hours=11)
+    )
+    assert half_day == "fired_early"
+
+
+def test_a_done_row_queued_for_a_later_instant_is_misdated_not_sent() -> None:
+    """It ran — but for an instant after the one configured now, so the row and
+    the configuration disagree about when the opening was. The broadcast
+    happened; only a person can say which of the two is right, and `sent` would
+    assert the wrong one."""
+    state = opening_check._state(
+        (1, "done", DUE + timedelta(days=2)), due_at=DUE, now=DUE + timedelta(days=3)
+    )
+    assert state == "misdated"
     assert opening_check.STATES[state] is True
 
 
@@ -140,10 +174,20 @@ def test_every_state_the_machine_can_reach_is_declared_with_an_alarm_verdict() -
     for status in statuses:
         for offset in (-timedelta(days=9), timedelta(0), timedelta(days=1)):
             rows.append((1, status, DUE + offset))
+    # Every `now` here is at or after the row's own `run_after` for at least one
+    # combination, so no state is reached only through a row the database cannot
+    # produce — which is how `fired_early` previously looked covered while being
+    # unreachable in production.
     reached = {
         opening_check._state(row, due_at=DUE, now=DUE + when)
         for row in rows
-        for when in (-timedelta(days=8), timedelta(0), timedelta(hours=2))
+        for when in (
+            -timedelta(days=8),
+            -timedelta(days=8) + timedelta(hours=1),
+            timedelta(0),
+            timedelta(hours=2),
+            timedelta(days=2),
+        )
     }
     declared = set(opening_check.STATES)
     assert reached <= declared, f"undeclared states: {reached - declared}"
@@ -185,9 +229,29 @@ def test_the_check_runs_on_both_sides_of_the_broadcast_hour() -> None:
         f"{hours} must straddle the {broadcast_hour}:00 BRT broadcast"
     )
     assert broadcast_hour - hours[0] >= 2, "too little warning to re-place the row on the day"
-    # The gap the reader's threshold is derived from, stated here so the two
-    # cannot drift apart silently.
-    assert 24 - (hours[1] - hours[0]) == 18
+
+    # **The gap the reader's 30 h threshold is derived from — measured by
+    # running the scheduler, not computed from these two numbers.** The earlier
+    # version of this line was `assert 24 - (hours[1] - hours[0]) == 18`: a
+    # prediction derived from the two declared hours and then asserted against
+    # itself, which passed while the scheduler was in fact firing both entries
+    # together at 15:00 and never at 09:00 (`Scheduler._due` was keyed by
+    # `kind`). `test_scheduler.test_two_entries_of_one_kind_each_keep_their_own_hour`
+    # is the behavioural half; this is the arithmetic half, taken from the
+    # instants the scheduler actually produces.
+    from licitaqui import scheduler as scheduler_module
+
+    start = datetime(2026, 10, 15, 0, 0, tzinfo=ZoneInfo(whatsapp.BRT_ZONE)).astimezone(UTC)
+    due: list[datetime] = []
+    for entry in entries:
+        when = start
+        for _ in range(2):
+            when = entry.next_due(when)
+            due.append(when)
+    due.sort()
+    gaps = [(b - a).total_seconds() / 3600 for a, b in zip(due, due[1:], strict=False)]
+    assert max(gaps) == 18, f"the reader's threshold is derived from an 18 h gap: {gaps}"
+    assert scheduler_module.BRT == whatsapp.BRT_ZONE, "both halves must mean the same zone"
 
 
 def test_the_handler_is_registered_under_the_kind_the_scheduler_enqueues() -> None:

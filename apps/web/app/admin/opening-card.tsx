@@ -45,12 +45,15 @@ import type { Opening, OpeningReading, OpeningWatch } from '@/lib/admin/opening'
  * same variable, agree perfectly, and everything looks healthy over a broadcast
  * dated for a day the product has moved off.
  *
- * ## Breakpoints
+ * ## Breakpoints: there are none, and that is deliberate
  *
- * `sm:` viewport queries are correct **here** and would not be inside the app
- * shell: `/admin` renders under `AppBar` in a `max-w-6xl` column with no
- * collapsible rail, so there is no 264px the window cannot see. See `CLAUDE.md`
- * on why the same classes are wrong in `app-shell.tsx`'s column.
+ * This card uses `flex-wrap` and nothing else — no `sm:`/`md:`/`lg:`/`xl:` and
+ * no `min-[Npx]:`. It is the right default here and the comment is kept to say
+ * why one would be *allowed*: `/admin` renders under `AppBar` in a `max-w-6xl`
+ * column with no collapsible rail, so there is no 264px the window cannot see,
+ * unlike `app-shell.tsx`'s column (CLAUDE.md, D29/D30/D32). An earlier draft of
+ * this comment claimed `sm:` queries were present; they were not, which is the
+ * kind of sentence that invites the next reader to add one without checking.
  */
 
 const PT = new Intl.NumberFormat('pt-BR')
@@ -93,11 +96,25 @@ function countdown(hours: number): string {
 
 export function OpeningCard({ opening }: { opening: OpeningWatch }) {
   const { watch } = opening
-  // **Two dimensions, both required.** The row being queued and a message
-  // being able to leave the process are different facts with different fixes,
-  // and a green accent over a dead switch is the failure E20's card names:
-  // nothing happening on the day while every signal stays green.
-  const healthy = watch.kind === 'current' && !watch.reading.alarm && watch.reading.deliveryReady
+  // **Three dimensions, all required.** The row being queued, a message being
+  // able to leave the process, and the worker being dated for the day the
+  // product actually opens are three different facts with three different
+  // fixes — a command, an environment variable, a deploy. A green accent over
+  // any of them is the failure E20's card is named for: nothing happening on
+  // the day while every signal stays green.
+  //
+  // The date dimension was the one this card described as an alarm in three
+  // docstrings and gated with nothing: `dateMatchesProduct` was printed in a
+  // detail row and read nowhere else, so a worker dated 24/10 rendered a blue
+  // card reading *na fila* while nothing would fire on the 17th. Found by this
+  // PR's second §4b review, which noted that the integration test next to it
+  // *pinned* the hole — it asserted the mismatch and then asserted the state
+  // was `queued`, with nothing asserting that anything alarmed.
+  const healthy =
+    watch.kind === 'current' &&
+    !watch.reading.alarm &&
+    watch.reading.deliveryReady &&
+    watch.reading.dateMatchesProduct
   return (
     <section className="flex flex-col gap-3.5">
       <div className="flex items-baseline gap-2">
@@ -121,6 +138,18 @@ export function OpeningCard({ opening }: { opening: OpeningWatch }) {
         </div>
 
         <OpeningNote watch={watch} />
+        {'reading' in watch && !watch.reading.dateMatchesProduct ? (
+          <p className="text-meta leading-relaxed text-attention">
+            <strong>
+              O worker está datado para {watch.reading.openingDate}, e o produto abre em{' '}
+              {watch.reading.productOpeningDate}.
+            </strong>{' '}
+            Tudo abaixo está coerente com a data errada — a linha, o instante, a chave — porque{' '}
+            <span className="font-mono">FOUNDERS_OPENING_DATE</span> é lida pelo worker e por mais
+            ninguém, então o script de agendamento e esta conferência concordam entre si e erram
+            juntos. Nada dispara no dia certo enquanto isto não mudar.
+          </p>
+        ) : null}
         {'reading' in watch && !watch.reading.deliveryReady ? (
           <p className="text-meta leading-relaxed text-attention">
             <strong>Uma das chaves de envio está desligada no worker.</strong> A linha pode
@@ -150,6 +179,7 @@ function headline(watch: Opening): string {
     case 'unknown':
       return countdown(watch.reading.hoursToDue)
     case 'never':
+    case 'unreadable':
     case 'error':
       return '—'
   }
@@ -171,6 +201,13 @@ function beside(opening: OpeningWatch): string {
       // there; the same two units are kept here.
       return `última conferência há ${age(watch.reading.hours)} · ${alarm}`
     case 'never':
+      return `${alarm}, e nunca conferiu`
+    // **Not "nunca conferiu".** A row exists; what does not exist is a reading,
+    // and this line saying otherwise is the same false-in-the-quiet-direction
+    // sentence the `unreadable` state was split out to avoid. Caught by this
+    // card's own test, which asserted the phrase was absent here.
+    case 'unreadable':
+      return `${alarm} · há linha gravada e nenhuma leitura`
     case 'error':
       return `${alarm}, e nunca conferiu`
   }
@@ -181,7 +218,14 @@ function OpeningBadge({ watch }: { watch: Opening }) {
     case 'stale':
       return <Tag tone="attention">sem conferência recente</Tag>
     case 'never':
-      return <Tag tone="muted">nunca conferiu</Tag>
+      // **`attention`, not `muted`.** This used to be grey, which made the
+      // strongest absence the quietest thing on the card: a worker whose deploy
+      // lost the handler produces exactly this, forever, and `opening.ts`'s own
+      // comment warns against the alarm getting quieter as the problem gets
+      // older. `stale` at least means something looked once.
+      return <Tag tone="attention">nunca conferiu</Tag>
+    case 'unreadable':
+      return <Tag tone="attention">leitura ilegível</Tag>
     case 'error':
       return <Tag tone="attention">erro</Tag>
     case 'unknown':
@@ -217,7 +261,19 @@ function OpeningNote({ watch }: { watch: Opening }) {
         </p>
       )
     case 'never':
-      return <p className="text-meta leading-relaxed text-muted">{watch.note}</p>
+      return (
+        <p className={bad}>
+          {watch.note}. Nenhuma conferência jamais rodou: ou o handler não está na imagem, ou o
+          scheduler não subiu. Isto é menos informação do que uma leitura ruim, não mais.
+        </p>
+      )
+    case 'unreadable':
+      return (
+        <p className={bad}>
+          {watch.note} — provavelmente um campo renomeado no worker. Existe linha gravada; o que
+          não existe é leitura, e dizer &ldquo;nunca conferiu&rdquo; aqui seria falso.
+        </p>
+      )
     case 'unknown':
       return (
         <p className={bad}>

@@ -480,7 +480,20 @@ saying whether the dated `jobs` row is queued, for the right instant, and still
 claimable — **and both kill switches as the worker itself sees them**, which no
 other surface can report. A perfect row with a dead switch delivers nothing, so
 it is a second dimension on the card rather than a seventh state: one is fixed
-with a command, the other with an environment variable. `/admin`'s *Disparo da abertura* card reads it; a bad answer is also
+with a command, the other with an environment variable. A **third** dimension beside
+them: the worker's effective opening date against `docs/product.json`, because
+`FOUNDERS_OPENING_DATE` is read by the worker and by nothing else, so a stale
+value there has the scheduling script and the check agreeing with each other and
+wrong together.
+
+**Two `ScheduleEntry` rows of one kind, which needed a scheduler fix.**
+`Scheduler._due` was keyed by `kind`, so these two collapsed into one slot: the
+09:00 run never fired and both entries went off together at 15:00. It is keyed
+by position now, and `test_two_entries_of_one_kind_each_keep_their_own_hour`
+walks a clock across two days and asserts the BRT hours of the ticks that
+actually enqueued. If you add a second entry for an existing kind, that test is
+what protects you.
+ `/admin`'s *Disparo da abertura* card reads it; a bad answer is also
 an `error` log line. It never re-queues anything: that is a person running
 `schedule_founders_opening.py --commit`, because enqueuing the broadcast sends
 real messages to real founders.

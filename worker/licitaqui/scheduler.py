@@ -360,11 +360,34 @@ class Scheduler:
     #: becoming a two-cycle one — which is the degradation `config.py` warns
     #: about, and the reason the interval could not simply be raised before.
     on_enqueue: Callable[[], None] | None = None
-    _due: dict[str, datetime] = field(default_factory=dict, init=False)
+    #: Next due instant **per entry**, keyed by its position in `entries`.
+    #:
+    #: **It was keyed by `kind`, and that silently discarded an entry.** E20
+    #: needs two readings a day — 09:00 BRT, three hours before the founders
+    #: broadcast, and 15:00 BRT, three hours after — which is two
+    #: `ScheduleEntry` rows of one kind, the first two this schedule has ever
+    #: held. With `kind` as the key the dict comprehension below kept the
+    #: **last** of them, `ready` found both due at once because they shared one
+    #: value, and the loop overwrote the slot twice inside a tick. Measured by
+    #: driving the real scheduler over four simulated days: the 09:00 run never
+    #: fired on any of them, both entries fired together at 15:00, and the real
+    #: longest gap was 24 h rather than 18.
+    #:
+    #: On 17/10 that is the whole point of E20 lost — the last reading before a
+    #: 12:00 BRT broadcast would have been 21 h old, and a row deleted in
+    #: between would have shown a green *na fila* straight through the send.
+    #: `test_two_entries_of_one_kind_each_keep_their_own_hour` is the test that
+    #: walks a clock past both hours; asserting the entry list, which is what
+    #: the suite did, cannot see this.
+    #:
+    #: The index, not the entry itself: `ScheduleEntry` is frozen and therefore
+    #: hashable, but two entries differing in no field would then share a slot
+    #: again, and position is the thing that is always distinct.
+    _due: dict[int, datetime] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         start = self.now()
-        self._due = {entry.kind: entry.next_due(start) for entry in self.entries}
+        self._due = {i: entry.next_due(start) for i, entry in enumerate(self.entries)}
 
     def run(self) -> None:
         _log.info("scheduler started", extra={"entries": [e.kind for e in self.entries]})
@@ -380,14 +403,14 @@ class Scheduler:
     def tick(self) -> int:
         """Enqueue everything that has come due. Returns how many were created."""
         now = self.now()
-        ready = [entry for entry in self.entries if self._due.get(entry.kind, now) <= now]
+        ready = [(i, entry) for i, entry in enumerate(self.entries) if self._due.get(i, now) <= now]
         if not ready:
             return 0
         created = 0
         # Only now is a connection worth opening.
         with self.connect() as conn:
-            for entry in ready:
-                due = self._due[entry.kind]
+            for i, entry in ready:
+                due = self._due[i]
                 job_id = queue.enqueue(
                     conn,
                     entry.kind,
@@ -395,7 +418,7 @@ class Scheduler:
                     priority=entry.priority,
                     payload=entry.payload,
                 )
-                self._due[entry.kind] = entry.next_due(now)
+                self._due[i] = entry.next_due(now)
                 if job_id is None:
                     _log.info("schedule deduped", extra={"kind": entry.kind})
                 else:

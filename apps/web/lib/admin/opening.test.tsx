@@ -175,15 +175,56 @@ describe('readOpening', () => {
     expect(found.watch.reading.state).toBe('reticulating')
   })
 
-  it('drops a row that is not a reading rather than inventing fields for it', async () => {
-    // No `state`, no `due_at`: not a reading, and defaulting either would put a
-    // verdict on the card that no check produced.
+  it('calls a row that is not a reading unreadable, never "never checked"', async () => {
+    /**
+     * No `state`, no `due_at`: not a reading, and defaulting either would put a
+     * verdict on the card that no check produced.
+     *
+     * **It used to report `never`**, and that sentence — *"nunca conferiu"* —
+     * is false over a table full of rows, and false in the quiet direction: a
+     * key renamed on the worker side would have turned the card grey and said
+     * nothing had ever looked. Found by this PR's second review.
+     */
     expect((await readOpening(executor([{ created_at: DUE, props: {} }]), NOW)).watch.kind).toBe(
-      'never',
+      'unreadable',
     )
-    expect(
-      (await readOpening(executor([reading({ due_at: undefined })]), NOW)).watch.kind,
-    ).toBe('never')
+    expect((await readOpening(executor([reading({ due_at: undefined })]), NOW)).watch.kind).toBe(
+      'unreadable',
+    )
+    // And a genuinely empty table is still `never` — the two must not merge.
+    expect((await readOpening(executor([]), NOW)).watch.kind).toBe('never')
+  })
+
+  it('draws the strongest absence loudly, not greyly', async () => {
+    /**
+     * `never` was `tone="muted"` while the *less* bad `stale` was
+     * `tone="attention"`, so a worker whose deploy lost the handler left the
+     * card grey forever — the alarm getting quieter as the problem got older,
+     * which is the B32 shape `opening.ts`'s own comment warns against.
+     */
+    const html = renderToStaticMarkup(
+      <OpeningCard opening={await readOpening(executor([]), NOW)} />,
+    )
+    expect(html).toContain('nunca conferiu')
+    expect(html).toContain('o scheduler não subiu')
+    expect(html).not.toContain('border-blue-line')
+    // **The tone, as a class**, not just the words. `Tag tone="muted"` renders
+    // `bg-fill-muted text-muted` and `tone="attention"` renders
+    // `bg-attention-soft text-attention`; asserting only the sentence let a
+    // mutation back to grey pass, which is the exact defect — the strongest
+    // absence drawn as the quietest thing on the card.
+    expect(html).toContain('bg-attention-soft')
+    expect(html).not.toContain('bg-fill-muted')
+    const unreadable = renderToStaticMarkup(
+      <OpeningCard opening={await readOpening(executor([{ created_at: DUE, props: {} }]), NOW)} />,
+    )
+    expect(unreadable).toContain('leitura ilegível')
+    // The *summary* line must not claim nothing ever looked — a row exists.
+    // Asserted on that line specifically, because the note below it quotes the
+    // phrase in order to say it would be false. This assertion is what found
+    // `beside()` still printing "e nunca conferiu" for this state.
+    expect(unreadable).toContain('há linha gravada e nenhuma leitura')
+    expect(unreadable).not.toContain('e nunca conferiu')
   })
 
   it('treats a missing date_matches_product as agreement, not as a mismatch', async () => {
@@ -253,22 +294,50 @@ describe('OpeningCard', () => {
     expect(html).toContain('15:00')
   })
 
-  it('shows an env override that disagrees with product.json', async () => {
+  it('alarms on an env override that disagrees with product.json', async () => {
     /**
      * E5 recorded this as unverifiable from a laptop. This is where it stops
-     * being so — and it is the quietest failure available, because the
-     * scheduling script and the check read the same variable and agree.
+     * being so — and it is the quietest failure available, because
+     * `FOUNDERS_OPENING_DATE` is read by the worker and by nothing else, so the
+     * scheduling script and the check agree with each other and are wrong
+     * together.
+     *
+     * **This test used to assert three substrings and nothing else**, and that
+     * was the hole: `dateMatchesProduct` was printed in a detail row and gated
+     * nothing, so a worker dated 24/10 rendered a blue card reading *na fila*
+     * while nothing would fire on the 17th. Found by this PR's second review.
+     * The accent assertion below is the part that could not have passed before.
      */
-    const html = await render([
-      reading({
-        opening_date: '2026-10-24',
-        product_opening_date: '2026-10-17',
-        date_matches_product: false,
-      }),
-    ])
+    const off = reading({
+      opening_date: '2026-10-24',
+      product_opening_date: '2026-10-17',
+      date_matches_product: false,
+    })
+    const watch = await readOpening(executor([off]), NOW)
+    if (watch.watch.kind !== 'current') throw new Error('unreachable')
+    expect(watch.watch.reading.dateMatchesProduct).toBe(false)
+    // The row itself is still fine, which is exactly the trap.
+    expect(watch.watch.reading.state).toBe('queued')
+    expect(watch.watch.reading.alarm).toBe(false)
+
+    const html = renderToStaticMarkup(<OpeningCard opening={watch} />)
     expect(html).toContain('FOUNDERS_OPENING_DATE')
     expect(html).toContain('2026-10-24')
     expect(html).toContain('2026-10-17')
+    // The warning, by a phrase that exists nowhere else on the card.
+    expect(html).toContain('Nada dispara no dia certo')
+    // **And the detail row too**, which names the file the comparison is
+    // against. Two independent places say it on purpose — the paragraph is the
+    // alarm, the row is the evidence — and asserting only one of them let a
+    // mutation that deleted the row pass.
+    expect(html).toContain('(product.json)')
+    // And no blue accent, with a healthy control so this cannot pass by the
+    // accent never rendering at all.
+    expect(html).not.toContain('border-blue-line')
+    const ok = renderToStaticMarkup(
+      <OpeningCard opening={await readOpening(executor([reading()]), NOW)} />,
+    )
+    expect(ok).toContain('border-blue-line')
   })
 
   it('alarms when a kill switch is off, even with the row perfectly queued', async () => {

@@ -178,6 +178,63 @@ def test_a_due_entry_is_enqueued_once_per_bucket(fake_queue: FakeQueue):
     assert len({call[1] for call in fake_queue.calls}) == 2
 
 
+def test_two_entries_of_one_kind_each_keep_their_own_hour(fake_queue: FakeQueue):
+    """**The test that was missing, and the defect it found was live.**
+
+    E20 needs two readings a day of `opening_broadcast_check` — 09:00 BRT, three
+    hours before the founders broadcast, and 15:00 BRT, three hours after. Those
+    are the first two entries of one kind this schedule has ever held, and
+    `Scheduler._due` was keyed by `kind`: the dict comprehension kept the last
+    duplicate, `ready` saw both due at once because they shared a value, and the
+    loop overwrote the slot twice inside a tick. **The 09:00 run never fired on
+    any day** — which on 17/10 is the whole point of E20 gone, because the last
+    reading before a 12:00 BRT send would have been 21 h old, and a row deleted
+    in between would have shown a green *na fila* straight through the send.
+
+    The suite could not see it. `test_the_schedule_holds_only_the_collector_jobs_that_exist`
+    asserts the entry *list*, and `test_opening_check.py` read `daily_at` off the
+    two entries and checked its own arithmetic against itself. Neither walks a
+    clock past 09:00.
+
+    So this walks one, minute by minute across two days, and asserts the **BRT
+    wall-clock hours of the ticks that actually enqueued** — behaviour, not
+    declaration. Written against a generic pair of hours rather than E20's, so
+    it guards the scheduler for every future caller rather than one card.
+    """
+    morning = ScheduleEntry(kind="twice_daily", daily_at="09:00", priority=8)
+    afternoon = ScheduleEntry(kind="twice_daily", daily_at="15:00", priority=8)
+    clock = {"now": datetime(2026, 10, 15, 8, 0, tzinfo=BRT).astimezone(UTC)}
+    scheduler = Scheduler(
+        fake_queue.connect, entries=(morning, afternoon), now=lambda: clock["now"]
+    )
+
+    assert len(scheduler._due) == 2, "each entry needs its own due slot, or one is discarded"
+
+    fired: list[str] = []
+    for _ in range(2 * 24 * 60):
+        before = len(fake_queue.calls)
+        scheduler.tick()
+        for _call in fake_queue.calls[before:]:
+            fired.append(f"{clock['now'].astimezone(BRT):%d %H:%M}")
+        clock["now"] += timedelta(minutes=1)
+
+    # Two full days from 08:00 on the 15th ends at 08:00 on the 17th, so the
+    # window holds two complete pairs and stops one hour short of the third
+    # morning. Four firings, alternating — which is the proof: before the fix
+    # this was `['15 15:00', '15 15:00', '16 15:00', '16 15:00']`, both entries
+    # going off together in the same minute and the 09:00 hour never appearing.
+    assert fired == [
+        "15 09:00",
+        "15 15:00",
+        "16 09:00",
+        "16 15:00",
+    ], f"both hours must fire, on their own days: {fired}"
+    # Every key distinct, so nothing dedupes away: `ScheduleEntry.key` is the due
+    # instant in BRT, which is what makes two entries of one kind safe once they
+    # each have a slot of their own.
+    assert len({call[1] for call in fake_queue.calls}) == len(fired)
+
+
 def test_two_schedulers_produce_the_same_key_so_the_index_dedupes(fake_queue: FakeQueue):
     """A second scheduler during a deploy must not double every sync."""
     start = datetime(2026, 9, 17, 10, 0, tzinfo=UTC)
@@ -186,7 +243,8 @@ def test_two_schedulers_produce_the_same_key_so_the_index_dedupes(fake_queue: Fa
 
     for _ in range(2):
         scheduler = Scheduler(fake_queue.connect, entries=(entry,), now=lambda: start)
-        scheduler._due["cleanup"] = start
+        # Keyed by position since 2026-10-09 — see `Scheduler._due`.
+        scheduler._due[0] = start
         scheduler.now = lambda: later
         scheduler.tick()
 
