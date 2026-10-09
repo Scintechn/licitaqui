@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { format, messages } from '@/lib/messages'
@@ -29,9 +30,16 @@ const BASICO: QuotaView = {
   left: 3,
 }
 
-function render() {
+const EMAIL = 'quem.sou.eu@example.com'
+
+function render(email: string = EMAIL) {
   return renderToStaticMarkup(
-    <AccountView plan="basico" planName={messages.plans.basic.name} signOutAction={noop} />,
+    <AccountView
+      email={email}
+      plan="basico"
+      planName={messages.plans.basic.name}
+      signOutAction={noop}
+    />,
   )
 }
 
@@ -121,3 +129,29 @@ describe('the LGPD data-subject line (legal brief §1)', () => {
   })
 })
 
+describe('AccountView — who is signed in (D22)', () => {
+  it('shows the address, because the page asks "sua conta" and never said whose', () => {
+    expect(render()).toContain(EMAIL)
+  })
+
+  it('renders whatever address it is given, never a fixture of its own', () => {
+    // The first version of this test asserted `EMAIL` against a component that
+    // could have hardcoded it and passed. A second address is what makes the
+    // prop load-bearing.
+    const other = 'outra.pessoa@example.com'
+    const out = render(other)
+    expect(out).toContain(other)
+    expect(out).not.toContain(EMAIL)
+  })
+
+  it('reads the address out of `users`, not only out of a prop', () => {
+    // `environment: 'node'` cannot run `readAccountData`, and a view-only
+    // assertion passes for ever against a prop nothing populates — which is
+    // exactly how `radar.opportunity.screeningCost` shipped. The end-to-end
+    // proof is `e2e/accounts/conta-destinations.spec.ts`, which needs a real
+    // session and so cannot run in CI; this is the merge-blocking half.
+    const source = readFileSync(new URL('./account-data.ts', import.meta.url), 'utf8')
+    expect(source).toContain('select plan, email, cnpj, founder_seat')
+    expect(source).toContain('email: user.email,')
+  })
+})

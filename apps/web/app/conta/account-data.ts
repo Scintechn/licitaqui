@@ -29,6 +29,7 @@ import type { QuotaView } from '@/lib/radar/contract'
 
 type Row = {
   plan: string
+  email: string
   name: string | null
   cnpj: string | null
   founder_seat: number | null
@@ -37,6 +38,18 @@ type Row = {
 export type AccountData = {
   /** The signed-in account. `readAccountData` has already redirected if none. */
   userId: number
+  /**
+   * The signed-in address, and the answer to "who am I" on `/conta`.
+   *
+   * **D22, Sci 2026-09-29:** *"`/conta` keeps the profile — e-mail and sair."*
+   * The screen shipped with only the `sair` half, and said *"A gente guarda seu
+   * e-mail"* above a page that never showed it.
+   *
+   * Read here rather than from `session.user.email` so the address on the
+   * screen comes from the same row as the plan beside it: a session outlives an
+   * LGPD erasure of the row, and the redirect below is what decides that case.
+   */
+  email: string
   plan: string
   /** The display name, or the raw key when the map has no entry. */
   planName: string
@@ -73,7 +86,7 @@ export async function readAccountData(): Promise<AccountData> {
 
   const executor = db()
   const found = await executor.execute<Row>(sql`
-    select plan, name, cnpj, founder_seat from users where id = ${id}::bigint
+    select plan, email, name, cnpj, founder_seat from users where id = ${id}::bigint
   `)
   const user = found.rows[0]
   // The session names a user who is gone. Signing in again is the only honest
@@ -91,6 +104,7 @@ export async function readAccountData(): Promise<AccountData> {
 
   return {
     userId: Number(id),
+    email: user.email,
     plan: user.plan,
     planName: PLAN_NAMES[user.plan] ?? user.plan,
     quota: quotaView(limit, used),
