@@ -62,9 +62,7 @@ def _wipe(conn: psycopg.Connection) -> None:
             "delete from subscription_payments where asaas_subscription_id like %s", (f"{SUB}%",)
         )
         cur.execute("delete from jobs where key like %s", (f"reminder:{SUB}%",))
-        cur.execute(
-            "delete from events where props ->> 'subscription' like %s", (f"{SUB}%",)
-        )
+        cur.execute("delete from events where props ->> 'subscription' like %s", (f"{SUB}%",))
         cur.execute("delete from subscriptions where asaas_subscription_id like %s", (f"{SUB}%",))
         cur.execute("delete from users where email like %s", (f"%@{DOMAIN}",))
 
@@ -407,9 +405,7 @@ def test_it_honours_the_period_already_paid_for(conn: psycopg.Connection, clean:
     assert row is not None and row[0] == "promocional"
 
 
-def test_it_spares_an_account_that_subscribed_again(
-    conn: psycopg.Connection, clean: None
-) -> None:
+def test_it_spares_an_account_that_subscribed_again(conn: psycopg.Connection, clean: None) -> None:
     """Cancel, then subscribe again: two rows, one of them `canceled` with a
     past `ends_on` and one live. Without the `not exists` the expiry of the
     first would drop a paying subscriber to Básico."""
