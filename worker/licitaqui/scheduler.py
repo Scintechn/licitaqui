@@ -301,6 +301,36 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # every collector — a missing value degrades a card, it does not lose a
     # tender.
     ScheduleEntry(kind="sweep_tender_values", every_seconds=60 * 60, priority=9),
+    # **E20.** The founders opening is one `jobs` row placed by a person, and on
+    # 2026-10-03 it was deleted and nothing noticed for two days. This entry is
+    # the thing that notices: it reads the row, writes an `events` row, and
+    # `apps/web/lib/admin/opening.ts` turns that into the card. See
+    # `opening_check.py` for why a watchdog over a `jobs` row does not break
+    # B32's "never alarm on absence of queueing" — the rule moves up a level,
+    # and a *check* that stops running is itself the reader's alarm.
+    #
+    # **Two entries of one kind, and the hours are chosen, not spaced.** 09:00
+    # BRT is three hours before the 12:00 BRT broadcast — time to re-place the
+    # row on the day itself, which is E20's "alarms while there is still time";
+    # 15:00 BRT is three hours after it, so *did it actually fire* is answered
+    # the same afternoon instead of the next morning. They dedupe separately:
+    # `ScheduleEntry.key` is the due instant in BRT, so the two are different
+    # keys and never collapse into one row.
+    #
+    # The arithmetic the reader depends on: the longest gap between readings is
+    # 18 h, so `apps/web/lib/admin/opening.ts` calls 30 h stale — one missed run
+    # still leaves the previous reading inside the window (24 h), and a whole
+    # day of silence does not. Tighter than the three cadences B37 gives its
+    # daily feeds, deliberately: this watches a single dated event eight days
+    # out, and three days of not knowing is not a watch.
+    #
+    # **Not `every_seconds`.** `test_config.py` requires every interval entry to
+    # be at most the consumer's idle poll (3 600 s), because a slower one has
+    # the consumer waking Neon between cycles for work that is not there — the
+    # compute saving of 2026-09-30. A six-hourly entry breaks that; two daily
+    # ones do not. Two SELECTs and one INSERT per run.
+    ScheduleEntry(kind="opening_broadcast_check", daily_at="09:00", priority=8),
+    ScheduleEntry(kind="opening_broadcast_check", daily_at="15:00", priority=8),
 )
 
 

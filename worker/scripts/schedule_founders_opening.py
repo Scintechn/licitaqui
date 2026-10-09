@@ -55,11 +55,21 @@ def parse_args() -> argparse.Namespace:
 
 
 def existing_job(conn: psycopg.Connection, key: str) -> tuple[int, str, datetime] | None:
-    row = conn.execute(
-        "select id, status, run_after from jobs where kind = %s and key = %s",
-        (whatsapp.BROADCAST_JOB_KIND, key),
-    ).fetchone()
-    return (int(row[0]), str(row[1]), row[2]) if row else None
+    """The row that will actually fire, or ``None``.
+
+    **Was an unordered `fetchone()`, and that was a defect** (card E20).
+    `jobs_dedupe` is unique on `(kind, key)` only ``where status in ('queued',
+    'running')``, so once a row is `done` or `failed` a second one with the same
+    key is allowed — which is exactly what a failed sweep plus a re-run of this
+    script produces. Taking whichever row Postgres happened to return could
+    print *"already present: status failed"* beside a healthy queued row, or the
+    reverse, and this is the readout somebody will trust on 17/10.
+
+    `whatsapp.scheduled_broadcast` already resolves it — live row first, newest
+    among equals — and is the same read `opening_broadcast_check` and
+    `preview_founders_opening.py` use, so the three cannot disagree.
+    """
+    return whatsapp.scheduled_broadcast(conn, key=key)
 
 
 def main() -> int:

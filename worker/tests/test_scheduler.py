@@ -116,6 +116,19 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
         # fires exactly when `/api/consulta` is down — so that follow-up
         # usually fails, and only a sweep comes back for the row.
         "sweep_tender_values",
+        # **E20, twice, and the duplication is the point.** The founders opening
+        # is one `jobs` row placed by a person; on 2026-10-03 it was deleted and
+        # nothing noticed for two days. 09:00 BRT is three hours before the
+        # 12:00 BRT broadcast, so a missing row is still re-placeable on the
+        # day; 15:00 BRT is three hours after, so whether it fired is answered
+        # the same afternoon. Two entries rather than an interval because
+        # `test_config.py` caps an interval entry at the idle poll, and because
+        # these two hours are *chosen* against the broadcast rather than spaced
+        # — see `scheduler.py`'s comment and `apps/web/lib/admin/opening.ts`,
+        # whose 30 h staleness threshold is derived from the 18 h gap between
+        # them.
+        "opening_broadcast_check",
+        "opening_broadcast_check",
     ]
     assert handlers.registered_kinds()  # importing handlers is what completes the registry
     assert {entry.kind for entry in DEFAULT_SCHEDULE} <= set(REGISTRY.kinds())
