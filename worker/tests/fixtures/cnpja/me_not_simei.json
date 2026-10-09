@@ -1,0 +1,123 @@
+{
+  "updated": "2026-09-12T23:59:59.999Z",
+  "taxId": "99900001000150",
+  "alias": "FANTASIA EXEMPLO",
+  "founded": "2018-08-28",
+  "head": true,
+  "company": {
+    "members": [
+      {
+        "since": "2018-08-28",
+        "person": {
+          "id": "x",
+          "type": "NATURAL",
+          "name": "SOCIO EXEMPLO",
+          "taxId": "***000000**",
+          "age": "31-40"
+        },
+        "role": {
+          "id": 50,
+          "text": "Empresário"
+        }
+      }
+    ],
+    "name": "EMPRESA EXEMPLO LTDA",
+    "equity": 20000,
+    "nature": {
+      "id": 2135,
+      "text": "Empresário (Individual)"
+    },
+    "size": {
+      "id": 1,
+      "acronym": "ME",
+      "text": "Microempresa"
+    },
+    "simples": {
+      "optant": false,
+      "since": null,
+      "history": [
+        {
+          "from": "2018-08-28",
+          "until": "2025-12-31",
+          "text": "Excluída por Ato Administrativo praticado pela Receita Federal do Brasil"
+        }
+      ]
+    },
+    "simei": {
+      "optant": false,
+      "since": null,
+      "history": [
+        {
+          "from": "2018-08-28",
+          "until": "2024-12-31",
+          "text": "Desenquadrada por Opção do Contribuinte"
+        }
+      ]
+    },
+    "id": "99900001"
+  },
+  "statusDate": "2026-06-15",
+  "status": {
+    "id": 2,
+    "text": "Ativa"
+  },
+  "address": {
+    "municipality": 5300108,
+    "street": "RUA EXEMPLO",
+    "number": "1",
+    "district": "CENTRO",
+    "city": "Planaltina",
+    "state": "GO",
+    "details": null,
+    "zip": "70000000",
+    "country": {
+      "id": 76,
+      "name": "Brasil"
+    }
+  },
+  "phones": [
+    {
+      "type": "LANDLINE",
+      "area": "61",
+      "number": "00000000"
+    }
+  ],
+  "emails": [
+    {
+      "ownership": "CORPORATE",
+      "address": "contato@example.com",
+      "domain": "example.com"
+    }
+  ],
+  "mainActivity": {
+    "id": 5819100,
+    "text": "Edição de cadastros, listas e outros produtos gráficos"
+  },
+  "sideActivities": [
+    {
+      "id": 4752100,
+      "text": "Comércio varejista especializado de equipamentos de telefonia e comunicação"
+    },
+    {
+      "id": 9511800,
+      "text": "Reparação e manutenção de computadores e de equipamentos periféricos"
+    },
+    {
+      "id": 4751201,
+      "text": "Comércio varejista especializado de equipamentos e suprimentos de informática"
+    },
+    {
+      "id": 9512600,
+      "text": "Reparação e manutenção de equipamentos de comunicação"
+    },
+    {
+      "id": 4753900,
+      "text": "Comércio varejista especializado de eletrodomésticos e equipamentos de áudio e vídeo"
+    },
+    {
+      "id": 4789007,
+      "text": "Comércio varejista de equipamentos para escritório"
+    }
+  ],
+  "suframa": []
+}

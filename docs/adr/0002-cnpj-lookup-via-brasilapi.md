@@ -164,3 +164,34 @@ lookups single-threaded process-wide with a 1 s minimum gap
 (`licitaqui.brasilapi.MIN_INTERVAL_SECONDS`), which is that measured floor and not a guess.
 Finding the ceiling would mean deliberately hammering a free community service, which is not
 worth doing for a product that makes one lookup per signup.
+
+## Amendment 2026-10-09 — a second source behind BrasilAPI
+
+**Context.** The decision above made BrasilAPI the only source, with the manual CNAE form as
+the fallback. Production then went a week without a successful lookup: the last one that
+resolved was 2026-10-02 22:10 UTC, and the two after it (2026-10-08 19:23 and 2026-10-09
+12:18 UTC) both wrote `lookup:failed`. On 2026-10-09 BrasilAPI answered `500` for every uncached
+CNPJ tried — including Petrobras — with a body naming an upstream `503`, and minhareceita.org
+answered `503` directly. Found by Sci searching a CNPJ on `/radar` and getting *"Não conseguimos
+ler as atividades deste CNPJ"* with every count at zero.
+
+**Decision.** `company_lookup` asks **CNPJá's open endpoint** (`open.cnpja.com/office/{cnpj}`,
+no key) when BrasilAPI cannot answer — a 5xx, a timeout, an open circuit, or a 404. BrasilAPI
+stays first. `licitaqui/cnpja.py` returns the same `CompanyRecord`, under its own breaker, with
+the same one-request / no-retry / sanitised-error contract. A BrasilAPI 404 is asked again
+because its upstream is built from the Receita's periodic dump, so a newly opened company can be
+missing there (**inferred** from minhareceita's own description, not measured); a typo never
+reaches either source, the check digits stop it first. Either source saying "not found" records
+`lookup:not_found`; both failing records `lookup:failed`, and only then does the user see the
+manual path.
+
+**Measured 2026-10-09**, same afternoon, same CNPJ: CNPJá 200 in 0.25–0.4 s with the main CNAE,
+all six secondary CNAEs, porte, Simples/SIMEI history, status, UF and city; `publica.cnpj.ws` 200
+in 0.6 s with the same fields and `x-ratelimit-limit: 3` per minute. **Not measured:** CNPJá's
+rate limit. It sends no rate-limit headers and its docs page answered `429`; the client spaces
+calls 12 s apart (five a minute) as the polite figure, not a known one.
+
+**Considered and not chosen:** `publica.cnpj.ws` (3/min and the same data — a reasonable third
+source if this one ever fails too); `cnpjapi.com.br` (needs an account and an API key, free tier
+300/day — a credential for Sci to create, not a code change); `listacnae.com.br` (a lead-list
+builder that searches companies *by* CNAE and municipality, not a per-CNPJ lookup).
