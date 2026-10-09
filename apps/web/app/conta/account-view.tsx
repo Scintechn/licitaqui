@@ -20,6 +20,8 @@ import { ALERTS_HREF, COMPANY_PATH, PLAN_PATH } from '@/lib/routes'
 const copy = messages.account.screen
 
 export type AccountViewProps = {
+  /** The signed-in address — D22's *"e-mail and sair"*, the first half. */
+  email: string
   /** §10's plan key. The display name comes from `messages.plans`. */
   plan: string
   /** The display name, resolved by `readAccountData`. */
@@ -62,12 +64,24 @@ export function formatCnpj(cnpj: string): string {
 }
 
 export function AccountView({
+  email,
   plan,
   planName,
   signOutAction,
 }: AccountViewProps) {
   return (
     <AccountChrome plan={plan} planName={planName} title={copy.title}>
+        {/* **Who is signed in**, and the half of D22 that never shipped.
+
+            No label and no new string: the wording on this screen is Sci's
+            under legal brief §5, and an address needs no sentence to be read
+            as one. `font-mono` because it is data the reader may have to
+            compare character by character, the same reason `/admin` sets ids
+            in mono. `break-all` because an address has no spaces to wrap at
+            and the column is 520px at every width above 560 (`AccountChrome`
+            is `max-w-[560px]` with a 20px gutter). */}
+        <p className="font-mono text-meta break-all text-ink">{email}</p>
+
         <div className="flex flex-col gap-2 min-[560px]:flex-row">
           <Button href="/radar" iconEnd="arrowRight">
             {copy.radar}

@@ -129,6 +129,15 @@ const nextConfig: NextConfig = {
       { source: '/:path*', headers: SECURITY_HEADERS },
       { source: '/radar', headers: RADAR_HEADERS },
       { source: '/radar/:path*', headers: RADAR_HEADERS },
+      // D22, 2026-10-09: `/conta` renders the signed-in e-mail, so the rule
+      // above applies to it as plainly as to `/radar`. Each page is already
+      // `force-dynamic` + `noindex`, which does emit `no-store` on its own —
+      // this is the belt-and-braces half the comment at the top of this file
+      // says to write anyway, "because the failure it prevents is silent and
+      // severe". `Referrer-Policy: same-origin` comes along: `/conta/empresa`
+      // and the plan screen carry a CNPJ and a seat number.
+      { source: '/conta', headers: RADAR_HEADERS },
+      { source: '/conta/:path*', headers: RADAR_HEADERS },
     ]
   },
 }
