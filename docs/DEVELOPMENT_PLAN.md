@@ -163,6 +163,57 @@ carded. **In flight:** D22's e-mail half (committed, in §4b review) and
 
 ---
 
+### 4.2 Phase "opening" — MoSCoW to 17/10
+
+Eight days. Scope decided against `CLAIMS.md`'s due dates and what is actually
+on `main`, not against card order. **A row is a MUST only if 17/10 is wrong
+without it** — and for a promise, "wrong" has two exits: build it, or Sci
+changes the sentence (legal brief §5). Both close a row; only silence does not.
+
+#### MUST — 17/10 is wrong without these
+
+| Card | Why it is a MUST | Exit |
+|---|---|---|
+| **G12** | Sci's. No production Asaas credential means nobody can pay on the day the product starts charging. §1.2 dates it **10-20**. It is the only item whose duration a third party controls | credentials exist |
+| **E5 · E20** | The sender is registered and correctly dated, but it is **not in `DEFAULT_SCHEDULE`**, its only caller is a manual script, the queued row was deleted on 2026-10-03, and the rehearsal `c882236` is still not on `main`. Failure mode is **silence on the day with every signal green** | a dated row exists, the rehearsal is merged, E20 alarms if it vanishes |
+| **F2** | `foundersPage.signup.note` and three more strings promise a subscription link and an Asaas checkout. 4 commits exist on `task/f2-asaas-subscriptions`, unpushed, blocked on one measurement | build, or the sentences change |
+| **E8** | The `CLAIMS.md` row F2 answers. Listed separately because F2 can ship and this stay false — the opening template carries `link_acesso`, not a payment link | a founder can pay |
+| **E10** | *"10 análises completas por mês"* is on the Essencial card, and Essencial is what is being sold on 17/10. `deep_analysis` has quota rows and **no route, no handler, no job kind** | build, or the sentence changes |
+| **D40 · B17 · F5** | Copy due 17/10 with no code scheduled: a locked bar on ~99 materials in 100 where no band can arrive, a suppressed `intro` with nothing in its place, a CTA offering Essencial where no band can exist, and *"Hoje no Brasil"* counting our cache | Sci's wording, or the element goes |
+
+#### SHOULD — painful, survivable for days
+
+| Card | Why not a MUST | When it bites |
+|---|---|---|
+| **D8** | A **term of the contract**, not an advert — but nobody can cancel a subscription they have not yet bought. The terms name *"Conta → Plano"*, D22 built the screen, and it has no cancel control | the first founder who wants out |
+| **F4** | *"aviso 3 dias antes de cada cobrança"*. The first charge **is** 17/10; the second is 17/11, so the first reminder falls ~**14/11** | mid-November |
+| **D22** (e-mail half) | Committed and reviewed, one branch from landing. Not a promise, so it binds nothing — it is the screen failing to answer *"who am I"* | now, cheaply |
+| **D77** | Sci's ruling. At `lg` the hamburger opens a drawer inside `display:none` — the page scroll-locks and Tab is swallowed — and collapsing the rail **unmounts** the nav. D22's buttons half waits on it | any desktop reader who presses it |
+
+#### COULD — real, and none of it moves 17/10
+
+**D78** (the breakpoint above its column's `max-width`), **B44** (the worker
+suite missing its documented 43 minutes by 3×), **D79** (three malformed rows,
+two of them the B26/B27 shape), **O6**, **D18**, **E21**. B44 earns its place
+only because §4b's *review before merging* depends on a suite that returns.
+
+#### WON'T — this phase, deliberately
+
+**C2** and **TO_VALIDATE #10** (what separates a triagem from an análise
+completa is undecided, and building against an undecided definition is how
+rework happens) · **C3 · D33 · D25(2)** (C3's premise died with B35/B36 —
+`catalog_bands` already holds a precomputed band per code, so this is plan
+surgery, not AI work) · **F3 · E11** (the 30-day notice is due ~**18/12** for a
+17/10 subscriber, and M5 at 10-29 clears it by seven weeks) · **B9 · B10 · B18 ·
+B20 · B26** · **H1 · H2** (M4's hardening was dated 10-13 against an opening
+that has since moved to 17/10; it is after, not before).
+
+**Never cut**, unchanged from §8: LGPD consent and the privacy policy,
+server-side quota checks, the founders seat transaction, webhook idempotency,
+backups, and the *"confira no edital"* disclaimer on AI output.
+
+---
+
 ## 5. Task cards (Phase 0)
 
 Legend — **Stream**: A Platform · B Data/worker · C AI · D Web · E Messaging · F Billing · O Ops/admin · S Sci only.
