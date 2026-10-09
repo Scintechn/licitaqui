@@ -151,7 +151,10 @@ describe('AccountView — who is signed in (D22)', () => {
     // proof is `e2e/accounts/conta-destinations.spec.ts`, which needs a real
     // session and so cannot run in CI; this is the merge-blocking half.
     const source = readFileSync(new URL('./account-data.ts', import.meta.url), 'utf8')
-    expect(source).toContain('select plan, email, cnpj, founder_seat')
+    // Matched as a shape, not a spelling: `task/f2-asaas-subscriptions` adds
+    // `name` to this same select, and a literal would go red on a correct
+    // merge. What must hold is that the query reads `email` from `users`.
+    expect(source).toMatch(/select[^`]*\bemail\b[^`]*from users/)
     expect(source).toContain('email: user.email,')
   })
 })
