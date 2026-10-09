@@ -709,14 +709,19 @@ suite('Radar read APIs (database)', () => {
       })
     })
 
-    function request(params: Record<string, string>, visitorId?: string) {
-      const search = new URLSearchParams({ cnpj: RUN_COMPANY_CNPJ, ...params })
+    /** A list value is sent **repeated** (`state=AC&state=AP`), as the client sends it. */
+    function request(params: Record<string, string | string[]>, visitorId?: string) {
+      const search = new URLSearchParams({ cnpj: RUN_COMPANY_CNPJ })
+      for (const [key, value] of Object.entries(params)) {
+        if (Array.isArray(value)) for (const one of value) search.append(key, one)
+        else search.set(key, value)
+      }
       return new Request(`https://licitaqui.test/api/radar/tenders?${search}`, {
         headers: headers(visitorId),
       })
     }
 
-    async function list(params: Record<string, string>) {
+    async function list(params: Record<string, string | string[]>) {
       const response = await getTenders(request(params))
       const body = (await response.json()) as TenderListResponse
       if (body.state !== 'ready') throw new Error(`expected ready, got ${body.state}`)
@@ -746,8 +751,9 @@ suite('Radar read APIs (database)', () => {
      * dropped term produced an empty tsquery and no match at all, so the same
      * accident failed loudly. Found in review.
      */
-    async function listOwn(params: Record<string, string>) {
-      const { q, ...rest } = params
+    async function listOwn(params: Record<string, string | string[]>) {
+      const { q: raw, ...rest } = params
+      const q = typeof raw === 'string' ? raw : undefined
       if (q) await expectSearchable(q)
       const answer = await list({ ...rest, q: q ? `${TOKEN} ${q}` : TOKEN, limit: '50' })
       expect(
@@ -860,14 +866,70 @@ suite('Radar read APIs (database)', () => {
       expect(body.counts.keyword).toBe(0)
     })
 
+    it('filters by several UFs at once, and only by those', async () => {
+      // Two of this run's own editais, made compatible and put in two UFs no
+      // fixture uses, then put back. One UF finds one; both find both; a third
+      // finds neither — so the `any()` is neither ignored nor reduced to one.
+      const second = otherTender
+      const before = await pool().query<{ id: string; state: string | null; segments: string[] | null }>(
+        'select id, state, segments from tenders where id = any($1)',
+        [[compatibleTender.id, second.id]],
+      )
+      await pool().query("update tenders set state = 'AC' where id = $1", [compatibleTender.id])
+      await pool().query("update tenders set state = 'AP', segments = $2 where id = $1", [
+        second.id,
+        [IT],
+      ])
+      try {
+        const ids = async (state: string | string[]) =>
+          (await listOwn({ group: 'compatible', state })).body.tenders.map((t) => t.id).sort()
+        const both = [compatibleTender.id, second.id].sort()
+
+        expect(await ids('AC')).toEqual([compatibleTender.id])
+        // Repeated is what the client sends — and what `Object.fromEntries`
+        // would have cut to the last value. Commas are accepted as the same.
+        expect(await ids(['AC', 'AP'])).toEqual(both)
+        expect(await ids(['AP', 'AC'])).toEqual(both)
+        expect(await ids('AC,AP')).toEqual(both)
+        expect(await ids('RR')).toEqual([])
+      } finally {
+        for (const row of before.rows) {
+          await pool().query('update tenders set state = $2, segments = $3 where id = $1', [
+            row.id,
+            row.state,
+            row.segments,
+          ])
+        }
+      }
+    })
+
+    it('refuses a UF that does not exist instead of widening to the whole country', async () => {
+      const response = await getTenders(request({ group: 'compatible', state: 'ZZ' }))
+      expect(response.status).toBe(400)
+      const body = (await response.json()) as TenderListResponse
+      if (body.state !== 'error') throw new Error('expected an error')
+      expect(body.fields).toEqual({ state: 'stateInvalid' })
+    })
+
     it('filters by state and never returns a closed tender by default', async () => {
-      // Both halves scoped (D54). `ZZ` is not a UF, but it is also not reserved:
-      // a foreign fixture using it as a placeholder — with a segment this company
-      // reaches — would turn "the state filter excludes everything" into a flake,
-      // and the closed-tender half is a `not.toContain` that a page full of
-      // somebody else's rows would satisfy without proving anything.
-      const { body } = await listOwn({ group: 'compatible', state: 'ZZ' })
-      expect(body.tenders).toEqual([])
+      // Both halves scoped (D54): `listOwn` sees only this run's rows, and the
+      // closed-tender half is a `not.toContain` that a page full of somebody
+      // else's rows would satisfy without proving anything. The state half is
+      // the multi-UF test below; this one keeps "a UF none of them is in".
+      const original = await pool().query<{ state: string | null }>(
+        'select state from tenders where id = $1',
+        [compatibleTender.id],
+      )
+      await pool().query("update tenders set state = 'AC' where id = $1", [compatibleTender.id])
+      try {
+        const { body } = await listOwn({ group: 'compatible', state: 'AM' })
+        expect(body.tenders).toEqual([])
+      } finally {
+        await pool().query('update tenders set state = $2 where id = $1', [
+          compatibleTender.id,
+          original.rows[0]?.state ?? null,
+        ])
+      }
 
       const closed = closedTenders[0]
       expect(closed, 'the fixtures must still contain a closed tender').toBeTruthy()
@@ -915,7 +977,7 @@ suite('Radar read APIs (database)', () => {
 
       // Two hours ahead of the 30-minute TTL: stale, so a regression enqueues.
       const forced = await listFreshness(
-        { state: null },
+        { states: [] },
         { executor: db(), now: new Date(Date.now() + 2 * 60 * 60 * 1000) },
       )
       expect(forced.state, 'the read must be stale, or the enqueue branch is not on the path').toBe(

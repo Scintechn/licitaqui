@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { messages } from '@/lib/messages'
-import { radarHref, readSearch, screeningHref, tenderHref } from '@/lib/radar/client'
+import { radarHref, readSearchRecord, screeningHref, tenderHref } from '@/lib/radar/client'
 import { OpportunityScreen } from './opportunity-screen'
 import { OpportunityView } from './opportunity-view'
 import { readHasAccount } from '@/lib/auth/has-account'
@@ -101,7 +101,7 @@ export default async function TenderPage({
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams])
   const route = readTenderRoute(id)
-  const search = readSearch(asParams(query))
+  const search = readSearchRecord(query)
 
   if (route.view === 'unknown') notFound()
 
@@ -185,16 +185,3 @@ export default async function TenderPage({
   )
 }
 
-/**
- * `searchParams` is a record whose values may be repeated; `readSearch` reads
- * a `URLSearchParams`-shaped thing, the way the three client screens hand it
- * `useSearchParams()`. One adapter, so both sides read the query the same way.
- */
-function asParams(query: Record<string, string | string[] | undefined>): URLSearchParams {
-  const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(query)) {
-    const first = Array.isArray(value) ? value[0] : value
-    if (typeof first === 'string') params.set(key, first)
-  }
-  return params
-}

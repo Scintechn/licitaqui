@@ -47,8 +47,12 @@ import { DIVULGADA } from './tender-status'
  */
 
 export type TenderFilters = {
-  /** UF, e.g. `SP`. */
-  state?: string | null
+  /**
+   * UFs, e.g. `['RJ', 'SP']`; empty or absent is every state. More than one
+   * since 2026-10-09 — a supplier delivering to three states searched one of
+   * them or the whole country.
+   */
+  states?: readonly string[] | null
   /** Free text for `websearch_to_tsquery`. */
   q?: string | null
   /**
@@ -365,8 +369,8 @@ function scope(match: CompanyMatch, filters: TenderFilters, extra: SQL[] = []): 
   if (!filters.includeClosed) {
     conditions.push(sql`t.proposals_close_at > now()`)
   }
-  if (filters.state) {
-    conditions.push(sql`t.state = ${filters.state.toUpperCase()}`)
+  if (filters.states?.length) {
+    conditions.push(sql`t.state = any(${labels(filters.states.map((state) => state.toUpperCase()))})`)
   }
   // D52. Inside `scope()` and nowhere else, so `countGroups` filters by exactly
   // what `listTenders` filters by: a tab that says "Compatíveis 13" above a page
@@ -595,7 +599,7 @@ function toCard(row: TenderRow, match: CompanyMatch): TenderCard {
  * or a broken worker, and is surfaced to the caller rather than papered over.
  */
 export async function listFreshness(
-  filters: Pick<TenderFilters, 'state'>,
+  filters: Pick<TenderFilters, 'states'>,
   options: { executor?: Executor; now?: Date } = {},
 ): Promise<Cached<{ newestUpdatedAt: Date }>> {
   return readOrEnqueue<{ newestUpdatedAt: Date }>({
@@ -604,7 +608,7 @@ export async function listFreshness(
         select max(updated_at) as newest
           from tenders
          where proposals_close_at > now()
-           ${filters.state ? sql`and state = ${filters.state.toUpperCase()}` : sql``}
+           ${filters.states?.length ? sql`and state = any(${labels(filters.states.map((state) => state.toUpperCase()))})` : sql``}
       `)
       const newest = found.rows[0]?.newest
       if (!newest) return null

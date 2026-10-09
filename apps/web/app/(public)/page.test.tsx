@@ -51,10 +51,15 @@ describe('/', () => {
   })
 
   it('labels every control, and ties each label to its field', () => {
-    for (const id of ['cnpj', 'uf', 'q']) {
+    for (const id of ['cnpj', 'q']) {
       expect(out).toContain(`for="${id}"`)
       expect(out).toContain(`id="${id}"`)
     }
+    // The UF picker is a `<summary>`, which a `<label for>` cannot name; it is
+    // named by its label *and* its current value, so a screen reader hears
+    // "UF onde você entrega, Todo o Brasil".
+    expect(out).toMatch(/<summary[^>]*id="uf"[^>]*aria-labelledby="uf-label uf-value"/)
+    expect(out).toMatch(/id="uf-label"[^>]*>UF onde você entrega</)
     // Rendered once, not twice behind `hidden`: two `id="cnpj"` inputs would
     // break every label on the page.
     expect(out.match(/id="cnpj"/g)).toHaveLength(1)
@@ -64,14 +69,17 @@ describe('/', () => {
     for (const id of ['cnpj', 'q']) {
       expect(out.match(new RegExp(`<input[^>]*id="${id}"[^>]*text-base`))).not.toBeNull()
     }
-    expect(out.match(/<select[^>]*id="uf"[^>]*text-base/)).not.toBeNull()
+    expect(out.match(/<summary[^>]*id="uf"[^>]*text-base/)).not.toBeNull()
   })
 
-  it('offers all 27 states plus "Todo o Brasil"', () => {
-    const options = out.match(/<option/g) ?? []
-    expect(options).toHaveLength(28)
+  it('offers all 27 states plus "Todo o Brasil", and the five regions', () => {
+    // One checkbox per UF, each posting `uf=XX`: the form still works without
+    // JavaScript, and several ticked post `uf=SP&uf=RJ`.
+    const states = out.match(/<input[^>]*type="checkbox"[^>]*name="uf"[^>]*value="[A-Z]{2}"/g) ?? []
+    expect(states).toHaveLength(27)
     expect(out).toContain(messages.radar.ufAll)
     expect(out).toContain('São Paulo (SP)')
+    for (const region of Object.values(messages.radar.ufRegions)) expect(out).toContain(region)
   })
 
   it('works without JavaScript: a real GET form aimed at the Radar', () => {
@@ -242,7 +250,8 @@ describe('/ · the approved page, section by section', () => {
     for (const column of copy.faq.columns) {
       for (const item of column) expect(out).toContain(item.q)
     }
-    expect(out.match(/<details/g)).toHaveLength(6)
+    // The FAQ's six; the UF picker is a `<details>` too and is not a question.
+    expect(out.match(/<details(?! class="group\/uf)/g)).toHaveLength(6)
   })
 
   it('closes on the footer, pointing at the legal pages', () => {

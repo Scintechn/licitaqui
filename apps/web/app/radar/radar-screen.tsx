@@ -47,7 +47,7 @@ import { matchStatus } from './match-status'
 import { RadarView, type RadarQuery, type RadarStatus } from './radar-view'
 
 /** The drawer's accessible name lives on the menu's own hidden heading. */
-import { normaliseUf } from '@/lib/radar/ufs'
+import { readUfs } from '@/lib/radar/ufs'
 
 /**
  * The Radar's only stateful part: read the URL, talk to the three routes of
@@ -289,7 +289,15 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
   const [attempt, setAttempt] = useState(0)
 
   const cnpj = (params.get('cnpj') ?? '').replace(/\D+/g, '') || null
-  const state = normaliseUf(params.get('uf'))
+  /**
+   * The UFs, canonical. **Held as a joined string first, and that is load-bearing:**
+   * `readUfs` returns a new array on every render, and `states` sits in the
+   * dependency arrays below — a fresh array each time would re-run the whole
+   * load on every render, for ever. The string is equal across renders when the
+   * URL is, so the memo hands every effect the same array until it changes.
+   */
+  const statesKey = readUfs(params).join(',')
+  const states = useMemo(() => (statesKey ? statesKey.split(',') : []), [statesKey])
   const q = (params.get('q') ?? '').trim() || null
   /**
    * D52's two filters, read here and threaded into **every** read below.
@@ -310,7 +318,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
   // the reasoning, so a node suite can fail on it: inline here, the review of
   // this diff mutated it to the pre-fix behaviour and 101 unit tests stayed green.
   const scope = scopeFor(cnpj, scopes)
-  const key = listKey({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+  const key = listKey({ scope, cnpj, states, q, modality, meEpp, group: chosenGroup, sort })
 
   /**
    * The snapshot is read here, in the initializer, and not in the effect: the
@@ -320,7 +328,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
    * and those mounts have no server-rendered HTML to disagree with.
    */
   const [data, setData] = useState<Data>(() => {
-    const restored = restoreList({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+    const restored = restoreList({ scope, cnpj, states, q, modality, meEpp, group: chosenGroup, sort })
     if (restored) return fromSnapshot(restored.snapshot, key)
     // The first frame the reader sees — the page is `force-dynamic`, so this is
     // server-rendered — and it has to be honest about which read is outstanding.
@@ -404,7 +412,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
 
   const query: RadarQuery = {
     cnpj,
-    state,
+    states,
     q,
     modality,
     meEpp,
@@ -515,7 +523,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
    */
   useBeforePaint(() => {
     if (data.tenders.length === 0) return
-    const restored = restoreList({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+    const restored = restoreList({ scope, cnpj, states, q, modality, meEpp, group: chosenGroup, sort })
     if (restored && restored.snapshot.scrollY > 0) window.scrollTo(0, restored.snapshot.scrollY)
   }, [])
 
@@ -573,7 +581,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
       }
 
       const list = await getTenders(
-        { group: previous.group, cnpj, state, q, modality, meEpp, sort },
+        { group: previous.group, cnpj, states, q, modality, meEpp, sort },
         signal,
       )
       if (signal.aborted) return
@@ -662,7 +670,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
        * who has no cookie — approved by Sci on 2026-10-06 as the price of the
        * entry point resuming the last company's list.
        */
-      const restored = restoreList({ scope, cnpj, state, q, modality, meEpp, group: chosenGroup, sort })
+      const restored = restoreList({ scope, cnpj, states, q, modality, meEpp, group: chosenGroup, sort })
       if (restored) {
         // The mount initializer may already have rendered this exact snapshot;
         // setting it again would replace an identical view model and re-render
@@ -747,7 +755,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
       // answer usually belongs to.
       const asked = chosenGroup ?? 'compatible'
       let answer: TenderListResponse = await getTenders(
-        { group: asked, cnpj, state, q, modality, meEpp, sort },
+        { group: asked, cnpj, states, q, modality, meEpp, sort },
         signal,
       )
       let group = asked
@@ -757,7 +765,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
         if (best !== asked) {
           // The one extra request this costs happens only in the case that was
           // broken before it: nothing in the tab we would have opened on.
-          const second = await getTenders({ group: best, cnpj, state, q, modality, meEpp, sort }, signal)
+          const second = await getTenders({ group: best, cnpj, states, q, modality, meEpp, sort }, signal)
           if (second.state === 'ready') {
             answer = second
             group = best
@@ -830,7 +838,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
       controller.abort()
       moreRequest.current?.abort()
     }
-  }, [scope, cnpj, state, q, modality, meEpp, chosenGroup, sort, key, attempt])
+  }, [scope, cnpj, states, q, modality, meEpp, chosenGroup, sort, key, attempt])
 
   /**
    * "Ver mais editais" — the next keyset page, appended.
@@ -858,7 +866,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
     }
 
     getTenders(
-      { group: data.group, cnpj, state, q, modality, meEpp, sort, cursor },
+      { group: data.group, cnpj, states, q, modality, meEpp, sort, cursor },
       controller.signal,
     )
       .then((answer) => {
@@ -888,7 +896,7 @@ export function RadarScreen({ scopes }: RadarScreenProps) {
         if (controller.signal.aborted) return
         setData((previous) => ({ ...previous, loadingMore: false }))
       })
-  }, [data.nextCursor, data.loadingMore, data.group, cnpj, state, q, modality, meEpp, sort])
+  }, [data.nextCursor, data.loadingMore, data.group, cnpj, states, q, modality, meEpp, sort])
 
   const onNavigate = useCallback(
     (href: string) => {

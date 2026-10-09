@@ -57,7 +57,7 @@ const TENDER = {
 } as unknown as TenderDetail
 
 /** A real search, so every outbound link in these views is asserted to carry it. */
-const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+const SEARCH = { cnpj: '51885242000140', states: ['SP'], q: 'papel', group: 'check' } as const
 
 function render(overrides: Partial<PriceViewProps> = {}): string {
   const props: PriceViewProps = {

@@ -33,7 +33,7 @@ const list = copy.list
 
 function render(query: Partial<RadarQuery> = {}): string {
   const props: RadarViewProps = {
-    query: { cnpj: '51885242000140', state: 'SP', q: null, group: 'compatible', ...query },
+    query: { cnpj: '51885242000140', states: ['SP'], q: null, group: 'compatible', ...query },
     status: { kind: 'ready' },
     grouping: null,
     visitor: null,
@@ -113,7 +113,7 @@ describe('the sort control', () => {
     // loss `client.ts` exists to make impossible to write by hand.
     // `groupChosen` on purpose: the test above owns the elected case, and a
     // chosen tab is part of the search that has to survive.
-    const out = control(render({ q: 'papel', state: 'MG', group: 'keyword', groupChosen: true }))
+    const out = control(render({ q: 'papel', states: ['MG'], group: 'keyword', groupChosen: true }))
     for (const href of out.match(/href="[^"]*"/g) ?? []) {
       expect(href).toContain('cnpj=51885242000140')
       expect(href).toContain('uf=MG')

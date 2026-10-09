@@ -68,7 +68,7 @@ const TENDER: TenderCard = {
 
 function render(query: Partial<RadarViewProps['query']> = {}): string {
   const props: RadarViewProps = {
-    query: { cnpj: COMPANY.cnpj, state: 'SP', q: null, group: 'compatible', ...query },
+    query: { cnpj: COMPANY.cnpj, states: ['SP'], q: null, group: 'compatible', ...query },
     status: { kind: 'ready' },
     // One CNAE on record (`mainCnae`), which is what `cnaeCount` counts —
     // not `segments.length`, the conflation D19 corrected.
@@ -151,7 +151,7 @@ describe('both filters are in the form that searches', () => {
     // over the whole form only gave 2 because this fixture sets `state: 'SP'`.
     // With no UF the UF select's own empty option makes it 3, and the test would
     // fail for a reason that has nothing to do with these two filters.
-    for (const query of [{}, { state: null }]) {
+    for (const query of [{}, { states: [] }]) {
       const fields = form(render(query))
       expect(selected(fields, MODALITY_PARAM)).toBe('')
       expect(selected(fields, ME_EPP_PARAM)).toBe('')
