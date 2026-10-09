@@ -147,6 +147,11 @@ describe('currentItem — exactly one nav item is marked', () => {
     ['/radar/edital/45699626000176-1-000463/2026', 'radar'],
     ['/conta', 'profile'],
     ['/conta/alertas', 'alerts'],
+    // D23's entry, which had no branch in `currentItem` at all until
+    // 2026-10-08: it fell through the `/conta` prefix and the rail marked
+    // Perfil on somebody's own favourites. See `railPaths` below for the
+    // assertion that does not depend on anyone remembering this row.
+    ['/conta/favoritos', 'favourites'],
   ])('%s marks %s', (pathname, expected) => {
     expect(currentItem(pathname)).toBe(expected)
   })
@@ -162,13 +167,103 @@ describe('currentItem — exactly one nav item is marked', () => {
   it('never marks more than one item, on any route the shell serves', () => {
     // The assertion the old code could not make. `/conta` has three items
     // behind it; exactly one may be marked.
-    for (const pathname of ['/radar', '/conta', '/conta/alertas']) {
+    for (const pathname of railPaths()) {
       const id = currentItem(pathname)
       const html = renderToStaticMarkup(
         <MenuViewProbe summary={summary()} current={id} />,
       )
       expect(html.match(/aria-current="page"/g) ?? []).toHaveLength(1)
     }
+  })
+
+  /**
+   * **The assertion that does not depend on a list anybody maintains** — and
+   * the reason it exists is that both lists have now drifted once each.
+   *
+   * `currentItem`'s branches are in `components/app-shell.tsx`; the entries
+   * they describe are in `app/radar/menu-view.tsx`. Nothing joined them, so
+   * **D23 added the Favoritos entry and no branch**: `/conta/favoritos` fell
+   * through to the `/conta` prefix, the rail marked Perfil on a reader's own
+   * favourites, and this file's own tables could not see it because they were
+   * written when they were complete. Exactly one item was marked, so the test
+   * above passed — on the wrong one. That is CLAUDE.md §4b's shape exactly: a
+   * green suite is not evidence.
+   *
+   * So the paths come **out of the rendered rail**. A seventh entry whose
+   * destination has no branch collides with whatever prefix does match it, the
+   * set shrinks, and this fails with nobody editing anything.
+   *
+   * ## §4c, said plainly: what this does and does not cover
+   *
+   * It covers the **join** — that `menu-view.tsx`'s list of destinations and
+   * `currentItem`'s list of branches describe the same set. It does **not**
+   * cover the wiring that connects them at runtime: the probe is handed
+   * `current` by this test, so `AppShell`'s `usePathname() → currentItem() →
+   * current` path is never exercised here, and `environment: 'node'` could not
+   * run it anyway. That is `e2e/journeys/rail-destinations.spec.ts` ("exactly
+   * one entry is marked current, and it is the page we are on") in the hermetic
+   * lane, and `e2e/accounts/conta-destinations.spec.ts` across all six
+   * destinations signed in — which is the spec that **found** this defect, by
+   * walking real URLs in a real browser, and which needs a session and a
+   * database and therefore never runs in CI. Mechanism here, result there.
+   */
+  function railPaths(): string[] {
+    const html = renderToStaticMarkup(<MenuViewProbe summary={summary()} />)
+    /**
+     * **Exactly one `<nav>`, asserted before anything is read out of it.**
+     * Slicing to the first one would silently skip the entries of a second, so
+     * a rail that ever grows a second nav fails here instead of being half
+     * measured — the escape hatch this whole function exists to close.
+     *
+     * The slice is to the `<nav>` and not the whole markup because the logo
+     * link above it and the plan strip's "assinar" link below it are not nav
+     * entries and have no `currentItem` branch to own.
+     */
+    expect(html.match(/<nav/g) ?? [], 'the rail renders exactly one nav').toHaveLength(1)
+    const nav = html.slice(html.indexOf('<nav'), html.indexOf('</nav>'))
+    // Asserted rather than assumed: a `slice` that found nothing returns '' and
+    // every assertion below would pass over an empty list.
+    expect(nav, 'the probe rendered a rail with a nav in it').toContain('<a')
+    const paths = [...nav.matchAll(/href="([^"]+)"/g)].map((match) => match[1])
+    expect(paths.length, 'the rail renders its entries').toBeGreaterThanOrEqual(6)
+
+    /**
+     * **The last escape, and it is the one that matters most.** This function
+     * guards what is inside the `<nav>`; a row added *beside* it would leave
+     * the guarded set silently — and an author adding an entry without a
+     * `currentItem` branch is exactly the author who might put it in the
+     * wrong place.
+     *
+     * `MenuView` legitimately renders two links outside the nav: the logo
+     * (`/radar`) above it, and the plan strip's `assinar`/`signIn` below. So
+     * **two** is the whole of what may live out there, and a third fails here
+     * rather than escaping. A number, deliberately: the alternative is an
+     * allowlist of hrefs, and that list is the hand-maintained thing this
+     * whole function exists to abolish.
+     */
+    const outside = (html.match(/href="/g) ?? []).length - paths.length
+    expect(
+      outside,
+      'a link appeared in the rail outside its nav — the logo and the plan strip are the ' +
+        'only two that belong there. If it is a destination, it needs a `currentItem` ' +
+        'branch and a place in the nav; if it is not, widen this count and say why',
+    ).toBe(2)
+
+    return paths
+  }
+
+  it('gives every destination the rail offers its own answer', () => {
+    const paths = railPaths()
+    const marked = paths.map(currentItem)
+    expect(
+      new Set(marked).size,
+      `two rail destinations mark the same item: ${paths
+        .map((path, index) => `${path}→${marked[index]}`)
+        .join(' · ')}`,
+    ).toBe(paths.length)
+    // None of them may be unmarkable either: `undefined` is the sign-in page's
+    // answer and no rail entry leads there.
+    expect(marked.filter((id) => id === undefined)).toEqual([])
   })
 })
 
@@ -187,6 +282,7 @@ describe('D22 — three entries, three destinations', () => {
     ['/conta/empresa', 'company'],
     ['/conta/plano', 'billing'],
     ['/conta/alertas', 'alerts'],
+    ['/conta/favoritos', 'favourites'],
   ])('%s marks %s', (pathname, expected) => {
     expect(currentItem(pathname)).toBe(expected)
   })
@@ -195,7 +291,20 @@ describe('D22 — three entries, three destinations', () => {
     // `startsWith` is prefix matching, and `/conta` is a prefix of all of
     // them. Longest match first is what makes this true; reorder those lines
     // and `/conta/plano` becomes the profile.
-    const marked = ['/conta', '/conta/empresa', '/conta/plano', '/conta/alertas'].map(currentItem)
+    //
+    // **This list is hand-written and that is what let D23's entry through** —
+    // `/conta/favoritos` was missing here for days and the set stayed
+    // distinct because the path it collided with was not in it either. The
+    // guard that cannot drift is `gives every destination the rail offers its
+    // own answer` above, which reads the paths out of the rendered rail; this
+    // one stays as the readable statement of the prefix order.
+    const marked = [
+      '/conta',
+      '/conta/empresa',
+      '/conta/plano',
+      '/conta/alertas',
+      '/conta/favoritos',
+    ].map(currentItem)
     expect(new Set(marked).size).toBe(marked.length)
   })
 })

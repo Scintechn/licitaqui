@@ -116,7 +116,12 @@ export function useAppMenu(): AppMenu | null {
  * path is the only thing that knows, and the shell is a client component that
  * can read it.
  *
- * Longest match wins, so `/conta/alertas` is Alertas rather than Perfil.
+ * **Every specific `/conta/*` before the bare `/conta`** — which is the
+ * invariant that actually holds, and it is not "longest match wins" as this
+ * comment used to say: `/conta/favoritos` (16) sits above `/conta/empresa`
+ * (14) and nothing breaks, because the only prefix any of them collides with
+ * is `/conta` itself. Reorder a specific one *below* that line and it becomes
+ * Perfil. So `/conta/alertas` is Alertas rather than Perfil.
  * `/conta` exactly resolves to **`profile`**. That used to be a tie-break:
  * three items pointed there and marking by href lit all three at once. **D22
  * gave "Minha empresa" and "Plano e pagamento" their own routes**, so it is
@@ -125,10 +130,28 @@ export function useAppMenu(): AppMenu | null {
  *
  * Exported for its test: the bug this replaces was invisible in every unit
  * test because the menu was only ever rendered with `/radar`.
+ *
+ * ## Every branch here is one entry of `menu-view.tsx`'s list, in another file
+ *
+ * Which is a standing hazard and not a tidy fact, because nothing used to join
+ * the two. **D23 added the Favoritos entry to the rail and no branch here**,
+ * so `/conta/favoritos` fell through the `/conta` prefix and the rail marked
+ * **Perfil** while the reader stood on their own favourites. Found 2026-10-08
+ * by `e2e/accounts/conta-destinations.spec.ts`, which walks the destinations
+ * the *rendered* rail offers rather than a list somebody typed.
+ *
+ * It was invisible to this file's own suite for the same reason D22's defect
+ * was invisible to the suite before it: the test's path table was written when
+ * it was complete and nobody added a row. Exactly one item *was* marked on
+ * `/conta/favoritos`, so the "never more than one" assertion passed — on the
+ * wrong item. `app-shell.test.tsx` now derives its paths from the rail it
+ * renders, so the next entry added without a branch here fails with nobody
+ * editing a list.
  */
 export function currentItem(pathname: string | null): string | undefined {
   if (!pathname) return undefined
   if (pathname.startsWith('/conta/alertas')) return 'alerts'
+  if (pathname.startsWith('/conta/favoritos')) return 'favourites'
   if (pathname.startsWith('/conta/empresa')) return 'company'
   if (pathname.startsWith('/conta/plano')) return 'billing'
   if (pathname.startsWith('/conta/criar')) return undefined
@@ -227,11 +250,28 @@ export function AppShell({
             collapsed ? 'w-[56px]' : 'w-[264px]',
           )}
         >
-          {/* **Collapsed still means present.** Sci asked to be able to
-              retract the rail, not to get the old drawer back: the column
-              narrows to the toggle and the content beside it widens, and
-              nothing overlays anything. The nav is hidden rather than
-              unmounted so re-expanding costs no re-render. */}
+          {/* **Collapsed was meant to mean present**, and the last sentence of
+              this comment was wrong about how. Sci asked to be able to retract
+              the rail, not to get the old drawer back: the column narrows to
+              the toggle and the content beside it widens, and nothing overlays
+              anything — all three still true and all three asserted in
+              `e2e/journeys/rail-destinations.spec.ts`.
+
+              What it claimed, until 2026-10-08, was *"the nav is hidden rather
+              than unmounted so re-expanding costs no re-render"*. Line 268
+              below renders `null`: it **is** unmounted, and with it go all six
+              destinations and the `aria-current` that says which page the
+              reader is on — 6 and 1 expanded, 0 and 0 collapsed, measured in
+              that spec at a 1024px window. The drawer that carries the same
+              entries on a phone is `lg:hidden` (correctly — see its own note
+              below), so between the two there is a reachable, `localStorage`-
+              persisted state with no navigation at all.
+
+              That is **D77**, and it is a decision rather than a patch: the
+              candidates are icon-only entries in the 56px column, the drawer
+              above `lg`, or a ruling that it is the reader's own choice. Left
+              as it is deliberately, with the claim corrected rather than
+              deleted, because the sentence is why nobody looked. */}
           <div className="flex justify-end p-2">
             <button
               type="button"
