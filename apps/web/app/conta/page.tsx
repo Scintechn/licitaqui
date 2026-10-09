@@ -28,5 +28,10 @@ export const metadata: Metadata = {
 
 export default async function AccountPage() {
   const account = await readAccountData()
-  return <AccountView plan={account.plan} planName={account.planName} signOutAction={signOutEverywhere} />
+  return <AccountView
+      email={account.email}
+      plan={account.plan}
+      planName={account.planName}
+      signOutAction={signOutEverywhere}
+    />
 }

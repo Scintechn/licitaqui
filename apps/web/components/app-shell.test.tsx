@@ -110,6 +110,7 @@ describe('the menu can actually be reached', () => {
     const html = renderToStaticMarkup(
       <AppShell summary={summary()}>
         <AccountView
+          email="shell@example.com"
           plan="essencial"
           planName={messages.plans.essential.name}
           signOutAction={async () => {}}

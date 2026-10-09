@@ -26,8 +26,19 @@ import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from './config'
  * ## LGPD (§12)
  *
  * The token is never logged and never returned. The caller gets the numeric
- * user id, the plan and the CNPJ; the e-mail is fetched only where a screen
- * actually shows it, which is `/conta` and nowhere else.
+ * user id, the plan and the CNPJ.
+ *
+ * **Corrected 2026-10-09 (D22).** This used to say the e-mail is fetched only
+ * where a screen actually shows it, *"which is `/conta` and nowhere else"*.
+ * That is no longer true of the code: `readAccountData` is shared, so the
+ * address is now **read** on all four `AccountChrome` routes — `/conta`,
+ * `/conta/plano`, `/conta/empresa`, `/conta/favoritos` — and **rendered** on
+ * one. The other three destructure only the fields they pass on, so it never
+ * leaves the server render and nothing logs it: data minimisation left on the
+ * table, not an exposure. One query for four screens is `account-data.ts`'s
+ * deliberate trade, so the sentence is what had to change, not the read.
+ * Narrowing it to a per-screen select would undo that trade — decide against
+ * a measurement if it is ever worth doing.
  */
 
 export type SessionUser = {

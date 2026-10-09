@@ -13,12 +13,16 @@ import { ACCOUNT_CREATE_PATH } from '@/lib/routes'
  * > has as many entries as it has destinations; `currentItem` needs no special
  * > case for a tie.
  *
- * Half of that shipped: `/conta/empresa` and `/conta/plano` are real routes and
- * `currentItem` has no tie-break. **Half did not.** `/conta` still does not say
- * whose account it is, and it still draws four buttons to four places the rail
- * beside it already offers. Both are asserted below, both are
- * `test.fail(…)`, and both say in their own comment exactly what they are
- * waiting on.
+ * Two of its three parts have shipped: `/conta/empresa` and `/conta/plano` are
+ * real routes with no tie-break in `currentItem`, and **since 2026-10-09
+ * `/conta` names the signed-in account** — the e-mail assertion below was
+ * `test.fail(…)` until that landed and is now an ordinary test.
+ *
+ * **One part is still open.** `/conta` draws four buttons to four places the
+ * rail beside it already offers, and that cannot simply be deleted: while a
+ * collapsed rail unmounts the nav (**D77**), those buttons are most of the
+ * navigation such a reader has. So it stays `test.fail(…)` and waits on D77's
+ * ruling, with its own comment saying so.
  *
  * ## Why this file is in `accounts/` and not in `journeys/`
  *
@@ -97,11 +101,11 @@ function railNav(page: Page): Locator {
 /**
  * Go to an account screen and refuse to continue if the session was not taken.
  *
- * **The guard the two `test.fail` tests cannot have.** A rejected or expired
+ * **The guard a `test.fail` test cannot have.** A rejected or expired
  * cookie sends every account route to `/conta/criar`, where there is no rail
  * and no account data — so inside a `test.fail` body that produces a failure,
  * which *satisfies the annotation*, and the run reports an expected failure
- * having proved nothing at all. Nothing can fix that from inside those two;
+ * having proved nothing at all. Nothing can fix that from inside it;
  * what fixes it is that the positive counterparts beside them call this and
  * **must pass**, so a stale `E2E_SESSION_COOKIE` reddens the run with a
  * sentence saying so instead of being quietly absorbed.
@@ -257,12 +261,14 @@ test.describe('D22 · the account area, signed in', () => {
    * here invents a user-facing sentence (legal brief §5). Whether it is
    * labelled, and with which word, is Sci's.
    *
-   * `test.fail()` and not a skip or a comment: Playwright runs it and requires
-   * it to fail, so it is proof against today's behaviour every time it runs,
-   * and the day the e-mail lands this test passes and the run goes red telling
-   * somebody to delete the annotation. It is **not** weakened to pass.
+   * **The e-mail landed on 2026-10-09 (D22), so the annotation is gone.** It
+   * was `test.fail()` while the address was missing — Playwright runs such a
+   * test and requires it to fail, so a passing body turned the run red and
+   * told somebody to come here. That is what happened; this is that edit, and
+   * the body is unchanged. `.first()` stays: it guards the opposite defect,
+   * the address rendered twice.
    */
-  test.fail('“who is me?” · /conta names the signed-in account', async ({ page }) => {
+  test('“who is me?” · /conta names the signed-in account', async ({ page }) => {
     test.skip(
       !EMAIL,
       'needs the test account’s own address in E2E_SESSION_EMAIL: the assertion is that ' +
@@ -283,12 +289,13 @@ test.describe('D22 · the account area, signed in', () => {
      * address itself and never the word "e-mail".
      *
      * **`.first()`, and it is not laziness.** A bare `toBeVisible()` on a
-     * locator that resolves to two nodes throws a **strict-mode violation** —
-     * which satisfies `test.fail` exactly as well as the address being absent
-     * does. So the day `/conta` renders the e-mail twice (a value row and a
-     * `mailto:`, say) this test would go on "passing" as an expected failure
-     * and nobody would be told the half was done. `.first()` makes the only
-     * way to fail the one the comment claims: the address is not there.
+     * locator that resolves to two nodes throws a **strict-mode violation**.
+     * While this was a `test.fail` that satisfied the annotation exactly as
+     * well as the address being absent did, so a second rendering would have
+     * read as "still missing". It is an ordinary test now and the hazard has
+     * inverted: a strict-mode throw would read as a regression. Either way
+     * `.first()` keeps this test about presence, and the count below is what
+     * owns "exactly once".
      * Same reason for `.first()` on the heading above.
      */
     await expect(
@@ -298,16 +305,16 @@ test.describe('D22 · the account area, signed in', () => {
   })
 
   /**
-   * The same fact, measured positively, in a test that must **pass**.
+   * The same fact as a count, in a test that must **pass**.
    *
-   * `test.fail` above is satisfied by any failure in its body, so it cannot
-   * say the address is absent — only that something went wrong. This pins the
-   * count, so the claim in D22's card is a measurement rather than prose, and
-   * it is what actually goes red the day the e-mail lands. **Not an
-   * endorsement of the defect: a record of it**, and one that a fix has to
-   * delete rather than tiptoe around.
+   * It read `toHaveCount(0)` while the address was missing, and the fix had to
+   * come here and invert it rather than tiptoe around it — which is the whole
+   * reason it was written as a count and not as prose in a card.
+   *
+   * **Exactly one**, not "at least one": two renderings of the same address is
+   * its own defect, and `.first()` on the test above would hide it.
    */
-  test('today /conta shows the account’s address zero times — D22’s unmet half', async ({
+  test('/conta shows the account’s address exactly once', async ({
     page,
   }) => {
     test.skip(!EMAIL, 'needs the test account’s own address in E2E_SESSION_EMAIL')
@@ -316,8 +323,8 @@ test.describe('D22 · the account area, signed in', () => {
     await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible()
     await expect(
       page.getByText(EMAIL ?? '', { exact: false }),
-      'D22: /conta does not name the account it is about',
-    ).toHaveCount(0)
+      'D22: /conta must name the account it is about, once',
+    ).toHaveCount(1)
   })
 
   /**
