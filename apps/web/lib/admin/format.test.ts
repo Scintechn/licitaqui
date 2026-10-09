@@ -61,6 +61,15 @@ describe('gateMet', () => {
     ...overrides,
   })
 
+  it('has no verdict on a gate with no target, and does not call it met', () => {
+    // `target: null` is a card reporting a number nobody set a bar for
+    // (`cnpj_search_count`). `true` would accent it and badge it as passed;
+    // `false` would badge it as failing. Neither is a fact about it.
+    const none = gate({ state: 'counted', value: 9_000 }, { target: null })
+    expect(gateMet(none)).toBeNull()
+    expect(gateMet(gate({ state: 'counted', value: 0 }, { target: null }))).toBeNull()
+  })
+
   it('compares a count with its target', () => {
     expect(gateMet(gate({ state: 'counted', value: 149 }))).toBe(false)
     expect(gateMet(gate({ state: 'counted', value: 150 }))).toBe(true)
