@@ -17,7 +17,7 @@ before the date"*, and until this existed nothing satisfied it:
   (`--render` is how you check the bodies instead.)
 
 So this runs the same `check_gates` the send runs and renders the same bodies,
-**reading only** — `default_transaction_read_only` is set on the connection, so
+**reading only** — every transaction is opened `READ ONLY` (`conn.read_only`), so
 a write is refused before it can start, and no transport is constructed at all.
 Safe against production, which is the only place the answer is true.
 
@@ -211,18 +211,18 @@ def main() -> int:
         if args.dsn_var
         else config.require_secret(*config.WORKER_DSN_VARS)
     )
-    with psycopg.connect(dsn, autocommit=True, connect_timeout=30) as conn:
-        # Belt and braces: this script only ever reads, and the transaction a
-        # write would need is refused before it can start.
-        conn.execute("set default_transaction_read_only = on")
+    with psycopg.connect(dsn, connect_timeout=30) as conn:
+        # Belt and braces: this script only ever reads. **Per transaction**, not
+        # per session (#272's §4b review): `read_only` makes psycopg open every
+        # transaction with `BEGIN READ ONLY`, so the guard travels with the work
+        # itself. The earlier `set default_transaction_read_only` under
+        # autocommit was a *session* setting — through a transaction-pooling
+        # endpoint it could stay on a shared backend and refuse another client's
+        # writes, while the check below still passed on this one.
+        conn.read_only = True
         # **Asserted, not assumed** (CLAUDE.md §4b: put the verification inside
-        # the thing that must fail). A session-level `SET` issued under
-        # autocommit need not survive to the next statement through a
-        # transaction-pooling endpoint — and `WORKER_DSN_VARS` can resolve to
-        # Neon's pooled host — in which case the guard this script's docstring
-        # and `worker/README.md` both promise would be silently absent. Nothing
-        # here writes, so this is the guard failing quietly rather than a live
-        # risk; it still must not fail quietly.
+        # the thing that must fail): this statement runs inside the first
+        # read-only transaction, so it reads the guard the work runs under.
         guard = conn.execute("show transaction_read_only").fetchone()
         if guard is None or guard[0] != "on":
             raise SystemExit(
