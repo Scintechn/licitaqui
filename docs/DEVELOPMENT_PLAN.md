@@ -139,27 +139,97 @@ flowchart LR
 
 ---
 
-### 4.1 Next actions — revisited 2026-10-09
+### 4.1 Next actions — revisited 2026-10-10
 
-**Eight days to the founders opening (Sat 17/10, 12:00 BRT — `docs/product.json`),
-and that date carries two things at once:** the opening notice *and* Essencial
-going on sale. Ordered by consequence, not by size.
+**Seven days to the founders opening (Sat 17/10, 12:00 BRT — `docs/product.json`),
+and that date still carries two things at once:** the opening notice *and*
+Essencial going on sale.
+
+**The board changed shape on 09/10: payment is no longer the gap.** F2 merged,
+so what is left on the money side is not building but *proving*. And one thing
+this plan said twice was wrong — **the opening broadcast is queued.** Verified
+read-only against `neondb` on 2026-10-10 07:16 UTC: one row, `id 428114`,
+`kind founders_opening_broadcast`, `status queued`, `run_after 2026-10-17
+15:00 UTC` = **12:00 BRT**, `attempts 0`, created 2026-10-06 09:41 UTC. E20's
+card and `CLAIMS.md`'s E5 row both still describe a deleted job `103288` as the
+live evidence; that id is gone and a correctly dated row took its place.
 
 | # | Next | Owner | Why it is next | Unblocks |
 |---|---|---|---|---|
-| 1 | **G12** — Asaas production: company data, bank account, webhook URL, production key, **and four environment variables Sci must type** | **Sci** | The only item on the board whose duration we do not control. §1.2 dates it **10-20**, three days *after* the product starts charging. **The four variables are the half that was written down nowhere.** An agent cannot write `.env*` here — the permission layer refuses, the same deny rule that left `S3_BUCKET` and the AWS keys undocumented (see B4B's `STATUS.md` row) — so these are Sci's lines and they were living in a code comment that asserted G12 carried them when G12 did not: `ASAAS_API_KEY` (`$aact_prod_…`), `ASAAS_WEBHOOK_TOKEN` (the value set when the webhook is registered), `ASAAS_ENV=production`, and **`ASAAS_BILLING=live`** — which is the kill switch, defaults to a dry run on any other value *including unset*, and is therefore the one variable whose absence charges nobody and says nothing. On 17/10 at 12:00 BRT a deploy missing it serves every founder `billing.subscribe.error` with one `console.error` explaining why. **`ASAAS_ENV` and `ASAAS_API_KEY` must move together**: `configFault()` refuses a `$aact_prod_` key while `ASAAS_ENV` is anything but `production`, which is deliberate and is what stops a preview deployment charging real money | the production half of F2 |
-| 2 | **The opening send** — re-queue the broadcast, land the rehearsal, alarm E20 | agent | Hours of work, and the only item whose failure mode is **nothing happening on the day while every signal stays green**. The sender is registered and correctly dated (`product.py:65` is `date(2026, 10, 17)`), but it is **not in `DEFAULT_SCHEDULE`** — its only production caller is `worker/scripts/schedule_founders_opening.py`, the queued row was deleted on 2026-10-03 (**E20**), and the rehearsal `c882236` (+1 039 lines, `task/e5-founders-opening`) is still **not an ancestor of `origin/main`**. `CLAIMS.md:60` still offers the deleted job as live evidence | **E5**, **E6**, **E12**, **E20** |
-| 3 | **F2 baseline** — do its 4 test failures reproduce on `main`? | agent | 45 minutes, and it decides whether `task/f2-asaas-subscriptions` (4 commits, 7 720 lines, **unpushed**) is nearly reviewable or carries a real bug in cancellation. The lane spent 65 minutes on those failures without ever asking this | **F2**, **F3**, **F4**, **D8**, and **B44**'s measurement |
-| 4 | **D77** — rule on the collapsed rail and the hamburger | **Sci** | D22's remaining half waits on it: while a collapsed rail unmounts the nav and the drawer is `lg:hidden`, `/conta`'s four duplicate buttons are most of the navigation such a reader has, so they cannot be removed first | **D22**'s buttons half |
-| 5 | **E10 · D40 · B17** — the 17/10 copy-or-build calls | **Sci** | `CLAIMS.md` rows due 17/10 with no code scheduled against them. Each closes by being built **or** by the sentence changing, and the sentence is Sci's (legal brief §5) | the publicity |
+| 1 | **E5 · E20** — push `task/e5-e20-opening-send` and merge it | **Sci**, then agent | **7 commits, rebased, clean, never pushed**: its lane's `git push` was refused by the permission layer and this session declined to push on its behalf. **Not** to queue the broadcast — that row exists. What is missing is the rehearsal (`c882236`, still not an ancestor of `origin/main`), **E20**'s watchdog, and the two-hunk `ruff format` fix for `test_integration_billing.py` that **`ci-worker` has been failing on `main` for since #265**. With no watchdog, the single queued row disappearing is still silent, which is the case E20 exists for and which has already happened once | **E5**, **E20**, and `main`'s build |
+| 2 | **G12** — Asaas production: company data, bank account, webhook URL, production key, **and four environment variables Sci must type** | **Sci** | The only item on the board whose duration we do not control. §1.2 dates it **10-20**, three days *after* the product starts charging. **The four variables are the half that was written down nowhere.** An agent cannot write `.env*` here — the permission layer refuses, the same deny rule that left `S3_BUCKET` and the AWS keys undocumented (see B4B's `STATUS.md` row) — so these are Sci's lines and they were living in a code comment that asserted G12 carried them when G12 did not: `ASAAS_API_KEY` (`$aact_prod_…`), `ASAAS_WEBHOOK_TOKEN` (the value set when the webhook is registered), `ASAAS_ENV=production`, and **`ASAAS_BILLING=live`** — which is the kill switch, defaults to a dry run on any other value *including unset*, and is therefore the one variable whose absence charges nobody and says nothing. On 17/10 at 12:00 BRT a deploy missing it serves every founder `billing.subscribe.error` with one `console.error` explaining why. **`ASAAS_ENV` and `ASAAS_API_KEY` must move together**: `configFault()` refuses a `$aact_prod_` key while `ASAAS_ENV` is anything but `production`, which is deliberate and is what stops a preview deployment charging real money | the production half of F2 |
+| 3 | **The Asaas sandbox cycle** — create → pay → repeat webhook → cancel | **Sci** + agent | **This, not the credential, closes F2 and E8.** `request()` returns `DRY_RUN` before a URL is built, so **nothing has ever been sent to Asaas**: everything proven is that we send what we think we send, never that Asaas accepts it. Needs the sandbox key in a reachable environment and a webhook on that same account — a sandbox key with a production-account webhook authenticates fine and receives nothing | **E8**, F2's real closure |
+| 4 | **E28** — the welcome already delivered promised the link on **08/10** | **Sci** | **Overdue, in silence.** It hid in the seam between two halves of one `CLAIMS.md` row: the verbatim quote on top, the re-dated machinery underneath, so moving the date never touched the sentence already in somebody's hand. No code fixes a message already sent. A query first — the register says both *"the only seat taken is Sci's"* and *"two real recipients"*, a fortnight apart — then a sentence, which is Sci's (legal brief §5) | the register's own credibility |
+| 5 | **Five rulings** — **D77** · **`TO_VALIDATE` #10** · **B48** (OCR) · **D81** (manual CNAE picker) · **E25** (states per plan) | **Sci** | D77 unblocks D22's buttons half: the four in-page links stay until it lands, because while a collapsed rail unmounts the nav they are most of the navigation such a reader has. #10 blocks **C2** and therefore **E10**, which is sold on the Essencial card for 17/10. The other three are decisions their lanes deliberately stopped at rather than guess | **D22**, **C2**, **E10**, **E25** |
+| 6 | **B49** — the `founder_seat` debris | agent | `billing.db.test.ts` fails **7 ways** on `users_founder_seat_key`, reproduced on clean `main`. It has wedged two lanes and cost one 65 minutes of mis-attributed debugging. Every future billing change is reviewed through this file | review of anything in **F** |
 
-**Landed 08–09/10:** **#259** — D22's acceptance held as an invariant (the rail's
-entries derived from the rendered rail, not a typed list), and the
-`/conta/favoritos` marking bug it found: for nine days the rail marked *Perfil*
-while the reader stood on their own favourites, and the unit suite passed
-throughout because its path table was written when it was complete. **D77**
-carded. **In flight:** D22's e-mail half (committed, in §4b review) and
-`task/f2-asaas-subscriptions` (unpushed, blocked on row 3).
+**Landed 09–10/10, both lanes, nothing open.** **#264** migration `0015`
+(self-applied to production three seconds after merge) · **#265** F2 recovered:
+Asaas client, subscribe as a Server Function, idempotent webhook, the
+one-click cancel (**D8**'s first half) and F4's `charge_reminder` sweep ·
+**#266** D22's e-mail half · **#268** B44 measured and its suspect exonerated
+(4.4% of the run; the real cause is Neon latency — CI does the same suite in
+81 s on a local Postgres) · **#270** the *CNPJs pesquisados* gate counted
+identities, not businesses · **#261**/**#262** B45, the CNPJá fallback that
+fixed an empty `/radar` · **#263** D80 · **#267** D82 multi-UF · **#269** D83.
+
+
+---
+
+### 4.2 Phase "opening" — MoSCoW to 17/10
+
+> **Recovered 2026-10-10.** This section was written on 09/10 in `6dca784` and
+> never reached `main`: it was pushed to `docs/plan-revisit-0910` **three
+> minutes after** PR #260 had already merged. No conflict resolution lost it —
+> checked, because "a merge dropped my section" is the B26/B27 shape and
+> sending somebody hunting for a bad resolution that does not exist is its own
+> cost. Restored from that commit rather than retyped, then re-scoped to today.
+
+**Seven days.** Scope decided against `CLAIMS.md`'s due dates and what is
+actually on `main`, not against card order. **A row is a MUST only if 17/10 is
+wrong without it** — and for a promise, "wrong" has two exits: build it, or Sci
+changes the sentence (legal brief §5). Both close a row; only silence does not.
+
+#### MUST — 17/10 is wrong without these
+
+| Card | Why it is a MUST | Exit |
+|---|---|---|
+| **G12 + the sandbox cycle** | Sci's. No production credential means nobody pays on the day the product starts charging — and **no Asaas call has ever been made**, so acceptance is unproven even in sandbox. §1.2 still dates G12 **10-20**, three days after the charge starts | a founder pays in sandbox, then the four variables move together |
+| **E5 · E20** | The broadcast row **is** queued and correctly dated (`428114`, verified 10/10). What is missing is the watchdog: nothing notices if it disappears, and it has disappeared once | the branch merges |
+| **E8** | `foundersPage.signup.note` and three more promise a subscription link and an Asaas checkout. The code merged in #265; by this register's own standard the claim closes on a payment, not a deploy | the sandbox cycle, then a real one |
+| **E10** | *"10 análises completas por mês"* is on the Essencial card and Essencial is what is sold on 17/10. `deep_analysis` has quota rows and **no route, no handler, no job kind** — and C2 is blocked on `TO_VALIDATE` #10 | #10 ruled and built, or the sentence changes |
+| **E28** | **Already overdue.** A delivered message promised the access link on 08/10 | a sentence from Sci |
+| **D40 · B17 · F5** | Copy due 17/10 with no code against it: a locked bar on ~99 materials in 100 where no band can arrive, a suppressed `intro` with nothing in its place, a CTA offering Essencial where no band can exist, and *"Hoje no Brasil"* counting our cache | Sci's wording, or the element goes |
+
+#### SHOULD — painful, survivable for days
+
+| Card | Why not a MUST | When it bites |
+|---|---|---|
+| **F4** | The sweep, the scheduler entry (07:00) and the template shipped with #265. The first charge **is** 17/10 and the second is 17/11, so the first 3-day reminder falls ~**14/11** | mid-November |
+| **B49** | Not user-facing, but `billing.db.test.ts` is how every F-stream change gets reviewed, and it is red on clean `main` | the next billing PR |
+| **D77** | Sci's ruling. At `lg` the hamburger opens a drawer inside `display:none` — the page scroll-locks and Tab is swallowed — and collapsing the rail **unmounts** the nav | any desktop reader who presses it |
+| **D81 · E25 · B48** | Three decisions their lanes stopped at rather than guess: the manual CNAE picker G8/B5 promised, alert states per plan, and OCR | when each is next picked up |
+
+#### COULD — real, and none of it moves 17/10
+
+**D78** (a breakpoint above its column's own `max-width`) · **D79** (three
+malformed card rows, two of them the B26/B27 shape) · **D84** (no event records
+a keyword search, so the Radar's commonest action is invisible and cannot be
+backfilled) · **B47** · **O6** · **D18**.
+
+#### WON'T — this phase, deliberately
+
+**C2** until `TO_VALIDATE` #10 is ruled — building against an undecided
+definition is how rework happens · **C3 · D33 · D25(2)**, because C3's premise
+died with B35/B36: `catalog_bands` already holds a precomputed band per code,
+so this is plan surgery, not AI work · **F3 · E11**, due ~**18/12** for a 17/10
+subscriber, which M5 at 10-29 clears by seven weeks · **B9 · B10 · B18 · B20 ·
+B26** · **H1 · H2**, whose 10-13 date was set against an opening that has since
+moved to 17/10, so "hardening before launch" is now scheduled after it.
+
+**Never cut**, unchanged from §8: LGPD consent and the privacy policy,
+server-side quota checks, the founders seat transaction, webhook idempotency,
+backups, and the *"confira no edital"* disclaimer on AI output.
 
 ---
 
