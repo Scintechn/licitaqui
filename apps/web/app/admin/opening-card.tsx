@@ -230,12 +230,21 @@ function OpeningBadge({ watch }: { watch: Opening }) {
       return <Tag tone="attention">erro</Tag>
     case 'unknown':
       return <Tag tone="attention">estado desconhecido</Tag>
-    case 'current':
+    case 'current': {
+      // **The tag may not be greener than the card.** With delivery off or the
+      // date disagreeing with the product, the accent is off and a warning
+      // paragraph is drawn — and this used to say a positive *na fila* beside
+      // it (found by #272's §4b review). Same words, the attention tone.
+      const warned = !watch.reading.deliveryReady || !watch.reading.dateMatchesProduct
       switch (watch.reading.state) {
         case 'queued':
-          return <Status kind="positive">na fila</Status>
+          return warned ? <Tag tone="attention">na fila</Tag> : <Status kind="positive">na fila</Status>
         case 'sent':
-          return <Status kind="positive">disparado</Status>
+          return warned ? (
+            <Tag tone="attention">disparado</Tag>
+          ) : (
+            <Status kind="positive">disparado</Status>
+          )
         case 'missing':
           return <Tag tone="attention">não está na fila</Tag>
         case 'misdated':
@@ -247,6 +256,7 @@ function OpeningBadge({ watch }: { watch: Opening }) {
         case 'failed':
           return <Tag tone="attention">falhou</Tag>
       }
+    }
   }
 }
 

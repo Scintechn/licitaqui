@@ -376,6 +376,9 @@ describe('OpeningCard', () => {
     // And not folded into the state: the row is still correctly queued, because
     // the two need different fixes — a command against an env change.
     expect(html).toContain('na fila')
+    // …but not as good news: the tag may not be greener than the card (#272's
+    // §4b review found a positive *na fila* beside this very warning).
+    expect(html).not.toContain('bg-success-soft')
 
     // The control, so the assertion above is not passing because the accent is
     // never rendered at all.
@@ -383,6 +386,7 @@ describe('OpeningCard', () => {
       <OpeningCard opening={await readOpening(executor([reading()]), NOW)} />,
     )
     expect(ok).toContain('border-blue-line')
+    expect(ok).toContain('bg-success-soft')
   })
 
   it('counts the waitlist the broadcast does not reach', async () => {

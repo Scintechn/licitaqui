@@ -260,3 +260,47 @@ def test_the_handler_is_registered_under_the_kind_the_scheduler_enqueues() -> No
     from licitaqui import handlers
 
     assert opening_check.CHECK_JOB_KIND in handlers.registered_kinds()
+
+
+# -- a retry is not a misdated row (#272's §4b review) ---------------------
+
+
+def test_a_send_that_succeeded_on_a_retry_reads_as_sent_not_misdated():
+    """One transient error at 12:00, out at 12:02: `run_after` moved by the backoff."""
+    retried = (428114, "done", DUE + timedelta(seconds=120))
+    after = DUE + timedelta(hours=3)
+
+    assert opening_check._state(retried, due_at=DUE, now=after, attempts=2) == "sent"
+
+
+def test_a_live_row_waiting_on_its_backoff_is_still_in_the_queue():
+    waiting = (428114, "queued", DUE + timedelta(seconds=480))
+
+    assert (
+        opening_check._state(waiting, due_at=DUE, now=DUE + timedelta(seconds=60), attempts=1)
+        == "queued"
+    )
+
+
+def test_the_same_drift_on_a_first_attempt_is_still_the_wrong_instant():
+    """No attempt means nothing moved it: a row queued for 12:02 is misdated."""
+    row = (428114, "done", DUE + timedelta(seconds=120))
+    after = DUE + timedelta(hours=3)
+
+    assert opening_check._state(row, due_at=DUE, now=after, attempts=1) == "misdated"
+    assert (
+        opening_check._state(
+            (1, "queued", DUE + timedelta(seconds=120)), due_at=DUE, now=DUE, attempts=0
+        )
+        == "misdated"
+    )
+
+
+def test_a_drift_no_backoff_can_produce_still_alarms_after_retries():
+    """Past the 40-minute backoff budget, attempts do not excuse it."""
+    far = (428114, "done", DUE + timedelta(seconds=opening_check.RETRY_DRIFT_SECONDS + 60))
+
+    assert (
+        opening_check._state(far, due_at=DUE, now=DUE + timedelta(hours=3), attempts=4)
+        == "misdated"
+    )
