@@ -451,7 +451,11 @@ export function PriceView({
           <Tag tone="blue">{page.plan}</Tag>
           {/* D85: the star on every tender screen, not only the first — the
               price is where somebody decides whether this edital is theirs. */}
-          <FavouriteButton tenderId={tenderId} />
+          {/* Only once the tender exists, as on the edital screen: the route
+              checks the id's shape, not that it names a row, so "não
+              encontramos este edital" would offer a star whose POST fails the
+              foreign key. It also keeps the Suspense skeleton from asking. */}
+          {tender ? <FavouriteButton tenderId={tender.id} /> : null}
           {/* D24 half 2 — see the note in `opportunity-view.tsx`. */}
           <MenuTrigger />
         </>

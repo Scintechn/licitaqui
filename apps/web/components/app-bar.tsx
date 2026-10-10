@@ -25,12 +25,20 @@ export function AppBar({ leading, title, actions, className }: AppBarProps) {
       )}
     >
       {leading}
+      {/* The title gives way, the 44px targets do not (D85). A flex item will
+          not shrink below its longest word, so on the price screen at 320px —
+          back, title, plan tag, star, menu — the menu was pushed 2px out of
+          the window. `min-w-0` lets the title shrink and `overflow-wrap:
+          anywhere` lets it wrap inside what is left; `shrink-0` keeps the
+          actions whole. Measured in `favourite-and-menu-everywhere.spec.ts`. */}
       {title ? (
-        <div className="grow text-lead font-semibold">{title}</div>
+        <div className="min-w-0 grow text-lead font-semibold [overflow-wrap:anywhere]">
+          {title}
+        </div>
       ) : (
         <div className="grow" />
       )}
-      {actions ? <div className="flex items-center gap-0.5">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </header>
   )
 }

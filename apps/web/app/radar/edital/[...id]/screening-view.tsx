@@ -542,7 +542,8 @@ export function ScreeningView({
         title={page.title}
         actions={
           <>
-            <FavouriteButton tenderId={tenderId} />
+            {/* Gated on the tender for the reason in `price-view.tsx`. */}
+            {tender ? <FavouriteButton tenderId={tender.id} /> : null}
             <MenuTrigger />
           </>
         }

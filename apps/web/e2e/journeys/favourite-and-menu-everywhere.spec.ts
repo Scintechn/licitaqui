@@ -53,7 +53,8 @@ test.describe('D85 · Favoritar from every tender screen', () => {
       const marked = page.getByRole('button', { name: 'Favoritado', exact: true })
       await expect(marked).toHaveAttribute('aria-pressed', 'true')
       // The write went to the server, not only to this component's state.
-      expect(api.favourites?.has(EDITAL)).toBe(true)
+      // Polled: the button flips optimistically, before the POST lands.
+      await expect.poll(() => api.favourites?.has(EDITAL)).toBe(true)
 
       // And a different screen reads it back as marked, which is the point:
       // one mark, wherever it was made.
@@ -76,6 +77,30 @@ test.describe('D85 · Favoritar from every tender screen', () => {
     }
     expect(api.favourites?.has(EDITAL)).toBe(false)
   })
+})
+
+test.describe('D85 · the price bar still fits on a small phone', () => {
+  // The price bar is the crowded one: back, title, plan tag, star and menu.
+  // Nothing in it is `shrink-0`, so the risk is not overlap but the browser
+  // squeezing a 44px target below 44, or the page scrolling sideways.
+  for (const width of [320, 360]) {
+    test(`at ${width}px both icons keep 44px and nothing scrolls sideways`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 640 })
+      await world(page)
+      await page.goto(priceHref(EDITAL, SEARCH))
+
+      for (const name of ['Favoritar', MENU]) {
+        const box = await page.getByRole('button', { name, exact: true }).boundingBox()
+        expect(box, `${name} must be laid out`).not.toBeNull()
+        expect(box!.width, `${name} keeps its touch target`).toBeGreaterThanOrEqual(44)
+        expect(box!.x + box!.width, `${name} stays inside the window`).toBeLessThanOrEqual(width)
+      }
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow).toBe(0)
+    })
+  }
 })
 
 test.describe('D85 · no hamburger on a desktop, where the rail is the menu', () => {
