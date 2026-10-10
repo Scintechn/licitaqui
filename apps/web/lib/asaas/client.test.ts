@@ -157,9 +157,11 @@ describe('the requests it sends', () => {
     })
     const body = JSON.parse(calls[0].init.body as string)
     expect(body.cycle).toBe('MONTHLY')
-    // `UNDEFINED` is what makes the invoice page offer both; naming one would
-    // take the choice away, and `billing.subscribe.methods` promises both.
-    expect(body.billingType).toBe('UNDEFINED')
+    // **Not `UNDEFINED`.** That offered boleto as well, and Asaas cannot
+    // refund a boleto — which the terms' 7-day withdrawal and 30-day
+    // guarantee both require. Measured in the sandbox on 2026-10-10: the
+    // first subscription came back `BOLETO` and the refund was refused.
+    expect(body.billingType).toBe('CREDIT_CARD')
     expect(body.value).toBe(57)
     expect(body.nextDueDate).toBe('2026-10-17')
   })

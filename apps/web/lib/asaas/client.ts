@@ -23,7 +23,7 @@ import {
  * | `GET /v3/customers?externalReference=…` | read-before-write: Asaas has **no idempotency-key header** and its own docs tell integrators to query before retrying |
  * | `POST /v3/customers` | with `notificationDisabled: true` — spec §9 |
  * | `GET /v3/subscriptions?externalReference=…` | the same read-before-write, one level up |
- * | `POST /v3/subscriptions` | monthly cycle, `billingType: UNDEFINED` so the payer picks Pix or card |
+ * | `POST /v3/subscriptions` | monthly cycle, `billingType: CREDIT_CARD` — see below, boleto is not acceptable |
  * | `GET /v3/subscriptions/{id}/payments` | the **only** place a hosted-checkout URL exists: `invoiceUrl` on the first charge |
  * | `DELETE /v3/subscriptions/{id}` | the cancel that actually stops the money (D8) |
  *
@@ -255,10 +255,33 @@ export class AsaasClient {
     const body = await this.request('POST', '/subscriptions', {
       json: {
         customer: request.customer,
-        // The payer chooses Pix or card on the invoice page, which is what
-        // `billing.subscribe.methods` promises ("Você pode pagar com Pix ou
-        // cartão"). Naming one here would take the choice away.
-        billingType: 'UNDEFINED',
+        /*
+         * **Card only, decided by Sci on 2026-10-10 against a measured
+         * refusal.** This was `UNDEFINED`, whose comment claimed it let the
+         * payer pick "Pix or card". It does not: `UNDEFINED` offers **boleto**
+         * too, and the first sandbox subscription came back
+         * `billing_type: BOLETO`.
+         *
+         * That breaks a published promise. The terms carry a **7-day
+         * withdrawal (CDC art. 49)** and a **30-day guarantee**, and Asaas
+         * refuses to refund a boleto: *"Somente é possível estornar cobranças
+         * cuja a forma de pagamento seja cartão de crédito ou Pix."* So a
+         * boleto subscriber could not be refunded through the API at all —
+         * only by a manual bank transfer, every time.
+         *
+         * **And Pix cannot rescue it here.** On an Asaas *subscription* Pix is
+         * not a method of its own: you ask for boleto and the boleto carries a
+         * Pix QR, which is recorded as `BOLETO` and is therefore equally
+         * unrefundable. A standalone Pix *charge* is refundable — that stays
+         * available to any future one-off, just not to a subscription.
+         *
+         * `CREDIT_CARD` is the only value that is both refundable and actually
+         * recurring: the card is on file, so a renewal needs nothing from the
+         * subscriber. The cost is that `billing.subscribe.methods` ("Você pode
+         * pagar com Pix ou cartão") is now false — Sci's sentence to rewrite
+         * under legal brief §5, tracked in `docs/CLAIMS.md`.
+         */
+        billingType: 'CREDIT_CARD',
         value: request.value,
         nextDueDate: request.nextDueDate,
         cycle: 'MONTHLY',

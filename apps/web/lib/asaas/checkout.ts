@@ -99,6 +99,11 @@ export async function startCheckout(
 
   const existing = await readSubscription(userId, database)
   if (existing.state === 'unavailable') {
+    // Silent until 2026-10-10, and it is the path most likely to fire: it
+    // wraps `readSubscription`, whose own failure is a cold or slow database.
+    // `:199` logged a provider rejection and this logged nothing, so an outage
+    // we caused was indistinguishable from one Asaas caused.
+    console.error(`billing: checkout failed (database:${existing.reason})`)
     return { outcome: 'failed', reason: `database:${existing.reason}`, retryable: true }
   }
   if (existing.state === 'found' && existing.subscription.status === 'active') {
@@ -106,7 +111,12 @@ export async function startCheckout(
   }
 
   const row = await subscriber(userId, database)
-  if (!row) return { outcome: 'failed', reason: 'no_user', retryable: false }
+  if (!row) {
+    // The session named a user this query cannot find. Rare and worth saying
+    // out loud: it is not a provider problem and no retry will fix it.
+    console.error('billing: checkout failed (no_user)')
+    return { outcome: 'failed', reason: 'no_user', retryable: false }
+  }
 
   const price = priceFor(row.founder_seat === null ? null : Number(row.founder_seat))
 
@@ -119,7 +129,12 @@ export async function startCheckout(
 
   // Asked of the client, never of `process.env` — see `AsaasClient.fault`.
   const fault = client.fault
-  if (fault) return { outcome: 'failed', reason: fault, retryable: false }
+  if (fault) {
+    // A key that does not match its environment, or no key at all. The reason
+    // is a fixed enum from `configFault`, never a value, so it is safe to log.
+    console.error(`billing: checkout failed (config:${fault})`)
+    return { outcome: 'failed', reason: fault, retryable: false }
+  }
 
   const document = (row.cnpj ?? '').replace(/\D/g, '')
   const name = (row.name ?? row.legal_name ?? row.trade_name ?? '').trim()
