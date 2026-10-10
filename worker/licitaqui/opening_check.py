@@ -88,7 +88,7 @@ from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
 
-from . import evolution, product, resend, whatsapp
+from . import config, evolution, product, resend, whatsapp
 from .registry import REGISTRY, JobContext
 
 CHECK_JOB_KIND = "opening_broadcast_check"
@@ -142,11 +142,20 @@ STATES: dict[str, bool] = {
 }
 
 
+#: The furthest a **retry** can push `run_after` past the configured instant:
+#: `queue.fail` re-queues at `now() + backoff`, and the backoffs sum to 40 min
+#: (`config.BACKOFF_SECONDS`), plus room for the attempts themselves to run.
+#: Inside this window, after at least one attempt, a later `run_after` is the
+#: queue retrying — not a row queued for the wrong instant.
+RETRY_DRIFT_SECONDS = sum(config.BACKOFF_SECONDS) + 20 * 60
+
+
 def _state(
     row: tuple[int, str, datetime] | None,
     *,
     due_at: datetime,
     now: datetime,
+    attempts: int = 0,
 ) -> str:
     """Which of :data:`STATES` the queue is in. Pure, so the suite can enumerate it.
 
@@ -158,8 +167,17 @@ def _state(
     if row is None:
         return "missing"
     _job_id, status, run_after = row
+    drift = (run_after - due_at).total_seconds()
+    # **A retry is not a misdated row** (found by #272's §4b review). Every failed
+    # attempt moves `run_after` to `now() + backoff`, so a sweep that hit one
+    # transient error at 12:00 and went out at 12:01 used to read `misdated` at
+    # 15:00 — an alarm whose text says the configuration is wrong, on the day
+    # the send worked. Only after an attempt, only forward, and only within what
+    # the backoff can produce: a first-attempt drift, or one past the window, is
+    # still the wrong instant and still alarms.
+    retried = attempts >= 1 and RUN_AFTER_TOLERANCE_SECONDS < drift <= RETRY_DRIFT_SECONDS
     if status in LIVE_STATUSES:
-        if abs((run_after - due_at).total_seconds()) > RUN_AFTER_TOLERANCE_SECONDS:
+        if abs(drift) > RUN_AFTER_TOLERANCE_SECONDS and not retried:
             return "misdated"
         if (now - run_after).total_seconds() > LATE_AFTER_SECONDS:
             return "late"
@@ -179,10 +197,9 @@ def _state(
         # ran, or the date moving afterwards — and it has already gone out. That
         # is a message in a founder's hand with an access link to a product that
         # was not open, and it previously rendered as a green *disparado*.
-        drift = (run_after - due_at).total_seconds()
         if drift < -RUN_AFTER_TOLERANCE_SECONDS:
             return "fired_early"
-        if drift > RUN_AFTER_TOLERANCE_SECONDS:
+        if drift > RUN_AFTER_TOLERANCE_SECONDS and not (retried and attempts > 1):
             # It ran, for an instant later than the one configured now. The
             # broadcast happened; the configuration and the row disagree about
             # when it was meant to, and only a person can say which is right.
@@ -245,7 +262,13 @@ def opening_broadcast_check(ctx: JobContext) -> None:
     now = (row[0] if row else datetime.now(UTC)).astimezone(UTC)
 
     found = whatsapp.scheduled_broadcast(ctx.conn, key=key)
-    state = _state(found, due_at=due_at, now=now)
+    attempts = 0
+    if found:
+        with ctx.conn.cursor() as cur:
+            cur.execute("select attempts from jobs where id = %s", (found[0],))
+            fetched = cur.fetchone()
+        attempts = int(fetched[0]) if fetched else 0
+    state = _state(found, due_at=due_at, now=now, attempts=attempts)
     seated, waitlisted = _counts(ctx)
 
     props: dict[str, Any] = {
