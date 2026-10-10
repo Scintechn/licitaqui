@@ -27,7 +27,7 @@ import { listKey } from './list-cache'
 
 const SEARCH: RadarSearch = {
   cnpj: '51885242000140',
-  state: 'SP',
+  states: ['SP'],
   q: 'papel',
   modality: 'dispensa',
   meEpp: 'other',
@@ -105,7 +105,7 @@ describe('the cache key carries both filters', () => {
     // is where what it does to the key is asserted.
     scope: 'scope-one',
     cnpj: '51885242000140',
-    state: 'SP',
+    states: ['SP'],
     q: 'papel',
     group: 'compatible',
   } as const

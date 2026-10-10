@@ -59,7 +59,7 @@ const CNPJ = '11222333000181'
 function render(status: RadarStatus, overrides: Partial<RadarViewProps> = {}): string {
   const props: RadarViewProps = {
     // The bare address: no CNPJ, no keyword, no UF.
-    query: { cnpj: null, state: null, q: null, group: 'compatible' },
+    query: { cnpj: null, states: [], q: null, group: 'compatible' },
     status,
     grouping: null,
     visitor: null,

@@ -288,7 +288,8 @@ export function listKey(query: {
    */
   scope: string
   cnpj: string | null
-  state: string | null
+  /** Canonical UFs (`canonicalUfs`); empty is every state. */
+  states: readonly string[]
   q: string | null
   modality?: ModalityFilter | null
   meEpp?: MeEppFilter | null
@@ -298,7 +299,10 @@ export function listKey(query: {
   return [
     query.scope,
     query.cnpj ?? '',
-    query.state ?? '',
+    // Joined in canonical order, so ticking RJ then SP and SP then RJ is one
+    // key. One UF joins to exactly what the single-UF key used to hold, so
+    // snapshots written before multi-UF are still found under their key.
+    query.states.join(','),
     query.q ?? '',
     query.modality ?? '',
     query.meEpp ?? '',
@@ -357,7 +361,8 @@ export type ListQuery = {
   /** The caller, opaquely — see `listKey`. */
   scope: string
   cnpj: string | null
-  state: string | null
+  /** Canonical UFs (`canonicalUfs`); empty is every state. */
+  states: readonly string[]
   q: string | null
   modality?: ModalityFilter | null
   meEpp?: MeEppFilter | null

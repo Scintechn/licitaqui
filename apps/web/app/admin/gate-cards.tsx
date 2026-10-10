@@ -62,12 +62,19 @@ function headline(gate: Gate): string {
 }
 
 function targetLabel(gate: Gate): string {
+  // A gate with no target prints no target. Formatting `null` as 0 would draw
+  // "meta ≥ 0" — a bar that is always met — on a card that has no bar.
+  if (gate.target === null) return ''
   const target = gate.unit === 'percent' ? `${PT.format(gate.target)}%` : PT.format(gate.target)
   const of = gate.targetOf === undefined ? '' : ` de ${PT.format(gate.targetOf)}`
   return `meta ≥ ${target}${of}`
 }
 
 function GateBadge({ gate, met }: { gate: Gate; met: boolean | null }) {
+  // A gate with no target gets no badge. `em aberto` below means "the bar is
+  // not cleared yet", and a card with no bar cannot be open against one — the
+  // same reason `gateMet` answers `null` rather than `false` for it.
+  if (gate.target === null && gate.reading.state === 'counted') return null
   if (gate.reading.state === 'error') return <Tag tone="attention">erro</Tag>
   if (gate.reading.state === 'no_source') return <Tag tone="muted">sem fonte</Tag>
   if (gate.reading.state === 'no_data') return <Tag tone="muted">sem dados</Tag>

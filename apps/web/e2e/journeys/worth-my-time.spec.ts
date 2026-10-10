@@ -229,7 +229,9 @@ test.describe('Dona Marta · is this worth my time?', () => {
     // one the defect was reproduced on, and the keyword is what makes the
     // answer visibly a different list rather than the same rows re-drawn.
     await page.getByText('Trocar empresa ou filtros', { exact: true }).click()
-    await page.getByLabel('UF onde você entrega').selectOption('RJ')
+    // The UF control is a checkbox panel since 2026-10-09 (multi-UF).
+    await page.locator('#radar-uf').click()
+    await page.getByRole('checkbox', { name: 'Rio de Janeiro (RJ)' }).check()
     await page.getByLabel('Ou procure por palavra-chave (opcional)').fill('limpeza')
     await page.getByRole('button', { name: 'Aplicar filtros' }).click()
 

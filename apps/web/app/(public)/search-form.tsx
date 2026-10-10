@@ -2,10 +2,11 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
-import { Button, Card, Field, Select } from '@/components'
+import { Button, Card, Field } from '@/components'
 import { messages } from '@/lib/messages'
 import { radarHref } from '@/lib/radar/client'
-import { UF_OPTIONS, normaliseUf } from '@/lib/radar/ufs'
+import { UfPicker } from '@/components/uf-picker'
+import { readUfs } from '@/lib/radar/ufs'
 
 /**
  * The search card of canvas 01 (`Main.dc.html`): CNPJ, the state you deliver
@@ -46,7 +47,7 @@ export function SearchForm() {
     const data = new FormData(event.currentTarget)
     const cnpj = digits(String(data.get('cnpj') ?? ''))
     const q = String(data.get('q') ?? '').trim()
-    const uf = normaliseUf(String(data.get('uf') ?? ''))
+    const states = readUfs({ getAll: (name) => data.getAll(name).map(String) })
 
     if (!cnpj && !q) {
       event.preventDefault()
@@ -61,7 +62,7 @@ export function SearchForm() {
 
     event.preventDefault()
     setError(undefined)
-    router.push(radarHref({ cnpj: cnpj || null, state: uf, q: q || null }))
+    router.push(radarHref({ cnpj: cnpj || null, states, q: q || null }))
   }
 
   return (
@@ -87,7 +88,7 @@ export function SearchForm() {
           error={error}
         />
 
-        <Select id="uf" name="uf" label={copy.ufLabel} options={UF_OPTIONS} />
+        <UfPicker id="uf" label={copy.ufLabel} />
 
         <Field
           id="q"

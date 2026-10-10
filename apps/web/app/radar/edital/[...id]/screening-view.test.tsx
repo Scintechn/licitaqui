@@ -104,7 +104,7 @@ const VISITOR: VisitorView = {
 }
 
 /** A real search, so every outbound link in these views is asserted to carry it. */
-const SEARCH = { cnpj: '51885242000140', state: 'SP', q: 'papel', group: 'check' } as const
+const SEARCH = { cnpj: '51885242000140', states: ['SP'], q: 'papel', group: 'check' } as const
 
 function render(overrides: Partial<ScreeningViewProps> = {}): string {
   const props: ScreeningViewProps = {
@@ -449,5 +449,72 @@ describe('the action bar', () => {
     const html = render()
     expect(bar(html)).toContain('sticky')
     expect(html.indexOf('sticky bottom-0')).toBeGreaterThan(html.indexOf('</main>'))
+  })
+})
+
+/**
+ * Sci, 2026-10-09: a scanned edital (or a `.zip` of scans) ended the screen at
+ * one card, and with it went the documents and the price — neither of which
+ * depends on the analysis. The frame stays now; only *Exigências* goes.
+ */
+describe('an edital the triagem could not read keeps the rest of the screen', () => {
+  const unreadable = [{ kind: 'noText' }, { kind: 'failed' }] as const
+
+  it('Resumo carries the same card and the price block, Documentos is a tab, Exigências is not', () => {
+    for (const status of unreadable) {
+      const html = render({ status, model: null })
+      expect(html).toContain(status.kind === 'noText' ? page.noTextTitle : page.failedTitle)
+      expect(html).toContain(page.priceTitle)
+      expect(html).toContain(priceHref(TENDER.id, SEARCH).replaceAll('&', '&amp;'))
+      expect(html).toContain(`>${page.tabs.summary}<`)
+      expect(html).toContain(page.tabs.files)
+      expect(html).not.toContain(`>${page.tabs.requirements}<`)
+      // Nothing was read, so nothing claims to be an AI reading.
+      expect(html).not.toContain(messages.ai.disclaimer)
+    }
+  })
+
+  it('the Documentos tab lists the files, as it does after a reading', () => {
+    for (const status of unreadable) {
+      const html = render({ status, model: null, tab: 'files', signedIn: true })
+      expect(html).toContain('id="screening-panel-files"')
+      expect(html).not.toContain(page.priceTitle)
+    }
+  })
+
+  it('a tab still on Exigências shows Resumo, and the tabs say so too', () => {
+    // `tab` is state that can outlive a change of edital; Exigências is not
+    // drawn here, so the selected tab and the panel must both be Resumo.
+    const html = render({ status: { kind: 'noText' }, model: null, tab: 'requirements' })
+    expect(html).toContain('id="screening-panel-summary"')
+    expect(html).toMatch(/id="screening-tab-summary"[^>]*aria-selected="true"/)
+    expect(html).toContain(page.noTextTitle)
+  })
+
+  it('offers the way back once — in the bar, not again in the card', () => {
+    const html = render({ status: { kind: 'noText' }, model: null })
+    expect(html).not.toContain(page.openTender)
+    expect(html.slice(html.indexOf('sticky bottom-0'))).toContain(messages.common.tender)
+    // Outside the frame the card keeps it, as before.
+    expect(render({ status: { kind: 'analyzing' }, model: null, onRetry: undefined })).not.toContain(
+      'sticky bottom-0',
+    )
+  })
+
+  it('offers the price in the action bar too', () => {
+    for (const status of unreadable) {
+      const html = render({ status, model: null })
+      const at = html.indexOf('sticky bottom-0')
+      expect(at, `${status.kind} draws the bar`).toBeGreaterThan(-1)
+      expect(html.slice(at)).toContain(messages.radar.screening.barPrice)
+    }
+  })
+
+  it('the states that are not an answer keep the bare card', () => {
+    for (const status of [{ kind: 'analyzing' }, { kind: 'timeout' }, { kind: 'quota' }] as const) {
+      const html = render({ status, model: null })
+      expect(html).not.toContain(page.priceTitle)
+      expect(html).not.toContain('sticky bottom-0')
+    }
   })
 })
