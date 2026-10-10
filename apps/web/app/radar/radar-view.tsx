@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { FocusKeyword } from './focus-keyword'
+import { MenuButton } from '@/components/menu-trigger'
 import {
   AppBar,
-  AppBarAction,
   AppBarActionLink,
   Button,
   Field,
@@ -1361,7 +1361,10 @@ export function RadarView({
                 Rendered only when a handler exists, so the Landing's example
                 panel does not draw a button that opens nothing. */}
             {onOpenMenu ? (
-              <AppBarAction icon="menu" label={copy.nav.menu} onClick={onOpenMenu} />
+              /* Hidden from `lg` (D85): there the shell draws no drawer, so
+                 this opened nothing. See `MenuButton` for why the class lives
+                 there and not here. */
+              <MenuButton onClick={onOpenMenu} />
             ) : null}
           </>
         }

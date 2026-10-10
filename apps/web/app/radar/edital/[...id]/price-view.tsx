@@ -22,6 +22,7 @@ import { moneyExact, moneyExactNonZero, trimObject } from '@/lib/radar/format'
 import { MIN_SAMPLE } from '@/lib/radar/price-band'
 import type { LockedEvidence, PriceBand, PriceEvidence } from '@/lib/radar/price-band'
 import { CopyCompra } from './copy-compra'
+import { FavouriteButton } from './favourite-button'
 import { ItemPicker } from './item-picker'
 import { MarginCeiling } from './margin-ceiling'
 import { TenderStatusBanner } from '../../tender-status-banner'
@@ -448,6 +449,9 @@ export function PriceView({
       actions={
         <>
           <Tag tone="blue">{page.plan}</Tag>
+          {/* D85: the star on every tender screen, not only the first — the
+              price is where somebody decides whether this edital is theirs. */}
+          <FavouriteButton tenderId={tenderId} />
           {/* D24 half 2 — see the note in `opportunity-view.tsx`. */}
           <MenuTrigger />
         </>
