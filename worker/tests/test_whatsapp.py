@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from licitaqui import product, whatsapp
+from licitaqui import evolution, product, whatsapp
 from licitaqui.templates import MissingPlaceholder
 
 
@@ -287,3 +287,129 @@ def test_the_broadcast_job_kind_is_registered() -> None:
 
     assert whatsapp.BROADCAST_JOB_KIND == "founders_opening_broadcast"
     assert "founders_opening_broadcast" in registered_kinds()
+
+
+# -- the dry run of the whole send (E5) --------------------------------------
+#
+# The parts with a database behind them — and the one that matters, that the
+# preview and the send agree — are in `test_integration_whatsapp.py`.
+
+
+def test_a_refused_gate_carries_the_reason_and_no_personal_data() -> None:
+    """§12. Only the caller allowed to send has any use for a name or a
+    number, so a refusal must not carry one out of `check_gates` — least of
+    all the opted-out and no-consent refusals, which are the two people whose
+    details have the least business travelling anywhere."""
+    assert whatsapp.Gate(whatsapp.SKIP_OPTED_OUT).name == ""
+    assert whatsapp.Gate(whatsapp.SKIP_OPTED_OUT).number == ""
+    assert whatsapp.Gate(None, "Maria", "+5511999999999").number == "+5511999999999"
+
+
+SENDING = evolution.DELIVERY_SEND
+OFF = evolution.DELIVERY_DRY_RUN
+
+
+def test_a_render_error_outranks_the_gate_in_the_one_word_summary() -> None:
+    """The summary word is what an operator reads the week before. A founder who
+    passes every gate and whose message cannot be rendered must not be counted
+    as `would_send`, which is exactly the shape of the 2026-09-26 footer
+    defect: gates fine, body unrenderable, nothing delivered."""
+    broken = whatsapp.ChannelPreview("whatsapp", SENDING, render_error="MissingPlaceholder: nome")
+
+    assert broken.would_send is False
+    assert broken.outcome == "render_error"
+    assert whatsapp.ChannelPreview("whatsapp", SENDING, reason="no_consent").outcome == "no_consent"
+    assert whatsapp.ChannelPreview("whatsapp", SENDING, body="oi").outcome == "would_send"
+
+
+def test_a_switched_off_channel_never_reads_as_would_send() -> None:
+    """**The defect this card's review found.** `would_send` asked the gates and
+    the render and never the kill switch, so a channel whose switch was unset
+    reported `would_send` for every founder it would never reach — and
+    `EMAIL_DELIVERY` and `WHATSAPP_DELIVERY` are separate variables, so half the
+    promise could go dark on its own.
+
+    `delivery_mode()` answers `send` for the exact string `"send"` and `dry_run`
+    for everything else, **unset included**, so this is not a hypothetical
+    misconfiguration: it is the default.
+
+    The three properties are deliberately distinct. `builds` is what a dry run
+    proves — the message is ready. `would_send` is what the founder experiences.
+    `outcome` is the word on the report, and it must name the switch rather than
+    stay silent about it.
+    """
+    ready_but_off = whatsapp.ChannelPreview("whatsapp", OFF, body="oi")
+    assert ready_but_off.builds is True, "the message is built; a dry run proves that much"
+    assert ready_but_off.would_send is False, "and nobody receives it"
+    assert ready_but_off.outcome == "delivery_off"
+
+    # A gate refusal still wins the word: a founder without consent is a
+    # permanent fact, the switch is one variable away from changing for all.
+    assert (
+        whatsapp.ChannelPreview("whatsapp", OFF, reason=whatsapp.SKIP_NO_CONSENT).outcome
+        == whatsapp.SKIP_NO_CONSENT
+    )
+    assert whatsapp.ChannelPreview("whatsapp", OFF, render_error="boom").outcome == "render_error"
+
+    # And `reached` collapses with it, because `reached` is the sentence
+    # *"this founder was kept the promise"*.
+    off_everywhere = whatsapp.OpeningPreview(
+        founders_list_id=3,
+        seat=3,
+        channels=(
+            whatsapp.ChannelPreview("whatsapp", OFF, body="oi"),
+            whatsapp.ChannelPreview("email", OFF, body="oi"),
+        ),
+    )
+    assert off_everywhere.reached is False
+    assert all(one.builds for one in off_everywhere.channels)
+
+
+def test_the_delivery_mode_has_no_default_so_a_new_call_site_must_state_it() -> None:
+    """A default of `"send"` would lie in favour of the send.
+
+    `ChannelPreview` is constructed in six places inside `whatsapp.py` and in
+    tests. A field defaulting to "the switch is on" means a seventh call site
+    that forgets it reports `would_send` for a channel nobody checked — the
+    same defect, re-introduced quietly. Pinned as a `TypeError` rather than as a
+    comment asking the next author to remember.
+    """
+    with pytest.raises(TypeError, match="delivery_mode"):
+        whatsapp.ChannelPreview("whatsapp")  # type: ignore[call-arg]
+
+
+def test_a_founder_reached_on_either_channel_counts_as_reached() -> None:
+    """Either message carries the access link, so one channel keeps the
+    promise — which is the question E5 asks, and why this is `any`."""
+    only_email = whatsapp.OpeningPreview(
+        founders_list_id=1,
+        seat=1,
+        channels=(
+            whatsapp.ChannelPreview("whatsapp", SENDING, reason=whatsapp.SKIP_OPTED_OUT),
+            whatsapp.ChannelPreview("email", SENDING, body="..."),
+        ),
+    )
+    neither = whatsapp.OpeningPreview(
+        founders_list_id=2,
+        seat=2,
+        channels=(
+            whatsapp.ChannelPreview("whatsapp", SENDING, reason=whatsapp.SKIP_NO_CONSENT),
+            whatsapp.ChannelPreview("email", SENDING, reason="no_consent"),
+        ),
+    )
+
+    assert only_email.reached is True
+    assert neither.reached is False
+
+
+def test_the_pacing_estimate_counts_gaps_and_not_messages() -> None:
+    """The first message does not wait, so 48 founders are 47 intervals —
+    16 to 24 minutes. The broadcast hour is when the first one goes, not the
+    last — 12:00 BRT today, and the script interpolates it rather than
+    printing a literal, which is how it came to say 19:00 for nine days."""
+    assert whatsapp.pacing_estimate_seconds(0) == (0.0, 0.0)
+    assert whatsapp.pacing_estimate_seconds(1) == (0.0, 0.0)
+    best, worst = whatsapp.pacing_estimate_seconds(48)
+    assert (best, worst) == (47 * whatsapp.MIN_INTERVAL_SECONDS, 47 * whatsapp.MAX_INTERVAL_SECONDS)
+    assert round(best / 60) == 16
+    assert round(worst / 60) == 24

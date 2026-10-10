@@ -456,3 +456,49 @@ def test_send_whatsapp_and_send_email_share_a_key_without_colliding(
         ).fetchall()
     }
     assert kinds == {"send_whatsapp", "send_email"}
+
+
+def test_a_founder_who_never_consented_is_a_warning_and_a_missing_row_is_not(
+    e2_conn: psycopg.Connection, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`email.SKIP_LEVELS` is only worth having if `send()` reads it.
+
+    The mirror of `test_integration_whatsapp.py`'s own: asserting the dict's
+    contents would still pass with the `level=` argument deleted, and the two
+    data faults it raises would silently drop to `info` with nothing to
+    notice. A row that reached the queue without consent is somebody's mistake
+    and must be loud; a job whose founder has since been deleted is not.
+
+    `no_email` is the third level and is deliberately **not** exercised here:
+    `founders_list.email` is `citext unique`, so a row with an empty address
+    would collide across two concurrent runs of this suite — the very thing
+    CLAUDE.md's per-run scoping rule exists to prevent. Its level is covered
+    by the same one line this test pins.
+    """
+    no_consent = insert_founder(e2_conn, "levels-no-consent", consent=False)
+
+    # `no_recipient` needs a founder that does **not** exist, so one is created
+    # and deleted rather than an arbitrary id being invented. The id is then
+    # unreachable by `_delete_e2_rows`, which resolves ids from `founders_list`
+    # before deleting events — so the skip row it is about to write is removed
+    # here explicitly, or every run of this suite would leave one permanent
+    # orphan in a shared database.
+    absent = insert_founder(e2_conn, "levels-absent")
+    e2_conn.execute("delete from founders_list where id = %s", (absent,))
+
+    try:
+        with caplog.at_level("INFO", logger="licitaqui.email"):
+            email.send(e2_conn, founders_list_id=no_consent, template="founders-welcome")
+            email.send(e2_conn, founders_list_id=absent, template="founders-welcome")
+    finally:
+        e2_conn.execute(
+            "delete from events where props ->> 'founders_list_id' = %s", (str(absent),)
+        )
+
+    levels = {
+        record.getMessage(): record.levelname
+        for record in caplog.records
+        if record.getMessage().startswith("email send skipped")
+    }
+    assert levels[f"email send skipped: {email.SKIP_NO_CONSENT}"] == "WARNING"
+    assert levels[f"email send skipped: {email.SKIP_NO_RECIPIENT}"] == "INFO"

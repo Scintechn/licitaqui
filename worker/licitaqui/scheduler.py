@@ -301,6 +301,36 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # every collector — a missing value degrades a card, it does not lose a
     # tender.
     ScheduleEntry(kind="sweep_tender_values", every_seconds=60 * 60, priority=9),
+    # **E20.** The founders opening is one `jobs` row placed by a person, and on
+    # 2026-10-03 it was deleted and nothing noticed for two days. This entry is
+    # the thing that notices: it reads the row, writes an `events` row, and
+    # `apps/web/lib/admin/opening.ts` turns that into the card. See
+    # `opening_check.py` for why a watchdog over a `jobs` row does not break
+    # B32's "never alarm on absence of queueing" — the rule moves up a level,
+    # and a *check* that stops running is itself the reader's alarm.
+    #
+    # **Two entries of one kind, and the hours are chosen, not spaced.** 09:00
+    # BRT is three hours before the 12:00 BRT broadcast — time to re-place the
+    # row on the day itself, which is E20's "alarms while there is still time";
+    # 15:00 BRT is three hours after it, so *did it actually fire* is answered
+    # the same afternoon instead of the next morning. They dedupe separately:
+    # `ScheduleEntry.key` is the due instant in BRT, so the two are different
+    # keys and never collapse into one row.
+    #
+    # The arithmetic the reader depends on: the longest gap between readings is
+    # 18 h, so `apps/web/lib/admin/opening.ts` calls 30 h stale — one missed run
+    # still leaves the previous reading inside the window (24 h), and a whole
+    # day of silence does not. Tighter than the three cadences B37 gives its
+    # daily feeds, deliberately: this watches a single dated event eight days
+    # out, and three days of not knowing is not a watch.
+    #
+    # **Not `every_seconds`.** `test_config.py` requires every interval entry to
+    # be at most the consumer's idle poll (3 600 s), because a slower one has
+    # the consumer waking Neon between cycles for work that is not there — the
+    # compute saving of 2026-09-30. A six-hourly entry breaks that; two daily
+    # ones do not. Two SELECTs and one INSERT per run.
+    ScheduleEntry(kind="opening_broadcast_check", daily_at="09:00", priority=8),
+    ScheduleEntry(kind="opening_broadcast_check", daily_at="15:00", priority=8),
 )
 
 
@@ -330,11 +360,34 @@ class Scheduler:
     #: becoming a two-cycle one — which is the degradation `config.py` warns
     #: about, and the reason the interval could not simply be raised before.
     on_enqueue: Callable[[], None] | None = None
-    _due: dict[str, datetime] = field(default_factory=dict, init=False)
+    #: Next due instant **per entry**, keyed by its position in `entries`.
+    #:
+    #: **It was keyed by `kind`, and that silently discarded an entry.** E20
+    #: needs two readings a day — 09:00 BRT, three hours before the founders
+    #: broadcast, and 15:00 BRT, three hours after — which is two
+    #: `ScheduleEntry` rows of one kind, the first two this schedule has ever
+    #: held. With `kind` as the key the dict comprehension below kept the
+    #: **last** of them, `ready` found both due at once because they shared one
+    #: value, and the loop overwrote the slot twice inside a tick. Measured by
+    #: driving the real scheduler over four simulated days: the 09:00 run never
+    #: fired on any of them, both entries fired together at 15:00, and the real
+    #: longest gap was 24 h rather than 18.
+    #:
+    #: On 17/10 that is the whole point of E20 lost — the last reading before a
+    #: 12:00 BRT broadcast would have been 21 h old, and a row deleted in
+    #: between would have shown a green *na fila* straight through the send.
+    #: `test_two_entries_of_one_kind_each_keep_their_own_hour` is the test that
+    #: walks a clock past both hours; asserting the entry list, which is what
+    #: the suite did, cannot see this.
+    #:
+    #: The index, not the entry itself: `ScheduleEntry` is frozen and therefore
+    #: hashable, but two entries differing in no field would then share a slot
+    #: again, and position is the thing that is always distinct.
+    _due: dict[int, datetime] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         start = self.now()
-        self._due = {entry.kind: entry.next_due(start) for entry in self.entries}
+        self._due = {i: entry.next_due(start) for i, entry in enumerate(self.entries)}
 
     def run(self) -> None:
         _log.info("scheduler started", extra={"entries": [e.kind for e in self.entries]})
@@ -350,14 +403,14 @@ class Scheduler:
     def tick(self) -> int:
         """Enqueue everything that has come due. Returns how many were created."""
         now = self.now()
-        ready = [entry for entry in self.entries if self._due.get(entry.kind, now) <= now]
+        ready = [(i, entry) for i, entry in enumerate(self.entries) if self._due.get(i, now) <= now]
         if not ready:
             return 0
         created = 0
         # Only now is a connection worth opening.
         with self.connect() as conn:
-            for entry in ready:
-                due = self._due[entry.kind]
+            for i, entry in ready:
+                due = self._due[i]
                 job_id = queue.enqueue(
                     conn,
                     entry.kind,
@@ -365,7 +418,7 @@ class Scheduler:
                     priority=entry.priority,
                     payload=entry.payload,
                 )
-                self._due[entry.kind] = entry.next_due(now)
+                self._due[i] = entry.next_due(now)
                 if job_id is None:
                     _log.info("schedule deduped", extra={"kind": entry.kind})
                 else:

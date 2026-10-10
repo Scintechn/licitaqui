@@ -423,6 +423,80 @@ delivery row, neither records an error. Verify against `whatsapp.sent` in
 | `EVOLUTION_API_KEY` | to send | — | Sent as the `apikey` header |
 | `EVOLUTION_INSTANCE` | to send | — | Instance name in the `POST /message/sendText/{instance}` path |
 | `FOUNDERS_OPENING_DATE` | no | `2026-10-17` (`product.OPENING_DATE`) | Fills `{{data_abertura}}`, so a slipped opening is an env change |
+| `FOUNDERS_OPENING_HOUR` | no | `12:00` (`product.OPENING_HOUR_BRT`) | **BRT**, the hour the opening broadcast fires. The row it writes is UTC (CLAUDE.md's clocks). Separate from the date on purpose: the date is copy, the hour belongs to the sweep |
+| `FOUNDERS_OPENING_LINK` | no | `APP_BASE_URL` | `{{link_acesso}}` in `founders-opening` on **both** channels. Wrong here means every seated founder receives a link that goes nowhere, so `preview_founders_opening.py` prints the rendered body it produces |
+
+### Rehearsing the 17/10 opening, and verifying it afterwards (E5)
+
+```bash
+python worker/scripts/preview_founders_opening.py            # who 17/10 reaches, and who it does not
+python worker/scripts/preview_founders_opening.py --render   # and the message bodies
+```
+
+Read-only — it sets `default_transaction_read_only`, **asserts the guard took**
+and constructs no transport — so it is safe against production, which is the
+only place the answer is true. It is **not** the same thing as either of the two
+dry runs that already existed: `schedule_founders_opening.py` without `--commit`
+rehearses the *scheduling*, and `WHATSAPP_DELIVERY` unset would rehearse a send
+that is now switched on in production, i.e. would send every seated founder a
+real message early.
+
+It runs the same `whatsapp.check_gates` / `email.check_gates` the send runs, so
+the rehearsal cannot drift from the performance.
+`test_the_preview_says_exactly_what_the_send_then_does` asserts, **for
+WhatsApp**, that the reason the preview predicts is the reason the delivery log
+then records, over five gate states; for **e-mail** the two share
+`check_gates` by construction and the gate states are covered by
+`test_integration_email.py`, but no test runs an e-mail preview against an
+e-mail send. Card **E25**.
+
+**The verdict includes the kill switch**, which it did not until 2026-10-09.
+`would_send` means *this founder receives it*; `builds` means *the message is
+ready*, which is all a dry run can prove; `delivery_off` is the word when a
+channel is built and its switch is not `send`. `WHATSAPP_DELIVERY` and
+`EMAIL_DELIVERY` are separate variables, so each channel is judged against its
+own — a channel reporting `would_send` with its switch unset is exactly how a
+rehearsal becomes worse than none.
+
+Run it **again after the broadcast** and it is the per-recipient verification
+the paragraph above asks for: the already-sent gate matches `whatsapp.sent` /
+`email.sent` alone, never `dry_run`, so `already_sent` is a founder the message
+reached and `would_send` is one it did not — whatever the `jobs` row says.
+
+**Whose environment the report describes.** The database half is true of
+production because it reads production's tables. The environment half is not:
+both switches, `FOUNDERS_OPENING_DATE` and `FOUNDERS_OPENING_LINK` are read from
+the process running the script, so from a laptop they describe the laptop — and
+`would_send` means *would this founder receive it if the worker had my
+environment*. The deployed worker's real values are recorded by
+`opening_broadcast_check` and printed on `/admin` (E20). The script says so in
+its own output rather than leaving the reader to work it out.
+
+### Watching the dated row (E20)
+
+`opening_broadcast_check` runs twice a day, 09:00 and 15:00 BRT — three hours
+before the broadcast and three hours after — and writes one `events` row
+saying whether the dated `jobs` row is queued, for the right instant, and still
+claimable — **and both kill switches as the worker itself sees them**, which no
+other surface can report. A perfect row with a dead switch delivers nothing, so
+it is a second dimension on the card rather than a seventh state: one is fixed
+with a command, the other with an environment variable. A **third** dimension beside
+them: the worker's effective opening date against `docs/product.json`, because
+`FOUNDERS_OPENING_DATE` is read by the worker and by nothing else, so a stale
+value there has the scheduling script and the check agreeing with each other and
+wrong together.
+
+**Two `ScheduleEntry` rows of one kind, which needed a scheduler fix.**
+`Scheduler._due` was keyed by `kind`, so these two collapsed into one slot: the
+09:00 run never fired and both entries went off together at 15:00. It is keyed
+by position now, and `test_two_entries_of_one_kind_each_keep_their_own_hour`
+walks a clock across two days and asserts the BRT hours of the ticks that
+actually enqueued. If you add a second entry for an existing kind, that test is
+what protects you.
+ `/admin`'s *Disparo da abertura* card reads it; a bad answer is also
+an `error` log line. It never re-queues anything: that is a person running
+`schedule_founders_opening.py --commit`, because enqueuing the broadcast sends
+real messages to real founders.
 
 ### Cloudflare blocks default HTTP clients
 

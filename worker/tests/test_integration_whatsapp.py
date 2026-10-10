@@ -24,7 +24,7 @@ import httpx
 import psycopg
 import pytest
 
-from licitaqui import breaker, email, evolution, queue, whatsapp
+from licitaqui import breaker, email, evolution, queue, resend, whatsapp
 from licitaqui.consumer import Consumer
 from licitaqui.evolution import DELIVERY_SEND, DELIVERY_VAR, EvolutionClient
 from licitaqui.queue import Job
@@ -554,14 +554,44 @@ def test_the_waitlist_payload_also_runs(e2_conn: psycopg.Connection) -> None:
 # (seat between 1 and 48)` constraint the way `whatsapp` or `email` can.
 
 
-def insert_seated_founder(conn: psycopg.Connection, label: str, seat: int) -> int:
+def insert_seated_founder(
+    conn: psycopg.Connection,
+    label: str,
+    seat: int,
+    *,
+    consent: bool = True,
+    number: str | None = None,
+) -> int:
+    """One **seated** founder. See the module docstring on why seats are rare.
+
+    ``consent`` and ``number`` exist for the preview tests, which need a seated
+    founder in each gate state; every other caller takes the defaults and gets
+    exactly what it got before they were added.
+    """
     row = conn.execute(
         "insert into founders_list (name, email, whatsapp, contact_consent, seat)"
-        " values (%s, %s, %s, true, %s) returning id",
-        (FOUNDER_NAME, e2_email(label), e2_whatsapp(abs(hash(label)) % 1000), seat),
+        " values (%s, %s, %s, %s, %s) returning id",
+        (
+            FOUNDER_NAME,
+            e2_email(label),
+            e2_whatsapp(abs(hash(label)) % 1000) if number is None else number,
+            consent,
+            seat,
+        ),
     ).fetchone()
     assert row is not None
     return int(row[0])
+
+
+def release_seat(conn: psycopg.Connection, founders_list_id: int) -> None:
+    """Give the seat back without deleting the row.
+
+    There are only 48 seats and they are global (module docstring), so a test
+    that needs several gate states previewed must not hold several at once.
+    The row stays so `e2_clean_dsn`'s id-scoped teardown can still find its
+    events and jobs; only the scarce, globally unique column is freed.
+    """
+    conn.execute("update founders_list set seat = null where id = %s", (founders_list_id,))
 
 
 def broadcast_test_key(label: str) -> str:
@@ -604,7 +634,7 @@ def test_the_broadcast_enqueues_the_opening_email_beside_the_whatsapp(
 ) -> None:
     """**E12.** `email/founders-opening.md`'s front matter said "Pairs with
     whatsapp/founders-opening" while nothing paired them: the sweep fanned out
-    WhatsApp only. On 08/10 the WhatsApp message would have shipped and the
+    WhatsApp only. On the day the WhatsApp message would have shipped and the
     e-mail carrying the identical promise would not — silently, to people whose
     consent box named *both* channels.
 
@@ -754,3 +784,396 @@ def test_the_opening_message_renders_with_the_access_link(
     assert "chegou a hora" in body["text"]
     assert whatsapp.opening_link() in body["text"]
     assert body["text"].endswith("Para não receber mais mensagens, responda SAIR.")
+
+
+# -- the dry run of the whole send (E5) --------------------------------------
+#
+# E5's second acceptance criterion: *"a dry run of the whole send is possible
+# before the date"*. The risk these tests exist for is not that the preview
+# crashes — it is that the preview and the real send **disagree**, which is the
+# only way a rehearsal is worse than none: it would say the opening is fine
+# and the opening
+# would not be. So the first test below does not check the preview against a
+# list of expected strings; it checks it against what the send then actually
+# records, founder by founder, through the real consumer path.
+
+
+#: One seat, borrowed and released per case. See `release_seat`.
+PREVIEW_SEAT = 44
+
+
+def preview_for(
+    rows: list[whatsapp.OpeningPreview], founders_list_id: int
+) -> whatsapp.ChannelPreview:
+    """This founder's WhatsApp line out of a preview of the whole seat list.
+
+    Scoped by id rather than by position: `preview_opening` reads **every**
+    seated founder in the database, which in a shared test database includes
+    rows a concurrent run of this suite owns.
+    """
+    for preview in rows:
+        if preview.founders_list_id == founders_list_id:
+            return next(c for c in preview.channels if c.channel == whatsapp.CHANNEL)
+    raise AssertionError(f"founder {founders_list_id} is seated and not in the preview")
+
+
+#: Each case: a label, how the founder's row is built, and what the preview
+#: must predict. `invalid_number` is the one the gate chain cannot see on its
+#: own — the shape is checked inside the transport — so it is the case that
+#: would silently read `would_send` before the day and deliver nothing on it.
+#:
+#: The fourth element is the **event name** the send must record, and it is
+#: pinned rather than left loose on purpose: `invalid_number` is refused by the
+#: transport, so it lands as `whatsapp.failed` — the send tried — while every
+#: gate refusal is `whatsapp.skipped`. That distinction is the reason the shape
+#: check was deliberately kept *out* of `check_gates`, and accepting either
+#: name here would let the next person move it in and silently rename an event
+#: on a production-proven path with a green suite.
+PREVIEW_CASES: tuple[tuple[str, dict[str, Any], str | None, str], ...] = (
+    ("preview-ok", {}, None, whatsapp.EVENT_SENT),
+    ("preview-no-consent", {"consent": False}, whatsapp.SKIP_NO_CONSENT, whatsapp.EVENT_SKIPPED),
+    ("preview-no-number", {"number": ""}, whatsapp.SKIP_NO_NUMBER, whatsapp.EVENT_SKIPPED),
+    (
+        "preview-bad-number",
+        {"number": "+55 11 9999"},
+        whatsapp.SKIP_INVALID_NUMBER,
+        whatsapp.EVENT_FAILED,
+    ),
+    ("preview-optout", {}, whatsapp.SKIP_OPTED_OUT, whatsapp.EVENT_SKIPPED),
+)
+
+
+@pytest.mark.parametrize(("label", "row", "expected", "event"), PREVIEW_CASES)
+def test_the_preview_says_exactly_what_the_send_then_does(
+    e2_conn: psycopg.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    label: str,
+    row: dict[str, Any],
+    expected: str | None,
+    event: str,
+) -> None:
+    """The anti-drift test, and the reason `check_gates` is a function.
+
+    A rehearsal that disagrees with the performance is worse than no rehearsal:
+    it would report the opening healthy and it would not be. So the founder is put
+    in one gate state, the preview is asked, and then the **real job** runs
+    through the real consumer — and the reason the preview gave must be the
+    reason the delivery log then records.
+
+    Parametrised rather than looped so each case holds **one** seat at a time
+    (module docstring; there are only 48 and they are global), and so a failure
+    names the state that broke rather than the whole set.
+
+    `DELIVERY_VAR` is on with an `httpx.MockTransport` client, never the
+    network: with the kill switch off `send_text` returns a dry run *before*
+    normalising the number, so `invalid_number` — the case this parametrisation
+    exists for — would never be reached and the test would pass on a blind spot.
+
+    The seat is released between the preview and the send, so the two do read
+    the row in different states. That is deliberate and immaterial: the seat is
+    not one of the gates, and `numero_vaga` reaches the message from the job
+    payload, which is where F1 puts it.
+    """
+    monkeypatch.setenv(DELIVERY_VAR, DELIVERY_SEND)
+    founder = insert_seated_founder(e2_conn, label, seat=PREVIEW_SEAT, **row)
+    if expected == whatsapp.SKIP_OPTED_OUT:
+        whatsapp.record_optout(e2_conn, founder)
+
+    predicted = preview_for(whatsapp.preview_opening(e2_conn), founder)
+    assert predicted.reason == expected
+    release_seat(e2_conn, founder)
+
+    client, seen = mock_client()
+    delivery = whatsapp.send(
+        e2_conn,
+        founders_list_id=founder,
+        template=whatsapp.OPENING_TEMPLATE,
+        payload={"numero_vaga": PREVIEW_SEAT},
+        client=client,
+        sleep=lambda _s: None,
+    )
+
+    logged = [
+        (name, props.get("reason"))
+        for name, props in log_rows(e2_conn, founder)
+        if name != "whatsapp.optout"
+    ]
+    # The **reason** matching the rehearsal is the promise; the **event name**
+    # is pinned beside it so the skipped/failed split cannot drift (see
+    # `PREVIEW_CASES`).
+    assert logged == [(event, expected)]
+    if expected is None:
+        assert delivery.outcome == "sent"
+        assert seen, "the message never reached the transport"
+    else:
+        assert not seen, "a refused founder still reached the transport"
+
+
+def _footprint(conn: psycopg.Connection, founders_list_id: int) -> tuple[int, int]:
+    """How many delivery rows and queued jobs this founder has.
+
+    Scoped to the founder rather than counting the tables: a concurrent run of
+    this suite writes its own rows throughout, and a global count would make
+    this test fail for somebody else's work.
+    """
+    events = conn.execute(
+        "select count(*) from events where props ->> 'founders_list_id' = %s",
+        (str(founders_list_id),),
+    ).fetchone()
+    jobs = conn.execute(
+        "select count(*) from jobs where split_part(key, ':', 2) = %s",
+        (str(founders_list_id),),
+    ).fetchone()
+    assert events is not None and jobs is not None
+    return int(events[0]), int(jobs[0])
+
+
+def test_the_preview_writes_nothing_and_opens_no_socket(
+    e2_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """It is safe to run against production, which is the only place the
+    answer is true. The connection is already open, so the queries below still
+    work while *any new* connection raises."""
+    founder = insert_seated_founder(e2_conn, "preview-readonly", seat=PREVIEW_SEAT)
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the preview opened a network connection")
+
+    monkeypatch.setattr(socket.socket, "connect", forbidden)
+    monkeypatch.setattr(socket.socket, "connect_ex", forbidden)
+
+    before = _footprint(e2_conn, founder)
+    rows = whatsapp.preview_opening(e2_conn)
+    line = preview_for(rows, founder)
+    assert _footprint(e2_conn, founder) == before
+
+    # **This assertion is the review's finding, turned the right way round.**
+    # `conftest._whatsapp_delivery_off` / `_email_delivery_off` are autouse and
+    # suite-wide, so *every* test in this file runs with both kill switches
+    # unset — the one configuration in which the real send delivers nothing. It
+    # used to assert `would_send is True` here, which is precisely the lie: the
+    # fixture that exists to stop a test sending was also hiding the fact that
+    # the preview could not tell. Written this way, that same fixture is what
+    # proves the switch reaches the verdict.
+    assert line.builds is True, "the message is ready; a dry run proves that much"
+    assert line.would_send is False, "and with the switch unset nobody receives it"
+    assert line.outcome == "delivery_off"
+
+
+def test_the_preview_renders_the_approved_copy_on_both_channels(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """A body that cannot render is the failure this rehearsal exists to find
+    **before** the date — it is how the footer's three unbound placeholders
+    reached production on 2026-09-26. Both channels, because the sweep queues
+    both (E12): previewing half of a two-channel send is how the e-mail came to
+    be missing in the first place."""
+    founder = insert_seated_founder(e2_conn, "preview-render", seat=PREVIEW_SEAT)
+
+    preview = next(
+        row for row in whatsapp.preview_opening(e2_conn) if row.founders_list_id == founder
+    )
+    channels = {channel.channel: channel for channel in preview.channels}
+    assert set(channels) == {whatsapp.CHANNEL, email.CHANNEL}
+
+    for channel in channels.values():
+        assert channel.render_error is None, channel.render_error
+        # `builds`, not `would_send`: this test is about the **body**, and the
+        # kill switches are unset suite-wide (`conftest`), which is a fact about
+        # delivery rather than about whether the copy renders. Conflating the
+        # two is what let the preview claim `would_send` with both switches off.
+        assert channel.builds is True
+        assert channel.body is not None
+        assert whatsapp.opening_link() in channel.body
+
+    whatsapp_body = channels[whatsapp.CHANNEL].body or ""
+    assert "chegou a hora" in whatsapp_body
+    assert whatsapp_body.endswith("Para não receber mais mensagens, responda SAIR.")
+
+
+def test_each_channel_is_judged_against_its_own_kill_switch(
+    e2_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`WHATSAPP_DELIVERY` and `EMAIL_DELIVERY` are **two** variables.
+
+    So half the promise can go dark on its own, and the rehearsal has to be able
+    to say which half. This is not a hypothetical misconfiguration:
+    `delivery_mode()` answers `send` for the exact string `"send"` and
+    `dry_run` for everything else, **unset included**, and getting the deployed
+    worker's e-mail variables right took three fixes in one morning on 2026-09-26
+    (`docs/CLAIMS.md`, E6) — none of them code.
+
+    The founder here passes every gate on both channels, so the *only* thing
+    separating the two outcomes is the switch. Run with WhatsApp on and e-mail
+    off, then the reverse, so neither direction can pass by accident.
+    """
+    founder = insert_seated_founder(e2_conn, "preview-switches", seat=PREVIEW_SEAT)
+
+    def outcomes() -> dict[str, str]:
+        preview = next(
+            row for row in whatsapp.preview_opening(e2_conn) if row.founders_list_id == founder
+        )
+        return {one.channel: one.outcome for one in preview.channels}
+
+    monkeypatch.setenv(DELIVERY_VAR, DELIVERY_SEND)
+    monkeypatch.delenv(resend.DELIVERY_VAR, raising=False)
+    assert outcomes() == {whatsapp.CHANNEL: "would_send", email.CHANNEL: "delivery_off"}
+
+    monkeypatch.delenv(DELIVERY_VAR, raising=False)
+    monkeypatch.setenv(resend.DELIVERY_VAR, resend.DELIVERY_SEND)
+    assert outcomes() == {whatsapp.CHANNEL: "delivery_off", email.CHANNEL: "would_send"}
+
+    # And `reached` follows the real answer rather than the gates: with one
+    # channel live this founder is still kept the promise, and with neither they
+    # are not — which is the sentence the summary line prints.
+    monkeypatch.delenv(resend.DELIVERY_VAR, raising=False)
+    both_off = next(
+        row for row in whatsapp.preview_opening(e2_conn) if row.founders_list_id == founder
+    )
+    assert both_off.reached is False
+    assert all(one.builds for one in both_off.channels), "nothing is wrong with the messages"
+
+
+def test_run_again_afterwards_the_preview_is_the_per_recipient_verification(
+    e2_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E5's first criterion: the opening verified *"by a `whatsapp.sent` event per
+    recipient rather than by a job status"*.
+
+    The already-sent gate is that read. So the same command that rehearses the
+    send before the date answers it after: a founder the message reached turns
+    `already_sent`, and one it missed still reads `would_send` — per channel,
+    and whatever `jobs` says about the run. Both halves are asserted here,
+    because a gate that answered `already_sent` for everybody would look like
+    a clean opening and be a broken query.
+    """
+    # **Both** switches, because they are two variables and the preview now
+    # reports each channel against its own. Safe: the preview constructs no
+    # transport and `email.send` is never called here.
+    monkeypatch.setenv(DELIVERY_VAR, DELIVERY_SEND)
+    monkeypatch.setenv(resend.DELIVERY_VAR, resend.DELIVERY_SEND)
+    founder = insert_seated_founder(e2_conn, "preview-verify", seat=PREVIEW_SEAT)
+    client, _ = mock_client()
+
+    before = whatsapp.preview_opening(e2_conn)
+    assert preview_for(before, founder).outcome == "would_send"
+
+    delivery = whatsapp.send(
+        e2_conn,
+        founders_list_id=founder,
+        template=whatsapp.OPENING_TEMPLATE,
+        payload={"numero_vaga": 44},
+        client=client,
+        sleep=lambda _s: None,
+    )
+    assert delivery.outcome == "sent"
+
+    after = next(
+        row for row in whatsapp.preview_opening(e2_conn) if row.founders_list_id == founder
+    )
+    channels = {channel.channel: channel.outcome for channel in after.channels}
+    assert channels[whatsapp.CHANNEL] == whatsapp.SKIP_ALREADY_SENT
+    # The e-mail is a separate delivery and a separate event, so it must not
+    # have been marked reached by the WhatsApp one (E12's whole defect).
+    assert channels[email.CHANNEL] == "would_send"
+
+
+def test_a_waitlisted_founder_is_absent_from_the_preview_and_counted_instead(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """The same boundary the broadcast draws, so the rehearsal cannot report a
+    reach the day will not deliver — and the number nobody has decided what to
+    do with (card E5)."""
+    waitlisted = insert_founder(e2_conn, "preview-waitlisted")
+
+    ids = {row.founders_list_id for row in whatsapp.preview_opening(e2_conn)}
+    assert waitlisted not in ids
+
+    # `waitlisted_count` is global by design — it is the figure an operator
+    # reads. So it is asserted against an independent recount taken from the
+    # same connection rather than against `before + 1`: a concurrent run of
+    # this suite inserts waitlisted founders throughout, and a `+ 1` here
+    # would go red for somebody else's work.
+    counted = whatsapp.waitlisted_count(e2_conn)
+    recount = e2_conn.execute("select count(*) from founders_list where seat is null").fetchone()
+    assert recount is not None
+    assert counted == int(recount[0])
+    assert counted >= 1, "the founder inserted above is waitlisted and must be in the count"
+
+
+def test_the_preview_reports_whether_the_dated_run_is_actually_queued(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """The first thing the script prints, and the one that would have caught
+    "nobody ran the scheduling script" on 07/10 rather than on the 8th."""
+    key = broadcast_test_key("preview-schedule")
+    assert whatsapp.scheduled_broadcast(e2_conn, key=key) is None
+
+    due = datetime.now(UTC) + timedelta(days=1)
+    job_id = whatsapp.enqueue_opening_broadcast(e2_conn, run_after=due, key=key)
+
+    row = whatsapp.scheduled_broadcast(e2_conn, key=key)
+    assert row is not None
+    assert row[0] == job_id
+    assert row[1] == "queued"
+    # `jobs.run_after` is UTC, as the database stores it (CLAUDE.md's clocks).
+    assert row[2].tzinfo is not None
+    assert abs((row[2] - due).total_seconds()) < 1
+
+
+def test_a_live_broadcast_row_wins_over_a_dead_one_under_the_same_key(
+    e2_conn: psycopg.Connection,
+) -> None:
+    """`jobs_dedupe` is unique on (kind, key) only `where status in
+    ('queued','running')`, so once a sweep has **failed** a second row under
+    the same key is allowed — which is exactly what happens when somebody
+    re-runs the scheduling script after a failure. The rehearsal's first line
+    must then say `queued`, not report the corpse.
+    """
+    key = broadcast_test_key("preview-two-rows")
+    dead = whatsapp.enqueue_opening_broadcast(e2_conn, run_after=datetime.now(UTC), key=key)
+    e2_conn.execute("update jobs set status = 'failed' where id = %s", (dead,))
+
+    due = datetime.now(UTC) + timedelta(days=1)
+    live = whatsapp.enqueue_opening_broadcast(e2_conn, run_after=due, key=key)
+    assert live is not None and live != dead, "the second row was deduped away; test is void"
+
+    row = whatsapp.scheduled_broadcast(e2_conn, key=key)
+    assert row is not None
+    assert row[0] == live
+    assert row[1] == "queued"
+
+
+def test_each_refusal_is_reported_at_the_level_send_chose_for_it(
+    e2_conn: psycopg.Connection, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`SKIP_LEVELS` is only worth having if `send()` reads it.
+
+    Asserting the dict's contents would pass with the `level=` argument
+    deleted, and every data fault would silently drop from `warning` to `info`
+    with nothing to notice. So this goes through `send()`.
+
+    All three refusals reachable without a prior delivery are covered, and
+    `no_consent` is not optional among them: it is the **LGPD gate** (§12), so
+    a queued job for somebody who never consented is the one refusal that must
+    never be quiet. The other two: a row that asks for messages and carries no
+    number is somebody's mistake and must be loud; a founder who wrote SAIR is
+    the system working and must not be.
+    """
+    no_consent = insert_founder(e2_conn, "levels-no-consent", consent=False)
+    no_number = insert_founder(e2_conn, "levels-no-number", number="")
+    opted_out = insert_founder(e2_conn, "levels-optout")
+    whatsapp.record_optout(e2_conn, opted_out)
+
+    with caplog.at_level("INFO", logger="licitaqui.whatsapp"):
+        for founder in (no_consent, no_number, opted_out):
+            whatsapp.send(e2_conn, founders_list_id=founder, template="founders-welcome")
+
+    levels = {
+        record.getMessage(): record.levelname
+        for record in caplog.records
+        if record.getMessage().startswith("whatsapp send skipped")
+    }
+    assert levels[f"whatsapp send skipped: {whatsapp.SKIP_NO_CONSENT}"] == "WARNING"
+    assert levels[f"whatsapp send skipped: {whatsapp.SKIP_NO_NUMBER}"] == "WARNING"
+    assert levels[f"whatsapp send skipped: {whatsapp.SKIP_OPTED_OUT}"] == "INFO"
