@@ -269,17 +269,38 @@ export class AsaasClient {
          * boleto subscriber could not be refunded through the API at all —
          * only by a manual bank transfer, every time.
          *
-         * **And Pix cannot rescue it here.** On an Asaas *subscription* Pix is
-         * not a method of its own: you ask for boleto and the boleto carries a
-         * Pix QR, which is recorded as `BOLETO` and is therefore equally
-         * unrefundable. A standalone Pix *charge* is refundable — that stays
-         * available to any future one-off, just not to a subscription.
+         * **Pix cannot rescue it, and the reason is Asaas's own rule — not
+         * the one first written here.** The first version of this comment said
+         * Pix was merely the boleto's QR code and always recorded as `BOLETO`.
+         * That is **false**, and it was corrected by measurement on the same
+         * day: `POST /v3/subscriptions` with `billingType: 'PIX'` is accepted
+         * and the charge it generates comes back `billingType: PIX`, which
+         * Asaas's own refusal message lists as refundable. (A boleto *also*
+         * serves a `pixQrCode`, which is what the claim was over-generalised
+         * from.) What is true is narrower and decisive:
          *
-         * `CREDIT_CARD` is the only value that is both refundable and actually
-         * recurring: the card is on file, so a renewal needs nothing from the
-         * subscriber. The cost is that `billing.subscribe.methods` ("Você pode
-         * pagar com Pix ou cartão") is now false — Sci's sentence to rewrite
-         * under legal brief §5, tracked in `docs/CLAIMS.md`.
+         *   - A Pix subscription is an **invoice per cycle**, not a stored
+         *     credential, so every renewal needs the subscriber to act.
+         *   - Asaas's checkout refuses it outright for anything recurring:
+         *     *"O método de pagamento CREDIT_CARD é o único método de
+         *     pagamento permitido para operações RECURRENT"* and *"O tipo de
+         *     cobrança DETACHED é obrigatório para o método de pagamento
+         *     PIX"* — measured against `POST /v3/checkouts` with
+         *     `billingTypes: ['PIX','CREDIT_CARD'], chargeTypes: ['RECURRENT']`.
+         *
+         * So "Pix **and** card" is not a set a subscription can offer: the
+         * field holds one value, and only one of them renews unattended.
+         * `CREDIT_CARD` is that one, and it is refundable. Measured, not
+         * inferred (CLAUDE.md §4d): the payload below — no `creditCard`,
+         * `creditCardToken` or `creditCardHolderInfo` — returned `200`, an
+         * `ACTIVE` subscription and one `PENDING`/`CREDIT_CARD` charge with an
+         * `invoiceUrl`, so the card is collected on Asaas's hosted page and
+         * never reaches us.
+         *
+         * The cost is that `billing.subscribe.methods` ("Você pode pagar com
+         * Pix ou cartão") is now false, along with two more live sentences and
+         * a term of the contract — Sci's to rewrite under legal brief §5, all
+         * four tracked in `docs/CLAIMS.md` under F21.
          */
         billingType: 'CREDIT_CARD',
         value: request.value,

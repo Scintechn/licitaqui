@@ -99,10 +99,14 @@ export async function startCheckout(
 
   const existing = await readSubscription(userId, database)
   if (existing.state === 'unavailable') {
-    // Silent until 2026-10-10, and it is the path most likely to fire: it
-    // wraps `readSubscription`, whose own failure is a cold or slow database.
-    // `:199` logged a provider rejection and this logged nothing, so an outage
-    // we caused was indistinguishable from one Asaas caused.
+    // One line per layer, deliberately, and the layer below is **not**
+    // silent: `subscription.ts` already logs `billing: subscriptions
+    // unreadable (<code>)` in the catch that produces `state: 'unavailable'`.
+    // So for a real database fault this is the second message, naming the
+    // caller that gave up rather than the query that failed. It earns its
+    // keep on the other branch — `reason: 'cooldown'`, the open circuit
+    // breaker, which logs nothing anywhere else and is the one case where a
+    // checkout refuses with no trace at all.
     console.error(`billing: checkout failed (database:${existing.reason})`)
     return { outcome: 'failed', reason: `database:${existing.reason}`, retryable: true }
   }
