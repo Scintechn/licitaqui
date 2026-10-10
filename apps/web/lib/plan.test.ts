@@ -121,7 +121,7 @@ describe('the upper tables keep their status', () => {
 
   it.each([
     ['| Milestone | Status | Date | Ships | Exit criteria |', 9],
-    ['| # | Status | Next | Owner | Why it is next | Unblocks |', 7],
+    ['| # | Status | Next | Owner | Why it is next | Unblocks |', 8],
   ])('%s', (header, expected) => {
     const body = tableAfter(header)
     expect(body).toHaveLength(expected)

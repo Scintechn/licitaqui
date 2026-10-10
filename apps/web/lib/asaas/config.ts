@@ -133,7 +133,7 @@ export const INVOICE_HOST = 'asaas.com'
  * `subscriptions.checkout_url`, and that column is both `redirect()`ed to
  * (`conta/plano/actions.ts`) and rendered as the pay-now `href`
  * (`plan-view.tsx`) — an open redirect aimed at the one screen where somebody
- * is about to type card or Pix details. Review found it; no test supplied a
+ * is about to type card details. Review found it; no test supplied a
  * hostile URL, so the suite was green.
  *
  * Checked here rather than at each site so the two writers (`checkout.ts`'s

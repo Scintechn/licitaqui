@@ -23,7 +23,7 @@ import {
  * | `GET /v3/customers?externalReference=…` | read-before-write: Asaas has **no idempotency-key header** and its own docs tell integrators to query before retrying |
  * | `POST /v3/customers` | with `notificationDisabled: true` — spec §9 |
  * | `GET /v3/subscriptions?externalReference=…` | the same read-before-write, one level up |
- * | `POST /v3/subscriptions` | monthly cycle, `billingType: UNDEFINED` so the payer picks Pix or card |
+ * | `POST /v3/subscriptions` | monthly cycle, `billingType: CREDIT_CARD` — see below, boleto is not acceptable |
  * | `GET /v3/subscriptions/{id}/payments` | the **only** place a hosted-checkout URL exists: `invoiceUrl` on the first charge |
  * | `DELETE /v3/subscriptions/{id}` | the cancel that actually stops the money (D8) |
  *
@@ -255,10 +255,54 @@ export class AsaasClient {
     const body = await this.request('POST', '/subscriptions', {
       json: {
         customer: request.customer,
-        // The payer chooses Pix or card on the invoice page, which is what
-        // `billing.subscribe.methods` promises ("Você pode pagar com Pix ou
-        // cartão"). Naming one here would take the choice away.
-        billingType: 'UNDEFINED',
+        /*
+         * **Card only, decided by Sci on 2026-10-10 against a measured
+         * refusal.** This was `UNDEFINED`, whose comment claimed it let the
+         * payer pick "Pix or card". It does not: `UNDEFINED` offers **boleto**
+         * too, and the first sandbox subscription came back
+         * `billing_type: BOLETO`.
+         *
+         * That breaks a published promise. The terms carry a **7-day
+         * withdrawal (CDC art. 49)** and a **30-day guarantee**, and Asaas
+         * refuses to refund a boleto: *"Somente é possível estornar cobranças
+         * cuja a forma de pagamento seja cartão de crédito ou Pix."* So a
+         * boleto subscriber could not be refunded through the API at all —
+         * only by a manual bank transfer, every time.
+         *
+         * **Pix cannot rescue it, and the reason is Asaas's own rule — not
+         * the one first written here.** The first version of this comment said
+         * Pix was merely the boleto's QR code and always recorded as `BOLETO`.
+         * That is **false**, and it was corrected by measurement on the same
+         * day: `POST /v3/subscriptions` with `billingType: 'PIX'` is accepted
+         * and the charge it generates comes back `billingType: PIX`, which
+         * Asaas's own refusal message lists as refundable. (A boleto *also*
+         * serves a `pixQrCode`, which is what the claim was over-generalised
+         * from.) What is true is narrower and decisive:
+         *
+         *   - A Pix subscription is an **invoice per cycle**, not a stored
+         *     credential, so every renewal needs the subscriber to act.
+         *   - Asaas's checkout refuses it outright for anything recurring:
+         *     *"O método de pagamento CREDIT_CARD é o único método de
+         *     pagamento permitido para operações RECURRENT"* and *"O tipo de
+         *     cobrança DETACHED é obrigatório para o método de pagamento
+         *     PIX"* — measured against `POST /v3/checkouts` with
+         *     `billingTypes: ['PIX','CREDIT_CARD'], chargeTypes: ['RECURRENT']`.
+         *
+         * So "Pix **and** card" is not a set a subscription can offer: the
+         * field holds one value, and only one of them renews unattended.
+         * `CREDIT_CARD` is that one, and it is refundable. Measured, not
+         * inferred (CLAUDE.md §4d): the payload below — no `creditCard`,
+         * `creditCardToken` or `creditCardHolderInfo` — returned `200`, an
+         * `ACTIVE` subscription and one `PENDING`/`CREDIT_CARD` charge with an
+         * `invoiceUrl`, so the card is collected on Asaas's hosted page and
+         * never reaches us.
+         *
+         * The cost is that `billing.subscribe.methods` ("Você pode pagar com
+         * Pix ou cartão") is now false, along with two more live sentences and
+         * a term of the contract — Sci's to rewrite under legal brief §5, all
+         * four tracked in `docs/CLAIMS.md` under F21.
+         */
+        billingType: 'CREDIT_CARD',
         value: request.value,
         nextDueDate: request.nextDueDate,
         cycle: 'MONTHLY',
