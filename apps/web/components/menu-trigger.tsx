@@ -20,9 +20,43 @@ import { messages } from '@/lib/messages'
  *
  * `/conta` never had this button. That is how Sci found D20 — signed in, on
  * his own account page, with no way to reach his plan or his triagens.
+ *
+ * **`lg:hidden`, because the drawer is.** From `lg` the shell draws the rail
+ * and wraps the drawer in `lg:hidden` (`app-shell.tsx`), so on a desktop this
+ * button set `open` on a drawer that was never painted: a hamburger that did
+ * nothing (D85, Sci 2026-10-10). The expanded rail is the menu there. The
+ * *collapsed* rail is not — it draws only its expand toggle, which is **D77**,
+ * still open — but hiding this removes no way out of that state, because the
+ * button never opened anything above `lg`. If D77 is answered with "the drawer
+ * above `lg`", this class is the line that comes back off, for the collapsed
+ * case only. A viewport breakpoint is right here and not a container query: the
+ * question is whether the shell's rail exists, and the shell asks it with the
+ * same `lg`.
  */
 export function MenuTrigger() {
   const menu = useAppMenu()
   if (!menu) return null
-  return <AppBarAction icon="menu" label={messages.radar.nav.menu} onClick={menu.open} />
+  return <MenuButton onClick={menu.open} />
+}
+
+/**
+ * The hamburger itself, for a bar that is handed its opener as a prop —
+ * `radar-view.tsx`, which the Landing also draws with no shell around it.
+ *
+ * It lives here, beside `MenuTrigger`, so that `lg:hidden` is written once and
+ * next to the reason. That class asks the **window**, deliberately, and
+ * `radar-filters.test.tsx` forbids `radar-view.tsx` from asking the window
+ * anything above 720px — rightly, for its layout, which lives in a column the
+ * rail narrows. This is not layout in that column; it is whether the shell's
+ * drawer exists at all, and the shell decides that with the same `lg`.
+ */
+export function MenuButton({ onClick }: { onClick: () => void }) {
+  return (
+    <AppBarAction
+      icon="menu"
+      label={messages.radar.nav.menu}
+      onClick={onClick}
+      className="lg:hidden"
+    />
+  )
 }

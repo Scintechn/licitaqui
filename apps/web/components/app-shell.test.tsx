@@ -120,6 +120,25 @@ describe('the menu can actually be reached', () => {
     expect(html).toContain(messages.radar.nav.menu)
   })
 
+  it('hides the trigger from `lg`, because that is where the shell hides the drawer (D85)', () => {
+    // From `lg` the drawer is wrapped in `lg:hidden`, so a visible hamburger
+    // there set `open` on nothing. The two classes have to agree; this pins
+    // both halves, and the browser result is in
+    // `e2e/journeys/favourite-and-menu-everywhere.spec.ts`.
+    const html = renderToStaticMarkup(
+      <AppShell summary={summary()}>
+        <MenuTrigger />
+      </AppShell>,
+    )
+    const at = html.indexOf(`aria-label="${messages.radar.nav.menu}"`)
+    expect(at, 'the shell must render the trigger').toBeGreaterThan(-1)
+    const button = html.slice(html.lastIndexOf('<button', at), html.indexOf('>', at) + 1)
+    expect(button).toMatch(/class="[^"]*\blg:hidden\b/)
+    expect(html, 'the drawer the trigger opens is below `lg` only').toContain(
+      '<div class="lg:hidden">',
+    )
+  })
+
   it('renders no trigger outside a shell, so the Landing draws no dead button', () => {
     // The Landing puts `RadarView` in an example panel with no shell around
     // it. A hamburger there would open nothing at all.

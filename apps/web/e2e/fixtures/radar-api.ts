@@ -437,6 +437,17 @@ export async function installRadarApi(page: Page, world: WorldOptions): Promise<
       } satisfies TenderListResponse)
     }
 
+    // ── GET /api/tenders/:id/favorito — the bar's star asking its state ───
+    // Until D85 this fell into the POST branch below, so the star's first
+    // *read* toggled the mark: a tender screen opened marked whatever it was.
+    // Nothing caught it because no journey looked at the star on a tender
+    // screen. The real route reads only, and tells a visitor `false` rather
+    // than refusing — the refusal is reserved for the write.
+    if (path.endsWith('/favorito') && request.method() === 'GET') {
+      const id = tenderIdFrom(path, '/favorito')
+      return json(route, { state: 'ready', favourite: api.favourites?.has(id) ?? false })
+    }
+
     // ── POST /api/tenders/:id/favorito (D23) ──────────────────────────────
     if (path.endsWith('/favorito')) {
       await through('favourite', request.url())

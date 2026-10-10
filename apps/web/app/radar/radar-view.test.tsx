@@ -745,3 +745,20 @@ describe('the list grid', () => {
     expect(main, 'nor <main>, for the same reason').not.toContain('@container')
   })
 })
+
+describe('D85 · the hamburger is a phone control', () => {
+  /** The `<button>` whose accessible name is the menu's. */
+  function menuButton(html: string): string {
+    const name = `aria-label="${messages.radar.nav.menu}"`
+    const at = html.indexOf(name)
+    expect(at, 'the bar must draw the menu button when a handler exists').toBeGreaterThan(-1)
+    return html.slice(html.lastIndexOf('<button', at), html.indexOf('>', at) + 1)
+  }
+
+  it('hides from `lg`, where the shell draws the rail and never the drawer', () => {
+    // The mechanism only; that it is actually gone at 1280px and back at
+    // 1023px is `e2e/journeys/favourite-and-menu-everywhere.spec.ts` (§4c).
+    const button = menuButton(render({ onOpenMenu: () => {} }))
+    expect(button).toMatch(/class="[^"]*\blg:hidden\b/)
+  })
+})

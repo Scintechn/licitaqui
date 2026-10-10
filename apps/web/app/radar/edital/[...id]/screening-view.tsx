@@ -18,6 +18,7 @@ import { cn } from '@/lib/cn'
 import { accountHref } from '@/lib/routes'
 import { format, messages } from '@/lib/messages'
 import { priceHref, screeningHref, tenderHref, type RadarSearch } from '@/lib/radar/client'
+import { FavouriteButton } from './favourite-button'
 import { Files } from './opportunity-view'
 import type { ErrorCode, QuotaView, TenderDetail, VisitorView } from '@/lib/radar/contract'
 import { errorText } from '@/lib/radar/error-text'
@@ -533,13 +534,19 @@ export function ScreeningView({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      {/* `actions` holds only the menu here: this screen has no per-tender
-          control of its own. See the note in `opportunity-view.tsx` — D24
-          half 2, the menu that below `lg` disappeared on every tender screen. */}
+      {/* D85: the star is here too — reading the triagem is the moment
+          somebody validates an edital, and marking it used to mean going back
+          a screen. The menu is D24 half 2; see `opportunity-view.tsx`. */}
       <AppBar
         leading={<AppBarBack href={backHref}>{page.back}</AppBarBack>}
         title={page.title}
-        actions={<MenuTrigger />}
+        actions={
+          <>
+            {/* Gated on the tender for the reason in `price-view.tsx`. */}
+            {tender ? <FavouriteButton tenderId={tender.id} /> : null}
+            <MenuTrigger />
+          </>
+        }
       />
 
       <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3 px-gutter pb-10">
