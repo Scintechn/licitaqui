@@ -186,6 +186,34 @@ describe('the plan screen, with a live subscription', () => {
     expect(out).toContain(`R$ ${PLAN_PRICES.promocional},00`)
   })
 
+  it('names the charge that is coming, never the one that was just paid (F22)', () => {
+    /**
+     * **The surface F22 was found on.** The screen is faithful to its prop, so
+     * the defect was never here — `next_charge_on` held the day the
+     * subscription was *paid* and this sentence repeated it, telling a founder
+     * who had paid that morning that they were about to be charged again. What
+     * this pins is the join: the date in the sentence is the subscription's
+     * `nextChargeOn`, and a `lastPayment` of the same amount on the same day
+     * does not get into it. `lib/asaas/billing.db.test.ts` is where that
+     * column is proven to hold Asaas's `nextDueDate`.
+     */
+    const out = render({
+      subscription: {
+        ...ACTIVE,
+        nextChargeOn: '2026-11-10',
+        lastPayment: {
+          status: 'CONFIRMED',
+          amount: PLAN_PRICES.promocional.toFixed(2),
+          paidOn: '2026-10-10',
+          dueOn: '2026-10-10',
+        },
+      },
+      plan: 'promocional',
+    })
+    expect(out).toContain('Próxima cobrança em 10/11/2026')
+    expect(out).not.toContain('Próxima cobrança em 10/10/2026')
+  })
+
   it('offers the cancel control the terms of use promise by address', () => {
     const out = render({ subscription: ACTIVE })
     expect(out).toContain(billing.cancel.cta)
