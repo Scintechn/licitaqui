@@ -1,0 +1,66 @@
+-- 0016_profile_birth_date — the one column the simplified profile form needs
+-- and `0001_initial.sql` did not give it. Its own PR, per CLAUDE.md.
+--
+-- Sci's requirement, 2026-10-12: *"all user needs to inform their name, birth
+-- date, mobile number (BR or other country), Company/Business name
+-- (optional)"*.
+--
+--
+-- ## Why there is no `cpf` column, although Sci asked for one
+--
+-- The first version of this file added `users.cpf char(11)` too, because Asaas
+-- needs a `cpfCnpj` and Sci said *"one of them should be required"*. Then Sci
+-- ruled **(b)** on the same day — *a CNPJ stays required to use the Radar, a
+-- CPF satisfies Asaas only* — and that ruling makes the column almost
+-- unreachable: if a CNPJ is required to **use** the product, Asaas can always
+-- be handed the CNPJ, and a CPF is only needed where the **payer is a natural
+-- person** while the CNPJ being matched is the business.
+--
+-- **Measured before deciding, read-only against production on 2026-10-12:**
+-- `founders_list` holds 1 row and it has a CNPJ; `users` holds 4 and 3 have
+-- one. **No CPF-only account exists.** So the column would have been written
+-- by nobody — `tenders.short_title`'s shape, which CLAUDE.md names as the
+-- defect this repo keeps finding — while costing a validator, a checkout
+-- branch, and an LGPD disclosure for a datum we would not use.
+--
+-- It is **F32**, blocked on a real CPF-only payer appearing, and the day one
+-- does the column is one `alter table` away. Dropping it also halves the
+-- privacy-policy amendment F31 waits on.
+--
+--
+-- ## Why there is no NOT NULL here, on this column or on `name`
+--
+-- The free Básico tier asks for none of this. A constraint would make a
+-- sign-up row unwritable — `lib/auth/adapter.ts` inserts
+-- `(email, name, plan, privacy_consent_at)` with `user.name ?? null`, because
+-- the Resend magic-link provider supplies no name — so a NOT NULL would fail
+-- inside `createUser` at **sign-in**, not at the checkout. Against
+-- production's existing free rows it would also have failed **on apply**. The
+-- gate belongs where the data is actually needed, which is the checkout
+-- (`lib/asaas/checkout.ts`, today `needs_company`). **F29** is the card for
+-- the sentence a nameless subscriber reads, and it is Sci's.
+--
+--
+-- ## Nothing may write this column yet
+--
+-- `docs/legal/politica-de-privacidade.md` does not mention a date of birth —
+-- not in §4(b)'s list, not in §2's summary table, not in §5's finalidade and
+-- base-legal table. Collecting an undisclosed personal datum is an LGPD
+-- problem, **the amendment is Sci's** (legal brief §5), it is tracked in
+-- `docs/CLAIMS.md` and `TO_VALIDATE` **I**, and this migration lands before
+-- the form precisely so that the column exists and stays empty until the
+-- sentence ships.
+--
+-- The purpose is already stated in that policy — *"o serviço não é destinado
+-- a menores de 18 anos. Se identificarmos conta criada por menor de idade,
+-- ela é encerrada e os dados são apagados."* That 18+ rule is what justifies
+-- the field under data minimisation; collected for anything else it would not
+-- be, which is why there is no other column here.
+--
+-- **F31** builds the form that fills it — a column nothing writes yet, carded
+-- in the same PR, per CLAUDE.md.
+
+alter table users add column if not exists birth_date date;
+
+comment on column users.birth_date is
+  'Collected only to apply the 18+ rule the privacy policy states. Never logged (CLAUDE.md, spec §12).';
