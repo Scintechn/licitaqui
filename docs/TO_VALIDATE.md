@@ -310,6 +310,29 @@ Correct that they cannot be switched off, but the list is short by three: the 3-
 payment-failed notice and the suspension notice are all ours now (brief §2, F4). A user reading
 this will not expect them.
 
+## G. `consent.whatsapp` does not mention billing, and from 17/10 it carries billing — found 2026-10-12
+
+`consent.whatsapp` — *"Autorizo a LicitaQui a me enviar mensagens no WhatsApp sobre **a minha vaga
+de fundador e sobre editais**. Posso parar quando quiser respondendo SAIR."*
+
+Two things made this matter on 2026-10-12. Sci ruled that **Pix is an accepted payment method**
+(F21) and that the charge notice is **ours, and may go by WhatsApp** (F24) — and a Pix subscription
+bills by invoice every cycle, so that notice is the only thing standing between a subscriber and an
+overdue account.
+
+**The right to send it is not in doubt**, and that is the part worth being precise about. Terms §7
+already says *"Se você tiver conectado WhatsApp ou Telegram, avisamos também por lá"*, and §12 makes
+e-mail the official channel for contractual notices. So the contract authorises the WhatsApp copy of
+the charge notice without any amendment.
+
+**The consent sentence is what is narrower than the contract.** It names the founder seat and
+editais; a reader ticking it would not expect a payment reminder, and `notifications.billingHelp`
+tells them the billing messages cannot be switched off at all. Those two sentences describe
+different products.
+
+This is a copy decision and the wording is yours (brief §5). The same resolution should settle item
+**C**, which is the same list being short.
+
 ## D. Suspension at 10 days is promised in the contract and mentioned nowhere in the product
 
 Terms §7 and the FAQ both state it. No string in the catalogue does — there is no suspension
