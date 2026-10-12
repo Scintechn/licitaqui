@@ -110,6 +110,25 @@ BREAKER_NAME = "evolution"
 #: "stop on 401/402/404").
 PERMANENT_STATUSES = frozenset({400, 401, 402, 403, 404, 422})
 
+#: Statuses that mean **"Evolution answered and will not take *this payload*"**,
+#: which is the only case :meth:`EvolutionClient.send_url_button` falls back on
+#: and the only one :meth:`EvolutionClient.post_buttons` keeps from the breaker.
+#:
+#: **It is a strict subset of :data:`PERMANENT_STATUSES`, and review proved why
+#: that matters.** The first version used "not retryable", which includes 401,
+#: 402, 403 and 404 — and a **403 with Cloudflare's `1010`** is Cloudflare
+#: refusing the client outright, every request, which is the total block this
+#: module's docstring exists for. Swallowing it recorded a breaker *success*,
+#: the fallback then failed under its own guard, and success/failure alternated
+#: so two consecutive failures never accumulated: measured at **5 attempts, 10
+#: requests, circuit still closed** under a block where nothing could get
+#: through — while doubling the request rate the breaker is there to stop, on a
+#: breaker **shared with the founders sender** (`whatsapp.py`).
+#:
+#: So only a true payload rejection is swallowed. 401/402/403/404 are faults of
+#: the endpoint or the credential, count as failures, and open the circuit.
+REJECTION_STATUSES = frozenset({400, 422})
+
 # httpx logs 'HTTP Request: POST <url> "HTTP/1.1 200 OK"' at INFO. The URL
 # carries the instance name, and a redirect could carry more, so keep it below
 # WARNING: raising the root log level must not start leaking it.
@@ -319,12 +338,16 @@ class EvolutionClient:
         and the result says ``fallback=True`` so the degradation is countable
         rather than indistinguishable from a whole send.
 
-        **Only a rejection falls back.** A timeout, a transport error or an open
-        circuit means the endpoint is not answering, so the plain-text attempt
-        would fail the same way and the right answer is to raise and let the
-        job retry. A permanent 4xx means Evolution answered and refused *this
-        payload*, which is the 06-09 shape and the one case where sending the
-        same message without its button is better than sending nothing.
+        **Only a rejection falls back**, and *rejection* means
+        :data:`REJECTION_STATUSES` — 400 or 422, Evolution answering that it
+        will not take this payload. That is the 06-09 shape and the one case
+        where sending the same message without its button beats sending
+        nothing. A timeout, a 5xx, an open circuit, a 401 or a Cloudflare 403
+        all mean the endpoint or the credential is the problem, so the
+        plain-text attempt would fail identically: those raise, count against
+        the breaker and let the job retry. Narrowing this from "not retryable"
+        to these two statuses is review's finding; see
+        :data:`REJECTION_STATUSES` for what the wider version measured.
         """
         if not sending_enabled():
             return SendResult(status=DELIVERY_DRY_RUN)
@@ -338,7 +361,7 @@ class EvolutionClient:
                 buttons=[{"type": BUTTON_TYPE_URL, "displayText": button_text, "url": url}],
             )
         except EvolutionError as exc:
-            if exc.retryable:
+            if exc.status not in REJECTION_STATUSES:
                 raise
             _log.warning(
                 "evolution refused the button payload; falling back to text with the URL inlined",
@@ -383,6 +406,12 @@ class EvolutionClient:
         # raise `CircuitOpen` precisely when it is needed. So the rejection is
         # swallowed *inside* the guard, which records a success (the endpoint
         # answered; that is what the breaker measures) and re-raised outside it.
+        #
+        # **Only :data:`REJECTION_STATUSES`.** Review measured the wider
+        # version — "not retryable" — leaving the circuit closed through a
+        # Cloudflare 403 that blocked every request, on a breaker shared with
+        # the founders sender. Everything else raises inside the guard and is
+        # counted, exactly as `post_text` is.
         rejected: EvolutionError | None = None
         body: Any = None
         status: int | None = None
@@ -390,7 +419,7 @@ class EvolutionClient:
             try:
                 body, status = self._request(url, payload)
             except EvolutionError as exc:
-                if exc.retryable:
+                if exc.status not in REJECTION_STATUSES:
                     raise
                 rejected = exc
         if rejected is not None:

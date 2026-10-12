@@ -882,8 +882,8 @@ class ChannelPreview:
     a message is *built*; the kill switch decides whether it *leaves the
     process*:
 
-        evolution.py:243   if not sending_enabled(): return SendResult(status=DELIVERY_DRY_RUN)
-        resend.py:224      if not sending_enabled(): return SendResult(status=DELIVERY_DRY_RUN)
+        evolution.send_text   if not sending_enabled(): return SendResult(status=DELIVERY_DRY_RUN)
+        resend.send           if not sending_enabled(): return SendResult(status=DELIVERY_DRY_RUN)
 
     `delivery_mode()` answers ``send`` for the exact string ``"send"`` and
     ``dry_run`` for everything else, **unset included**. So with `EMAIL_DELIVERY`

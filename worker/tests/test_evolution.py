@@ -413,6 +413,70 @@ def test_a_rejected_button_does_not_open_the_circuit(switch_on: None) -> None:
     assert len(calls) == 6, "every attempt reached the transport, twice over"
 
 
+@pytest.mark.parametrize(
+    ("status", "text", "reason"),
+    [
+        (403, RECORDED_CLOUDFLARE, "cloudflare_1010_client_fingerprint"),
+        (401, None, "unauthorised"),
+        (404, None, "instance_or_route_not_found"),
+    ],
+)
+def test_a_block_or_a_bad_key_opens_the_circuit_and_does_not_fall_back(
+    switch_on: None, status: int, text: str | None, reason: str
+) -> None:
+    """**The hole review measured, and the reason `REJECTION_STATUSES` is narrow.**
+
+    The first version fell back on anything non-retryable, which includes a
+    Cloudflare **403 `1010`** — the total client-fingerprint block this module's
+    docstring exists for. Swallowing it recorded a breaker *success*, the text
+    fallback then failed under its own guard, and success/failure alternated, so
+    two consecutive failures never accumulated: **5 attempts, 10 requests,
+    circuit still closed** through a block where nothing could get through, on a
+    breaker shared with the founders sender.
+
+    These statuses mean the endpoint or the credential is the problem, so there
+    is nothing to fall back to. They raise, they count, and the circuit opens.
+    """
+    calls: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if text is not None:
+            return httpx.Response(status, text=text)
+        return httpx.Response(status, json={"message": "no"})
+
+    evolution_client = client(httpx.MockTransport(handle))
+
+    for _ in range(2):
+        with pytest.raises(EvolutionError) as caught:
+            evolution_client.send_url_button(NUMBER, **BUTTON)
+        assert caught.value.reason == reason
+
+    # No fallback was attempted: two attempts, two requests, both to sendButtons.
+    assert len(calls) == 2
+    assert all("sendButtons" in str(c.url) for c in calls)
+
+    # And the breaker did its job, which is the whole finding.
+    assert breaker.get_breaker(evolution.BREAKER_NAME).state == "open"
+    with pytest.raises(Exception) as third:
+        evolution_client.send_url_button(NUMBER, **BUTTON)
+    assert type(third.value).__name__ == "CircuitOpen"
+    assert len(calls) == 2, "the third attempt should never have reached the transport"
+
+
+def test_only_a_payload_rejection_is_swallowed_by_the_breaker() -> None:
+    """The allow-list, read directly, so widening it is a visible change.
+
+    `PERMANENT_STATUSES` is *"do not retry"*; `REJECTION_STATUSES` is *"Evolution
+    answered and refused this payload"*. The second must stay a strict subset,
+    and must not contain the auth or routing statuses.
+    """
+    assert set(evolution.REJECTION_STATUSES) == {400, 422}
+    assert evolution.REJECTION_STATUSES < evolution.PERMANENT_STATUSES
+    for status in (401, 402, 403, 404):
+        assert status not in evolution.REJECTION_STATUSES
+
+
 def test_a_transport_fault_does_not_fall_back(switch_on: None) -> None:
     """A timeout or a 5xx means the endpoint is not answering, so the plain-text
     attempt would fail the same way. Only a *rejection* — Evolution answering

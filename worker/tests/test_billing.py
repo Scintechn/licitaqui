@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 
 from licitaqui import billing, evolution, product, templates
+from licitaqui import whatsapp as whatsapp_module
 from licitaqui.breaker import CircuitOpen
 
 #: Set by :func:`_synthetic_root` for the cases that need a template of their
@@ -456,12 +457,25 @@ def test_the_payable_statuses_agree_with_the_web_allow_list() -> None:
 # facts the branches read come out of a `left join lateral`, and *that* is
 # asserted against a real Postgres in `test_integration_billing.py`, because a
 # fake would happily answer whatever this file told it to.
+#
+# The fake answers `REMINDER_ROW_SQL` as well, so one test drives **`send()`
+# itself** into the WhatsApp half rather than calling the inner function with a
+# hand-built row. Review's finding: without it, every assertion here was about
+# the unit and none about the path, which is §4b's pattern exactly.
+
+
+class _Column:
+    """What `cur.description` yields: something with a `.name`."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
 
 
 class _FakeCursor:
     def __init__(self, conn: _FakeConn) -> None:
         self._conn = conn
         self._row: tuple[Any, ...] | None = None
+        self.description: tuple[_Column, ...] | None = None
 
     def __enter__(self) -> _FakeCursor:
         return self
@@ -471,16 +485,32 @@ class _FakeCursor:
 
     def execute(self, sql: str, params: Any = None) -> None:
         self._conn.queries.append(sql)
+        self.description = None
         if "insert into events" in sql:
             user_id, name, props = params
             self._conn.events.append((name, user_id, dict(props.obj)))
             self._row = None
+        elif "from subscriptions s" in sql:
+            # `REMINDER_ROW_SQL`. The row the sender reads; the *shape* of this
+            # answer is proven against a real Postgres in the integration file.
+            row = dict(self._conn.subscription or {})
+            self.description = tuple(_Column(name) for name in row)
+            self._row = tuple(row.values())
         elif "from founders_list" in sql:
             self._row = None if self._conn.founder is None else (self._conn.founder,)
         elif "founders_list_id" in sql:
             self._row = (self._conn.opted_out,)
         elif "props ->> 'template'" in sql:
-            self._row = (self._conn.already_sent,)
+            # **Dispatch on the event, not on the SQL.** `_already_sent` and
+            # `_already_sent_on_whatsapp` are the same statement with a
+            # different `event` parameter, so a substring match answered both
+            # from one flag and the two could not be told apart — review found
+            # it, and a fake that conflates two gates can hide either.
+            event = (params or {}).get("event")
+            if event == whatsapp_module.EVENT_SENT:
+                self._row = (self._conn.already_sent,)
+            else:
+                self._row = (self._conn.email_already_sent,)
         else:  # pragma: no cover - a query this fake was not written for
             raise AssertionError(f"unexpected query: {sql[:80]}")
 
@@ -497,10 +527,14 @@ class _FakeConn:
         founder: int | None = None,
         opted_out: bool = False,
         already_sent: bool = False,
+        email_already_sent: bool = False,
+        subscription: dict[str, Any] | None = None,
     ) -> None:
         self.founder = founder
         self.opted_out = opted_out
         self.already_sent = already_sent
+        self.email_already_sent = email_already_sent
+        self.subscription = subscription
         self.queries: list[str] = []
         self.events: list[tuple[str, int | None, dict[str, Any]]] = []
 
@@ -708,3 +742,205 @@ def test_the_dry_run_reaches_the_whole_path_and_logs_as_a_dry_run() -> None:
     assert _notice(conn, client) == "dry_run"
     assert conn.named("whatsapp.dry_run")
     assert conn.named("whatsapp.sent") == []
+
+
+# -- the notice that could not be filled in (review, 2026-10-12) --------------
+
+
+def test_a_subscriber_with_no_name_is_refused_before_anything_is_claimed() -> None:
+    """**The defect review proved, and the one that costs a contractual notice.**
+
+    `users.name` is nullable (`0001_initial.sql:156`) and `lib/auth/adapter.ts`
+    writes `user.name ?? null` — which is what the Resend magic-link provider
+    supplies, because it carries no name. The approved body opens
+    `Olá, {{nome}}!`, and `templates.py` refuses a **blank** value as hard as a
+    missing one. So that subscriber's render raised *inside* `send()`, after the
+    `billing_reminders` row was committed and the job enqueued: four identical
+    retries, and tomorrow's sweep looks for `today + 3` and never sees that
+    charge again. **One Pix subscriber's terms §7 notice, gone silently.**
+
+    `unrenderable_reason` is the structural answer — the sweep asks it *before*
+    it claims — and it holds for any binding that can come back empty, not only
+    for this one.
+    """
+    complete = {
+        "name": "Maria",
+        "plan": "promocional",
+        "amount": Decimal("57.00"),
+        "next_charge_on": date(2026, 11, 17),
+    }
+    assert billing.unrenderable_reason(complete) is None
+
+    for nameless in ({**complete, "name": None}, {**complete, "name": "   "}):
+        reason = billing.unrenderable_reason(nameless)
+        assert reason == "nome:blank", reason
+        # §12: the reason names the placeholder, never the value.
+        assert "Maria" not in str(reason)
+
+
+def test_the_unrenderable_reason_names_the_placeholder_and_not_the_person() -> None:
+    """It reaches `events.props` and a log line, so it carries no personal data.
+
+    Also covers the footer: `link_preferencias` is bound by `build_context`, so
+    a context built from a real row renders the partials too — the fourth
+    binding, asserted from the sweep's side as well as the sender's.
+    """
+    row = {"plan": "promocional", "amount": Decimal("57.00"), "next_charge_on": date(2026, 11, 17)}
+    assert billing.unrenderable_reason(row) == "nome:blank"
+    assert billing.unrenderable_reason({**row, "name": "Maria"}) is None
+
+
+def test_the_name_is_recovered_from_the_founders_list() -> None:
+    """A founder who signed in by magic link has their name in `founders_list`
+    and null in `users`, under the same e-mail. Recovered, not guessed at —
+    writing a salutation would be writing copy (brief §5), and **F29** is the
+    residual for somebody who is in neither table."""
+    for statement in (billing.DUE_SQL, billing.REMINDER_ROW_SQL):
+        assert "coalesce(u.name, f.name)" in statement
+        assert "left join founders_list f on f.email = u.email" in statement
+
+
+def test_the_sweep_counts_what_it_could_not_render() -> None:
+    """B32's lesson: a feed that never enqueues also never fails. The refusal
+    is a count on the `Sweep`, an ERROR line and a `billing.*` event — not a
+    silent `continue`."""
+    assert billing.Sweep().unrenderable == 0
+    assert billing.EVENT_REMINDER_UNRENDERABLE == "billing.reminder_unrenderable"
+    source = Path(billing.__file__).read_text(encoding="utf-8")
+    sweep_body = source[source.index("def sweep(") : source.index("def unrenderable_reason")]
+    # The refusal must come before the claim, or it is not a refusal at all.
+    assert sweep_body.index("unrenderable_reason(row)") < sweep_body.index("CLAIM_REMINDER_SQL")
+
+
+# -- the path, not the unit: send() into the WhatsApp half --------------------
+
+
+class _StubResend:
+    """A `ResendClient` that records the e-mail and opens no socket."""
+
+    def __init__(self, delivered: bool = True) -> None:
+        self.delivered = delivered
+        self.calls: list[dict[str, Any]] = []
+
+    def send(self, *, to: str, subject: str, text: str) -> Any:
+        self.calls.append({"to": to, "subject": subject, "text": text})
+        from licitaqui.resend import SendResult
+
+        return SendResult(
+            status="sent" if self.delivered else "dry_run",
+            message_id="msg_1" if self.delivered else None,
+            status_code=200 if self.delivered else None,
+        )
+
+
+def _subscription_row(**overrides: Any) -> dict[str, Any]:
+    row = {
+        "asaas_subscription_id": "sub_1",
+        "plan": "promocional",
+        "amount": Decimal("57.00"),
+        "next_charge_on": date(2026, 11, 17),
+        "checkout_url": "https://sandbox.asaas.com/i/abc",
+        "email": "maria@example.invalid",
+        "name": "Maria",
+        "whatsapp": "+55 11 99999-0000",
+        "status": "active",
+        "charge_value": Decimal("57.00"),
+        "charge_billing_type": "PIX",
+        "charge_status": "PENDING",
+        "payable_charges": 1,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_send_itself_reaches_the_whatsapp_half(monkeypatch: pytest.MonkeyPatch) -> None:
+    """**`send()`, not `send_charge_notice_whatsapp()`.**
+
+    Every other test in this section calls the inner function with a hand-built
+    row, which is the unit and not the path — review's finding, and §4b's
+    worked pattern. This one goes in at the top: the real `REMINDER_ROW_SQL`
+    answer, the real `build_context`, the real templates, the real gates.
+
+    Both delivery switches are off, so the e-mail is a dry run, Evolution is a
+    dry run and no socket is opened by either.
+    """
+    monkeypatch.delenv("EMAIL_DELIVERY", raising=False)
+    monkeypatch.delenv("WHATSAPP_DELIVERY", raising=False)
+    conn = _FakeConn(subscription=_subscription_row())
+    resend_client = _StubResend(delivered=False)
+
+    delivery = billing.send(
+        conn,  # type: ignore[arg-type]
+        template=billing.REMINDER_TEMPLATE,
+        user_id=7,
+        subscription_id="sub_1",
+        due_on="2026-11-17",
+        client=resend_client,  # type: ignore[arg-type]
+    )
+
+    assert delivery.outcome == "dry_run"
+    # The WhatsApp half was reached through the real path and is also a dry run.
+    assert delivery.whatsapp == "dry_run"
+    assert conn.named("whatsapp.dry_run")
+    # And the e-mail it would have sent is the approved copy, footer included.
+    body = resend_client.calls[0]["text"]
+    assert "17/11/2026" in resend_client.calls[0]["subject"]
+    assert "Período: 17/11/2026 a 16/12/2026" in body
+    assert "Política de privacidade" in body, "the footer partial was not appended"
+    assert "{{" not in body
+
+
+def test_the_whatsapp_copy_is_refused_when_the_e_mail_was_only_a_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**Review's finding: the additive channel may not deliver what the
+    required one did not.**
+
+    `EMAIL_DELIVERY` and `WHATSAPP_DELIVERY` are independent words, so a tree
+    with Resend in dry run and Evolution live would send the *extra* copy of a
+    notice the **official** channel (terms §12) never sent — and that is a real
+    message to a real subscriber out of a half-configured environment.
+    """
+    monkeypatch.setenv(evolution.DELIVERY_VAR, evolution.DELIVERY_SEND)
+    conn, client = _FakeConn(), _StubEvolution()
+
+    outcome = billing.send_charge_notice_whatsapp(
+        conn,  # type: ignore[arg-type]
+        found=_row(),
+        user_id=7,
+        context=billing.build_context(_row()),
+        subscription_id="sub_1",
+        due_on="2026-11-17",
+        template=billing.REMINDER_TEMPLATE,
+        email_delivered=False,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert outcome == "skipped"
+    assert client.calls == [], "a real WhatsApp message went out for an unsent e-mail"
+    assert conn.named("whatsapp.skipped")[0]["reason"] == billing.SKIP_EMAIL_NOT_SENT
+
+
+def test_both_switches_off_still_exercises_the_whole_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gate above must not delete the dry-run coverage: with both switches
+    off there is no side effect to protect against, and CI and every laptop are
+    in exactly that state."""
+    monkeypatch.delenv(evolution.DELIVERY_VAR, raising=False)
+    conn, client = _FakeConn(), _StubEvolution(result=evolution.SendResult(status="dry_run"))
+
+    outcome = billing.send_charge_notice_whatsapp(
+        conn,  # type: ignore[arg-type]
+        found=_row(),
+        user_id=7,
+        context=billing.build_context(_row()),
+        subscription_id="sub_1",
+        due_on="2026-11-17",
+        template=billing.REMINDER_TEMPLATE,
+        email_delivered=False,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert outcome == "dry_run"
+    assert client.calls, "the dry-run path stopped being exercised"

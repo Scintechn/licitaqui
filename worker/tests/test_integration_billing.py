@@ -71,6 +71,7 @@ def _wipe(conn: psycopg.Connection) -> None:
         cur.execute("delete from events where props ->> 'subscription' like %s", (f"{SUB}%",))
         cur.execute("delete from subscriptions where asaas_subscription_id like %s", (f"{SUB}%",))
         cur.execute("delete from users where email like %s", (f"%@{DOMAIN}",))
+        cur.execute("delete from founders_list where email like %s", (f"%@{DOMAIN}",))
 
 
 def _brt_today(conn: psycopg.Connection) -> date:
@@ -99,6 +100,7 @@ def _subscriber(
     email: str | None = None,
     whatsapp: str | None = None,
     checkout_url: str | None = None,
+    name: str | None = "",
 ) -> tuple[int, str]:
     subscription_id = f"{SUB}-{label}"
     with conn.cursor() as cur:
@@ -106,7 +108,11 @@ def _subscriber(
             "insert into users (email, name, plan, whatsapp) values (%s, %s, %s, %s) returning id",
             (
                 email if email is not None else f"{label}@{DOMAIN}",
-                f"Pessoa {label}",
+                # `name=None` writes a **null** name, which is what the Resend
+                # magic-link provider produces and what review proved loses a
+                # reminder. Every fixture in this file bound a name before, so
+                # the case was untested.
+                f"Pessoa {label}" if name == "" else name,
                 user_plan,
                 whatsapp,
             ),
@@ -214,7 +220,14 @@ def blocked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "---\n"
         "id: charge-reminder\n"
         "channel: email\n"
+        # **A `subject:` on purpose.** `template_ready()` is false for two
+        # independent reasons — no subject *or* an unresolved marker — so a
+        # fixture missing both would still pass with the `ready_to_send` half
+        # deleted, which is the half this fixture exists to exercise. Review
+        # found that; now only the marker blocks it.
+        'subject: "x {{data_cobranca}}"\n'
         "status: draft\n"
+        "placeholders: [data_cobranca]\n"
         "---\n\n"
         f"{templates.TODO_MARKER} falta a cópia.\n",
         encoding="utf-8",
@@ -299,8 +312,81 @@ def test_the_real_template_no_longer_blocks_the_sweep(
 
     assert billing.template_ready() is True
     assert result.blocked is False
-    assert result.queued == 1
+    # `>=`, not `==`: `DUE_SQL` is **global** and `apps/web/lib/asaas/billing.db.test.ts`
+    # writes subscriptions into this same database, so an exact count is another
+    # lane's fixture away from a mysterious failure. The scoped list below is
+    # what actually pins the behaviour. Review's finding.
+    assert result.queued >= 1
+    assert result.unrenderable == 0
     assert [row[0] for row in _reminders(conn)] == [f"{SUB}-real"]
+
+
+def test_a_subscriber_with_no_name_is_refused_and_nothing_is_claimed(
+    conn: psycopg.Connection, clean: None
+) -> None:
+    """**Review's blocker, against the database.**
+
+    `users.name` is nullable and `lib/auth/adapter.ts` writes `user.name ??
+    null` — the Resend magic-link provider supplies no name at all. The approved
+    body opens `Olá, {{nome}}!` and `templates.py` refuses a blank value, so
+    before this fix the render raised *after* the `billing_reminders` row was
+    committed: four identical retries, and the next sweep looks for `today + 3`
+    and never sees that charge again.
+
+    So the sweep renders first. Nothing is claimed, nothing is enqueued, and it
+    is **loud** — `billing.reminder_unrenderable` plus an ERROR line, naming the
+    placeholder and never the person (§12). **F29** is the residual.
+    """
+    due = _brt_today(conn) + timedelta(days=product.CHARGE_REMINDER_DAYS)
+    _subscriber(conn, label="nameless", next_charge_on=due, name=None)
+
+    result = billing.sweep(conn)
+
+    assert result.unrenderable >= 1
+    assert _reminders(conn) == [], "a claim was burnt on a notice that cannot render"
+    with conn.cursor() as cur:
+        cur.execute("select count(*) from jobs where key like %s", (f"reminder:{SUB}-nameless%",))
+        row = cur.fetchone()
+    assert row is not None and row[0] == 0
+    refused = [
+        r
+        for r in _events(conn, billing.EVENT_REMINDER_UNRENDERABLE)
+        if r.get("subscription") == f"{SUB}-nameless"
+    ]
+    assert refused and refused[0]["reason"] == "nome:blank"
+
+
+def test_a_founders_name_is_recovered_when_the_user_row_has_none(
+    conn: psycopg.Connection, clean: None
+) -> None:
+    """The ordinary case of the same defect, and the reason the fix is a
+    `coalesce` rather than an invented salutation (brief §5): a founder who
+    signed in by magic link has the name they typed in `founders_list`, under
+    the same e-mail."""
+    due = _brt_today(conn) + timedelta(days=product.CHARGE_REMINDER_DAYS)
+    email = f"founder-{RUN_ID}@{DOMAIN}"
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into founders_list (name, email, contact_consent) values (%s, %s, true)",
+            (f"Fundadora {RUN_ID}", email),
+        )
+    user_id, subscription_id = _subscriber(
+        conn, label="founder", next_charge_on=due, name=None, email=email
+    )
+
+    result = billing.sweep(conn)
+
+    assert result.unrenderable == 0
+    assert [row[0] for row in _reminders(conn)] == [subscription_id]
+
+    delivery = billing.send(
+        conn,
+        template=billing.REMINDER_TEMPLATE,
+        user_id=user_id,
+        subscription_id=subscription_id,
+        due_on=str(due),
+    )
+    assert delivery.outcome == "dry_run"
 
 
 def test_it_reminds_three_days_before_a_charge_and_not_on_other_days(
@@ -485,8 +571,13 @@ def test_the_whatsapp_copy_reads_the_three_facts_the_lateral_join_adds(
     assert rows, "the WhatsApp copy was never attempted"
     assert rows[0]["due_on"] == str(due)
     # §12: neither the number nor the invoice URL may reach the delivery log.
-    assert "whatsapp" not in rows[0] and "link_pagamento" not in rows[0]
-    assert "asaas.com" not in str(rows[0])
+    # Asserted over the **rendered props**, not as absent dict keys — keys that
+    # were never written are absent whatever the code does, which is a check
+    # that cannot fail. Review found that version here.
+    rendered = str(rows[0])
+    assert "asaas.com" not in rendered
+    assert "99999" not in rendered
+    assert "sandbox" not in rendered
 
 
 def test_an_overdue_charge_beside_the_next_one_withholds_the_button(

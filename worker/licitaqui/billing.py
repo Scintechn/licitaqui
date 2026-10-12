@@ -150,6 +150,11 @@ BILLING_TYPE_PIX = "PIX"
 #: answers "what e-mail reached this person?" across every sender.
 EVENT_REMINDER_BLOCKED = "billing.reminder_blocked"
 EVENT_REMINDER_QUEUED = "billing.reminder_queued"
+#: One row per subscriber whose notice could not be **filled in** — a binding
+#: the template needs that this row cannot supply, which `template_ready()`
+#: cannot see because it is per subscriber and not per template. Nothing is
+#: claimed for them, and this is the loud half of that. See **F29**.
+EVENT_REMINDER_UNRENDERABLE = "billing.reminder_unrenderable"
 EVENT_EXPIRED = "billing.expired"
 
 #: **The counter that makes a silent degradation visible.** One row per message
@@ -170,6 +175,7 @@ SKIP_NOT_PIX = "charges_itself"
 SKIP_UNKNOWN_METHOD = "unknown_method"
 SKIP_CHARGE_SETTLED = "charge_settled"
 SKIP_WHATSAPP_SENT = "already_sent"
+SKIP_EMAIL_NOT_SENT = "email_not_sent"
 
 #: Why a send did not happen. Stable strings: they reach the log and
 #: `events.props`, and a dashboard groups by them.
@@ -192,9 +198,19 @@ select s.asaas_subscription_id,
        s.amount,
        s.next_charge_on,
        u.email,
-       u.name
+       -- **`users.name` is nullable and the body opens `Olá, {{nome}}!`.**
+       -- `0001_initial.sql:156` allows null and `lib/auth/adapter.ts` writes
+       -- `user.name ?? null`, which is what the Resend magic-link provider
+       -- supplies — no name at all. `templates.py` refuses to render a *blank*
+       -- value as hard as a missing one, so that subscriber's notice raises.
+       -- The founders list has the name they typed, under the same e-mail, so
+       -- it is recovered here rather than guessed at. Found by review; the
+       -- residual (no name in either table) is **F29** and the sweep below
+       -- refuses to claim it rather than burning the reminder on it.
+       coalesce(u.name, f.name) as name
   from subscriptions s
   join users u on u.id = s.user_id
+  left join founders_list f on f.email = u.email
  where s.status = any(%(statuses)s)
    and s.ends_on is null
    and s.next_charge_on = (
@@ -247,7 +263,9 @@ select s.asaas_subscription_id,
        -- `payable_charges` below. **F28** stores the per-charge URL.
        s.checkout_url,
        u.email,
-       u.name,
+       -- `users.name` is nullable; the founders list holds the name they
+       -- typed, under the same e-mail. See `DUE_SQL`, and **F29**.
+       coalesce(u.name, f.name) as name,
        -- The additive WhatsApp copy terms §7 allows. Never logged (§12).
        u.whatsapp,
        s.status,
@@ -288,6 +306,7 @@ select s.asaas_subscription_id,
            and p.status = any(%(payable)s)) as payable_charges
   from subscriptions s
   join users u on u.id = s.user_id
+  left join founders_list f on f.email = u.email
   left join lateral (
         select p.value, p.billing_type, p.status
           from subscription_payments p
@@ -338,6 +357,10 @@ class Sweep:
     due: int = 0
     queued: int = 0
     blocked: bool = False
+    #: Subscribers whose notice could not be filled in, so **nothing was
+    #: claimed** for them. Never zero quietly: the sweep logs each one at ERROR
+    #: and writes `billing.reminder_unrenderable`.
+    unrenderable: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,9 +439,47 @@ def sweep(conn: psycopg.Connection, *, log: Logger | None = None) -> Sweep:
         return Sweep(due=len(due), queued=0, blocked=True)
 
     queued = 0
+    unrenderable = 0
     for row in due:
         subscription = str(row["asaas_subscription_id"])
         due_on = str(row["next_charge_on"])
+
+        # **Render before claiming.** The claim is committed and the sweep only
+        # ever looks for `today + 3`, so a render that raises *after* the claim
+        # loses that subscriber's notice for ever — and `template_ready()`
+        # above cannot see it, because it is a per-subscriber fault rather than
+        # a per-template one.
+        #
+        # Review found the live instance: `users.name` is nullable, the body
+        # opens `Olá, {{nome}}!`, and `templates.py` refuses a blank value as
+        # hard as a missing one. `coalesce(u.name, f.name)` in `DUE_SQL`
+        # recovers the ordinary case; this is the structural half, and it holds
+        # for **any** binding that can come back empty rather than only for
+        # that one.
+        #
+        # Nothing is claimed, so the row is swept again tomorrow — and tomorrow
+        # it is `today + 2` and will not match, which is why this is **loud**
+        # rather than quiet. **F29** is the fix for the residual.
+        problem = unrenderable_reason(row)
+        if problem is not None:
+            _record(
+                conn,
+                EVENT_REMINDER_UNRENDERABLE,
+                int(row["user_id"]),
+                {
+                    "template": REMINDER_TEMPLATE,
+                    "subscription": subscription,
+                    "due_on": due_on,
+                    "reason": problem,
+                },
+            )
+            log.error(
+                "charge_reminder cannot render this subscriber's notice; nothing claimed",
+                extra={"subscription": subscription, "due_on": due_on, "reason": problem},
+            )
+            unrenderable += 1
+            continue
+
         with conn.cursor() as cur:
             cur.execute(
                 CLAIM_REMINDER_SQL,
@@ -482,9 +543,44 @@ def sweep(conn: psycopg.Connection, *, log: Logger | None = None) -> Sweep:
             )
         queued += 1
 
-    _record(conn, EVENT_REMINDER_QUEUED, None, {"due": len(due), "queued": queued})
-    log.info("charge_reminder swept", extra={"due": len(due), "queued": queued})
-    return Sweep(due=len(due), queued=queued)
+    _record(
+        conn,
+        EVENT_REMINDER_QUEUED,
+        None,
+        {"due": len(due), "queued": queued, "unrenderable": unrenderable or None},
+    )
+    log.info(
+        "charge_reminder swept",
+        extra={"due": len(due), "queued": queued, "unrenderable": unrenderable},
+    )
+    return Sweep(due=len(due), queued=queued, unrenderable=unrenderable)
+
+
+def unrenderable_reason(row: dict[str, Any]) -> str | None:
+    """Why this subscriber's notice cannot be rendered, or ``None``.
+
+    Renders the **whole e-mail** the sender would render — subject, body and
+    every partial — from this row's own context, and returns the placeholder
+    that refused. It is the per-subscriber half of :func:`template_ready`: that
+    one asks *"is there a message at all"*, this one asks *"can it be filled in
+    for this person"*, and only the second can see a null `users.name`.
+
+    The reason is a **placeholder name**, never a value: the values are
+    people's names (§12). A fault that is not a missing placeholder is reported
+    by its exception class for the same reason.
+    """
+    context = build_context(row)
+    try:
+        loaded = templates.load(EMAIL_CHANNEL, REMINDER_TEMPLATE)
+        loaded.render_subject(context)
+        loaded.render(context)
+        for partial_id in loaded.partials:
+            templates.load(EMAIL_CHANNEL, partial_id).render(context)
+    except templates.MissingPlaceholder as exc:
+        return f"{exc.placeholder}:{exc.reason}"
+    except templates.TemplateError as exc:
+        return type(exc).__name__
+    return None
 
 
 def template_ready() -> bool:
@@ -649,6 +745,7 @@ def send(
         subscription_id=subscription_id,
         due_on=due_on,
         template=template,
+        email_delivered=result.delivered,
         job_id=job_id,
         log=log,
     )
@@ -672,6 +769,7 @@ def send_charge_notice_whatsapp(
     subscription_id: str,
     due_on: str,
     template: str,
+    email_delivered: bool = True,
     client: EvolutionClient | None = None,
     job_id: int | None = None,
     sleep: Any = time.sleep,
@@ -705,10 +803,31 @@ def send_charge_notice_whatsapp(
     The number is normalised, dialled and discarded inside
     :mod:`licitaqui.evolution`; it never reaches a log line or `events.props`,
     and neither does the invoice URL (§12).
+
+    **Two consequences of never raising, stated rather than implied.** A
+    transient WhatsApp fault is *not* retried — the job is done, because its
+    e-mail is sent, and nothing re-attempts the additive copy. And the
+    guarantee is "never raises for a transport, a copy or a dialling fault": a
+    `psycopg` error from this function's own queries would propagate like any
+    other database fault, which is correct, because at that point the delivery
+    log itself is not working.
     """
     log = log or _log
     client = client or EvolutionClient()
     common = {"template": template, "subscription": subscription_id, "due_on": due_on}
+
+    # **The additive channel may not deliver what the required one did not.**
+    # The two kill switches are independent — `EMAIL_DELIVERY` and
+    # `WHATSAPP_DELIVERY` — so a tree with Resend in dry run and Evolution live
+    # would send the *extra* copy of a notice the **official** channel (terms
+    # §12) never sent, which inverts the contract this function is built
+    # around, and would be a real message to a real subscriber from a
+    # half-configured environment. Found by review.
+    #
+    # Both off is the ordinary CI and laptop case and stays on the dry-run
+    # path, so the whole thing is still exercised with no socket opened.
+    if not email_delivered and evolution.sending_enabled():
+        return _whatsapp_skip(conn, log, user_id, common, SKIP_EMAIL_NOT_SENT, level="warning")
 
     number = str(found.get("whatsapp") or "").strip()
     if not number:
@@ -728,12 +847,22 @@ def send_charge_notice_whatsapp(
     if not link:
         return _whatsapp_skip(conn, log, user_id, common, SKIP_NO_PAYMENT_LINK, level="warning")
 
-    # **The button is withheld rather than aimed at a guess.**
-    # `subscriptions.checkout_url` is per subscription, not per charge, so it
-    # belongs to *this* charge only while this charge is the only payable one.
-    # Two payable charges — an overdue month beside the next one — and the link
-    # may be the older invoice, which after F3's price change is a different
-    # amount. **F28** stores the per-charge URL and deletes this gate.
+    # **The button is withheld rather than aimed at a guess** — and this gate
+    # narrows the window without closing it, which review corrected an earlier
+    # comment here for claiming.
+    #
+    # `subscriptions.checkout_url` is per subscription, not per charge. This
+    # count is **current** state; the column is a **historical last write**, and
+    # `refreshCheckoutUrl` writes *only* for a payable status — a
+    # `PAYMENT_RECEIVED` returns early and never clears it. So: two payable
+    # charges (this gate fires, correctly), the subscriber pays the older one,
+    # and three days later exactly one charge is payable while the column still
+    # holds the **settled** invoice. The same thing happens whenever a payload
+    # arrives with no `invoiceUrl`, which Asaas's own docs warn about.
+    #
+    # It is still worth gating: it removes the case where the link is ambiguous
+    # *at the moment of sending*. **F28** is the fix — the per-charge URL — and
+    # it deletes this gate.
     if int(found.get("payable_charges") or 0) > 1:
         return _whatsapp_skip(conn, log, user_id, common, SKIP_AMBIGUOUS_LINK, level="warning")
 
@@ -791,11 +920,19 @@ def send_charge_notice_whatsapp(
         return "failed"
 
     if result.fallback:
+        # `messages: 2` because the fallback is **two requests** — the refused
+        # `sendButtons` and the `sendText` that carried the URL — inside one
+        # §9 pacing slot, while the ledger below records one delivery. Pacing
+        # reads `max(created_at)`, so the *timing* is unaffected; what this
+        # prop makes countable is the request count, which is the number that
+        # matters on an unofficial instance. Review's finding; the alternative
+        # was to sleep 20–30 s between the two, which delays a payment notice
+        # for a message the reader is already owed.
         _record(
             conn,
             EVENT_WHATSAPP_FALLBACK,
             user_id,
-            {**common, "reason": result.fallback_reason, "job_id": job_id},
+            {**common, "reason": result.fallback_reason, "messages": 2, "job_id": job_id},
         )
         log.error(
             "whatsapp charge notice went out without its button; the URL is inlined",
