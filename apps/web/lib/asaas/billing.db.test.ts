@@ -6,7 +6,7 @@ import { PLAN_PRICES, PROMO } from '@/lib/product'
 import { RUN_ID } from '@/lib/radar/fixtures'
 import { startCheckout } from './checkout'
 import { AsaasClient } from './client'
-import { applyEvent } from './entitlement'
+import { applyEvent, syncNextChargeFromAsaas } from './entitlement'
 import { cancelSubscription, readSubscription, resetSubscriptionCooldown } from './subscription'
 import { readEvent } from './webhook'
 
@@ -239,6 +239,14 @@ async function brtToday(): Promise<string> {
  * `next_charge_on` is the day of the charge that was just paid until Asaas
  * generates month 2. Several cases below depend on exactly that, and the
  * fixture that supplied a due date a month out is why they were missing.
+ *
+ * **That state is F22's defect and this fixture deliberately keeps it.** The
+ * repair is `syncNextChargeFromAsaas`, which the webhook *route* runs after
+ * its transaction commits and `deliver` therefore does not — so what the cases
+ * below assert about `lastPaidDay` is the behaviour when the refresh has not
+ * run, which is a state production still reaches whenever Asaas refuses. The
+ * refresh has its own five cases, under "the next charge after a payment
+ * settles (F22)".
  */
 async function subscribedAndPaid(seat: number): Promise<number> {
   const userId = await makeUser({ seat })
@@ -741,6 +749,154 @@ suite('what a webhook does to an account (database)', () => {
     const row = await readSubscription(userId)
     if (row.state !== 'found') throw new Error('subscription vanished')
     expect(row.subscription.nextChargeOn).toBe('2026-11-18')
+  })
+
+  /**
+   * **F22 — the window in which no charge of ours can answer.**
+   *
+   * The five cases below are the whole of the card. The first one is the
+   * defect: measured in the sandbox on 2026-10-10, our row held the day the
+   * subscription was *paid* while `GET /v3/subscriptions` answered a date a
+   * month later, and the plan screen printed ours to somebody who had paid
+   * that morning. The other four are the ways the fix could do harm instead,
+   * and each one would be worse than the defect: skipping a month, walking the
+   * date backwards, moving it to a stranger's subscription, or blanking it
+   * because Asaas was unreachable.
+   *
+   * Every expectation is the string the stub *returned*, never a date this
+   * file recomputed from a cycle — the dates are derived from the database's
+   * BRT today only so the suite does not rot on a calendar, which is what a
+   * literal `'2026-11-18'` does two tests above.
+   */
+  describe('the next charge after a payment settles (F22)', () => {
+    /** A date in the product's clock, from the database. Never `new Date()`. */
+    async function brtPlus(days: number): Promise<string> {
+      const found = await db().execute<{ day: string }>(sql`
+        select ((now() at time zone 'America/Sao_Paulo')::date + ${days}::int)::text as day
+      `)
+      return found.rows[0].day
+    }
+
+    async function nextChargeOf(): Promise<string | null> {
+      const found = await db().execute<{ next_charge_on: string | null }>(sql`
+        select next_charge_on::text as next_charge_on
+          from subscriptions where asaas_subscription_id = ${SUB}
+      `)
+      return found.rows[0].next_charge_on
+    }
+
+    /** A client whose every call fails, to prove the column survives it. */
+    function brokenClient(status: number) {
+      const calls: string[] = []
+      return {
+        calls,
+        client: new AsaasClient({
+          env: { ASAAS_BILLING: 'live', ASAAS_ENV: 'sandbox', ASAAS_API_KEY: '$aact_hmlg_test' },
+          transport: async (url: string, init: RequestInit) => {
+            calls.push(`${init.method} ${url.replace(/^https:\/\/[^/]+/, '')}`)
+            return new Response('{}', { status })
+          },
+        }),
+      }
+    }
+
+    it('moves it to the nextDueDate Asaas holds, not the day that was paid', async () => {
+      const userId = await subscribedAndPaid(3)
+      // The precondition is the defect. Without it this test proves nothing,
+      // which is the trap CLAUDE.md §4b records: a case that needs its own
+      // bug to be absent passes either way.
+      expect(await nextChargeOf(), 'F22: the paid day is what the column holds').toBe(
+        await brtToday(),
+      )
+
+      const asaasSays = await brtPlus(31)
+      const { client, calls } = stubClient([
+        { data: [{ id: SUB, status: 'ACTIVE', nextDueDate: asaasSays }] },
+      ])
+      expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({ outcome: 'updated' })
+      // It asked about *this* subscriber, by the reference `startCheckout`
+      // created the subscription under.
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toContain(`externalReference=licitaqui-user-${userId}`)
+
+      // And the screen: `page.tsx` passes exactly this to `PlanView`, whose
+      // own test pins the sentence. The date the reader is shown is Asaas's.
+      const row = await readSubscription(userId)
+      if (row.state !== 'found') throw new Error('subscription vanished')
+      expect(row.subscription.nextChargeOn).toBe(asaasSays)
+      expect(row.subscription.nextChargeOn).not.toBe(await brtToday())
+    })
+
+    it('asks Asaas nothing while a charge we already know about is unpaid', async () => {
+      /**
+       * The hazard the fallback exists to avoid. Asaas's `nextDueDate` is the
+       * next charge it will **generate**, so once month 2 exists it has
+       * already advanced to month 3 — writing it here would name December
+       * while November went unpaid, and the reminder matches
+       * `next_charge_on = today + 3` by exact equality, so November would
+       * arrive with no notice at all.
+       */
+      await subscribedAndPaid(3)
+      const monthTwo = await brtPlus(31)
+      await deliver('PAYMENT_CREATED', {
+        suffix: 'f22m2',
+        id: `${PAY}_m2`,
+        status: 'PENDING',
+        dueDate: monthTwo,
+        paymentDate: null,
+      })
+      expect(await nextChargeOf()).toBe(monthTwo)
+
+      const { client, calls } = stubClient([
+        { data: [{ id: SUB, status: 'ACTIVE', nextDueDate: await brtPlus(62) }] },
+      ])
+      expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({ outcome: 'local' })
+      expect(calls, 'no socket is opened when a charge can answer').toEqual([])
+      expect(await nextChargeOf()).toBe(monthTwo)
+    })
+
+    it('never walks the date backwards, whatever Asaas answers', async () => {
+      await subscribedAndPaid(3)
+      const today = await brtToday()
+      const { client } = stubClient([
+        { data: [{ id: SUB, status: 'ACTIVE', nextDueDate: await brtPlus(-5) }] },
+      ])
+      expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({
+        outcome: 'skipped',
+        reason: 'in_the_past',
+      })
+      expect(await nextChargeOf()).toBe(today)
+    })
+
+    it('refuses a subscription that is not the one we hold', async () => {
+      // The console case F10 is about: ours was deleted at Asaas and a second
+      // one created by hand. `externalReference` finds *that* one, and its
+      // dates say nothing about our row.
+      await subscribedAndPaid(3)
+      const today = await brtToday()
+      const { client } = stubClient([
+        { data: [{ id: `${SUB}_elsewhere`, status: 'ACTIVE', nextDueDate: await brtPlus(31) }] },
+      ])
+      expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({
+        outcome: 'skipped',
+        reason: 'not_at_asaas',
+      })
+      expect(await nextChargeOf()).toBe(today)
+    })
+
+    it('leaves the column exactly as it was when Asaas refuses', async () => {
+      await subscribedAndPaid(3)
+      const today = await brtToday()
+      const { client, calls } = brokenClient(500)
+      expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({
+        outcome: 'failed',
+        reason: 'server_error',
+      })
+      expect(calls).toHaveLength(1)
+      // Stale, not blank. A missing date would blank the sentence and the
+      // reminder for a subscription that is being charged.
+      expect(await nextChargeOf()).toBe(today)
+    })
   })
 
   it('records an event about a subscription it never created, and acts on none of it', async () => {

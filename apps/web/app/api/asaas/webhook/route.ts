@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
-import { applyEvent } from '@/lib/asaas/entitlement'
-import { authorizeWebhook, denyWebhook, readEvent } from '@/lib/asaas/webhook'
+import { applyEvent, syncNextChargeFromAsaas } from '@/lib/asaas/entitlement'
+import { authorizeWebhook, denyWebhook, effectOf, readEvent } from '@/lib/asaas/webhook'
 import { db } from '@/lib/db'
 import { rateLimitRequest } from '@/lib/rate-limit'
 
@@ -59,6 +59,11 @@ import { rateLimitRequest } from '@/lib/rate-limit'
  *
  * `webhook_events` has existed since migration 0001 with no reader and no
  * writer. This is its first one.
+ *
+ * ## One step after the commit
+ *
+ * {@link syncNextChargeAfterGrant} — F22. The only Asaas call in this path,
+ * deliberately outside the transaction and unable to affect the answer.
  *
  * ## §12
  *
@@ -158,6 +163,7 @@ export async function POST(request: Request): Promise<Response> {
       return applyEvent(event, tx)
     })
     console.info(`asaas webhook ${event.event}: ${outcome.outcome}`)
+    await syncNextChargeAfterGrant(event, outcome.outcome)
     return ok()
   } catch (error) {
     const code = (error as { code?: string } | null)?.code ?? 'unknown'
@@ -165,6 +171,52 @@ export async function POST(request: Request): Promise<Response> {
     // Ours, and transient. The one case where a redelivery helps — and the one
     // case where spending a strike is right.
     return NextResponse.json({ ok: false }, { status: 500, headers: HEADERS })
+  }
+}
+
+/**
+ * **After the commit, and never at the cost of the 200 — task F22.**
+ *
+ * A settled charge leaves `next_charge_on` pointing at itself until Asaas
+ * generates the next one, which is a false *"Próxima cobrança em {data}"* on
+ * the plan screen and a wrong date in the reminder terms §7 owes. Only the
+ * Asaas subscription knows the real answer in that window, so this is the one
+ * place in the webhook path that calls Asaas, and three things keep it from
+ * costing a delivery:
+ *
+ *  * It runs **outside** the transaction, which has already committed. The
+ *    grant does not depend on it and holds no lock while it waits.
+ *  * It runs **only for a grant**, and {@link syncNextChargeFromAsaas} asks
+ *    Asaas nothing when a charge we already know about is next — so the HTTP
+ *    call happens about once a cycle, not once an event.
+ *  * It cannot change the status code. The function does not throw by
+ *    contract; the `catch` is here anyway, because this route's promise to
+ *    answer 200 is its own and must not rest on another module keeping that
+ *    contract. Fifteen non-200s pause Asaas's queue.
+ *
+ * A redelivery (`duplicate`) is excluded: the row is locked by whichever
+ * delivery is still inside its own transaction, and nothing it could learn has
+ * changed. `already_entitled` is **not** excluded — that is the redelivery of
+ * a payment whose first delivery may have had its refresh refused.
+ */
+async function syncNextChargeAfterGrant(
+  event: { event: string; subscriptionId: string | null },
+  outcome: string,
+): Promise<void> {
+  if (!event.subscriptionId) return
+  if (outcome === 'duplicate') return
+  if (effectOf(event.event) !== 'grant') return
+  try {
+    const sync = await syncNextChargeFromAsaas(event.subscriptionId)
+    // The word, never the date: a billing date belongs to one named
+    // subscriber (§12). `outcome` and `reason` are fixed enums.
+    console.info(
+      `asaas webhook ${event.event}: next charge ${sync.outcome}`
+      + ('reason' in sync ? ` (${sync.reason})` : ''),
+    )
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code ?? 'unknown'
+    console.error(`asaas webhook ${event.event}: next charge refresh threw (${code})`)
   }
 }
 

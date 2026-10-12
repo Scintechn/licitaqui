@@ -7,11 +7,12 @@ const order = vi.hoisted(() => [] as string[])
 
 const rateLimitRequest = vi.hoisted(() => vi.fn())
 const applyEvent = vi.hoisted(() => vi.fn())
+const syncNextChargeFromAsaas = vi.hoisted(() => vi.fn())
 const execute = vi.hoisted(() => vi.fn())
 const transaction = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/rate-limit', () => ({ rateLimitRequest }))
-vi.mock('@/lib/asaas/entitlement', () => ({ applyEvent }))
+vi.mock('@/lib/asaas/entitlement', () => ({ applyEvent, syncNextChargeFromAsaas }))
 vi.mock('@/lib/db', () => ({ db: () => ({ execute, transaction }) }))
 
 const { GET, POST } = await import('./route')
@@ -48,6 +49,7 @@ describe('POST /api/asaas/webhook', () => {
     order.length = 0
     rateLimitRequest.mockReset()
     applyEvent.mockReset()
+    syncNextChargeFromAsaas.mockReset()
     execute.mockReset()
     transaction.mockReset()
 
@@ -59,6 +61,10 @@ describe('POST /api/asaas/webhook', () => {
     applyEvent.mockImplementation(async () => {
       order.push('apply')
       return { outcome: 'granted' }
+    })
+    syncNextChargeFromAsaas.mockImplementation(async () => {
+      order.push('next-charge')
+      return { outcome: 'updated' }
     })
     transaction.mockImplementation(async (run: (tx: typeof TX) => unknown) => {
       order.push('begin')
@@ -96,13 +102,67 @@ describe('POST /api/asaas/webhook', () => {
      * found it. One transaction makes the retry genuinely retry.
      */
     await post()
-    expect(order).toEqual(['begin', 'insert', 'apply'])
+    // `next-charge` is **after** the commit and outside the transaction —
+    // F22's refresh asks Asaas for the subscription's own `nextDueDate`, and
+    // doing that inside the transaction would hold `for update` on the
+    // subscriber's row across an HTTP call it does not need.
+    expect(order).toEqual(['begin', 'insert', 'apply', 'next-charge'])
     // The same executor, not the pool: that is what makes the rollback cover
     // the insert as well as the grant.
     expect(applyEvent.mock.calls[0]?.[1]).toBe(TX)
     const statement = JSON.stringify(execute.mock.calls[0]?.[0] ?? {})
     expect(statement).toContain('webhook_events')
     expect(statement).toContain('on conflict')
+  })
+
+  it('refreshes the next charge after the commit, for the subscription it was about', async () => {
+    /**
+     * **F22.** A settled charge leaves `next_charge_on` pointing at itself
+     * until Asaas generates the next one, which is a false *"Próxima cobrança
+     * em {data}"* on the plan screen and the wrong date in the notice terms §7
+     * owes. Only the Asaas subscription knows the answer in that window, so
+     * this is the one Asaas call in the webhook path — and `billing.db.test.ts`
+     * is where what it writes is proven against a real Postgres.
+     */
+    await post()
+    expect(syncNextChargeFromAsaas).toHaveBeenCalledTimes(1)
+    expect(syncNextChargeFromAsaas).toHaveBeenCalledWith('sub_1')
+  })
+
+  it('does not refresh for an event that settles nothing', async () => {
+    // `PAYMENT_CREATED` is a charge appearing, not money arriving:
+    // `applyEvent` already took its `dueDate` off the body, so there is
+    // nothing to ask Asaas and no reason to spend a call inside the ten
+    // seconds a delivery gets.
+    const created = { ...EVENT, event: 'PAYMENT_CREATED' }
+    const response = await post(TOKEN, JSON.stringify(created))
+    expect(response.status).toBe(200)
+    expect(applyEvent).toHaveBeenCalledTimes(1)
+    expect(syncNextChargeFromAsaas).not.toHaveBeenCalled()
+  })
+
+  it('does not refresh for a redelivery, and still answers 200', async () => {
+    execute.mockImplementation(async () => {
+      order.push('insert')
+      return { rows: [] }
+    })
+    const response = await post()
+    expect(response.status).toBe(200)
+    expect(syncNextChargeFromAsaas).not.toHaveBeenCalled()
+  })
+
+  it('still answers 200 when the refresh throws', async () => {
+    /**
+     * The refresh promises never to throw. This route's promise to answer 200
+     * is its own and must not rest on another module keeping that one: a
+     * non-200 here is one of the fifteen strikes that pause Asaas's queue, and
+     * the grant has **already committed** by the time this runs — so the
+     * payment is recorded whatever happens next.
+     */
+    syncNextChargeFromAsaas.mockRejectedValue(Object.assign(new Error('boom'), { code: '08006' }))
+    const response = await post()
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true })
   })
 
   it('does nothing twice for a redelivered event id', async () => {
