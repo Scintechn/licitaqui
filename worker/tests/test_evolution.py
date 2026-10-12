@@ -253,6 +253,180 @@ def test_two_failures_open_the_circuit(switch_on: None) -> None:
     assert len(seen) == 2, "the third call should never have reached the transport"
 
 
+# -- the url button, and the fallback that must carry the URL (F24) --------
+#
+# One `type: "url"` button was measured against our own instance on
+# 2026-10-12 — `LicitaQuiapp`, Evolution 2.3.7, `state: open` — as
+# `POST /message/sendButtons/{instance}`, answered **201**, and rendered by
+# WhatsApp as a `nativeFlowMessage` `cta_url`. The **status code** below is that
+# measurement; the response **body** is the recorded `sendText` envelope,
+# because no `sendButtons` body was captured and inventing one would be dressing
+# a guess up as a fixture. Nothing here asserts anything about the body beyond
+# the message id the envelope carries, which is the same shape on both routes.
+
+BUTTON = {
+    "title": "Sua cobrança do LicitaQui é dia 17/11/2026",
+    "description": "Olá, Maria!\n\n*Valor:* R$ 57,00",
+    "footer": "LicitaQui",
+    "button_text": "💳 Pagar agora",
+    "url": "https://sandbox.asaas.com/i/abc",
+}
+
+
+def test_the_button_request_shape(switch_on: None) -> None:
+    transport, seen = recorder(201)
+
+    result = client(transport).send_url_button(NUMBER, **BUTTON)
+
+    request = seen[0]
+    assert request.method == "POST"
+    assert str(request.url) == (
+        "https://evolutiondev.example.invalid/message/sendButtons/licitaqui-test"
+    )
+    assert request.headers["user-agent"] == USER_AGENT
+    assert json.loads(request.content) == {
+        "number": "5511999990000",
+        "title": BUTTON["title"],
+        "description": BUTTON["description"],
+        "footer": BUTTON["footer"],
+        "buttons": [
+            {"type": "url", "displayText": BUTTON["button_text"], "url": BUTTON["url"]}
+        ],
+    }
+    assert result.status == "sent"
+    assert result.status_code == 201
+    assert result.fallback is False
+
+
+def test_there_is_exactly_one_button_and_it_is_a_url(switch_on: None) -> None:
+    """Sci chose one button on 2026-10-12, having seen both on the handset.
+
+    And `type: "pix"` must never appear: it takes a **static** key, so the money
+    would arrive with no txid, Asaas would never mark the charge `RECEIVED`, no
+    `PAYMENT_RECEIVED` would fire and entitlement would never be granted — it
+    breaks the whole webhook chain F2 exists for.
+    """
+    transport, seen = recorder(201)
+
+    client(transport).send_url_button(NUMBER, **BUTTON)
+
+    buttons = json.loads(seen[0].content)["buttons"]
+    assert len(buttons) == 1
+    assert buttons[0]["type"] == evolution.BUTTON_TYPE_URL == "url"
+    assert "pix" not in seen[0].content.decode().casefold()
+
+
+def test_with_the_switch_off_a_button_opens_no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(DELIVERY_VAR, raising=False)
+
+    def explode(*_: Any, **__: Any) -> None:
+        raise AssertionError("a socket was opened with the kill switch off")
+
+    monkeypatch.setattr(socket, "socket", explode)
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", explode)
+
+    result = EvolutionClient(base_url="https://unused.invalid").send_url_button(NUMBER, **BUTTON)
+
+    assert result.status == "dry_run"
+    assert result.fallback is False
+
+
+def test_the_button_transport_refuses_to_be_called_behind_the_switch() -> None:
+    """`post_buttons` re-checks the switch, exactly as `post_text` does: no new
+    route may route around the kill switch."""
+    transport, seen = recorder(201)
+
+    with pytest.raises(SendingDisabled):
+        client(transport).post_buttons(
+            "5511999990000", title="t", description="d", footer="f", buttons=[]
+        )
+
+    assert seen == []
+
+
+@pytest.mark.parametrize("status", [400, 422])
+def test_a_refused_button_falls_back_to_text_that_carries_the_url(
+    switch_on: None, status: int
+) -> None:
+    """**`rpatinacao`'s 2026-06-09 incident, which this is written from.**
+
+    Evolution began rejecting their button payload in production; their fallback
+    sent the description as plain text and **dropped the URL**, while the caller
+    still recorded `status: "sent"`. A customer received *"Toque no botão abaixo
+    para pagar"* with no button and no link.
+
+    So the fallback carries the URL — WhatsApp auto-links a bare one — and says
+    `fallback=True` so the degradation is countable rather than invisible.
+    """
+    calls: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if "sendButtons" in str(request.url):
+            return httpx.Response(status, json={"message": "buttons are not supported"})
+        return httpx.Response(200, json=RECORDED_200)
+
+    result = client(httpx.MockTransport(handle)).send_url_button(NUMBER, **BUTTON)
+
+    assert [("sendButtons" in str(c.url)) for c in calls] == [True, False]
+    text = json.loads(calls[1].content)["text"]
+    assert BUTTON["url"] in text, "the fallback dropped the URL — the 06-09 defect"
+    assert BUTTON["description"] in text
+    assert "toque no bot" not in text.casefold()
+    assert result.status == "sent"
+    assert result.fallback is True
+    assert result.fallback_reason == "http_error"
+
+
+def test_the_fallback_text_is_the_message_plus_the_bare_url() -> None:
+    """Asserted without a transport, because the one property that matters is
+    that the URL survives — and a bare URL on its own line is what WhatsApp
+    auto-links."""
+    text = evolution.button_fallback_text("Olá, Maria!", "https://sandbox.asaas.com/i/abc")
+    assert text.endswith("\n\nhttps://sandbox.asaas.com/i/abc")
+    assert text.startswith("Olá, Maria!")
+
+
+def test_a_rejected_button_does_not_open_the_circuit(switch_on: None) -> None:
+    """**The reason the rejection is classified rather than simply raised.**
+
+    A refused payload is systematic: it refuses *every* message. Counted as a
+    breaker failure, two of them would open the `evolution` circuit for 15
+    minutes and make the plain-text fallback raise `CircuitOpen` exactly when it
+    is needed — the fallback would exist and never run. The endpoint answered,
+    which is what the breaker measures, so the rejection is not a failure of it.
+    """
+    calls: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if "sendButtons" in str(request.url):
+            return httpx.Response(400, json={"message": "buttons are not supported"})
+        return httpx.Response(200, json=RECORDED_200)
+
+    evolution_client = client(httpx.MockTransport(handle))
+    for _ in range(3):
+        result = evolution_client.send_url_button(NUMBER, **BUTTON)
+        assert result.fallback is True
+
+    assert breaker.get_breaker(evolution.BREAKER_NAME).state == "closed"
+    assert len(calls) == 6, "every attempt reached the transport, twice over"
+
+
+def test_a_transport_fault_does_not_fall_back(switch_on: None) -> None:
+    """A timeout or a 5xx means the endpoint is not answering, so the plain-text
+    attempt would fail the same way. Only a *rejection* — Evolution answering
+    that it will not take this payload — is the 06-09 case. This one raises and
+    lets the job retry."""
+    transport, seen = recorder(500)
+
+    with pytest.raises(EvolutionError) as caught:
+        client(transport).send_url_button(NUMBER, **BUTTON)
+
+    assert caught.value.retryable is True
+    assert len(seen) == 1, "it tried the text fallback against a dead endpoint"
+
+
 # -- numbers ---------------------------------------------------------------
 
 

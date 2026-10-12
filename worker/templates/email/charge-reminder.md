@@ -1,10 +1,16 @@
 ---
 id: charge-reminder
 channel: email
-status: draft
-placeholders: [data_cobranca, email_contato, link_assinatura, nome, nome_plano, valor_cobranca]
+status: approved
+subject: Sua cobrança do LicitaQui é dia {{data_cobranca}}
+placeholders: [data_cobranca, fim_ciclo, inicio_ciclo, nome, nome_plano, valor_cobranca]
 partials: [partial-footer]
-notes: Spec section 10 and terms section 7. Job charge_reminder sweeps daily and enqueues send_billing_email once per (subscription, due date) - the billing_reminders primary key IS that idempotency, so this is never sent twice for one charge and never for a cancelled subscription. Asaas customer notifications are disabled because Asaas bills us per message, so this is the only warning a subscriber gets before the money leaves.
+notes: Spec section 10 and terms section 7. Copy approved by Sci on 2026-10-12, with three things asked of it - print the subscriber's name, state the new cycle from-date to-date, and no "toque no botao", which is redundant beside a visible button and exists in the reference repo only because their button sometimes vanished. Job charge_reminder sweeps daily and enqueues send_billing_email once per (subscription, due date) - the billing_reminders primary key IS that idempotency, so this is never sent twice for one charge and never for a cancelled subscription. Asaas customer notifications are disabled because Asaas bills us per message, so this is the only warning a subscriber gets before the money leaves. The WhatsApp copy of this notice is whatsapp/charge-reminder.md and carries the same sentences plus one url button; terms section 7 makes e-mail the required channel and WhatsApp additive. All six placeholders are bound by worker/licitaqui/billing.py, build_context, and partial-footer's three are bound there too - see the link_preferencias comment, which is the defect that would otherwise have cost one cohort of reminders on the day this copy landed. Open against this file: docs/TO_VALIDATE.md item B (radar.landing.guarantees.2.body says "renovacao" where the terms say "cobranca"), item C (notifications.billingHelp lists two un-disableable billing messages and this is a third) and item H (the footer's unsubscribe sentence, which is wrong for a notice that cannot be switched off). F22 is the open correctness dependency: data_cobranca binds from subscriptions.next_charge_on.
 ---
 
-TODO(Sci): este arquivo está sem corpo e sem assunto de propósito. Falta a cópia, que é sua (brief jurídico §5). O aviso de 3 dias antes da cobrança é uma cláusula do contrato (termos §7) e é prometido em cinco lugares — `foundersPage.founderValue.comparisonRows.3.us`, `foundersPage.faq.columns.1.2.a`, `notifications.billingHelp`, `radar.landing.plans.body` e `radar.landing.guarantees.2.body` — além do e-mail de boas-vindas dos fundadores, que já foi entregue. São duas frases: (1) o `subject:` do front matter, e (2) o corpo, que por spec §10 precisa dizer a data e o valor da cobrança. Os seis placeholders acima já estão ligados pelo remetente (`worker/licitaqui/billing.py`, `build_context`) e testados: `{{nome}}`, `{{nome_plano}}`, `{{data_cobranca}}` (dd/mm/aaaa, no fuso do produto), `{{valor_cobranca}}` (R$ 57,00), `{{link_assinatura}}` (`/conta/plano`, onde se cancela em um clique) e `{{email_contato}}`. Enquanto este TODO estiver aqui, `Template.ready_to_send` é falso, a varredura não grava nada, não enfileira nada, registra `billing.reminder_blocked` com o número de assinantes que teriam recebido, e loga em ERROR. Ver também `docs/TO_VALIDATE.md` item B: `radar.landing.guarantees.2.body` diz "renovação" onde os termos dizem "cobrança".
+Olá, {{nome}}!
+
+Sua próxima cobrança do LicitaQui {{nome_plano}} é no dia {{data_cobranca}}.
+
+Valor: {{valor_cobranca}}
+Período: {{inicio_ciclo}} a {{fim_ciclo}}

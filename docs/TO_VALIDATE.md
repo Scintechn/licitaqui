@@ -333,6 +333,31 @@ different products.
 This is a copy decision and the wording is yours (brief §5). The same resolution should settle item
 **C**, which is the same list being short.
 
+## H. The e-mail footer tells a subscriber they can stop receiving a notice they cannot — found 2026-10-12
+
+`partial-footer.md` — *"Você recebe este e-mail porque autorizou o contato quando entrou na **lista de
+fundadores** da LicitaQui. Para **parar de receber**, use {{link_preferencias}}."*
+
+It is appended to **every** e-mail, and from 2026-10-12 that includes the 3-day charge notice (**F24**),
+whose copy Sci approved the same day. Two sentences in one paragraph are now wrong for that reader:
+
+* **The reason is wrong.** A subscriber receives the charge notice because terms §7 obliges us to send it —
+  performance of the contract, not consent — and they may never have been on the founders list at all.
+* **The offer is wrong.** `notifications.billingHelp` says the billing messages *"não dá para desligar"*,
+  and terms §7 is a clause of the contract. There is no preference that switches this e-mail off, so a link
+  offered for that purpose cannot keep the promise above it.
+
+**What ships in the meantime, and why it is not a fix.** `build_context` binds `link_preferencias` to
+`/conta/alertas` — a real screen, which a subscriber has a session for, unlike `email.py`'s
+`mailto:…?subject=SAIR` for founders with no account. That makes the link *openable*. It does not make the
+sentence true. The binding was itself a defect this card found: the footer declares three placeholders and
+the billing sender bound two, so the first real reminder would have raised `MissingPlaceholder` **on the
+footer** and lost a cohort of notices — the same shape `email.py:136` records.
+
+The wording is yours (brief §5). The likely answer is a second footer, or one sentence that distinguishes a
+contractual notice from a marketing one; the same resolution would settle item **C**, which is the same list
+being short.
+
 ## D. Suspension at 10 days is promised in the contract and mentioned nowhere in the product
 
 Terms §7 and the FAQ both state it. No string in the catalogue does — there is no suspension
