@@ -129,6 +129,24 @@ describe('POST /api/asaas/webhook', () => {
     expect(syncNextChargeFromAsaas).toHaveBeenCalledWith('sub_1')
   })
 
+  it('refreshes on the redelivered grant too, not only the first one', async () => {
+    /**
+     * **The load-bearing half of that decision, and review found it
+     * untested.** A card's `PAYMENT_RECEIVED` arrives around **32 days** after
+     * its `PAYMENT_CONFIRMED` (`entitlement.ts`'s idempotency notes), so the
+     * second grant for one payment answers `already_entitled` — and it is the
+     * event that lands when the column has most likely gone stale. Narrowing
+     * the condition to `=== 'granted'` passed every other case here.
+     */
+    applyEvent.mockImplementation(async () => {
+      order.push('apply')
+      return { outcome: 'already_entitled' }
+    })
+    const response = await post()
+    expect(response.status).toBe(200)
+    expect(syncNextChargeFromAsaas).toHaveBeenCalledTimes(1)
+  })
+
   it('does not refresh for an event that settles nothing', async () => {
     // `PAYMENT_CREATED` is a charge appearing, not money arriving:
     // `applyEvent` already took its `dueDate` off the body, so there is

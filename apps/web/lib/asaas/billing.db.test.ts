@@ -9,6 +9,7 @@ import { AsaasClient } from './client'
 import { applyEvent, syncNextChargeFromAsaas } from './entitlement'
 import { cancelSubscription, readSubscription, resetSubscriptionCooldown } from './subscription'
 import { readEvent } from './webhook'
+import { POST } from '@/app/api/asaas/webhook/route'
 
 /**
  * **The subscription flow against a real Postgres — cards F2 and D8.**
@@ -521,6 +522,48 @@ suite('what a webhook does to an account (database)', () => {
     expect(await planOf(userId)).toBe('basico')
   })
 
+  it('does not hand a refunded subscriber a paid month, now that the date looks forward', async () => {
+    /**
+     * **The regression F22 would have shipped, found by review.**
+     *
+     * `lastPaidDay` is `greatest(ends_on, next_charge_on - 1, max entitled due
+     * date + 1 month - 1 day, today)`. The revoke path nulls `entitled_at`
+     * before ending the subscription, which kills the third candidate; the
+     * second one used to be *yesterday*, because the column held the charge
+     * that had just been paid, so the floor answered today. Once F22 points
+     * that column a month ahead, the same arithmetic grants a **refunded**
+     * subscriber `ends_on` a month out — and `plan-view.tsx` then reads them
+     * *"Você continua com o plano pago até…"* on a Básico screen.
+     *
+     * The two refund cases above assert only that the plan dropped, which
+     * stays true either way: §4b's shape, caught before it shipped.
+     */
+    const userId = await subscribed()
+    await deliver('PAYMENT_CONFIRMED')
+    const asaasSays = await (async () => {
+      const found = await db().execute<{ day: string }>(sql`
+        select ((now() at time zone 'America/Sao_Paulo')::date + 31)::text as day
+      `)
+      return found.rows[0].day
+    })()
+    const { client } = stubClient([
+      { data: [{ id: SUB, status: 'ACTIVE', nextDueDate: asaasSays }] },
+    ])
+    expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({ outcome: 'updated' })
+
+    await deliver('PAYMENT_REFUNDED', { suffix: 'f22r', status: 'REFUNDED' })
+
+    const today = await brtToday()
+    const row = await db().execute<{ status: string; ends_on: string | null }>(sql`
+      select status, ends_on::text as ends_on from subscriptions
+       where asaas_subscription_id = ${SUB}
+    `)
+    expect(row.rows[0].status).toBe('canceled')
+    // Today, not the day before a charge the money was handed back for.
+    expect(row.rows[0].ends_on).toBe(today)
+    expect(await planOf(userId)).toBe('basico')
+  })
+
   it('takes the plan away on a chargeback', async () => {
     // The draft listed the chargeback *statuses* and none of the chargeback
     // *events*, so a charged-back account kept its paid plan.
@@ -853,6 +896,187 @@ suite('what a webhook does to an account (database)', () => {
       expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({ outcome: 'local' })
       expect(calls, 'no socket is opened when a charge can answer').toEqual([])
       expect(await nextChargeOf()).toBe(monthTwo)
+    })
+
+    it('asks Asaas nothing while a charge is late and still owed', async () => {
+      /**
+       * **The sharp half of review finding 2.** The first version of the
+       * pre-check shared `refreshNextCharge`'s subquery verbatim, including
+       * `due_on >= today` — so a **past-due** charge did not block the
+       * overwrite. The reachable path is documented in this very file: a card
+       * sends `PAYMENT_RECEIVED` around 32 days after its `PAYMENT_CONFIRMED`,
+       * which is a grant, which runs the refresh. Month 2 declines and goes
+       * overdue, the late event for month 1 lands, and the column would have
+       * jumped to month 3 — leaving the one charge the subscriber actually
+       * owed with no reminder at all, because the sweep matches
+       * `next_charge_on = today + 3` by exact equality.
+       */
+      await subscribedAndPaid(3)
+      const late = await brtPlus(-4)
+      await deliver('PAYMENT_CREATED', {
+        suffix: 'f22od',
+        id: `${PAY}_od`,
+        status: 'OVERDUE',
+        dueDate: late,
+        paymentDate: null,
+      })
+      // Not "next" — `refreshNextCharge` will not point at a day that has
+      // gone — so the column still holds the charge that was paid.
+      expect(await nextChargeOf()).toBe(await brtToday())
+
+      const { client, calls } = stubClient([
+        { data: [{ id: SUB, status: 'ACTIVE', nextDueDate: await brtPlus(62) }] },
+      ])
+      expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({ outcome: 'local' })
+      expect(calls, 'a late charge is still owed; do not ask for a later one').toEqual([])
+      expect(await nextChargeOf()).toBe(await brtToday())
+    })
+
+    it('writes nothing if the row moved while Asaas was answering', async () => {
+      /**
+       * Compare and set. The guard is read, up to three seconds pass at Asaas
+       * with **nothing locked**, and a `PAYMENT_CREATED` committing in that
+       * window writes the correct month-2 date. The transport below is that
+       * window: it changes the row *while* the request is in flight, which no
+       * amount of care in the function could prevent — only the `where` can.
+       */
+      await subscribedAndPaid(3)
+      const monthTwo = await brtPlus(31)
+      const client = new AsaasClient({
+        env: { ASAAS_BILLING: 'live', ASAAS_ENV: 'sandbox', ASAAS_API_KEY: '$aact_hmlg_test' },
+        transport: async () => {
+          await db().execute(sql`
+            update subscriptions set next_charge_on = ${monthTwo}::date
+             where asaas_subscription_id = ${SUB}
+          `)
+          return new Response(
+            JSON.stringify({ data: [{ id: SUB, status: 'ACTIVE', nextDueDate: await brtPlus(62) }] }),
+            { status: 200 },
+          )
+        },
+      })
+      expect(await syncNextChargeFromAsaas(SUB, { client })).toEqual({
+        outcome: 'skipped',
+        reason: 'raced',
+      })
+      expect(await nextChargeOf()).toBe(monthTwo)
+    })
+
+    it('gives up well inside the ten seconds Asaas allows a delivery', async () => {
+      /**
+       * **The one assertion that reaches the client the route actually
+       * builds.** Every other case injects its own, so deleting
+       * `{ timeoutMs: NEXT_CHARGE_TIMEOUT_MS }` from the default construction
+       * would pass all of them — and the client's own default is 15 s, which
+       * is longer than the whole delivery window and would spend one of the
+       * fifteen strikes that pause Asaas's queue. So this one lets the real
+       * default be built, against a socket that never answers, and asserts the
+       * wall clock.
+       */
+      await subscribedAndPaid(3)
+      const today = await brtToday()
+      const env = {
+        ASAAS_BILLING: process.env.ASAAS_BILLING,
+        ASAAS_ENV: process.env.ASAAS_ENV,
+        ASAAS_API_KEY: process.env.ASAAS_API_KEY,
+      }
+      process.env.ASAAS_BILLING = 'live'
+      process.env.ASAAS_ENV = 'sandbox'
+      process.env.ASAAS_API_KEY = '$aact_hmlg_test'
+      const never = vi.fn((_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+          )
+        }),
+      )
+      vi.stubGlobal('fetch', never)
+      const started = Date.now()
+      try {
+        expect(await syncNextChargeFromAsaas(SUB)).toEqual({
+          outcome: 'failed',
+          reason: 'timeout',
+        })
+      } finally {
+        vi.unstubAllGlobals()
+        for (const [key, value] of Object.entries(env)) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+      }
+      const elapsed = Date.now() - started
+      expect(never).toHaveBeenCalledTimes(1)
+      expect(elapsed, `gave up after ${elapsed} ms`).toBeLessThan(6_000)
+      expect(await nextChargeOf()).toBe(today)
+    })
+
+    it('is what the webhook route does, end to end, with nothing mocked but the socket', async () => {
+      /**
+       * **The path, not the unit — CLAUDE.md §4b.** Every other case here
+       * calls the function with a client handed to it, and `route.test.ts`
+       * mocks this whole module, so *"a payment arriving moves the column"*
+       * was asserted on both sides of the seam and nowhere across it.
+       *
+       * This posts a real Asaas envelope to the real route handler: real
+       * token check, real `webhook_events` insert, real transaction, real
+       * grant, real `syncNextChargeFromAsaas` building its **own** client from
+       * the environment. Only `fetch` is stubbed, which is the one thing that
+       * must never reach a socket from a test (the suite docstring's honest
+       * limit: no real Asaas call has ever been made from this code).
+       */
+      const userId = await makeUser({ seat: 3 })
+      const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/first'))
+      await startCheckout(userId, 'CREDIT_CARD', { client })
+      expect(await nextChargeOf()).toBe(await brtToday())
+
+      const asaasSays = await brtPlus(31)
+      const envelope = (await event('PAYMENT_CONFIRMED', { suffix: 'route' })).body
+      const before = {
+        ASAAS_BILLING: process.env.ASAAS_BILLING,
+        ASAAS_ENV: process.env.ASAAS_ENV,
+        ASAAS_API_KEY: process.env.ASAAS_API_KEY,
+        ASAAS_WEBHOOK_TOKEN: process.env.ASAAS_WEBHOOK_TOKEN,
+      }
+      process.env.ASAAS_BILLING = 'live'
+      process.env.ASAAS_ENV = 'sandbox'
+      process.env.ASAAS_API_KEY = '$aact_hmlg_test'
+      process.env.ASAAS_WEBHOOK_TOKEN = `token-${RUN_ID}`
+      const sockets: string[] = []
+      vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+        sockets.push(`${init.method} ${String(url).replace(/^https:\/\/[^/]+/, '')}`)
+        return new Response(
+          JSON.stringify({ data: [{ id: SUB, status: 'ACTIVE', nextDueDate: asaasSays }] }),
+          { status: 200 },
+        )
+      })
+      let response: Response
+      try {
+        response = await POST(
+          new Request('https://licitaqui.test/api/asaas/webhook', {
+            method: 'POST',
+            headers: { 'asaas-access-token': `token-${RUN_ID}` },
+            body: JSON.stringify(envelope),
+          }),
+        )
+      } finally {
+        vi.unstubAllGlobals()
+        for (const [key, value] of Object.entries(before)) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+      }
+      // 200 exactly, and with a body: Asaas records a 204 as a failure.
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ ok: true })
+      // One socket, to the subscription list for this subscriber's reference.
+      expect(sockets).toHaveLength(1)
+      expect(sockets[0]).toContain(`externalReference=licitaqui-user-${userId}`)
+      // The grant happened **and** the column moved, in one request.
+      expect(await planOf(userId)).toBe('promocional')
+      const view = await readSubscription(userId)
+      if (view.state !== 'found') throw new Error('subscription vanished')
+      expect(view.subscription.status).toBe('active')
+      expect(view.subscription.nextChargeOn).toBe(asaasSays)
     })
 
     it('never walks the date backwards, whatever Asaas answers', async () => {

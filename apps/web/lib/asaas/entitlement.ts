@@ -259,6 +259,7 @@ export async function applyEvent(
     `)
     let ended = false
     if (!stillEntitled.rows[0]?.entitled) {
+      await clearNextCharge(event.subscriptionId, database)
       await endSubscription(event.subscriptionId, database)
       await database.execute(sql`
         update users set plan = 'basico' where id = ${userId}::bigint and plan <> 'basico'
@@ -522,6 +523,46 @@ async function refreshNextCharge(subscriptionId: string, database: Executor): Pr
 }
 
 /**
+ * **A subscription that has just lost its last entitling payment has no next
+ * charge — and `ends_on` is about to be computed from this column.**
+ *
+ * Found by review, as a regression F22 introduced rather than an old defect.
+ * {@link lastPaidDay} takes `greatest(ends_on, next_charge_on - 1, max entitled
+ * due date + 1 month - 1 day, today)`. The revoke path nulls `entitled_at`
+ * first, which kills the third candidate; before F22 the second one was
+ * *yesterday* (the column held the charge that had just been paid), so the
+ * floor answered `today`. With `next_charge_on` finally pointing a month
+ * ahead, that second candidate would hand a **refunded or charged-back**
+ * subscriber `ends_on` a month out, and `plan-view.tsx` would read them
+ * *"Você continua com o plano pago até 09/11/2026"* on a screen whose header
+ * says Básico — a false contractual sentence, which is F20's category widened
+ * from one day to one month. The two refund cases in `billing.db.test.ts`
+ * asserted only that the plan had dropped, so the suite stayed green.
+ *
+ * The column is cleared **before** {@link endSubscription} reads it, and
+ * `refreshNextCharge` runs a few lines later: a charge that really is
+ * scheduled and unpaid comes straight back (`keeps next_charge_on out of the
+ * past after a refund` proves it). What does not come back is a date standing
+ * for a month nobody paid for.
+ *
+ * **The better fix is not here**, and it is not F22's to make: the second
+ * candidate of `lastPaidDay` should require an entitled payment to exist at
+ * all, which would also answer the case `cancelling (database)` currently
+ * asserts as correct — a subscription created with a future `nextDueDate` and
+ * **never paid** is cancelled into `ends_on = nextDueDate - 1`. That is F20,
+ * whose card is open and whose acceptance criterion is exactly that sentence.
+ * Changing the shared expression here would take F20's decision for it.
+ */
+async function clearNextCharge(subscriptionId: string, database: Executor): Promise<void> {
+  await database.execute(sql`
+    update subscriptions
+       set next_charge_on = null,
+           updated_at     = now()
+     where asaas_subscription_id = ${subscriptionId}::text
+  `)
+}
+
+/**
  * How long this one Asaas read may take — **F22**, and the number matters.
  *
  * {@link DEFAULT_TIMEOUT_MS} is 15 s, which is longer than the 10 s Asaas
@@ -543,8 +584,8 @@ export type NextChargeSync =
   /** Nothing to do, and no reason to call Asaas. */
   | {
       outcome: 'skipped'
-      reason: 'no_live_subscription' | 'not_live' | 'dry_run' | 'config'
-        | 'not_at_asaas' | 'no_next_due_date' | 'in_the_past'
+      reason: 'no_live_subscription' | 'not_live' | 'config'
+        | 'not_at_asaas' | 'no_next_due_date' | 'in_the_past' | 'raced'
     }
   /** Asaas or the database refused. The column keeps the value it had. */
   | { outcome: 'failed'; reason: string }
@@ -588,11 +629,29 @@ type SyncRow = {
  * already advanced to month 3, so writing it unconditionally would skip a
  * month: the screen would name December while November went unpaid, and the
  * reminder — which matches `next_charge_on = today + 3` by exact equality —
- * would never fire for the charge it was owed on. So this runs **only when no
- * unsettled future charge is known**, which is the same allow-list and the
- * same `due_on >= today` rule `refreshNextCharge` uses, read here in one
- * statement before anything is asked of Asaas. That pre-check is also what
- * keeps the HTTP call to roughly once a cycle instead of once an event.
+ * would never fire for the charge it was owed on. So this runs **only when
+ * this subscription has no unsettled charge at all**, read in one statement
+ * before anything is asked of Asaas. That pre-check is also what keeps the
+ * HTTP call to roughly once a cycle instead of once an event.
+ *
+ * **The pre-check is {@link AWAITING} with no date filter, and the missing
+ * filter is the point.** `refreshNextCharge` asks *"which charge is next"* and
+ * excludes a past-due one because a charge that is late is owed but not next.
+ * This asks the opposite question — *"may Asaas's forward date be written
+ * here?"* — and a past-due charge is exactly when the answer is no. Review
+ * found the first version sharing `refreshNextCharge`'s expression verbatim,
+ * where a NULL means *leave the column alone* (safe) while here it means
+ * *overwrite it from Asaas* (unsafe): one `OVERDUE` month-2 charge plus the
+ * late `PAYMENT_RECEIVED` a card sends ~32 days after its `PAYMENT_CONFIRMED`
+ * would have moved the column to month 3, and the one charge the subscriber
+ * actually owed would have arrived with no notice at all.
+ *
+ * A status **outside** that allow-list still does not block, and that is
+ * deliberate for the reason the list exists: a `REFUNDED` or `DELETED` charge
+ * keeps `entitled_at is null` for ever, so blocking on *"anything unsettled"*
+ * would freeze this column permanently for every subscription that has ever
+ * been refunded. `AUTHORIZED` — money committed, not captured — is nobody's
+ * debt either.
  *
  * ## Why the call is here and not in {@link applyEvent}
  *
@@ -607,6 +666,15 @@ type SyncRow = {
  * then no worse off than before this function existed — the stale value stands
  * until month 2's `PAYMENT_CREATED` arrives or F10's reconcile runs.
  *
+ * What it costs the delivery is **one Asaas call bounded at
+ * {@link NEXT_CHARGE_TIMEOUT_MS} plus two un-timed Neon round trips**, and
+ * only on a grant whose subscription has no unsettled charge. That is well
+ * inside Asaas's ten seconds in every case measured here and is **not** a
+ * proof: a cold Neon compute is not bounded by anything this file controls.
+ * The reason it is acceptable anyway is that the money is already recorded and
+ * committed — a delivery lost here costs a *date*, which F10's reconcile is
+ * the retry for, and not a payment.
+ *
  * `findSubscription` and not `GET /v3/subscriptions/{id}`: the list-by-
  * `externalReference` endpoint is the one this codebase has actually exercised
  * against the sandbox, and a single-subscription GET would be API surface
@@ -620,9 +688,18 @@ type SyncRow = {
  */
 export async function syncNextChargeFromAsaas(
   subscriptionId: string,
-  options: { client?: AsaasClient; database?: Executor } = {},
+  options: { client?: AsaasClient } = {},
 ): Promise<NextChargeSync> {
-  const database = options.database ?? db()
+  /**
+   * **The pool, and there is no parameter for anything else.** An `Executor`
+   * option was written here and nothing ever passed one — and the only value
+   * worth passing would have been a transaction, which is the single thing
+   * this function must never be given: it would put the Asaas call back inside
+   * the `for update` the whole design exists to stay out of. Named by review
+   * as `radar.opportunity.screeningCost`'s shape — written, typed, never
+   * passed — so it is gone rather than documented.
+   */
+  const database = db()
   try {
     const found = await database.execute<SyncRow>(sql`
       select s.user_id,
@@ -632,8 +709,7 @@ export async function syncNextChargeFromAsaas(
                 from subscription_payments p
                where p.asaas_subscription_id = s.asaas_subscription_id
                  and p.entitled_at is null
-                 and upper(p.status) in ${awaitingLiteral()}
-                 and p.due_on >= (now() at time zone 'America/Sao_Paulo')::date)
+                 and upper(p.status) in ${awaitingLiteral()})
                as awaiting
         from subscriptions s
        where s.asaas_subscription_id = ${subscriptionId}::text
@@ -644,8 +720,8 @@ export async function syncNextChargeFromAsaas(
     `)
     const row = found.rows[0]
     if (!row) return { outcome: 'skipped', reason: 'no_live_subscription' }
-    // A charge somebody still owes is the better authority, and it is already
-    // in the column. See "It is the fallback, never the answer".
+    // A charge somebody still owes is the better authority, whether it is
+    // ahead of today or late. See "It is the fallback, never the answer".
     if (row.awaiting !== null) return { outcome: 'local' }
 
     const client = options.client ?? new AsaasClient({ timeoutMs: NEXT_CHARGE_TIMEOUT_MS })
@@ -653,7 +729,11 @@ export async function syncNextChargeFromAsaas(
     if (client.fault) return { outcome: 'skipped', reason: 'config' }
 
     const at = await client.findSubscription(externalReference(Number(row.user_id)))
-    if (at === DRY_RUN) return { outcome: 'skipped', reason: 'dry_run' }
+    // Unreachable by construction — `request` answers `DRY_RUN` only when the
+    // client is not live, which the guard above already returned on — and kept
+    // because the type says it can happen. It is **not** its own reason: an
+    // enum value nothing can emit is `locked_block_clicked`'s shape.
+    if (at === DRY_RUN) return { outcome: 'skipped', reason: 'not_live' }
     if (at === null || at.id !== subscriptionId) {
       return { outcome: 'skipped', reason: 'not_at_asaas' }
     }
@@ -673,13 +753,36 @@ export async function syncNextChargeFromAsaas(
     if (nextDueDate < row.today_brt) return { outcome: 'skipped', reason: 'in_the_past' }
     if (nextDueDate === row.next_charge_on) return { outcome: 'unchanged' }
 
-    await database.execute(sql`
-      update subscriptions
+    /**
+     * **Compare and set, because the guard was read before an HTTP call.**
+     *
+     * Up to three seconds pass at Asaas between the pre-check and this write,
+     * nothing is locked (deliberately — a lock across that call is what this
+     * whole design avoids), and a `PAYMENT_CREATED` committing in the window
+     * writes the *correct* month-2 date through `refreshNextCharge`. A bare
+     * `update` would then overwrite it with Asaas's already-advanced one —
+     * finding 3 of the review, the same harm as skipping a month, by a race
+     * instead of by a missing filter. So the `where` re-states every
+     * precondition: the row still holds the value we read, it is still live,
+     * and it still has no unsettled charge. Zero rows is `raced`, not
+     * `updated`.
+     */
+    const written = await database.execute<{ asaas_subscription_id: string }>(sql`
+      update subscriptions s
          set next_charge_on = ${nextDueDate}::date,
              updated_at     = now()
-       where asaas_subscription_id = ${subscriptionId}::text
-         and status = any(${liveStatusLiteral()})
+       where s.asaas_subscription_id = ${subscriptionId}::text
+         and s.status = any(${liveStatusLiteral()})
+         and s.next_charge_on is not distinct from ${row.next_charge_on}::date
+         and not exists (
+           select 1 from subscription_payments p
+            where p.asaas_subscription_id = s.asaas_subscription_id
+              and p.entitled_at is null
+              and upper(p.status) in ${awaitingLiteral()}
+         )
+      returning s.asaas_subscription_id
     `)
+    if (written.rows.length === 0) return { outcome: 'skipped', reason: 'raced' }
     return { outcome: 'updated' }
   } catch (error) {
     // An `AsaasFailure` is a fixed vocabulary and a Postgres `code` is five
