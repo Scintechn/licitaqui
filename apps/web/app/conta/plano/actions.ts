@@ -3,6 +3,10 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { startCheckout } from '@/lib/asaas/checkout'
+import {
+  DEFAULT_SUBSCRIPTION_METHOD,
+  parseSubscriptionMethod,
+} from '@/lib/asaas/method'
 import { AsaasClient, AsaasError, DRY_RUN } from '@/lib/asaas/client'
 import { cancelSubscription, readSubscription } from '@/lib/asaas/subscription'
 import { auth } from '@/lib/auth'
@@ -93,12 +97,34 @@ async function requestHeaders(): Promise<Headers> {
  * plan screen with a state otherwise. There is no branch that returns to a
  * screen saying nothing happened.
  */
-export async function goToCheckout(): Promise<void> {
+export async function goToCheckout(formData: FormData): Promise<void> {
   const userId = await currentUserId()
   const decision = await rateLimitRequest('subscribe', await requestHeaders(), RATE_LIMIT)
   if (!decision.ok) return redirect(to('muitas-tentativas'))
 
-  const result = await startCheckout(userId)
+  /*
+   * **The method is read from the form and validated, never trusted.** Sci's
+   * rule is Pix *and* card (2026-10-11), so the subscriber chooses — and a
+   * Server Function is a POST endpoint with a generated name, so the only
+   * thing standing between a crafted request and an **unrefundable boleto
+   * subscription** is this check. `'BOLETO'` and `'UNDEFINED'` are not members
+   * of `SubscriptionMethod`, so `parseSubscriptionMethod` returns `null` for
+   * both and this refuses rather than falling back to a default that would
+   * accept them.
+   *
+   * A missing field is the no-JavaScript case, not an attack: the radio group
+   * ships with card checked, but a form posted without it should still buy
+   * something the terms can refund, so it takes the default. A *present but
+   * unrecognised* value is refused, because that is not a browser.
+   */
+  const raw = formData.get('metodo')
+  const method = raw === null ? DEFAULT_SUBSCRIPTION_METHOD : parseSubscriptionMethod(raw)
+  if (method === null) {
+    console.error('billing: checkout refused an unsupported payment method')
+    return redirect(to('erro'))
+  }
+
+  const result = await startCheckout(userId, method)
 
   switch (result.outcome) {
     case 'already_active':
@@ -124,7 +150,11 @@ export async function goToCheckout(): Promise<void> {
   }
 
   // §14's gate metric. A plan name, never the amount and never a URL.
-  await recordEventSafely({ name: 'checkout_opened', userId, props: { plan: result.plan } })
+  await recordEventSafely({
+    name: 'checkout_opened',
+    userId,
+    props: { plan: result.plan, method },
+  })
 
   if (result.checkoutUrl) return redirect(result.checkoutUrl)
   // The subscription exists and Asaas has not produced the invoice yet. The

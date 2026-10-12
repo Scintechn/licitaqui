@@ -4,6 +4,10 @@ import { cn } from '@/lib/cn'
 import { format, messages } from '@/lib/messages'
 import type { QuotaView } from '@/lib/radar/contract'
 import { moneyExact } from '@/lib/radar/format'
+import {
+  DEFAULT_SUBSCRIPTION_METHOD,
+  SUBSCRIPTION_METHODS,
+} from '@/lib/asaas/method'
 import { COMPANY_PATH, PLAN_HREF, PLAN_PATH } from '@/lib/routes'
 import { withQuery } from '@/lib/url'
 import { AccountChrome } from '../account-chrome'
@@ -133,8 +137,15 @@ export function PlanView({
   canBill: boolean
   state?: PlanState | null
   confirmingCancel?: boolean
-  /** `goToCheckout`; a no-op in a component test. */
-  onCheckout: () => void
+  /**
+   * `goToCheckout`; a no-op in a component test.
+   *
+   * Takes the `FormData` because the subscriber chooses Pix or card in the
+   * same form (Sci's rule, 2026-10-11) and the action validates the choice —
+   * see `actions.ts`, where an unrecognised method is refused rather than
+   * defaulted.
+   */
+  onCheckout: (formData: FormData) => void
   /** `confirmCancel`; a no-op in a component test. */
   onCancel: () => void
 }) {
@@ -297,7 +308,46 @@ export function PlanView({
 
       <div className="flex flex-col gap-2 pt-2 min-[560px]:flex-row">
         {(!live || cancelled) && canBill && subscription !== 'unavailable' ? (
-          <form action={onCheckout}>
+          <form action={onCheckout} className="flex flex-col gap-3">
+            {/*
+              **Pix and card, chosen here.** Sci's rule, 2026-10-11. A native
+              radio group, deliberately: this suite has no jsdom (§4c), so a
+              component test can assert the markup but never a click — and a
+              radio group needs no JavaScript at all to carry its value to the
+              action. `defaultChecked` on the first is the no-JS default too,
+              and `actions.ts` re-derives it rather than trusting the post.
+
+              The two notes under the labels are the asymmetry, said plainly
+              rather than discovered on the second month: the card renews by
+              itself and Pix is a fresh QR every cycle. Both are measured
+              (`client.ts`, `createSubscription`).
+            */}
+            <fieldset className="flex flex-col gap-2">
+              <legend className="pb-1 text-meta font-medium">
+                {billing.subscribe.methodLegend}
+              </legend>
+              {SUBSCRIPTION_METHODS.map((value) => (
+                <label key={value} className="flex items-start gap-2 text-body">
+                  <input
+                    type="radio"
+                    name="metodo"
+                    value={value}
+                    defaultChecked={value === DEFAULT_SUBSCRIPTION_METHOD}
+                    className="mt-1 size-4 shrink-0 accent-blue"
+                  />
+                  <span className="flex flex-col">
+                    <span>
+                      {value === 'PIX' ? billing.subscribe.methodPix : billing.subscribe.methodCard}
+                    </span>
+                    <span className="text-meta text-muted">
+                      {value === 'PIX'
+                        ? billing.subscribe.methodPixHelp
+                        : billing.subscribe.methodCardHelp}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
             <Button type="submit" variant="primary" iconEnd="arrowRight" fullWidth>
               {billing.subscribe.cta}
             </Button>

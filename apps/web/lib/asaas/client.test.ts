@@ -13,12 +13,16 @@ import {
 /**
  * The Asaas client, against a fake transport.
  *
- * **No real call was ever made from this code** — `ASAAS_API_KEY` is Sci's and
- * G12 (the production account, bank details and webhook URL) is not done. So
- * these tests pin the request this code *would* send and the answer it makes
- * of each reply, and the PR says plainly that the sandbox cycle is Sci's to
- * run. A green suite here is not evidence that Asaas accepts these fields; it
- * is evidence that we send what we think we send.
+ * **The sandbox cycle has now run** — G12 closed 2026-10-10, and on that day a
+ * founder subscribed, paid, and the webhooks arrived in order. This file did
+ * not change because of that: a fake transport replies the same thing to any
+ * request, so **a green suite here is still not evidence that Asaas accepts
+ * these fields** — it is evidence that we send what we think we send. That
+ * distinction is the whole point of the file and survives the sandbox run.
+ *
+ * What the sandbox proved instead is recorded where the value is chosen
+ * (`client.ts`, `createSubscription`) and in `docs/CLAIMS.md`. Where a test
+ * below cites a measurement, it is quoting that, not performing one.
  */
 
 const LIVE = {
@@ -51,6 +55,7 @@ describe('the dry run, which is the default', () => {
     expect(await off.findCustomer('x')).toBe(DRY_RUN)
     expect(await off.createSubscription({
       customer: 'cus_1',
+      billingType: 'CREDIT_CARD',
       value: 57,
       nextDueDate: '2026-10-17',
       externalReference: 'licitaqui-user-1',
@@ -146,10 +151,11 @@ describe('the requests it sends', () => {
     expect(body.notificationDisabled).toBe(true)
   })
 
-  it('creates a monthly subscription that lets the payer choose Pix or card', async () => {
+  it('creates a monthly subscription billed to a card, the only refundable recurring method', async () => {
     const { calls, client: c } = client([{ body: { id: 'sub_1', status: 'ACTIVE' } }])
     await c.createSubscription({
       customer: 'cus_1',
+      billingType: 'CREDIT_CARD',
       value: 57,
       nextDueDate: '2026-10-17',
       externalReference: externalReference(7),
@@ -157,11 +163,46 @@ describe('the requests it sends', () => {
     })
     const body = JSON.parse(calls[0].init.body as string)
     expect(body.cycle).toBe('MONTHLY')
-    // `UNDEFINED` is what makes the invoice page offer both; naming one would
-    // take the choice away, and `billing.subscribe.methods` promises both.
-    expect(body.billingType).toBe('UNDEFINED')
+    // **Not `UNDEFINED`.** That offered boleto as well, and Asaas cannot
+    // refund a boleto — which the terms' 7-day withdrawal and 30-day
+    // guarantee both require. Two sandbox measurements on 2026-10-10, and it
+    // matters which value each one was of: `UNDEFINED` produced a subscription
+    // that came back `BOLETO` and a refund that was refused; `CREDIT_CARD`
+    // produced an `ACTIVE` subscription and a payable `PENDING` charge with no
+    // card data on the payload. Why Pix is not the third option is argued at
+    // the field itself — it is Asaas's rule for recurring charges, not a
+    // property of Pix.
+    expect(body.billingType).toBe('CREDIT_CARD')
+    // No card data leaves this process: Asaas collects it on the hosted
+    // invoice, which is what keeps us outside PCI scope.
+    expect(body.creditCard).toBeUndefined()
+    expect(body.creditCardToken).toBeUndefined()
+    expect(body.creditCardHolderInfo).toBeUndefined()
     expect(body.value).toBe(57)
     expect(body.nextDueDate).toBe('2026-10-17')
+  })
+
+  it('sends Pix as Pix, so the chooser is not decoration', async () => {
+    // The card case above would pass against a hard-coded `'CREDIT_CARD'`.
+    // This is the second value that makes `request.billingType` load-bearing —
+    // the same hole the first version of this file had, where the test name
+    // promised a choice the assertion forbade.
+    const { calls, client: c } = client([{ body: { id: 'sub_2', status: 'ACTIVE' } }])
+    await c.createSubscription({
+      customer: 'cus_1',
+      billingType: 'PIX',
+      value: 57,
+      nextDueDate: '2026-10-17',
+      externalReference: externalReference(7),
+      description: 'LicitaQui · Promocional',
+    })
+    const body = JSON.parse(calls[0].init.body as string)
+    expect(body.billingType).toBe('PIX')
+    // Measured in the sandbox 2026-10-11: a PIX subscription's charge comes
+    // back `billingType: PIX` with a working `pixQrCode`, and Asaas allows a
+    // full refund or several partial ones. It is an invoice per cycle, not a
+    // stored credential — which is the product consequence, not an API one.
+    expect(body.cycle).toBe('MONTHLY')
   })
 
   it('reuses no deleted or inactive subscription', async () => {

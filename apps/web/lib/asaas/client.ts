@@ -23,7 +23,7 @@ import {
  * | `GET /v3/customers?externalReference=…` | read-before-write: Asaas has **no idempotency-key header** and its own docs tell integrators to query before retrying |
  * | `POST /v3/customers` | with `notificationDisabled: true` — spec §9 |
  * | `GET /v3/subscriptions?externalReference=…` | the same read-before-write, one level up |
- * | `POST /v3/subscriptions` | monthly cycle, `billingType: UNDEFINED` so the payer picks Pix or card |
+ * | `POST /v3/subscriptions` | monthly cycle, `billingType` **`PIX` or `CREDIT_CARD`** as the subscriber chose — never boleto, see below |
  * | `GET /v3/subscriptions/{id}/payments` | the **only** place a hosted-checkout URL exists: `invoiceUrl` on the first charge |
  * | `DELETE /v3/subscriptions/{id}` | the cancel that actually stops the money (D8) |
  *
@@ -136,8 +136,18 @@ export type CustomerRequest = {
   mobilePhone?: string
 }
 
+import type { SubscriptionMethod } from './method'
+
+/** Re-exported so a caller needs one import, not two. */
+export type { SubscriptionMethod }
+
 export type SubscriptionRequest = {
   customer: string
+  /**
+   * The method the subscriber chose on `/conta/plano`. Required, with no
+   * default: a default here is how the whole product quietly bills one way.
+   */
+  billingType: SubscriptionMethod
   /** Reais as a decimal, from `priceFor(...).reais`. Never centavos. */
   value: number
   /** `YYYY-MM-DD` in the product's clock (BRT). */
@@ -255,10 +265,49 @@ export class AsaasClient {
     const body = await this.request('POST', '/subscriptions', {
       json: {
         customer: request.customer,
-        // The payer chooses Pix or card on the invoice page, which is what
-        // `billing.subscribe.methods` promises ("Você pode pagar com Pix ou
-        // cartão"). Naming one here would take the choice away.
-        billingType: 'UNDEFINED',
+        /*
+         * **Pix and card, both, and nothing else.** Sci's rule, 2026-10-11:
+         * *"The application will accept Card and Pix… even if for pix we have
+         * to charge every month, not like a normal subscription."*
+         *
+         * The value comes from the subscriber. What this comment is for is the
+         * two things that are **not** obvious and were each measured in the
+         * sandbox rather than read off the docs, because the docs do not say
+         * them.
+         *
+         * **1. Boleto is excluded because it cannot be refunded.** This field
+         * was `UNDEFINED` until 10-10, whose comment claimed it let the payer
+         * pick "Pix or card". It does not — it offers boleto too, and the
+         * first real sandbox subscription came back `billing_type: BOLETO`,
+         * after which Asaas refused the refund outright: *"Somente é possível
+         * estornar cobranças cuja a forma de pagamento seja cartão de crédito
+         * ou Pix."* The terms carry a 7-day withdrawal (CDC art. 49) and a
+         * 30-day guarantee, so an unrefundable method is not available to us.
+         * {@link SubscriptionMethod} is the type that makes that unsayable.
+         *
+         * **2. A card entered on Asaas's hosted invoice is kept, so we never
+         * handle card data.** This is the measurement the whole design rests
+         * on, and the documentation describes only the other flow (where the
+         * integrator posts `creditCard` + `creditCardHolderInfo`, or a
+         * `creditCardToken`). Measured 2026-10-11 in the sandbox: a
+         * subscription created with `CREDIT_CARD` and **no card fields** has
+         * `creditCard: null`; after its first invoice is paid by card, the
+         * subscription itself holds
+         * `{creditCardNumber, creditCardBrand, creditCardToken}` and
+         * `nextDueDate` has advanced a cycle. So later cycles charge the
+         * stored card automatically and **this payload stays free of card
+         * data** — which is what keeps us out of PCI scope. Do not "fix" this
+         * by adding the card fields.
+         *
+         * **What differs for Pix, and it is a product fact, not a detail.** A
+         * Pix subscription is an invoice per cycle, not a stored credential:
+         * Asaas issues a fresh QR every month and the subscriber must pay it.
+         * There is no auto-debit here — that is **Pix Automático**
+         * (`POST /v3/pix/automatic/authorizations`, `paymentCreationMode:
+         * SUBSCRIPTION`), which needs account eligibility and the payer's bank
+         * to support it, and is carded as F26 rather than assumed.
+         */
+        billingType: request.billingType,
         value: request.value,
         nextDueDate: request.nextDueDate,
         cycle: 'MONTHLY',

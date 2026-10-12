@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 import { messages } from '@/lib/messages'
-import { AsaasClient, AsaasError, DRY_RUN, externalReference, type Maybe } from './client'
+import { AsaasClient, AsaasError, DRY_RUN, externalReference, type Maybe, type SubscriptionMethod } from './client'
 import { safeInvoiceUrl } from './config'
 import { AWAITING } from './entitlement'
 import { priceFor } from './price'
@@ -92,6 +92,15 @@ type SubscriberRow = {
  */
 export async function startCheckout(
   userId: number,
+  /**
+   * `method` is **required** and deliberately not defaulted. Sci's rule is Pix
+   * *and* card (2026-10-11), and a default here would decide for the
+   * subscriber in whichever call site forgot to pass theirs — the quietest way
+   * to end up single-method again. The caller validates it against
+   * {@link SubscriptionMethod} before it gets here; this signature is what
+   * makes forgetting a type error.
+   */
+  method: SubscriptionMethod,
   options: { database?: Executor; client?: AsaasClient } = {},
 ): Promise<CheckoutOutcome> {
   const database = options.database ?? db()
@@ -99,6 +108,15 @@ export async function startCheckout(
 
   const existing = await readSubscription(userId, database)
   if (existing.state === 'unavailable') {
+    // One line per layer, deliberately, and the layer below is **not**
+    // silent: `subscription.ts` already logs `billing: subscriptions
+    // unreadable (<code>)` in the catch that produces `state: 'unavailable'`.
+    // So for a real database fault this is the second message, naming the
+    // caller that gave up rather than the query that failed. It earns its
+    // keep on the other branch — `reason: 'cooldown'`, the open circuit
+    // breaker, which logs nothing anywhere else and is the one case where a
+    // checkout refuses with no trace at all.
+    console.error(`billing: checkout failed (database:${existing.reason})`)
     return { outcome: 'failed', reason: `database:${existing.reason}`, retryable: true }
   }
   if (existing.state === 'found' && existing.subscription.status === 'active') {
@@ -106,7 +124,12 @@ export async function startCheckout(
   }
 
   const row = await subscriber(userId, database)
-  if (!row) return { outcome: 'failed', reason: 'no_user', retryable: false }
+  if (!row) {
+    // The session named a user this query cannot find. Rare and worth saying
+    // out loud: it is not a provider problem and no retry will fix it.
+    console.error('billing: checkout failed (no_user)')
+    return { outcome: 'failed', reason: 'no_user', retryable: false }
+  }
 
   const price = priceFor(row.founder_seat === null ? null : Number(row.founder_seat))
 
@@ -119,7 +142,12 @@ export async function startCheckout(
 
   // Asked of the client, never of `process.env` — see `AsaasClient.fault`.
   const fault = client.fault
-  if (fault) return { outcome: 'failed', reason: fault, retryable: false }
+  if (fault) {
+    // A key that does not match its environment, or no key at all. The reason
+    // is a fixed enum from `configFault`, never a value, so it is safe to log.
+    console.error(`billing: checkout failed (config:${fault})`)
+    return { outcome: 'failed', reason: fault, retryable: false }
+  }
 
   const document = (row.cnpj ?? '').replace(/\D/g, '')
   const name = (row.name ?? row.legal_name ?? row.trade_name ?? '').trim()
@@ -145,6 +173,7 @@ export async function startCheckout(
     if (!subscription) {
       const made = await client.createSubscription({
         customer: customerId,
+        billingType: method,
         value: price.reais,
         // Today in BRT: the founder is subscribing now and the first charge is
         // now. Asaas generates the invoice for a same-day due date straight

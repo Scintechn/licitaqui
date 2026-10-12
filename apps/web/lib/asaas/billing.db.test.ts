@@ -243,7 +243,7 @@ async function brtToday(): Promise<string> {
 async function subscribedAndPaid(seat: number): Promise<number> {
   const userId = await makeUser({ seat })
   const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/first'))
-  await startCheckout(userId, { client })
+  await startCheckout(userId, 'CREDIT_CARD', { client })
   const applied = await deliver('PAYMENT_CONFIRMED')
   expect(applied.outcome, 'the fixture must actually grant').toBe('granted')
   return userId
@@ -283,7 +283,7 @@ suite('the subscription flow (database)', () => {
   it('charges a founder the promotional price and nobody else', async () => {
     const founder = await makeUser({ seat: 3 })
     const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
-    const result = await startCheckout(founder, { client })
+    const result = await startCheckout(founder, 'CREDIT_CARD', { client })
 
     expect(result.outcome).toBe('ready')
     if (result.outcome !== 'ready') return
@@ -303,7 +303,7 @@ suite('the subscription flow (database)', () => {
     // Spec §9: Asaas bills us per notification and they are on by default.
     const founder = await makeUser({ seat: 4 })
     const { client } = stubClient(await firstSubscribeReplies(null))
-    await startCheckout(founder, { client })
+    await startCheckout(founder, 'CREDIT_CARD', { client })
     // The request body itself is asserted in `client.test.ts`; what this adds
     // is that the real `startCheckout` path goes through that method at all.
     const found = await db().execute<{ asaas_customer_id: string }>(sql`
@@ -323,7 +323,7 @@ suite('the subscription flow (database)', () => {
      */
     const founder = await makeUser({ seat: 5 })
     const first = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
-    await startCheckout(founder, { client: first.client })
+    await startCheckout(founder, 'CREDIT_CARD', { client: first.client })
 
     const again = stubClient([
       { data: [{ id: CUS }] }, //                        the customer exists
@@ -340,7 +340,7 @@ suite('the subscription flow (database)', () => {
         ],
       },
     ])
-    const second = await startCheckout(founder, { client: again.client })
+    const second = await startCheckout(founder, 'CREDIT_CARD', { client: again.client })
     expect(second.outcome).toBe('ready')
     if (second.outcome !== 'ready') return
     expect(second.created).toBe(false)
@@ -355,7 +355,7 @@ suite('the subscription flow (database)', () => {
   it('refuses an account Asaas cannot be given a document for', async () => {
     const noCnpj = await makeUser({ cnpj: null })
     const { client, calls } = stubClient([])
-    expect(await startCheckout(noCnpj, { client })).toEqual({ outcome: 'needs_company' })
+    expect(await startCheckout(noCnpj, 'CREDIT_CARD', { client })).toEqual({ outcome: 'needs_company' })
     // And it refuses **before** opening a socket: a customer with a blank
     // document is a 400 we can predict.
     expect(calls).toEqual([])
@@ -364,7 +364,7 @@ suite('the subscription flow (database)', () => {
   it('writes nothing and claims nothing while billing is switched off', async () => {
     const founder = await makeUser({ seat: 6 })
     const off = new AsaasClient({ env: {} })
-    const result = await startCheckout(founder, { client: off })
+    const result = await startCheckout(founder, 'CREDIT_CARD', { client: off })
     expect(result.outcome).toBe('dry_run')
     // The crucial half: no row, so the screen cannot show a subscription that
     // does not exist at Asaas.
@@ -377,7 +377,7 @@ suite('the subscription flow (database)', () => {
     // could not reach it.
     const founder = await makeUser({ seat: 7 })
     const { client } = stubClient(await firstSubscribeReplies(null))
-    const result = await startCheckout(founder, { client })
+    const result = await startCheckout(founder, 'CREDIT_CARD', { client })
     expect(result.outcome).toBe('ready')
     if (result.outcome !== 'ready') return
     expect(result.checkoutUrl).toBeNull()
@@ -405,7 +405,7 @@ suite('the subscription flow (database)', () => {
         ],
       },
     ])
-    const result = await startCheckout(founder, { client })
+    const result = await startCheckout(founder, 'CREDIT_CARD', { client })
     expect(result.outcome).toBe('ready')
     if (result.outcome !== 'ready') return
     expect(result.checkoutUrl).toBe('https://sandbox.asaas.com/i/out')
@@ -426,7 +426,7 @@ suite('what a webhook does to an account (database)', () => {
   async function subscribed(seat: number | null = 3) {
     const userId = await makeUser({ seat })
     const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/one'))
-    await startCheckout(userId, { client })
+    await startCheckout(userId, 'CREDIT_CARD', { client })
     return userId
   }
 
@@ -912,7 +912,7 @@ suite('cancelling (database)', () => {
     // sentence that states it.
     const userId = await makeUser({ seat: 2 })
     const { client } = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/first', '2026-11-17'))
-    await startCheckout(userId, { client })
+    await startCheckout(userId, 'CREDIT_CARD', { client })
 
     const result = await cancelSubscription(userId)
     expect(result.cancelled).toBe(true)
@@ -971,7 +971,7 @@ suite('cancelling (database)', () => {
     // and a subscription that has never been paid has no period to honour.
     const userId = await makeUser({ seat: 11 })
     const { client } = stubClient(await firstSubscribeReplies(null))
-    await startCheckout(userId, { client })
+    await startCheckout(userId, 'CREDIT_CARD', { client })
 
     const result = await cancelSubscription(userId)
     expect(result.endsOn).toBe(await brtToday())
@@ -1030,7 +1030,7 @@ suite('cancelling (database)', () => {
       { id: `${SUB}_b`, status: 'ACTIVE', nextDueDate: '2027-03-17' },
       { data: [{ id: `${PAY}_b`, status: 'PENDING', value: 57, dueDate: '2027-03-17', invoiceUrl: 'https://sandbox.asaas.com/i/b' }] },
     ])
-    await startCheckout(userId, { client: again.client })
+    await startCheckout(userId, 'CREDIT_CARD', { client: again.client })
 
     const found = await readSubscription(userId)
     expect(found.state).toBe('found')
@@ -1051,7 +1051,7 @@ suite('cancelling (database)', () => {
   it('lets the same account subscribe again afterwards', async () => {
     const userId = await makeUser({ seat: 9 })
     const first = stubClient(await firstSubscribeReplies('https://sandbox.asaas.com/i/first'))
-    await startCheckout(userId, { client: first.client })
+    await startCheckout(userId, 'CREDIT_CARD', { client: first.client })
     await cancelSubscription(userId)
 
     const second = stubClient([
@@ -1060,7 +1060,7 @@ suite('cancelling (database)', () => {
       { id: `${SUB}_b`, status: 'ACTIVE', nextDueDate: '2027-01-17' },
       { data: [{ id: `${PAY}_b`, status: 'PENDING', value: 57, dueDate: '2027-01-17', invoiceUrl: 'https://sandbox.asaas.com/i/b' }] },
     ])
-    const again = await startCheckout(userId, { client: second.client })
+    const again = await startCheckout(userId, 'CREDIT_CARD', { client: second.client })
     expect(again.outcome).toBe('ready')
 
     const rows = await db().execute<{ n: string }>(sql`
