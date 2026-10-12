@@ -511,6 +511,11 @@
     "subscribe": {
       "title": "Assinar a LicitaQui",
       "cta": "Ir para o pagamento",
+      "methodLegend": "Como você quer pagar?",
+      "methodCard": "Cartão de crédito",
+      "methodCardHelp": "A cobrança é automática a cada mês.",
+      "methodPix": "Pix",
+      "methodPixHelp": "Você recebe um QR Code novo para pagar a cada mês.",
       "methods": "Você pode pagar com Pix ou cartão.",
       "redirect": "Abrimos a página de pagamento. Quando terminar, é só voltar para cá.",
       "error": "Não conseguimos abrir a página de pagamento agora. Tente de novo em instantes."

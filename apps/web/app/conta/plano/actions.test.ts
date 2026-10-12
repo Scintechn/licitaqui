@@ -88,16 +88,97 @@ async function where(run: () => Promise<void>): Promise<string> {
  * reader on a screen that says nothing happened, which is the shape the parked
  * draft's 202-and-poll had: no way to tell a failed job from a slow one.
  */
+/**
+ * The form `/conta/plano` posts. `metodo` is the radio group added when Sci
+ * ruled Pix *and* card (2026-10-11); omitting it is the no-JavaScript case,
+ * which `goToCheckout` answers with the default rather than an error.
+ */
+const form = (metodo?: string) => {
+  const data = new FormData()
+  if (metodo !== undefined) data.set('metodo', metodo)
+  return data
+}
+
 describe('goToCheckout', () => {
   beforeEach(reset)
 
   it('refuses a signed-out caller before doing anything', async () => {
     auth.mockResolvedValue(null)
-    expect(await where(goToCheckout)).toBe('/conta/criar')
+    expect(await where(() => goToCheckout(form()))).toBe('/conta/criar')
     // A Server Function is a POST endpoint with a generated name: the button
     // is not the only thing that can call it.
     expect(rateLimitRequest).not.toHaveBeenCalled()
     expect(startCheckout).not.toHaveBeenCalled()
+  })
+
+  /*
+   * **The method the subscriber chose, all the way to the Asaas call.** Sci's
+   * rule, 2026-10-11. These four are the path, not the unit: the chooser is a
+   * radio group in the form, this action reads it, and `startCheckout` passes
+   * it to `billingType`. A test that only checked the parser would pass while
+   * the form's value was dropped on the floor — which is this repo's own
+   * worked example (`radar.opportunity.screeningCost`: written, tested, never
+   * passed).
+   */
+  it('passes Pix through to the checkout when that is what was chosen', async () => {
+    startCheckout.mockResolvedValue({
+      outcome: 'ready',
+      plan: 'promocional',
+      amount: 57,
+      asaasSubscriptionId: 'sub_1',
+      checkoutUrl: 'https://sandbox.asaas.com/i/abc',
+      created: true,
+    })
+    await where(() => goToCheckout(form('PIX')))
+    expect(startCheckout).toHaveBeenCalledWith(7, 'PIX')
+  })
+
+  it('passes the card through when that is what was chosen', async () => {
+    startCheckout.mockResolvedValue({
+      outcome: 'ready',
+      plan: 'promocional',
+      amount: 57,
+      asaasSubscriptionId: 'sub_1',
+      checkoutUrl: 'https://sandbox.asaas.com/i/abc',
+      created: true,
+    })
+    await where(() => goToCheckout(form('CREDIT_CARD')))
+    expect(startCheckout).toHaveBeenCalledWith(7, 'CREDIT_CARD')
+  })
+
+  it('refuses boleto outright and creates nothing', async () => {
+    // The one that matters. A Server Function is a POST endpoint with a
+    // generated name, so this is a reachable request — and Asaas **cannot
+    // refund a boleto**, which the terms' 7-day withdrawal and 30-day
+    // guarantee both require. Measured in the sandbox on 2026-10-10, which is
+    // how the whole F21 defect was found.
+    expect(await where(() => goToCheckout(form('BOLETO')))).toBe('/conta/plano?estado=erro')
+    expect(startCheckout).not.toHaveBeenCalled()
+  })
+
+  it('refuses the payer-picks value too, which is the one that looks harmless', async () => {
+    // `UNDEFINED` is what this code sent until 10-10. Asaas describes it as
+    // letting the payer choose; what it actually does is add boleto to the
+    // invoice page.
+    expect(await where(() => goToCheckout(form('UNDEFINED')))).toBe('/conta/plano?estado=erro')
+    expect(startCheckout).not.toHaveBeenCalled()
+  })
+
+  it('takes the default when the form carries no method at all', async () => {
+    // The no-JavaScript case, and not an attack: a form posted without the
+    // radio should still buy something the terms can refund. Distinct from the
+    // two above on purpose — a *present but unrecognised* value is refused, a
+    // *missing* one is defaulted.
+    startCheckout.mockResolvedValue({
+      outcome: 'ready',
+      plan: 'promocional',
+      amount: 57,
+      asaasSubscriptionId: 'sub_1',
+      checkoutUrl: 'https://sandbox.asaas.com/i/abc',
+      created: true,
+    })
+    await where(() => goToCheckout(form()))
+    expect(startCheckout).toHaveBeenCalledWith(7, 'CREDIT_CARD')
   })
 
   it('hands over the Asaas invoice when there is one', async () => {
@@ -109,7 +190,7 @@ describe('goToCheckout', () => {
       checkoutUrl: 'https://sandbox.asaas.com/i/abc',
       created: true,
     })
-    expect(await where(goToCheckout)).toBe('https://sandbox.asaas.com/i/abc')
+    expect(await where(() => goToCheckout(form()))).toBe('https://sandbox.asaas.com/i/abc')
   })
 
   it('records the gate metric with a plan name and no amount or URL', async () => {
@@ -121,11 +202,14 @@ describe('goToCheckout', () => {
       checkoutUrl: 'https://sandbox.asaas.com/i/abc',
       created: true,
     })
-    await where(goToCheckout)
+    await where(() => goToCheckout(form()))
     expect(recordEventSafely).toHaveBeenCalledWith({
       name: 'checkout_opened',
       userId: 7,
-      props: { plan: 'promocional' },
+      // The chosen method rides along from 2026-10-11: §14's gate wants to
+      // know which of the two people pick, and it is a fixed enum — never an
+      // amount and never a URL (§12).
+      props: { plan: 'promocional', method: 'CREDIT_CARD' },
     })
     // §12: a checkout URL opens one named customer's invoice.
     expect(JSON.stringify(recordEventSafely.mock.calls)).not.toContain('asaas.com')
@@ -140,7 +224,7 @@ describe('goToCheckout', () => {
       checkoutUrl: null,
       created: true,
     })
-    expect(await where(goToCheckout)).toBe('/conta/plano?estado=aguardando')
+    expect(await where(() => goToCheckout(form()))).toBe('/conta/plano?estado=aguardando')
   })
 
   it('sends an account with no document to the company screen', async () => {
@@ -148,23 +232,23 @@ describe('goToCheckout', () => {
     // **No invented sentence.** Nothing in the catalogue says "we need your
     // CNPJ before we can charge you"; copy is Sci's (legal brief §5), so this
     // is a navigation affordance and card F8 carries the silence.
-    expect(await where(goToCheckout)).toBe('/conta/empresa')
+    expect(await where(() => goToCheckout(form()))).toBe('/conta/empresa')
   })
 
   it('says the payment page could not be opened when billing is switched off', async () => {
     startCheckout.mockResolvedValue({ outcome: 'dry_run', plan: 'promocional', amount: 57 })
-    expect(await where(goToCheckout)).toBe('/conta/plano?estado=erro')
+    expect(await where(() => goToCheckout(form()))).toBe('/conta/plano?estado=erro')
   })
 
   it('does not offer a second checkout to somebody already paying', async () => {
     startCheckout.mockResolvedValue({ outcome: 'already_active' })
-    expect(await where(goToCheckout)).toBe('/conta/plano?estado=ativo')
+    expect(await where(() => goToCheckout(form()))).toBe('/conta/plano?estado=ativo')
     expect(recordEventSafely).not.toHaveBeenCalled()
   })
 
   it('turns a rate-limit refusal into a state, not an error page', async () => {
     rateLimitRequest.mockResolvedValue({ ok: false, retryAfter: 30 })
-    expect(await where(goToCheckout)).toBe('/conta/plano?estado=muitas-tentativas')
+    expect(await where(() => goToCheckout(form()))).toBe('/conta/plano?estado=muitas-tentativas')
     expect(startCheckout).not.toHaveBeenCalled()
   })
 
@@ -182,7 +266,7 @@ describe('goToCheckout', () => {
      * `muitas-tentativas` is what proves the decision was read.
      */
     startCheckout.mockResolvedValue({ outcome: 'already_active' })
-    expect(await where(goToCheckout)).toBe('/conta/plano?estado=ativo')
+    expect(await where(() => goToCheckout(form()))).toBe('/conta/plano?estado=ativo')
     expect(rateLimitRequest).toHaveBeenCalledTimes(1)
   })
 })

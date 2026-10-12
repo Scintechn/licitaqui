@@ -334,11 +334,17 @@ rendered, so nothing leaks to a user, but the review they ask for has not happen
 ## What checked out
 
 Visitor limits (3 days, 2 triagens), Básico's 5/month, the promotional price change with its 30-day
-notice, "sem fidelidade", "cancela em 1 clique", the AI disclaimer and
+notice, "sem fidelidade", "cancela em 1 clique", Pix/cartão via Asaas, the AI disclaimer and
 "não substitui assessoria jurídica ou contábil", and the footer identification — all consistent.
-**Removed 2026-10-10: *Pix/cartão via Asaas*.** It was listed here as consistent with the
-legal texts and is now false in four places — Asaas permits card only for recurring
-charges, so the sentence cannot be made true by building anything. See `CLAIMS.md` F21
+
+**Note on *Pix/cartão via Asaas*, which left this list and came back in two days.**
+Removed 10-10, when the checkout was narrowed to card only because Asaas cannot refund
+a boleto and `billingType: UNDEFINED` offered one. Restored 10-11, when Sci ruled that
+both methods stay and the product was changed to match the sentence (**F21**). It is
+kept here because the removal rested on an **inferred** claim — that Pix on a
+subscription is only the boleto's QR code — which measurement disproved. The lesson is
+§4d's: say which figures are measured and which are not, *especially* when one is about
+to delete a published promise
 with the legal texts. No copy anywhere promises a nota fiscal, which brief §2 forbids until G13.
 
 ---

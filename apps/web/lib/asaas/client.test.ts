@@ -55,6 +55,7 @@ describe('the dry run, which is the default', () => {
     expect(await off.findCustomer('x')).toBe(DRY_RUN)
     expect(await off.createSubscription({
       customer: 'cus_1',
+      billingType: 'CREDIT_CARD',
       value: 57,
       nextDueDate: '2026-10-17',
       externalReference: 'licitaqui-user-1',
@@ -154,6 +155,7 @@ describe('the requests it sends', () => {
     const { calls, client: c } = client([{ body: { id: 'sub_1', status: 'ACTIVE' } }])
     await c.createSubscription({
       customer: 'cus_1',
+      billingType: 'CREDIT_CARD',
       value: 57,
       nextDueDate: '2026-10-17',
       externalReference: externalReference(7),
@@ -178,6 +180,29 @@ describe('the requests it sends', () => {
     expect(body.creditCardHolderInfo).toBeUndefined()
     expect(body.value).toBe(57)
     expect(body.nextDueDate).toBe('2026-10-17')
+  })
+
+  it('sends Pix as Pix, so the chooser is not decoration', async () => {
+    // The card case above would pass against a hard-coded `'CREDIT_CARD'`.
+    // This is the second value that makes `request.billingType` load-bearing —
+    // the same hole the first version of this file had, where the test name
+    // promised a choice the assertion forbade.
+    const { calls, client: c } = client([{ body: { id: 'sub_2', status: 'ACTIVE' } }])
+    await c.createSubscription({
+      customer: 'cus_1',
+      billingType: 'PIX',
+      value: 57,
+      nextDueDate: '2026-10-17',
+      externalReference: externalReference(7),
+      description: 'LicitaQui · Promocional',
+    })
+    const body = JSON.parse(calls[0].init.body as string)
+    expect(body.billingType).toBe('PIX')
+    // Measured in the sandbox 2026-10-11: a PIX subscription's charge comes
+    // back `billingType: PIX` with a working `pixQrCode`, and Asaas allows a
+    // full refund or several partial ones. It is an invoice per cycle, not a
+    // stored credential — which is the product consequence, not an API one.
+    expect(body.cycle).toBe('MONTHLY')
   })
 
   it('reuses no deleted or inactive subscription', async () => {

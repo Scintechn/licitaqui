@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 import { messages } from '@/lib/messages'
-import { AsaasClient, AsaasError, DRY_RUN, externalReference, type Maybe } from './client'
+import { AsaasClient, AsaasError, DRY_RUN, externalReference, type Maybe, type SubscriptionMethod } from './client'
 import { safeInvoiceUrl } from './config'
 import { AWAITING } from './entitlement'
 import { priceFor } from './price'
@@ -92,6 +92,15 @@ type SubscriberRow = {
  */
 export async function startCheckout(
   userId: number,
+  /**
+   * `method` is **required** and deliberately not defaulted. Sci's rule is Pix
+   * *and* card (2026-10-11), and a default here would decide for the
+   * subscriber in whichever call site forgot to pass theirs — the quietest way
+   * to end up single-method again. The caller validates it against
+   * {@link SubscriptionMethod} before it gets here; this signature is what
+   * makes forgetting a type error.
+   */
+  method: SubscriptionMethod,
   options: { database?: Executor; client?: AsaasClient } = {},
 ): Promise<CheckoutOutcome> {
   const database = options.database ?? db()
@@ -164,6 +173,7 @@ export async function startCheckout(
     if (!subscription) {
       const made = await client.createSubscription({
         customer: customerId,
+        billingType: method,
         value: price.reais,
         // Today in BRT: the founder is subscribing now and the first charge is
         // now. Asaas generates the invoice for a same-day due date straight

@@ -387,6 +387,53 @@ describe('the billing catalogue', () => {
     ['cancel.reasonHelp', 'F11 — the help line under that field.'],
   ])
 
+  describe('the payment-method chooser (Sci, 2026-10-11)', () => {
+    it('offers both methods inside the form that submits them', () => {
+      const out = render()
+      // Inside the form, not merely on the page: a radio group that is not in
+      // the form posts nothing, and `goToCheckout` would silently take the
+      // default for everybody. That is the §4b shape — the unit renders, the
+      // path does nothing.
+      const form = out.slice(out.indexOf('<form'), out.indexOf('</form>'))
+      expect(form).toContain('name="metodo"')
+      expect(form).toContain('value="CREDIT_CARD"')
+      expect(form).toContain('value="PIX"')
+      expect(form).toContain(messages.billing.subscribe.methodLegend)
+      expect(form).toContain(messages.billing.subscribe.methodPix)
+      expect(form).toContain(messages.billing.subscribe.methodCard)
+    })
+
+    it('pre-selects the card, the only method that renews unattended', () => {
+      // Asserted per input tag, not by string position: attribute order is
+      // React's business, and the first version of this test asserted that
+      // `checked` appeared *after* `value="CREDIT_CARD"` in the markup — which
+      // is a fact about the renderer, not about the screen.
+      const inputs = render().match(/<input[^>]*name="metodo"[^>]*>/g) ?? []
+      expect(inputs).toHaveLength(2)
+      const checked = inputs.filter((tag) => /\bchecked\b/.test(tag))
+      // Exactly one, and it is the card: without it a no-JavaScript submit
+      // posts no method and the default is decided in the action rather than
+      // shown to the reader.
+      expect(checked).toHaveLength(1)
+      expect(checked[0]).toContain('value="CREDIT_CARD"')
+    })
+
+    it('says what each method costs the subscriber in effort', () => {
+      // The asymmetry Sci accepted — *"even if for pix we have to charge every
+      // month"* — told to the reader before they choose, not after.
+      const out = render()
+      expect(out).toContain(messages.billing.subscribe.methodPixHelp)
+      expect(out).toContain(messages.billing.subscribe.methodCardHelp)
+    })
+
+    it('is not offered to an account that already pays', () => {
+      // The chooser belongs to the subscribe control; an active subscription
+      // has no method to pick. Changing one is a different act with no card.
+      const out = render({ subscription: ACTIVE })
+      expect(out).not.toContain('name="metodo"')
+    })
+  })
+
   /** Every state this screen can be in, rendered once. */
   const everything = [
     render(),
@@ -419,10 +466,15 @@ describe('the billing catalogue', () => {
 
   const KEYS = leaves(messages.billing)
 
-  it('has the 32 keys E8 counted', () => {
+  it('has the 37 keys the catalogue now holds', () => {
     // Not decoration: the claim this test replaces was about a count, and a
     // count nothing checks is how it went wrong.
-    expect(KEYS).toHaveLength(32)
+    //
+    // **32 until 2026-10-11, when Sci ruled Pix *and* card** and the subscribe
+    // control gained a method chooser: `methodLegend`, `methodCard`,
+    // `methodCardHelp`, `methodPix`, `methodPixHelp`. All five render — the
+    // test below is what proves it, and the exception list is still three.
+    expect(KEYS).toHaveLength(37)
   })
 
   it('renders every one of them except the three that are carded', () => {
