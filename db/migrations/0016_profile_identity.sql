@@ -7,7 +7,19 @@
 -- account and charge the user, so one of them should be required."*
 --
 -- Three of those four are already columns: `users.name`, `users.whatsapp`, and
--- `users.cnpj` (which references `companies`). Only these two are new.
+-- `users.cnpj`. Only these two are new — **and that count depends on a reading
+-- of "Company/Business name (optional)" that is stated here rather than
+-- assumed.** `users.cnpj` is a `char(14)` document, not a business name; the
+-- name lives in `companies.legal_name` / `trade_name`, which `0001` labels the
+-- **BrasilAPI cache** — keyed by CNPJ and written only by
+-- `lib/radar/company.ts` and the worker, never by a person.
+--
+-- The reading taken, and it follows Sci's F32 ruling of 2026-10-12 that **a
+-- CNPJ stays required to use the Radar**: the optional field is the **CNPJ**,
+-- from which BrasilAPI supplies the name. There is therefore no free-text
+-- business-name column and none is added. If Sci means a name typed by hand,
+-- that is a different column and a different migration — say so and it gets
+-- one, rather than F31 stalling mid-task on a schema change no card asked for.
 --
 --
 -- ## Why there is no NOT NULL and no CHECK here
@@ -34,9 +46,13 @@
 -- and there is no such table, nor should there be.**
 --
 -- The `check` is a shape check only — eleven digits — not a verifier. Check
--- digits are validated in `lib/cpf.ts` beside `lib/cnpj.ts`, because a
--- constraint that rejects a typo at write time gives the reader a 500 instead
--- of a message.
+-- digits **will be** validated in `lib/cpf.ts` beside `lib/cnpj.ts` (**F32**);
+-- **nothing validates them today**, and that matters because the weak schema
+-- check is justified by a validator that does not exist yet: a constraint
+-- rejecting a typo at write time gives the reader a 500 instead of a message,
+-- but until F32 lands an unvalidated eleven-digit string would reach Asaas's
+-- `cpfCnpj` and be refused there. F31 lists F32 in `Depends on` for this
+-- reason, so the sequencing holds — the guarantee simply is not in place yet.
 --
 --
 -- ## §12 and the LGPD note that is not a code concern
@@ -71,7 +87,16 @@ alter table users add constraint users_cpf_shape
 -- somebody else's document. Partial, so the many NULLs of the free tier do not
 -- collide — `unique` alone would allow only one NULL in some engines and all
 -- of them in Postgres, and being explicit says which was meant.
-create unique index if not exists users_cpf_key on users (cpf) where cpf is not null;
+-- Named `_unique_idx`, **not** `users_cpf_key`: that is exactly what Postgres
+-- auto-generates for a unique *constraint* on `users(cpf)` — compare
+-- `users_email_key` and `users_founder_seat_key`, which `0001` creates
+-- implicitly — so a later `add constraint … unique (cpf)` would collide on the
+-- index name. Two forward costs of a partial index, recorded for F31 which
+-- writes this column: it is an index and not a constraint, so it is absent
+-- from `pg_constraint` and cannot carry a foreign key; and it is **not a valid
+-- `ON CONFLICT` arbiter** unless the predicate is restated —
+-- `on conflict (cpf) where cpf is not null`, never bare `on conflict (cpf)`.
+create unique index if not exists users_cpf_unique_idx on users (cpf) where cpf is not null;
 
 comment on column users.cpf is
   'Digits only. Billing identity for a subscriber with no CNPJ (Asaas cpfCnpj). Never logged (CLAUDE.md, spec §12).';

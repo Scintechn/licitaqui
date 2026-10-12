@@ -358,6 +358,42 @@ The wording is yours (brief §5). The likely answer is a second footer, or one s
 contractual notice from a marketing one; the same resolution would settle item **C**, which is the same list
 being short.
 
+## I. The privacy policy does not cover the CPF or the date of birth F31 asks for — found 2026-10-12
+
+Sci asked on 2026-10-12 for a simplified profile form: name, **date of birth**, mobile,
+**CPF or CNPJ**, company optional. Two of those fields are not in the policy, and **F31 is
+blocked on this and nothing else** — the columns already exist (`0016_profile_identity.sql`)
+and deliberately nothing writes them.
+
+`docs/legal/politica-de-privacidade.md` §4(b) says, verbatim:
+
+> - Nome, e-mail e, se informar, WhatsApp.
+> - CNPJ da empresa e as atividades (CNAE) que buscamos em fontes públicas.
+
+No own-CPF. No date of birth. §4(c)'s *"identificação"* arguably covers **sending** a document
+to Asaas; it does not cover **storing** one here. Every other CPF in the file is a third party
+in an award record, and masked.
+
+**Four places in that one file, so it can be amended once:**
+
+| | |
+|---|---|
+| **§2** *Resumo em uma tabela* | *"Nome, e-mail, WhatsApp, CNPJ da sua empresa…"* — the table a reader actually reads |
+| **§4(b)** | the detailed list |
+| **§5** finalidade / base legal | has **no row for age verification**, so the 18+ purpose is stated but not declared |
+| **§13** | lists *"mascaramento de CPF"*, scoped in §4(f) to award records — the subscriber's own CPF must be stored **unmasked** to reach Asaas |
+
+**A third field may need naming too.** Sci asked that *all* users inform their mobile. §4(b)
+says *"e, se informar, WhatsApp"* — optional. If the form makes it required, that clause is
+stale.
+
+The purpose for the birth date is already in the file and is what justifies it under data
+minimisation: *"o serviço não é destinado a menores de 18 anos. Se identificarmos conta criada
+por menor de idade, ela é encerrada e os dados são apagados."* Collected for anything else it
+would not be.
+
+The wording is yours (brief §5). See `CLAIMS.md`'s row and cards **F30**, **F31**, **F32**.
+
 ## D. Suspension at 10 days is promised in the contract and mentioned nowhere in the product
 
 Terms §7 and the FAQ both state it. No string in the catalogue does — there is no suspension
