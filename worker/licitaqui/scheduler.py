@@ -264,9 +264,11 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # **The alarm on it is not "0 queued".** Three days before a charge there
     # is usually nothing due, so zero is the normal answer; B32's lesson is
     # that a feed which never enqueues also never fails. The signal that
-    # matters is the `billing.reminder_blocked` event this writes while
-    # `worker/templates/email/charge-reminder.md` is still a draft — which is
-    # today, and is deliberate: the copy is Sci's.
+    # matters is the `billing.reminder_blocked` event this writes when
+    # `worker/templates/email/charge-reminder.md` cannot render a whole
+    # e-mail. Sci approved that copy on 2026-10-12 (F24), so the expected
+    # state is now *not* blocked, and a blocked event is a regression rather
+    # than the status quo.
     ScheduleEntry(kind="charge_reminder", daily_at="07:05", priority=9),
     # **The other half of a one-click cancel (D8).** Terms §8: cancelling
     # switches off auto-renewal and paid access runs to the last day already

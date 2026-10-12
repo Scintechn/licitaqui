@@ -19,9 +19,10 @@ including a typo, is dry run — the switch fails safe in every direction, and
 
 The gate is checked here, in the transport, rather than in the job: it is the
 last statement before the request, so no caller — a new job kind, a script, an
-operator REPL — can route around it. :func:`post_text` raises
-:class:`SendingDisabled` if it is ever reached with the switch off, and the
-``httpx`` client is not even constructed until after the check.
+operator REPL — can route around it. :meth:`EvolutionClient.post_text` and
+:meth:`EvolutionClient.post_buttons` both raise :class:`SendingDisabled` if
+they are ever reached with the switch off, and the ``httpx`` client is not even
+constructed until after the check.
 
 **Why this switch exists right now (2026-09-18).** The only Evolution instance
 on the server belongs to another product, `flowdeski-scn-real-estate`. Sending
@@ -59,6 +60,7 @@ import httpx
 
 from . import config
 from .breaker import get_breaker
+from .observability import get_logger
 
 #: Credentials. Names only; the values live in Easypanel and the gitignored env
 #: files, and are resolved the way ``db/migrate.py`` resolves its own (§12).
@@ -79,6 +81,23 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 )
 
+#: The one button type this module will send, and the one it refuses to.
+#:
+#: ``url`` was measured against our own instance on 2026-10-12 — instance
+#: ``LicitaQuiapp``, Evolution **2.3.7**, ``state: open`` — as
+#: ``POST /message/sendButtons/{instance}`` with ``{number, title, description,
+#: footer, buttons}``, answered ``201``, and rendered by WhatsApp as a
+#: ``nativeFlowMessage`` ``cta_url``. The ``/send/button`` body shape in Sci's
+#: `mflype` collection is **v3** and does not apply to a 2.3.x instance.
+#:
+#: **``pix`` is a trap and is deliberately absent.** It takes a *static* key
+#: (``key`` + ``keyType``), so money arrives with no txid, Asaas never marks the
+#: charge ``RECEIVED``, no ``PAYMENT_RECEIVED`` fires and entitlement is never
+#: granted — it breaks the whole webhook chain. A copyable code, if one is ever
+#: wanted, is ``type: "copy"`` carrying the **dynamic** BR Code from
+#: ``GET /v3/payments/{id}/pixQrCode``, which does carry the txid. See **F24**.
+BUTTON_TYPE_URL = "url"
+
 #: Spec §7.2: connect 15 s, query 30 s.
 CONNECT_TIMEOUT_SECONDS = 15.0
 READ_TIMEOUT_SECONDS = 30.0
@@ -91,10 +110,31 @@ BREAKER_NAME = "evolution"
 #: "stop on 401/402/404").
 PERMANENT_STATUSES = frozenset({400, 401, 402, 403, 404, 422})
 
+#: Statuses that mean **"Evolution answered and will not take *this payload*"**,
+#: which is the only case :meth:`EvolutionClient.send_url_button` falls back on
+#: and the only one :meth:`EvolutionClient.post_buttons` keeps from the breaker.
+#:
+#: **It is a strict subset of :data:`PERMANENT_STATUSES`, and review proved why
+#: that matters.** The first version used "not retryable", which includes 401,
+#: 402, 403 and 404 — and a **403 with Cloudflare's `1010`** is Cloudflare
+#: refusing the client outright, every request, which is the total block this
+#: module's docstring exists for. Swallowing it recorded a breaker *success*,
+#: the fallback then failed under its own guard, and success/failure alternated
+#: so two consecutive failures never accumulated: measured at **5 attempts, 10
+#: requests, circuit still closed** under a block where nothing could get
+#: through — while doubling the request rate the breaker is there to stop, on a
+#: breaker **shared with the founders sender** (`whatsapp.py`).
+#:
+#: So only a true payload rejection is swallowed. 401/402/403/404 are faults of
+#: the endpoint or the credential, count as failures, and open the circuit.
+REJECTION_STATUSES = frozenset({400, 422})
+
 # httpx logs 'HTTP Request: POST <url> "HTTP/1.1 200 OK"' at INFO. The URL
 # carries the instance name, and a redirect could carry more, so keep it below
 # WARNING: raising the root log level must not start leaking it.
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+_log = get_logger("evolution")
 
 
 class EvolutionError(RuntimeError):
@@ -126,12 +166,21 @@ class SendResult:
 
     ``status`` is ``sent`` or ``dry_run``. Nothing here identifies the
     recipient: it is written straight into the delivery log (§12).
+
+    ``fallback`` is how a **degraded** send is told from a whole one, and it
+    exists because of a measured incident rather than for symmetry — see
+    :meth:`EvolutionClient.send_url_button`. A caller that ignores it records
+    ``status: "sent"`` for a message the reader received without its button,
+    which is exactly what `rpatinacao` did on 2026-06-09 and could not see for
+    days. ``fallback_reason`` is the rejection's reason code, never a body.
     """
 
     status: str
     message_id: str | None = None
     status_code: int | None = None
     duration_ms: int | None = None
+    fallback: bool = False
+    fallback_reason: str | None = None
 
     @property
     def delivered(self) -> bool:
@@ -261,6 +310,127 @@ class EvolutionClient:
             duration_ms=int((time.monotonic() - started) * 1000),
         )
 
+    def send_url_button(
+        self,
+        number: str,
+        *,
+        title: str,
+        description: str,
+        footer: str,
+        button_text: str,
+        url: str,
+    ) -> SendResult:
+        """One message carrying one ``type: "url"`` button, or the text of it.
+
+        The kill switch is checked first, before the number is normalised or any
+        credential is resolved, exactly as :meth:`send_text` does.
+
+        **The fallback is the whole point of this method**, and it is written
+        from somebody else's incident rather than from caution.
+        `riopatinacao/docs/whatsapp-button-fallback.md`, 2026-06-09: Evolution
+        began rejecting their button payload in production, their fallback sent
+        the description as plain text and **dropped the URL**, and the caller
+        still recorded ``status: "sent"``. A customer received *"Toque no botão
+        abaixo para pagar"* with no button and no link, replied *"O botão não
+        veio. Tem chave pix?"*, and nothing in their admin showed it for days.
+
+        So this fallback **carries the URL** — WhatsApp auto-links a bare one —
+        and the result says ``fallback=True`` so the degradation is countable
+        rather than indistinguishable from a whole send.
+
+        **Only a rejection falls back**, and *rejection* means
+        :data:`REJECTION_STATUSES` — 400 or 422, Evolution answering that it
+        will not take this payload. That is the 06-09 shape and the one case
+        where sending the same message without its button beats sending
+        nothing. A timeout, a 5xx, an open circuit, a 401 or a Cloudflare 403
+        all mean the endpoint or the credential is the problem, so the
+        plain-text attempt would fail identically: those raise, count against
+        the breaker and let the job retry. Narrowing this from "not retryable"
+        to these two statuses is review's finding; see
+        :data:`REJECTION_STATUSES` for what the wider version measured.
+        """
+        if not sending_enabled():
+            return SendResult(status=DELIVERY_DRY_RUN)
+        dialled = normalise_number(number)
+        try:
+            return self.post_buttons(
+                dialled,
+                title=title,
+                description=description,
+                footer=footer,
+                buttons=[{"type": BUTTON_TYPE_URL, "displayText": button_text, "url": url}],
+            )
+        except EvolutionError as exc:
+            if exc.status not in REJECTION_STATUSES:
+                raise
+            _log.warning(
+                "evolution refused the button payload; falling back to text with the URL inlined",
+                extra={"reason": exc.reason, "status": exc.status},
+            )
+            plain = self.post_text(dialled, button_fallback_text(description, url))
+            return SendResult(
+                status=plain.status,
+                message_id=plain.message_id,
+                status_code=plain.status_code,
+                duration_ms=plain.duration_ms,
+                fallback=True,
+                fallback_reason=exc.reason,
+            )
+
+    def post_buttons(
+        self,
+        number: str,
+        *,
+        title: str,
+        description: str,
+        footer: str,
+        buttons: list[dict[str, str]],
+    ) -> SendResult:
+        """The request itself. Re-checks the switch; see the module docstring."""
+        if not sending_enabled():
+            raise SendingDisabled()
+
+        url = f"{self.base_url}/message/sendButtons/{self.instance}"
+        payload: dict[str, Any] = {
+            "number": number,
+            "title": title,
+            "description": description,
+            "footer": footer,
+            "buttons": buttons,
+        }
+        started = time.monotonic()
+        # **A refused payload must not open the circuit**, because the circuit
+        # is what the fallback has to get through. Two rejections in a row — the
+        # systematic shape, the one that hits every message — would otherwise
+        # open `evolution` for 15 minutes and make the plain-text fallback above
+        # raise `CircuitOpen` precisely when it is needed. So the rejection is
+        # swallowed *inside* the guard, which records a success (the endpoint
+        # answered; that is what the breaker measures) and re-raised outside it.
+        #
+        # **Only :data:`REJECTION_STATUSES`.** Review measured the wider
+        # version — "not retryable" — leaving the circuit closed through a
+        # Cloudflare 403 that blocked every request, on a breaker shared with
+        # the founders sender. Everything else raises inside the guard and is
+        # counted, exactly as `post_text` is.
+        rejected: EvolutionError | None = None
+        body: Any = None
+        status: int | None = None
+        with get_breaker(BREAKER_NAME).guard():
+            try:
+                body, status = self._request(url, payload)
+            except EvolutionError as exc:
+                if exc.status not in REJECTION_STATUSES:
+                    raise
+                rejected = exc
+        if rejected is not None:
+            raise rejected
+        return SendResult(
+            status="sent",
+            message_id=_message_id(body),
+            status_code=status,
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+
     def _request(self, url: str, payload: dict[str, Any]) -> tuple[Any, int]:
         try:
             with httpx.Client(
@@ -280,6 +450,21 @@ class EvolutionClient:
         except ValueError:
             # A 200 that is not JSON is Cloudflare or a proxy, not Evolution.
             raise EvolutionError("non_json_response", status=response.status_code) from None
+
+
+def button_fallback_text(description: str, url: str) -> str:
+    """The same message, with the button's URL **inside the text**.
+
+    A module function rather than a method so a test can assert the one
+    property that matters — the URL survives — without a transport, and so the
+    06-09 defect has a name a reader can grep for. The URL goes on its own line
+    because WhatsApp auto-links a bare one and will swallow a trailing comma.
+
+    No sentence is added around it: the copy is Sci's (legal brief §5), and
+    *"toque no botão"* is exactly what `rpatinacao`'s customer received with no
+    button under it.
+    """
+    return f"{description.rstrip()}\n\n{url}"
 
 
 def _failure_reason(response: httpx.Response) -> str:

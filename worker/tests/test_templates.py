@@ -107,7 +107,10 @@ def test_the_optout_confirmation_renders_now_that_its_question_is_answered() -> 
 
 #: WhatsApp copy Sci has signed off, by template id. `founders-opening` was
 #: approved on 2026-09-25 (`63fc27d`), after he rewrote it for the paid 08/10.
-APPROVED_WHATSAPP_COPY = {"founders-opening"}
+#: `charge-reminder` was approved on 2026-10-12 (**F24**) — the same sentences
+#: as the e-mail, with `*bold*` on the two labels, and with *"toque no botão"*
+#: struck as redundant beside a visible button.
+APPROVED_WHATSAPP_COPY = {"founders-opening", "charge-reminder"}
 
 
 def test_only_the_whatsapp_copy_sci_signed_off_is_approved() -> None:

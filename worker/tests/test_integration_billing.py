@@ -5,11 +5,17 @@ idempotency is a primary key, and the downgrade's scope is one `not exists`.
 Asserting any of that against a fake connection would assert the fake, so it
 runs here, on ``TEST_DATABASE_URL`` (`licitaqui_test`), and skips without it.
 
-**Resend is never called.** The reminder template is still a draft with a
-`TODO(Sci):` in it, so `template_ready()` is false and the sweep refuses before
-it writes anything — which is itself one of the behaviours under test. The
-tests that need a sendable template monkeypatch a synthetic one into a
-`tmp_path`, the same seam `test_integration_email.py` uses.
+**Resend is never called**, and neither is Evolution: `EMAIL_DELIVERY` and
+`WHATSAPP_DELIVERY` are both off for this suite, so the whole path runs and no
+socket is opened.
+
+Sci approved the reminder's copy on **2026-10-12** (**F24**), so the real
+template is sendable now and the *blocked* sweep — the behaviour that used to
+be free, because the file itself was blocked — needs a template of its own. Both
+states are monkeypatched from a `tmp_path`: `sendable` and `blocked`, the same
+seam `test_integration_email.py` uses. Asserting the blocked sweep against the
+real file would have made this suite's coverage of it vanish the day the copy
+landed, with nothing failing to say so.
 
 Every row is scoped by ``RUN_ID``: the users under a per-run e-mail domain, the
 subscriptions and payments under a per-run id prefix. Two concurrent runs of
@@ -65,6 +71,7 @@ def _wipe(conn: psycopg.Connection) -> None:
         cur.execute("delete from events where props ->> 'subscription' like %s", (f"{SUB}%",))
         cur.execute("delete from subscriptions where asaas_subscription_id like %s", (f"{SUB}%",))
         cur.execute("delete from users where email like %s", (f"%@{DOMAIN}",))
+        cur.execute("delete from founders_list where email like %s", (f"%@{DOMAIN}",))
 
 
 def _brt_today(conn: psycopg.Connection) -> date:
@@ -91,12 +98,24 @@ def _subscriber(
     plan: str = "promocional",
     user_plan: str = "promocional",
     email: str | None = None,
+    whatsapp: str | None = None,
+    checkout_url: str | None = None,
+    name: str | None = "",
 ) -> tuple[int, str]:
     subscription_id = f"{SUB}-{label}"
     with conn.cursor() as cur:
         cur.execute(
-            "insert into users (email, name, plan) values (%s, %s, %s) returning id",
-            (email if email is not None else f"{label}@{DOMAIN}", f"Pessoa {label}", user_plan),
+            "insert into users (email, name, plan, whatsapp) values (%s, %s, %s, %s) returning id",
+            (
+                email if email is not None else f"{label}@{DOMAIN}",
+                # `name=None` writes a **null** name, which is what the Resend
+                # magic-link provider produces and what review proved loses a
+                # reminder. Every fixture in this file bound a name before, so
+                # the case was untested.
+                f"Pessoa {label}" if name == "" else name,
+                user_plan,
+                whatsapp,
+            ),
         )
         row = cur.fetchone()
         assert row is not None
@@ -104,8 +123,9 @@ def _subscriber(
         cur.execute(
             """
             insert into subscriptions (user_id, asaas_customer_id, asaas_subscription_id,
-                                       plan, amount, status, next_charge_on, ends_on)
-            values (%s, %s, %s, %s, %s, %s, %s, %s)
+                                       plan, amount, status, next_charge_on, ends_on,
+                                       checkout_url)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 user_id,
@@ -116,9 +136,45 @@ def _subscriber(
                 status,
                 next_charge_on,
                 ends_on,
+                checkout_url,
             ),
         )
     return user_id, subscription_id
+
+
+def _charge(
+    conn: psycopg.Connection,
+    *,
+    user_id: int,
+    subscription_id: str,
+    label: str,
+    due_on: date,
+    billing_type: str = "PIX",
+    status: str = "PENDING",
+) -> None:
+    """One `subscription_payments` row: the charge the reminder announces.
+
+    `billing.send` reads it through a lateral join for three facts — the exact
+    amount, the method and whether it is still payable — so a test about the
+    WhatsApp half has to have one.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            insert into subscription_payments (asaas_payment_id, asaas_subscription_id, user_id,
+                                               status, billing_type, value, due_on)
+            values (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                f"{PAY}-{label}",
+                subscription_id,
+                user_id,
+                status,
+                billing_type,
+                product.PLAN_PRICES["promocional"],
+                due_on,
+            ),
+        )
 
 
 def _reminders(conn: psycopg.Connection) -> list[tuple[Any, ...]]:
@@ -144,15 +200,51 @@ def _events(conn: psycopg.Connection, name: str) -> list[dict[str, Any]]:
 
 
 @pytest.fixture
+def blocked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A `charge-reminder` that **cannot** render: an unresolved `TODO(Sci):`.
+
+    Until 2026-10-12 this state was the real file, so the blocked sweep could
+    be asserted for free. The copy landed, and a test that still read the real
+    template would have started passing for the opposite reason — the sweep is
+    no longer blocked — or failing outright, which is what it did. Neither is
+    coverage of the gate.
+
+    The gate itself is not about Sci's copy: it is *"can this render a whole
+    e-mail"*, and that can go back to false from a renamed placeholder or a
+    footer that grows a fourth one. So the state is synthesised here and the
+    behaviour stays under test.
+    """
+    root = tmp_path / "templates"
+    (root / "email").mkdir(parents=True)
+    (root / "email" / "charge-reminder.md").write_text(
+        "---\n"
+        "id: charge-reminder\n"
+        "channel: email\n"
+        # **A `subject:` on purpose.** `template_ready()` is false for two
+        # independent reasons — no subject *or* an unresolved marker — so a
+        # fixture missing both would still pass with the `ready_to_send` half
+        # deleted, which is the half this fixture exists to exercise. Review
+        # found that; now only the marker blocks it.
+        'subject: "x {{data_cobranca}}"\n'
+        "status: draft\n"
+        "placeholders: [data_cobranca]\n"
+        "---\n\n"
+        f"{templates.TODO_MARKER} falta a cópia.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(templates, "TEMPLATES_DIR", root)
+    templates.cache_clear()
+    return root
+
+
+@pytest.fixture
 def sendable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A synthetic `charge-reminder` with no `TODO(Sci):` in it.
 
-    The real file is a draft awaiting Sci's two sentences, which is the point
-    of `test_billing.py`'s first assertion. These tests need a template that
-    *can* render so the sweep's claim-and-enqueue half is exercised at all —
-    the same seam `test_integration_email.py` uses for the founders templates,
-    and for the same reason: the machinery is proven ahead of the copy that
-    unblocks a first real send.
+    Synthetic rather than the real file so these tests assert the *machinery*
+    and not the wording: the copy is Sci's and may be edited without this suite
+    going red. `test_billing.py` is where the real file's own sentences are
+    held to the contract (spec §10's date and amount).
     """
     root = tmp_path / "templates"
     (root / "email").mkdir(parents=True)
@@ -175,13 +267,12 @@ def sendable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 # -- charge_reminder ----------------------------------------------------------
 
 
-def test_the_sweep_refuses_to_claim_anything_while_the_copy_is_missing(
-    conn: psycopg.Connection, clean: None
+def test_the_sweep_refuses_to_claim_anything_when_the_template_cannot_render(
+    conn: psycopg.Connection, clean: None, blocked: Path
 ) -> None:
-    """**The state F4 is in today, asserted rather than assumed.**
+    """**The gate, now that the copy is no longer what closes it.**
 
-    The reminder's two sentences are Sci's. While `charge-reminder.md` carries
-    its `TODO(Sci):`, the sweep must claim nothing — a claimed row would record
+    A sweep that cannot render must claim nothing — a claimed row would record
     a reminder as handled on a day nothing could be sent, and the charge would
     then arrive with no warning at all, which is worse than no sweep.
 
@@ -198,9 +289,124 @@ def test_the_sweep_refuses_to_claim_anything_while_the_copy_is_missing(
     assert result.due == 1
     assert result.queued == 0
     assert _reminders(conn) == []
-    blocked = _events(conn, billing.EVENT_REMINDER_BLOCKED)
-    assert blocked and blocked[0]["subscribers"] >= 1
-    assert blocked[0]["reason"] == billing.SKIP_TEMPLATE_BLOCKED
+    rows = _events(conn, billing.EVENT_REMINDER_BLOCKED)
+    assert rows and rows[0]["subscribers"] >= 1
+    assert rows[0]["reason"] == billing.SKIP_TEMPLATE_BLOCKED
+
+
+def test_the_real_template_no_longer_blocks_the_sweep(
+    conn: psycopg.Connection, clean: None
+) -> None:
+    """**The other half, and the one that would have shipped silently.**
+
+    No fixture: this reads `worker/templates/email/charge-reminder.md` as it
+    is on disk, because the thing under test is that *the file Sci approved*
+    unblocks the sweep. The suite above runs on synthetic templates, so without
+    this test every assertion here would still pass with the `TODO(Sci):` back
+    in place.
+    """
+    due = _brt_today(conn) + timedelta(days=product.CHARGE_REMINDER_DAYS)
+    _subscriber(conn, label="real", next_charge_on=due)
+
+    result = billing.sweep(conn)
+
+    assert billing.template_ready() is True
+    assert result.blocked is False
+    # `>=`, not `==`: `DUE_SQL` is **global** and `apps/web/lib/asaas/billing.db.test.ts`
+    # writes subscriptions into this same database, so an exact count is another
+    # lane's fixture away from a mysterious failure. The scoped list below is
+    # what actually pins the behaviour. Review's finding.
+    assert result.queued >= 1
+    assert result.unrenderable == 0
+    assert [row[0] for row in _reminders(conn)] == [f"{SUB}-real"]
+
+
+def test_a_subscriber_with_no_name_is_refused_and_nothing_is_claimed(
+    conn: psycopg.Connection, clean: None
+) -> None:
+    """**Review's blocker, against the database.**
+
+    `users.name` is nullable and `lib/auth/adapter.ts` writes `user.name ??
+    null` — the Resend magic-link provider supplies no name at all. The approved
+    body opens `Olá, {{nome}}!` and `templates.py` refuses a blank value, so
+    before this fix the render raised *after* the `billing_reminders` row was
+    committed: four identical retries, and the next sweep looks for `today + 3`
+    and never sees that charge again.
+
+    So the sweep renders first. Nothing is claimed, nothing is enqueued, and it
+    is **loud** — `billing.reminder_unrenderable` plus an ERROR line, naming the
+    placeholder and never the person (§12). **F29** is the residual.
+
+    **Per subscriber, not per sweep**, which is the second half of the test: a
+    refusal that blocked the whole sweep would cost that day's entire cohort
+    for one null binding, which is worse than the defect. One bad row and one
+    good row, and the good one must still be claimed and enqueued.
+    """
+    due = _brt_today(conn) + timedelta(days=product.CHARGE_REMINDER_DAYS)
+    _subscriber(conn, label="nameless", next_charge_on=due, name=None)
+    # **A good subscriber beside the bad one, and this is the assertion that
+    # matters.** Review's second point: refusing per *sweep* — the
+    # `template_ready()` shape, which returns `blocked=True` for everybody —
+    # would make one null binding cost that day's whole cohort, a strictly
+    # worse defect than the one being fixed. Without this second row the test
+    # cannot tell "skipped that subscriber" from "aborted the sweep".
+    _, good = _subscriber(conn, label="named", next_charge_on=due)
+
+    result = billing.sweep(conn)
+
+    assert result.unrenderable >= 1
+    assert result.blocked is False, "one bad row aborted the sweep for everybody"
+    with conn.cursor() as cur:
+        cur.execute("select count(*) from jobs where key like %s", (f"reminder:{SUB}-nameless%",))
+        row = cur.fetchone()
+    assert row is not None and row[0] == 0, "a job was enqueued for a notice that cannot render"
+    refused = [
+        r
+        for r in _events(conn, billing.EVENT_REMINDER_UNRENDERABLE)
+        if r.get("subscription") == f"{SUB}-nameless"
+    ]
+    assert refused and refused[0]["reason"] == "nome:blank"
+
+    # The nameless one is not claimed; the one beside it is, and is enqueued.
+    claimed = [row[0] for row in _reminders(conn)]
+    assert claimed == [good], claimed
+    with conn.cursor() as cur:
+        cur.execute("select count(*) from jobs where key like %s", (f"reminder:{good}%",))
+        row = cur.fetchone()
+    assert row is not None and row[0] == 1
+
+
+def test_a_founders_name_is_recovered_when_the_user_row_has_none(
+    conn: psycopg.Connection, clean: None
+) -> None:
+    """The ordinary case of the same defect, and the reason the fix is a
+    `coalesce` rather than an invented salutation (brief §5): a founder who
+    signed in by magic link has the name they typed in `founders_list`, under
+    the same e-mail."""
+    due = _brt_today(conn) + timedelta(days=product.CHARGE_REMINDER_DAYS)
+    email = f"founder-{RUN_ID}@{DOMAIN}"
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into founders_list (name, email, contact_consent) values (%s, %s, true)",
+            (f"Fundadora {RUN_ID}", email),
+        )
+    user_id, subscription_id = _subscriber(
+        conn, label="founder", next_charge_on=due, name=None, email=email
+    )
+
+    result = billing.sweep(conn)
+
+    assert result.unrenderable == 0
+    assert [row[0] for row in _reminders(conn)] == [subscription_id]
+
+    delivery = billing.send(
+        conn,
+        template=billing.REMINDER_TEMPLATE,
+        user_id=user_id,
+        subscription_id=subscription_id,
+        due_on=str(due),
+    )
+    assert delivery.outcome == "dry_run"
 
 
 def test_it_reminds_three_days_before_a_charge_and_not_on_other_days(
@@ -341,6 +547,145 @@ def test_the_message_is_a_dry_run_while_the_kill_switch_is_off(
     # And nothing claims it was sent.
     sent = [r for r in _events(conn, "email.sent") if r.get("subscription") == subscription_id]
     assert sent == []
+
+
+def test_the_whatsapp_copy_reads_the_three_facts_the_lateral_join_adds(
+    conn: psycopg.Connection, clean: None
+) -> None:
+    """**The SQL, which a fake connection cannot prove.**
+
+    `billing.send` learns three things from one `left join lateral`: the
+    subscriber's `whatsapp`, the subscription's `checkout_url` (the Asaas
+    `invoiceUrl` the button points at) and the announced charge's
+    `billing_type` and `status`. Every gate in the WhatsApp half is a branch on
+    one of them, so a join that silently returned nulls would make this feature
+    *skip* rather than fail — which is the quietest possible outcome and the one
+    this repository keeps paying for.
+
+    No template fixture: the real approved copy is what ships, and
+    `WHATSAPP_DELIVERY` is off, so the whole path runs and no socket opens.
+    """
+    due = _brt_today(conn) + timedelta(days=product.CHARGE_REMINDER_DAYS)
+    user_id, subscription_id = _subscriber(
+        conn,
+        label="pix",
+        next_charge_on=due,
+        whatsapp="+55 11 99999-0000",
+        checkout_url="https://sandbox.asaas.com/i/f24",
+    )
+    _charge(conn, user_id=user_id, subscription_id=subscription_id, label="pix", due_on=due)
+
+    delivery = billing.send(
+        conn,
+        template=billing.REMINDER_TEMPLATE,
+        user_id=user_id,
+        subscription_id=subscription_id,
+        due_on=str(due),
+    )
+
+    assert delivery.outcome == "dry_run"
+    assert delivery.whatsapp == "dry_run"
+    rows = [
+        r for r in _events(conn, "whatsapp.dry_run") if r.get("subscription") == subscription_id
+    ]
+    assert rows, "the WhatsApp copy was never attempted"
+    assert rows[0]["due_on"] == str(due)
+    # §12: neither the number nor the invoice URL may reach the delivery log.
+    # Asserted over the **rendered props**, not as absent dict keys — keys that
+    # were never written are absent whatever the code does, which is a check
+    # that cannot fail. Review found that version here.
+    rendered = str(rows[0])
+    assert "asaas.com" not in rendered
+    assert "99999" not in rendered
+    assert "sandbox" not in rendered
+
+
+def test_an_overdue_charge_beside_the_next_one_withholds_the_button(
+    conn: psycopg.Connection, clean: None
+) -> None:
+    """**The count that makes the link attributable, and it is a subquery.**
+
+    `subscriptions.checkout_url` is one column per subscription:
+    `refreshCheckoutUrl` overwrites it on every payable payment event, so with
+    an overdue month *and* the upcoming one both payable, it holds whichever
+    event arrived last. The notice names one date, so a button that may open
+    the other charge is withheld — **F28** stores the per-charge URL and
+    deletes this gate. The e-mail still goes: terms §7 is unconditional.
+    """
+    today = _brt_today(conn)
+    due = today + timedelta(days=product.CHARGE_REMINDER_DAYS)
+    user_id, subscription_id = _subscriber(
+        conn,
+        label="twocharges",
+        status="overdue",
+        next_charge_on=due,
+        whatsapp="+55 11 99999-0002",
+        checkout_url="https://sandbox.asaas.com/i/f24-which",
+    )
+    _charge(conn, user_id=user_id, subscription_id=subscription_id, label="next", due_on=due)
+    _charge(
+        conn,
+        user_id=user_id,
+        subscription_id=subscription_id,
+        label="late",
+        due_on=today - timedelta(days=30),
+        status="OVERDUE",
+    )
+
+    delivery = billing.send(
+        conn,
+        template=billing.REMINDER_TEMPLATE,
+        user_id=user_id,
+        subscription_id=subscription_id,
+        due_on=str(due),
+    )
+
+    assert delivery.outcome == "dry_run"
+    assert delivery.whatsapp == "skipped"
+    skipped = [
+        r for r in _events(conn, "whatsapp.skipped") if r.get("subscription") == subscription_id
+    ]
+    assert skipped and skipped[0]["reason"] == billing.SKIP_AMBIGUOUS_LINK
+
+
+def test_a_card_subscriber_gets_the_e_mail_and_no_button(
+    conn: psycopg.Connection, clean: None
+) -> None:
+    """F24: *"a card subscriber receives nothing [on WhatsApp], because the
+    card is charged automatically"* — while terms §7's e-mail is unconditional
+    and still goes. The method comes from the announced charge itself, so this
+    needs no F25 column and no call to Asaas."""
+    due = _brt_today(conn) + timedelta(days=product.CHARGE_REMINDER_DAYS)
+    user_id, subscription_id = _subscriber(
+        conn,
+        label="card",
+        next_charge_on=due,
+        whatsapp="+55 11 99999-0001",
+        checkout_url="https://sandbox.asaas.com/i/f24-card",
+    )
+    _charge(
+        conn,
+        user_id=user_id,
+        subscription_id=subscription_id,
+        label="card",
+        due_on=due,
+        billing_type="CREDIT_CARD",
+    )
+
+    delivery = billing.send(
+        conn,
+        template=billing.REMINDER_TEMPLATE,
+        user_id=user_id,
+        subscription_id=subscription_id,
+        due_on=str(due),
+    )
+
+    assert delivery.outcome == "dry_run"
+    assert delivery.whatsapp == "skipped"
+    skipped = [
+        r for r in _events(conn, "whatsapp.skipped") if r.get("subscription") == subscription_id
+    ]
+    assert skipped and skipped[0]["reason"] == billing.SKIP_NOT_PIX
 
 
 def test_the_sweep_enqueues_a_kind_the_registry_can_run(
