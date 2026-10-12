@@ -197,9 +197,10 @@ def test_the_whatsapp_copy_is_the_same_notice_with_whatsapp_markup() -> None:
     assert "*Valor:*" in whatsapp_body
     # The title of the button message is the e-mail's approved subject, not a
     # sentence invented for the channel.
-    assert templates.load("whatsapp", billing.REMINDER_TEMPLATE).subject == templates.load(
-        "email", billing.REMINDER_TEMPLATE
-    ).subject
+    assert (
+        templates.load("whatsapp", billing.REMINDER_TEMPLATE).subject
+        == templates.load("email", billing.REMINDER_TEMPLATE).subject
+    )
 
 
 def test_a_missing_template_is_the_same_answer_as_an_unwritten_one() -> None:
@@ -576,9 +577,7 @@ def _row(**overrides: Any) -> dict[str, Any]:
     return row
 
 
-def _notice(
-    conn: _FakeConn, client: _StubEvolution, **overrides: Any
-) -> str:
+def _notice(conn: _FakeConn, client: _StubEvolution, **overrides: Any) -> str:
     row = _row(**overrides)
     return billing.send_charge_notice_whatsapp(
         conn,  # type: ignore[arg-type]

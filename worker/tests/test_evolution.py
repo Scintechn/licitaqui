@@ -289,9 +289,7 @@ def test_the_button_request_shape(switch_on: None) -> None:
         "title": BUTTON["title"],
         "description": BUTTON["description"],
         "footer": BUTTON["footer"],
-        "buttons": [
-            {"type": "url", "displayText": BUTTON["button_text"], "url": BUTTON["url"]}
-        ],
+        "buttons": [{"type": "url", "displayText": BUTTON["button_text"], "url": BUTTON["url"]}],
     }
     assert result.status == "sent"
     assert result.status_code == 201
