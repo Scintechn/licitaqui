@@ -944,3 +944,49 @@ def test_both_switches_off_still_exercises_the_whole_path(
 
     assert outcome == "dry_run"
     assert client.calls, "the dry-run path stopped being exercised"
+
+
+def test_an_unrenderable_subscriber_costs_one_notice_and_not_the_cohort() -> None:
+    """**Review's second point, pinned as code rather than as prose.**
+
+    `template_ready()` refuses per *sweep* — `Sweep(blocked=True)`, nobody gets
+    anything — which is right for *"there is no message"* and would be a
+    strictly worse defect for *"this one row cannot be filled in"*: one null
+    binding would cost that day's whole cohort. So the per-subscriber refusal
+    must `continue` inside the loop, never `return`.
+
+    Read from the source because the loop needs a database to run. The
+    integration suite asserts the behaviour with one bad row beside one good
+    one; this asserts the control flow, so a `return` slipped in here fails in
+    the fast suite within 42 seconds rather than in CI.
+    """
+    source = Path(billing.__file__).read_text(encoding="utf-8")
+    sweep_body = source[source.index("def sweep(") : source.index("def unrenderable_reason")]
+    guard = sweep_body[sweep_body.index("problem = unrenderable_reason(row)") :]
+    tail = guard[: guard.index("with conn.cursor()")]
+    assert "continue" in tail, "the per-subscriber refusal must skip the row"
+    assert "return" not in tail, "a return here costs the whole cohort for one bad row"
+    assert "blocked" not in tail, "this is not the per-template gate"
+
+
+def test_the_founders_join_cannot_multiply_a_charge() -> None:
+    """**Review's first point.** The name is recovered by a `left join` on an
+    e-mail that is `citext ... unique` on **both** sides (`0001_initial.sql:155`
+    and `:308`), so the join is one-to-at-most-one.
+
+    Either half being wrong is quiet. A non-unique key multiplies rows — the
+    same charge claimed twice in one sweep, absorbed by the primary key while
+    `Sweep.due` lies, and `fetchone()` picking one of several in the sender. An
+    **inner** join would make the sweep skip every subscriber who was never on
+    the founders list, which is the quietest regression available and one a
+    founders-only fixture cannot see.
+    """
+    schema = (Path(__file__).parents[2] / "db/migrations/0001_initial.sql").read_text(
+        encoding="utf-8"
+    )
+    assert re.search(r"email\s+citext\s+unique\s+not null", schema), "users.email"
+    assert re.search(r"email\s+citext\s+not null\s+unique", schema), "founders_list.email"
+    for statement in (billing.DUE_SQL, billing.REMINDER_ROW_SQL):
+        assert "left join founders_list f on f.email = u.email" in statement
+        assert "inner join founders_list" not in statement
+        assert "join founders_list" not in statement.replace("left join founders_list", "")

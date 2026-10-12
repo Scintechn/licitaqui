@@ -336,24 +336,44 @@ def test_a_subscriber_with_no_name_is_refused_and_nothing_is_claimed(
     So the sweep renders first. Nothing is claimed, nothing is enqueued, and it
     is **loud** — `billing.reminder_unrenderable` plus an ERROR line, naming the
     placeholder and never the person (§12). **F29** is the residual.
+
+    **Per subscriber, not per sweep**, which is the second half of the test: a
+    refusal that blocked the whole sweep would cost that day's entire cohort
+    for one null binding, which is worse than the defect. One bad row and one
+    good row, and the good one must still be claimed and enqueued.
     """
     due = _brt_today(conn) + timedelta(days=product.CHARGE_REMINDER_DAYS)
     _subscriber(conn, label="nameless", next_charge_on=due, name=None)
+    # **A good subscriber beside the bad one, and this is the assertion that
+    # matters.** Review's second point: refusing per *sweep* — the
+    # `template_ready()` shape, which returns `blocked=True` for everybody —
+    # would make one null binding cost that day's whole cohort, a strictly
+    # worse defect than the one being fixed. Without this second row the test
+    # cannot tell "skipped that subscriber" from "aborted the sweep".
+    _, good = _subscriber(conn, label="named", next_charge_on=due)
 
     result = billing.sweep(conn)
 
     assert result.unrenderable >= 1
-    assert _reminders(conn) == [], "a claim was burnt on a notice that cannot render"
+    assert result.blocked is False, "one bad row aborted the sweep for everybody"
     with conn.cursor() as cur:
         cur.execute("select count(*) from jobs where key like %s", (f"reminder:{SUB}-nameless%",))
         row = cur.fetchone()
-    assert row is not None and row[0] == 0
+    assert row is not None and row[0] == 0, "a job was enqueued for a notice that cannot render"
     refused = [
         r
         for r in _events(conn, billing.EVENT_REMINDER_UNRENDERABLE)
         if r.get("subscription") == f"{SUB}-nameless"
     ]
     assert refused and refused[0]["reason"] == "nome:blank"
+
+    # The nameless one is not claimed; the one beside it is, and is enqueued.
+    claimed = [row[0] for row in _reminders(conn)]
+    assert claimed == [good], claimed
+    with conn.cursor() as cur:
+        cur.execute("select count(*) from jobs where key like %s", (f"reminder:{good}%",))
+        row = cur.fetchone()
+    assert row is not None and row[0] == 1
 
 
 def test_a_founders_name_is_recovered_when_the_user_row_has_none(
