@@ -358,21 +358,24 @@ The wording is yours (brief §5). The likely answer is a second footer, or one s
 contractual notice from a marketing one; the same resolution would settle item **C**, which is the same list
 being short.
 
-## I. The privacy policy does not cover the CPF or the date of birth F31 asks for — found 2026-10-12
+## I. The privacy policy does not cover the date of birth F31 asks for — found 2026-10-12
 
-Sci asked on 2026-10-12 for a simplified profile form: name, **date of birth**, mobile,
-**CPF or CNPJ**, company optional. Two of those fields are not in the policy, and **F31 is
-blocked on this and nothing else** — the columns already exist (`0016_profile_identity.sql`)
-and deliberately nothing writes them.
+Sci asked on 2026-10-12 for a simplified profile form: name, **date of birth**, mobile, CNPJ,
+company optional. **One field is not in the policy, and F31 is blocked on it and nothing else** —
+the column already exists (`0016_profile_identity.sql`, applied 2026-10-12) and deliberately
+nothing writes it.
+
+A CPF would have been a second missing field. **F32 is parked** instead: Sci ruled that a CNPJ
+stays required to use the Radar, which leaves a CPF needed only where the payer is a natural
+person, and nothing in the product writes or collects one. `users.cpf` exists and stays empty,
+so this item asks for one sentence instead of two.
 
 `docs/legal/politica-de-privacidade.md` §4(b) says, verbatim:
 
 > - Nome, e-mail e, se informar, WhatsApp.
 > - CNPJ da empresa e as atividades (CNAE) que buscamos em fontes públicas.
 
-No own-CPF. No date of birth. §4(c)'s *"identificação"* arguably covers **sending** a document
-to Asaas; it does not cover **storing** one here. Every other CPF in the file is a third party
-in an award record, and masked.
+No date of birth, anywhere in the file.
 
 **Four places in that one file, so it can be amended once:**
 
@@ -381,7 +384,7 @@ in an award record, and masked.
 | **§2** *Resumo em uma tabela* | *"Nome, e-mail, WhatsApp, CNPJ da sua empresa…"* — the table a reader actually reads |
 | **§4(b)** | the detailed list |
 | **§5** finalidade / base legal | has **no row for age verification**, so the 18+ purpose is stated but not declared |
-| **§13** | lists *"mascaramento de CPF"*, scoped in §4(f) to award records — the subscriber's own CPF must be stored **unmasked** to reach Asaas |
+| **§13** | lists *"mascaramento de CPF"*, scoped in §4(f) to award records — in scope only if **F32** is ever unparked |
 
 **A third field may need naming too.** Sci asked that *all* users inform their mobile. §4(b)
 says *"e, se informar, WhatsApp"* — optional. If the form makes it required, that clause is
