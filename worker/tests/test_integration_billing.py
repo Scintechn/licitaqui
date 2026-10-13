@@ -38,7 +38,11 @@ import psycopg
 import pytest
 
 from licitaqui import billing, product, queue, templates
+from licitaqui.observability import get_logger
+from licitaqui.registry import REGISTRY, JobContext
 from tests.conftest import RUN_ID
+
+LOG = get_logger("test")
 
 DOMAIN = f"billing-{RUN_ID}.test.invalid"
 SUB = f"sub-{RUN_ID}"
@@ -89,6 +93,13 @@ def _wipe(conn: psycopg.Connection) -> None:
             "delete from subscription_payments where asaas_subscription_id like %s", (f"{SUB}%",)
         )
         cur.execute("delete from jobs where key like %s", (f"reminder:{SUB}%",))
+        # **F41's notices are keyed by their own kind** (`notice_job_key`), so
+        # the reminder's pattern above does not reach them — and a row this
+        # file leaves behind in a **shared** database is the per-run isolation
+        # rule broken from the other side. One pattern per kind, not a `like`
+        # on the subscription, because the key's first field is the kind.
+        for notice_kind in (billing.FAILED_ROW_KIND, billing.ENDED_ROW_KIND):
+            cur.execute("delete from jobs where key like %s", (f"{notice_kind}:{SUB}%",))
         cur.execute("delete from events where props ->> 'subscription' like %s", (f"{SUB}%",))
         cur.execute("delete from subscriptions where asaas_subscription_id like %s", (f"{SUB}%",))
         cur.execute("delete from users where email like %s", (f"%@{DOMAIN}",))
@@ -122,8 +133,40 @@ def _subscriber(
     whatsapp: str | None = None,
     checkout_url: str | None = None,
     name: str | None = "",
+    user_id: int | None = None,
 ) -> tuple[int, str]:
+    """One subscription, and by default one user to own it.
+
+    `user_id` since F41's review: `0015`'s unique index scopes *"one live
+    subscription"* to the four live statuses, so a `canceled` row and a new
+    live row **coexist by design** — somebody who cancelled and subscribed
+    again. Every fixture here inserted its own user, so no test in this file
+    had two subscriptions on one account, and the encerramento notice went out
+    to a resubscriber with nothing to catch it.
+    """
     subscription_id = f"{SUB}-{label}"
+    if user_id is not None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into subscriptions (user_id, asaas_customer_id, asaas_subscription_id,
+                                           plan, amount, status, next_charge_on, ends_on,
+                                           checkout_url)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id,
+                    f"cus-{RUN_ID}-{label}",
+                    subscription_id,
+                    plan,
+                    product.PLAN_PRICES["promocional"],
+                    status,
+                    next_charge_on,
+                    ends_on,
+                    checkout_url,
+                ),
+            )
+        return user_id, subscription_id
     with conn.cursor() as cur:
         cur.execute(
             "insert into users (email, name, plan, whatsapp) values (%s, %s, %s, %s) returning id",
@@ -838,3 +881,350 @@ def test_the_queue_module_is_the_one_the_sweep_uses(
     # Behind a user on screen (1), ahead of the background sweeps (9).
     assert row[0] == 4
     assert queue.enqueue is not None
+
+
+# -- F41: the overdue notice and the encerramento notice ----------------------
+
+
+def _notice_template(
+    root: Path, template_id: str, placeholders: str, subject: str, body: str, *, todo: bool
+) -> None:
+    """One synthetic notice under `root`, approved or blocked.
+
+    Synthetic for the same reason `sendable` is: the wording is Sci's and may
+    change without this suite going red. What is asserted here is the SQL — the
+    dates at `America/Sao_Paulo`, the payable-charge predicate, the window and
+    the primary key.
+    """
+    marker = f"\n{templates.TODO_MARKER} falta a cópia.\n" if todo else ""
+    (root / "email" / f"{template_id}.md").write_text(
+        "---\n"
+        f"id: {template_id}\n"
+        "channel: email\n"
+        f'subject: "{subject}"\n'
+        f"status: {'draft' if todo else 'approved'}\n"
+        f"placeholders: {placeholders}\n"
+        "---\n\n"
+        f"{body}\n{marker}",
+        encoding="utf-8",
+    )
+
+
+@pytest.fixture
+def notices(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Approved copies of the two notices F41 wires, and nothing else."""
+    root = tmp_path / "templates"
+    (root / "email").mkdir(parents=True)
+    _notice_template(
+        root,
+        billing.FAILED_TEMPLATE,
+        "[data_cobranca, valor_cobranca]",
+        "x {{data_cobranca}}",
+        "x {{valor_cobranca}}",
+        todo=False,
+    )
+    # **The subject and the body must use different placeholders here**, or
+    # this fixture stops proving that `render_subject` is called at all —
+    # `template_ready()` has two independent halves and the reminder's own
+    # `blocked` fixture carries the same note for the same reason.
+    _notice_template(
+        root,
+        billing.ENDED_TEMPLATE,
+        "[data_encerramento, nome]",
+        "x {{nome}}",
+        "x {{data_encerramento}}",
+        todo=False,
+    )
+    monkeypatch.setattr(templates, "TEMPLATES_DIR", root)
+    templates.cache_clear()
+    return root
+
+
+@pytest.fixture
+def blocked_notices(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The same two with an unresolved `TODO(Sci):` — today's real state.
+
+    Synthetic rather than the real files, deliberately: the real ones are
+    drafts awaiting Sci's approval, and a test that read them would start
+    passing for the opposite reason the day the copy lands — which is exactly
+    what happened to the reminder's blocked test on 2026-10-12 and is why
+    `blocked` above exists.
+    """
+    root = tmp_path / "templates"
+    (root / "email").mkdir(parents=True)
+    _notice_template(
+        root, billing.FAILED_TEMPLATE, "[data_cobranca]", "x {{data_cobranca}}", "x", todo=True
+    )
+    _notice_template(
+        root,
+        billing.ENDED_TEMPLATE,
+        "[data_encerramento]",
+        "x {{data_encerramento}}",
+        "x",
+        todo=True,
+    )
+    monkeypatch.setattr(templates, "TEMPLATES_DIR", root)
+    templates.cache_clear()
+    return root
+
+
+def _overdue_subscriber(
+    conn: psycopg.Connection,
+    label: str,
+    *,
+    days_late: int,
+    status: str = "overdue",
+    charge_status: str = "PENDING",
+) -> tuple[int, str]:
+    """A subscriber whose charge passed its due date `days_late` days ago."""
+    due = _brt_today(conn) - timedelta(days=days_late)
+    user_id, subscription_id = _subscriber(
+        conn,
+        label=label,
+        status=status,
+        next_charge_on=due,
+        checkout_url="https://sandbox.asaas.com/i/abc",
+    )
+    _charge(
+        conn,
+        user_id=user_id,
+        subscription_id=subscription_id,
+        label=label,
+        due_on=due,
+        status=charge_status,
+    )
+    return user_id, subscription_id
+
+
+def test_the_overdue_sweep_claims_nothing_while_the_copy_is_unapproved(
+    conn: psycopg.Connection, clean: None, blocked_notices: Path
+) -> None:
+    """The reminder's gate, for the notice that did not exist when it was written.
+
+    Terms §7 obliges the e-mail, so *"there is no message"* must be a state and
+    a loud one — never a claimed row, which would record the notice as handled
+    on a day nothing could be sent.
+    """
+    _overdue_subscriber(conn, "late", days_late=1)
+
+    result = billing.overdue_sweep(conn)
+
+    assert result.blocked is True
+    assert result.due == 1, "the subscriber is counted even though nothing was sent"
+    assert result.queued == 0
+    assert _reminders(conn) == []
+    blocked_events = [
+        props
+        for props in _events(conn, billing.EVENT_REMINDER_BLOCKED)
+        if props.get("template") == billing.FAILED_TEMPLATE
+    ]
+    assert blocked_events, "a blocked sweep that logs nothing is a feed that never fails"
+    assert blocked_events[0]["reason"] == billing.SKIP_TEMPLATE_BLOCKED
+    assert blocked_events[0]["subscribers"] == 1
+
+
+def test_the_overdue_sweep_queues_a_notice_for_every_late_charge_and_nobody_else(
+    conn: psycopg.Connection, clean: None, notices: Path
+) -> None:
+    """**Five rows: two are late and three are not, each for its own reason.**
+
+    `late` and `active-late` are terms §7's *"tentaremos novamente e avisaremos
+    você"*. That the second one is in that half is review's finding: the sweep
+    selects on **the charge**, not on `subscriptions.status`, because the grant
+    path sets `active` on any non-cancelled row — so paying an older charge
+    used to hide a newer one that was already past due.
+
+    The other three are the remaining predicates, and every one of them is
+    somebody who would otherwise receive *"não recebemos o seu pagamento"*
+    wrongly, which is the message this card most has to get right. `paid` is
+    the one that matters: the charge settled while the subscription status
+    still says late, and the payable `exists` is the only thing that knows.
+    """
+    _overdue_subscriber(conn, "late", days_late=2)
+    _overdue_subscriber(conn, "active-late", days_late=2, status="active")
+    # Paid: the charge settled, so the status is stale and the `exists` is the
+    # only thing that knows. This is the row the sweep would hurt most.
+    _overdue_subscriber(conn, "paid", days_late=2, charge_status="RECEIVED")
+    # Nothing is owed on a subscription that ended.
+    _overdue_subscriber(conn, "gone", days_late=2, status="canceled")
+    # Not late at all: the charge falls due tomorrow. That is the reminder's
+    # cohort, three days out, not this one.
+    due_tomorrow = _brt_today(conn) + timedelta(days=1)
+    user_id, subscription_id = _subscriber(
+        conn, label="soon", status="active", next_charge_on=due_tomorrow
+    )
+    _charge(
+        conn, user_id=user_id, subscription_id=subscription_id, label="soon", due_on=due_tomorrow
+    )
+
+    result = billing.overdue_sweep(conn)
+
+    assert result.blocked is False
+    assert (result.due, result.queued, result.unrenderable) == (2, 2, 0)
+    rows = _reminders(conn)
+    assert [(row[0], row[2]) for row in rows] == [
+        (f"{SUB}-active-late", billing.FAILED_ROW_KIND),
+        (f"{SUB}-late", billing.FAILED_ROW_KIND),
+    ]
+    assert all(row[3] is not None for row in rows), "the job id is attached to each claim"
+    with conn.cursor() as cur:
+        cur.execute(
+            "select kind, key from jobs where key like %s",
+            (f"{billing.FAILED_ROW_KIND}:{SUB}-late%",),
+        )
+        queued_jobs = cur.fetchall()
+    assert len(queued_jobs) == 1
+    assert queued_jobs[0][0] == billing.SEND_KIND
+
+
+def test_the_overdue_notice_is_sent_once_however_many_days_it_stays_unpaid(
+    conn: psycopg.Connection, clean: None, notices: Path
+) -> None:
+    """A charge is late every day until it is paid; the notice goes once.
+
+    The reminder gets this free — it only ever looks at `today + 3`, so a
+    second sweep on the same day is the only duplicate it can have. This sweep
+    sees the same row tomorrow and the day after, so the primary key is doing
+    real work rather than guarding against a double tick.
+    """
+    _overdue_subscriber(conn, "late", days_late=1)
+
+    first = billing.overdue_sweep(conn)
+    second = billing.overdue_sweep(conn)
+
+    assert (first.queued, second.queued) == (1, 0)
+    assert second.due == 1, "still late, still counted — it is the claim that stops the message"
+    assert len(_reminders(conn)) == 1
+    with conn.cursor() as cur:
+        cur.execute(
+            "select count(*) from jobs where key like %s",
+            (f"{billing.FAILED_ROW_KIND}:{SUB}-late%",),
+        )
+        row = cur.fetchone()
+    assert row is not None and row[0] == 1
+
+
+def test_the_encerramento_notice_fires_after_the_paid_period_and_only_then(
+    conn: psycopg.Connection, clean: None, notices: Path
+) -> None:
+    """Terms §14's fifth notice, and the three rows it must not reach.
+
+    `ended` is the case. `leaving` is the one that matters most: terms §8 keeps
+    the paid plan until `ends_on`, so *"sua assinatura foi encerrada"* on the
+    day somebody cancels would be false for up to a month — and the plan screen
+    has already confirmed the cancellation to them. `ancient` is the backstop
+    in `ENDED_SQL`: the claim is what makes this once-only, and the window is
+    what stops the first run after a deploy mailing every subscription that
+    ever ended.
+    """
+    today = _brt_today(conn)
+    _subscriber(conn, label="ended", status="canceled", ends_on=today - timedelta(days=1))
+    _subscriber(conn, label="leaving", status="canceled", ends_on=today + timedelta(days=20))
+    _subscriber(
+        conn,
+        label="ancient",
+        status="canceled",
+        ends_on=today - timedelta(days=billing.ENDED_NOTICE_DAYS + 1),
+    )
+    _subscriber(conn, label="living", status="active", next_charge_on=today + timedelta(days=3))
+
+    first = billing.ended_notices(conn)
+    second = billing.ended_notices(conn)
+
+    assert (first.due, first.queued) == (1, 1)
+    assert second.queued == 0, "one notice per subscription, and the claim is why"
+    rows = _reminders(conn)
+    assert [(row[0], row[1], row[2]) for row in rows] == [
+        (f"{SUB}-ended", today - timedelta(days=1), billing.ENDED_ROW_KIND)
+    ], "the claim is keyed on ends_on, which is the date the message is about"
+
+
+def test_the_downgrade_job_also_announces_the_encerramento(
+    conn: psycopg.Connection, clean: None, notices: Path
+) -> None:
+    """**The job, not the two functions** — §4b's distinction, and the reason
+    the notice is not hung off `EXPIRE_SQL`'s own rows.
+
+    `EXPIRE_SQL` only returns an account it actually moved (`u.plan <>
+    'basico'`), so a notice driven by its result would be lost for ever the day
+    the enqueue failed after the update committed. Here the downgrade and the
+    notice both happen, and the second one is keyed on the subscription's own
+    end date — which is why a second run of the job finds the account already
+    on `basico` and the notice already claimed, and does neither twice.
+    """
+    today = _brt_today(conn)
+    user_id, _ = _subscriber(
+        conn, label="ended", status="canceled", ends_on=today - timedelta(days=1)
+    )
+
+    job = queue.Job(id=1, kind=billing.EXPIRE_KIND, key="k", priority=9, payload={}, attempts=1)
+    REGISTRY.get(billing.EXPIRE_KIND)(JobContext(job=job, conn=conn, connect=lambda: None, log=LOG))
+
+    with conn.cursor() as cur:
+        cur.execute("select plan from users where id = %s", (user_id,))
+        row = cur.fetchone()
+    assert row is not None and row[0] == "basico", "the downgrade still happens"
+    assert [r[2] for r in _reminders(conn)] == [billing.ENDED_ROW_KIND]
+
+
+def test_the_late_notice_reaches_a_subscription_that_was_never_paid(
+    conn: psycopg.Connection, clean: None, notices: Path
+) -> None:
+    """**The cohort the first version of this sweep could not see at all.**
+
+    Found by review (§4b). `'overdue'` is written in exactly one place —
+    `lib/asaas/entitlement.ts:292` — and only for a row that is already
+    `active`, while `upsertSubscription` creates every row `pending`. So a
+    founder who subscribes by pix on 17/10 and never pays is `pending` for
+    ever: the webhook arrives, the guard refuses it, and a sweep keyed on
+    `'overdue'` reports `due = 0` and looks healthy. On opening day that is the
+    *only* population there is.
+
+    The fixtures could not have caught it — they write `status` into the row by
+    hand — so this one spells the production state instead: `pending`, a first
+    charge past its due date, `OVERDUE` in Asaas's own vocabulary.
+    """
+    _overdue_subscriber(conn, "never-paid", days_late=1, status="pending", charge_status="OVERDUE")
+
+    result = billing.overdue_sweep(conn)
+
+    assert (result.due, result.queued) == (1, 1), "a pending subscription is the opening-day case"
+    assert [(row[0], row[2]) for row in _reminders(conn)] == [
+        (f"{SUB}-never-paid", billing.FAILED_ROW_KIND)
+    ]
+
+
+def test_a_resubscriber_is_not_told_their_subscription_ended(
+    conn: psycopg.Connection, clean: None, notices: Path
+) -> None:
+    """**The guard `EXPIRE_SQL` has and `ENDED_SQL` did not.** Found by review.
+
+    `0015`'s unique index scopes "one live subscription" to the four live
+    statuses, so a `canceled` row and a new live row coexist by design.
+    `expire()` already knows not to downgrade that account — *"so somebody who
+    cancelled and subscribed again is not dropped to Básico by the expiry of
+    the row they replaced"* — and the notice would have gone anyway, telling a
+    paying subscriber that their subscription had ended and that they were on
+    the free plan. Both false, and the second contradicting `users.plan`, which
+    `expire()` deliberately left alone.
+    """
+    today = _brt_today(conn)
+    user_id, _ = _subscriber(
+        conn, label="again-old", status="canceled", ends_on=today - timedelta(days=1)
+    )
+    _subscriber(
+        conn,
+        label="again-new",
+        status="active",
+        next_charge_on=today + timedelta(days=20),
+        user_id=user_id,
+    )
+
+    result = billing.ended_notices(conn)
+
+    assert (result.due, result.queued) == (0, 0), "the account still has a live subscription"
+    assert _reminders(conn) == []
+    with conn.cursor() as cur:
+        cur.execute("select plan from users where id = %s", (user_id,))
+        row = cur.fetchone()
+    assert row is not None and row[0] == "promocional", "and the plan was never taken away"

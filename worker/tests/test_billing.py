@@ -24,6 +24,12 @@ from licitaqui import billing, evolution, product, templates
 from licitaqui import whatsapp as whatsapp_module
 from licitaqui.breaker import CircuitOpen
 
+#: The templates that actually ship, captured **at import** — the autouse
+#: fixture below repoints `templates.TEMPLATES_DIR` at a `tmp_path` for the
+#: tests that need a renderable copy, and the F41 tests ask the opposite
+#: question: what does the real file say?
+REAL_TEMPLATES = templates.TEMPLATES_DIR
+
 #: Set by :func:`_synthetic_root` for the cases that need a template of their
 #: own. A module-level holder rather than a fixture argument so the helper
 #: below can be called from a test that did not ask for the directory.
@@ -70,24 +76,35 @@ def _synthetic_root(tmp_path: Path) -> Iterator[None]:
         templates.cache_clear()
 
 
-def _write_template(root: Path | None, body: str, *, subject: str | None) -> None:
-    """A `charge-reminder` under `root`, and point `templates` at it.
+def _write_template(
+    root: Path | None,
+    body: str,
+    *,
+    subject: str | None,
+    template_id: str = "charge-reminder",
+) -> None:
+    """One approved e-mail template under `root`, and point `templates` at it.
 
     The real file is a draft awaiting Sci's two sentences, so a test that needs
     one which *can* render has to supply it — the same seam
     `test_integration_email.py` uses for the founders templates.
+
+    `template_id` since F41: its three notices are drafts carrying a
+    `TODO(Sci):`, deliberately, so **every** test of their delivery has to
+    supply a renderable copy. A test that waited for the approval instead would
+    be a test that does not exist.
     """
     assert root is not None, "this test needs the synthetic template root"
     folder = root / "templates" / "email"
     folder.mkdir(parents=True, exist_ok=True)
-    front = ["---", "id: charge-reminder", "channel: email", "status: approved"]
+    front = ["---", f"id: {template_id}", "channel: email", "status: approved"]
     if subject is not None:
         front.append(f'subject: "{subject}"')
     used = sorted(set(re.findall(r"\{\{(\w+)\}\}", body + (subject or ""))))
     if used:
         front.append(f"placeholders: [{', '.join(used)}]")
     front.append("---")
-    (folder / "charge-reminder.md").write_text("\n".join(front) + "\n\n" + body, encoding="utf-8")
+    (folder / f"{template_id}.md").write_text("\n".join(front) + "\n\n" + body, encoding="utf-8")
     templates.TEMPLATES_DIR = root / "templates"  # type: ignore[misc]
     templates.cache_clear()
 
@@ -829,16 +846,50 @@ def test_the_name_is_recovered_from_the_founders_list() -> None:
         assert "left join founders_list f on f.email = u.email" in statement
 
 
+#: Every sweep that claims a `billing_reminders` row, and the per-subscriber
+#: refusal it must make first. Named here so the two structural guards below
+#: cover all three rather than only the one that was written first — F41 added
+#: two sweeps, and a guard that silently covers a third of the paths is the
+#: shape §4b warns about.
+SWEEPS = (
+    ("def sweep(", "unrenderable_reason(row)"),
+    ("def overdue_sweep(", "unrenderable_reason(row, FAILED_TEMPLATE)"),
+    ("def ended_notices(", "unrenderable_reason(row, ENDED_TEMPLATE)"),
+)
+
+
+def _function_source(name: str) -> str:
+    """The body of one top-level function, by its `def` line."""
+    source = Path(billing.__file__).read_text(encoding="utf-8")
+    start = source.index(name)
+    rest = source[start + len(name) :]
+    end = rest.find("\ndef ")
+    return name + (rest if end == -1 else rest[:end])
+
+
 def test_the_sweep_counts_what_it_could_not_render() -> None:
     """B32's lesson: a feed that never enqueues also never fails. The refusal
     is a count on the `Sweep`, an ERROR line and a `billing.*` event — not a
-    silent `continue`."""
+    silent `continue`.
+
+    **The claim moved in F41** and this guard moved with it. It used to assert
+    that `unrenderable_reason` came before `CLAIM_REMINDER_SQL` *inside*
+    `sweep()`; the claim now lives in `_queue_notice`, shared by three sweeps,
+    so the same invariant is two assertions: each sweep refuses before it calls
+    the helper, and no sweep claims anything itself.
+    """
     assert billing.Sweep().unrenderable == 0
     assert billing.EVENT_REMINDER_UNRENDERABLE == "billing.reminder_unrenderable"
-    source = Path(billing.__file__).read_text(encoding="utf-8")
-    sweep_body = source[source.index("def sweep(") : source.index("def unrenderable_reason")]
-    # The refusal must come before the claim, or it is not a refusal at all.
-    assert sweep_body.index("unrenderable_reason(row)") < sweep_body.index("CLAIM_REMINDER_SQL")
+    assert "CLAIM_REMINDER_SQL" in _function_source("def _queue_notice(")
+    for name, refusal in SWEEPS:
+        body = _function_source(name)
+        assert refusal in body, f"{name} does not refuse a subscriber it cannot render"
+        assert body.index(refusal) < body.index("_queue_notice("), (
+            f"{name} claims before refusing, which is not a refusal at all"
+        )
+        assert "CLAIM_REMINDER_SQL" not in body, (
+            f"{name} claims a row itself; the claim-and-release belongs to _queue_notice"
+        )
 
 
 # -- the path, not the unit: send() into the WhatsApp half --------------------
@@ -989,13 +1040,14 @@ def test_an_unrenderable_subscriber_costs_one_notice_and_not_the_cohort() -> Non
     one; this asserts the control flow, so a `return` slipped in here fails in
     the fast suite within 42 seconds rather than in CI.
     """
-    source = Path(billing.__file__).read_text(encoding="utf-8")
-    sweep_body = source[source.index("def sweep(") : source.index("def unrenderable_reason")]
-    guard = sweep_body[sweep_body.index("problem = unrenderable_reason(row)") :]
-    tail = guard[: guard.index("with conn.cursor()")]
-    assert "continue" in tail, "the per-subscriber refusal must skip the row"
-    assert "return" not in tail, "a return here costs the whole cohort for one bad row"
-    assert "blocked" not in tail, "this is not the per-template gate"
+    for name, refusal in SWEEPS:
+        body = _function_source(name)
+        # From the refusal up to the claim: everything the sweep does about a
+        # subscriber it cannot render.
+        tail = body[body.index(refusal) : body.index("_queue_notice(")]
+        assert "continue" in tail, f"{name}: the per-subscriber refusal must skip the row"
+        assert "return" not in tail, f"{name}: a return here costs the cohort for one bad row"
+        assert "blocked" not in tail, f"{name}: this is not the per-template gate"
 
 
 def test_the_founders_join_cannot_multiply_a_charge() -> None:
@@ -1058,3 +1110,355 @@ def test_the_opt_out_gate_is_distinct_from_having_opted_out() -> None:
     # The basis for this message is the contract, so no consent gate survives.
     assert not hasattr(billing, "_whatsapp_notices_consented")
     assert not hasattr(billing, "SKIP_NO_CONSENT")
+
+
+# -- F41: the three notices terms §14 names and nothing sent ------------------
+
+
+def test_every_notice_the_sweeps_enqueue_has_a_template_file() -> None:
+    """The join F41 exists because nobody had made: a notice, its copy, its key.
+
+    Terms §14 names five notices. Two of them — payment-failed and suspension —
+    were *named* inside F4's card while it was marked `done`, and
+    `encerramento` was in the plan nowhere at all, so three of the five had
+    copy nowhere and a sender nowhere and nothing said so. This asserts the
+    join in the direction that matters: every notice the sweeps can enqueue has
+    a file to render.
+    """
+    for template, notice in billing.NOTICES.items():
+        assert notice.template == template, "the table's key is the template id"
+        path = REAL_TEMPLATES / "email" / f"{template}.md"
+        assert path.is_file(), f"{template} is enqueued and has no copy"
+        assert notice.statuses, f"{template} is true for no subscription status"
+
+
+def test_the_suspension_notice_is_drafted_and_carded_rather_than_wired() -> None:
+    """**A template nothing sends, which CLAUDE.md allows only with a card.**
+
+    `subscription-suspended.md` announces a state no code writes: `suspended`
+    is in `0015`'s CHECK and in `lib/asaas/subscription.ts`'s vocabulary and is
+    set by nothing. Wiring it would be the register's own defect — a message
+    promising a thing the product does not do — so the copy is drafted for Sci
+    to read beside the other two, the card is **F42**, and this test is what
+    stops it being quietly enqueued before that card ships.
+    """
+    assert (REAL_TEMPLATES / "email" / f"{billing.SUSPENDED_TEMPLATE}.md").is_file()
+    assert billing.SUSPENDED_TEMPLATE not in billing.NOTICES
+    with pytest.raises(ValueError, match="no billing notice"):
+        billing.notice_for(billing.SUSPENDED_TEMPLATE)
+    plan = (Path(billing.__file__).resolve().parents[2] / "docs" / "DEVELOPMENT_PLAN.md").read_text(
+        encoding="utf-8"
+    )
+    assert "| F42 |" in plan, "the drafted template with no sender needs its card"
+
+
+def test_a_notice_cannot_dedupe_against_another_notice_for_the_same_charge() -> None:
+    """One charge, two messages, and `jobs_dedupe` cannot tell them apart.
+
+    Every notice is enqueued under the same *job* kind, `send_billing_email`,
+    and `jobs_dedupe` is unique on `(kind, key)`. So the notice kind has to be
+    in the key or the overdue notice for a charge dedupes against the reminder
+    queued for it three days earlier — and the second message silently never
+    exists. The reminder keeps its own older spelling; see `notice_job_key`.
+    """
+    pair = ("sub_1", "2026-11-17")
+    keys = {
+        billing.reminder_job_key(*pair),
+        billing.notice_job_key(billing.FAILED_ROW_KIND, *pair),
+        billing.notice_job_key(billing.ENDED_ROW_KIND, *pair),
+    }
+    assert len(keys) == 3, f"two notices share a dedupe key: {keys}"
+
+
+def test_unapproved_copy_cannot_be_sent_and_the_gate_says_why() -> None:
+    """**The whole guard on wording reaching a subscriber, pinned as a rule.**
+
+    Asserted as an equivalence rather than as `template_ready(x) is False`, so
+    it keeps its meaning the day Sci approves the copy: a template is sendable
+    **exactly when** it carries no unresolved `TODO(Sci):`. Before the
+    approval that makes the three new notices unsendable; after it, this test
+    is still the thing that would catch a marker coming back.
+    """
+    for template in (
+        billing.REMINDER_TEMPLATE,
+        billing.FAILED_TEMPLATE,
+        billing.SUSPENDED_TEMPLATE,
+        billing.ENDED_TEMPLATE,
+    ):
+        body = (REAL_TEMPLATES / "email" / f"{template}.md").read_text(encoding="utf-8")
+        pending = "TODO(Sci):" in body
+        assert billing.template_ready(template) is not pending, (
+            f"{template}: template_ready and the TODO(Sci): marker disagree"
+        )
+
+
+def test_every_new_notice_declares_only_placeholders_the_sender_binds() -> None:
+    """The direction `templates.py` cannot check, for the three new notices.
+
+    A placeholder a template *declares* and the sender never binds renders as
+    `MissingPlaceholder` at send time — which is how every founders e-mail
+    broke the morning `partial-footer` was approved. The reminder has had this
+    test since F4; these three are new copy, and `data_encerramento` and
+    `dias_suspensao` are new bindings, so the join is asserted for them too.
+    """
+    bound = set(
+        billing.build_context(
+            {
+                "name": "Maria",
+                "plan": "promocional",
+                "amount": Decimal("57.00"),
+                "next_charge_on": date(2026, 11, 17),
+                "ends_on": date(2026, 12, 16),
+                "checkout_url": "https://sandbox.asaas.com/i/abc",
+            }
+        )
+    )
+    for template in (
+        billing.FAILED_TEMPLATE,
+        billing.SUSPENDED_TEMPLATE,
+        billing.ENDED_TEMPLATE,
+    ):
+        declared = set(templates.load("email", template).placeholders)
+        assert declared <= bound, f"{template} declares what nothing binds: {declared - bound}"
+
+
+@pytest.mark.parametrize(
+    ("template", "row", "reason"),
+    [
+        # **The worst message in this module, so it is the first case.**
+        # Somebody who paid in the minutes between the sweep and the send. Note
+        # the subscription status is `active` and *passes* the status gate: that
+        # is the point of `Notice.payable_charge` — after review's cohort fix a
+        # status cannot say whether a charge was paid, and only the charge can.
+        ("payment-failed", {"status": "active", "charge_status": "RECEIVED"}, "charge_settled"),
+        ("payment-failed", {"status": "canceled"}, "cancelled"),
+        # The encerramento notice is the mirror: `canceled` is the status it is
+        # *for*, and a live subscription must never receive it.
+        ("subscription-ended", {"status": "active"}, "status_moved"),
+        # Unchanged behaviour, spec §10, and the reason string dashboards use.
+        ("charge-reminder", {"status": "canceled"}, "cancelled"),
+    ],
+)
+def test_a_notice_that_stopped_being_true_is_not_sent(
+    template: str, row: dict[str, Any], reason: str
+) -> None:
+    """The gate is re-read at send time, per notice, from the row.
+
+    Two gates, because one of them turned out to prove nothing. F41 made the
+    status allow-list each notice's own instead of `REMINDABLE` for everything;
+    review then found that the payment-failed notice could not reach its own
+    cohort at all, and widening it to `pending` — a subscription that has never
+    been paid — means the status no longer says anything about the money. So
+    the charge is re-read too, in Asaas's own vocabulary.
+    """
+    conn = _FakeConn(subscription=_subscription_row(**row))
+    delivery = billing.send(
+        conn,  # type: ignore[arg-type]
+        template=template,
+        user_id=7,
+        subscription_id="sub_1",
+        due_on="2026-11-17",
+        client=_StubResend(),  # type: ignore[arg-type]
+    )
+    assert delivery.outcome == "skipped"
+    assert delivery.reason == reason
+    skipped = conn.named("email.skipped")
+    assert skipped and skipped[0]["reason"] == reason
+
+
+def test_the_overdue_notice_renders_and_goes_to_whatsapp_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**The path, with copy that renders** — §4b's distinction.
+
+    Sci, 2026-10-13: *"The payment notification should be send by email and
+    whatsapp"*. The e-mail is rendered through the real `send()` from the real
+    row shape, so a binding the copy needs and the sender does not supply fails
+    here — and the WhatsApp half is reached rather than skipped silently.
+
+    Its copy is a draft, so the outcome is `template_blocked`, and that it is a
+    **skip** rather than a `whatsapp.failed` is the assertion that matters: the
+    failure counter exists because `rpatinacao`'s 2026-06-09 message logged
+    `sent` for something nobody could act on, and *"Sci has not approved this
+    wording yet"* must not be indistinguishable from that.
+    """
+    monkeypatch.delenv("EMAIL_DELIVERY", raising=False)
+    monkeypatch.delenv("WHATSAPP_DELIVERY", raising=False)
+    _write_template(
+        _TMP,
+        "A cobrança de {{data_cobranca}} não foi paga. Valor: {{valor_cobranca}}.",
+        subject="Não recebemos o pagamento",
+        template_id=billing.FAILED_TEMPLATE,
+    )
+    conn = _FakeConn(subscription=_subscription_row(status="overdue"))
+    client = _StubResend(delivered=False)
+
+    delivery = billing.send(
+        conn,  # type: ignore[arg-type]
+        template=billing.FAILED_TEMPLATE,
+        user_id=7,
+        subscription_id="sub_1",
+        due_on="2026-11-17",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert delivery.outcome == "dry_run"
+    assert delivery.whatsapp == "skipped"
+    skipped = conn.named("whatsapp.skipped")
+    assert skipped and skipped[0]["reason"] == billing.SKIP_TEMPLATE_BLOCKED
+    assert conn.named("whatsapp.failed") == [], "an unapproved draft is not a degraded delivery"
+    body = client.calls[0]["text"]
+    assert "17/11/2026" in body and "R$ 57,00" in body
+    assert "{{" not in body
+
+
+def test_a_card_subscriber_is_skipped_for_the_reminder_and_not_for_the_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**The one way the payment notice differs from the reminder on WhatsApp.**
+
+    `charges_itself` is why the reminder is pix-only: three days before a
+    charge, a card subscriber has nothing to do. A card that **failed** is the
+    opposite case — they have to act, and more urgently than a pix payer — so
+    the same gate would silence exactly the people who most need the message.
+    `Notice.whatsapp_pix_only` is the distinction, and this is the pair of
+    outcomes that proves it is wired to the notice rather than to the channel.
+    """
+    monkeypatch.delenv("WHATSAPP_DELIVERY", raising=False)
+    row = _row(charge_billing_type="CREDIT_CARD")
+    context = billing.build_context(row)
+
+    def reason_for(template: str) -> str:
+        """The skip *reason* — `_whatsapp_skip` returns only `"skipped"`, and the
+        reason is in the event, which is where a dashboard reads it."""
+        conn = _FakeConn()
+        billing.send_charge_notice_whatsapp(
+            conn,  # type: ignore[arg-type]
+            found=row,
+            user_id=7,
+            context=context,
+            subscription_id="sub_1",
+            due_on="2026-11-17",
+            template=template,
+            email_delivered=True,
+        )
+        events = conn.named("whatsapp.skipped")
+        assert events, f"{template} did not skip at all"
+        return str(events[0]["reason"])
+
+    assert reason_for(billing.REMINDER_TEMPLATE) == billing.SKIP_NOT_PIX
+    failure = reason_for(billing.FAILED_TEMPLATE)
+    assert failure != billing.SKIP_NOT_PIX, "a card that failed still has to be paid by hand"
+    # Its copy is a draft, so this is where it stops today — not at the method.
+    assert failure == billing.SKIP_TEMPLATE_BLOCKED
+
+
+def test_a_notice_with_no_whatsapp_copy_never_reaches_that_sender(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`Delivery.whatsapp is None` means *never reached*, and for the
+    encerramento notice that is the correct answer rather than a skip.
+
+    `send()` used to hand **every** notice to the WhatsApp sender, which loads
+    `whatsapp/<template>.md`. There is no `whatsapp/subscription-ended.md` and
+    terms §14 does not ask for one, so without `Notice.whatsapp` this notice
+    would have reached that path on every delivery. Found by writing the first
+    version of this test.
+    """
+    monkeypatch.delenv("EMAIL_DELIVERY", raising=False)
+    _write_template(
+        _TMP,
+        "Sua assinatura foi encerrada em {{data_encerramento}}.",
+        subject="Assinatura encerrada",
+        template_id=billing.ENDED_TEMPLATE,
+    )
+    conn = _FakeConn(subscription=_subscription_row(status="canceled", ends_on=date(2026, 12, 16)))
+
+    delivery = billing.send(
+        conn,  # type: ignore[arg-type]
+        template=billing.ENDED_TEMPLATE,
+        user_id=7,
+        subscription_id="sub_1",
+        due_on="2026-12-16",
+        client=_StubResend(delivered=False),  # type: ignore[arg-type]
+    )
+
+    assert delivery.outcome == "dry_run"
+    assert delivery.whatsapp is None
+    assert conn.named("whatsapp.failed") == []
+    assert conn.named("whatsapp.skipped") == []
+
+
+def test_the_approved_copy_renders_from_a_real_row() -> None:
+    """**The shipped sentences, against the row the sender actually reads.**
+
+    `test_every_new_notice_declares_only_placeholders_the_sender_binds` asks
+    whether the *declarations* line up. This asks the question that costs a
+    cohort: can the real file, with Sci's own words in it, be filled in for a
+    subscriber? It is the same check the sweeps make per row
+    (`unrenderable_reason`), run here against the templates that ship, so an
+    edit to the copy that reaches for a binding nothing supplies fails in the
+    fast suite rather than at 07:15 BRT.
+
+    The row is the overdue shape: a charge in the past, a payable invoice URL,
+    `ends_on` set as the encerramento notice needs. A **blank**
+    `link_pagamento` is a different case and is deliberately not this test's —
+    `templates.py` refuses a blank as hard as a missing one, the sweep records
+    the placeholder name and claims nothing, and the row is swept again
+    tomorrow.
+    """
+    row = _subscription_row(
+        status="overdue",
+        next_charge_on=date(2026, 11, 17),
+        ends_on=date(2026, 12, 16),
+    )
+    for template in (billing.FAILED_TEMPLATE, billing.ENDED_TEMPLATE, billing.SUSPENDED_TEMPLATE):
+        assert billing.unrenderable_reason(row, template) is None, (
+            f"{template} cannot be filled in for an ordinary subscriber"
+        )
+        loaded = templates.load("email", template)
+        body = loaded.render(billing.build_context(row))
+        assert "{{" not in body and "TODO" not in body
+        assert loaded.render_subject(billing.build_context(row))
+
+
+@pytest.mark.parametrize(
+    ("method", "present", "absent"),
+    [
+        ("PIX", "não é debitado automaticamente", "tentar novamente"),
+        ("CREDIT_CARD", "tentar novamente", "não é debitado automaticamente"),
+    ],
+)
+def test_the_payment_notice_says_the_right_thing_about_the_method(
+    method: str, present: str, absent: str
+) -> None:
+    """Sci, 2026-10-13: *"For pix we need to notify the costomer for then
+    proceed to the payment we only can notify it and send the payment link"*.
+
+    Terms §7 says *"tentaremos novamente"*, which is true of a tokenised card
+    and **false of a pix** — nothing is ever debited, so the only thing we can
+    do is say the charge is open and hand over the link. One body cannot serve
+    both, so the sentence is per method, and this is the pair that proves
+    neither reaches the wrong one.
+    """
+    row = _subscription_row(status="overdue", charge_billing_type=method)
+    body = templates.load("email", billing.FAILED_TEMPLATE).render(billing.build_context(row))
+    assert present in body
+    assert absent not in body
+    assert "Pagar agora" in body, "either method can be paid by hand, and this is the link"
+
+
+def test_an_unrecognised_method_gets_neither_sentence() -> None:
+    """**Neither, not the wrong one.** `billing_type` is an Asaas field and
+    `0015` leaves its sibling `status` unconstrained on purpose, because their
+    docs warn that new values arrive without a version bump. So the two flags
+    are independent rather than one and its negation: a `BOLETO` — which the
+    checkout refuses, and which is exactly what a crafted request would send —
+    must not be told we will retry it.
+    """
+    row = _subscription_row(status="overdue", charge_billing_type="BOLETO")
+    body = templates.load("email", billing.FAILED_TEMPLATE).render(billing.build_context(row))
+    assert "tentar novamente" not in body
+    assert "não é debitado automaticamente" not in body
+    # The notice is still a notice: the charge, the amount and where to pay it.
+    assert "ainda não foi paga" in body and "Pagar agora" in body
