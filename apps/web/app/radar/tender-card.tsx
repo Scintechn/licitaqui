@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Card, CardLink, Icon, Status, Tag, TagList, type StatusKind } from '@/components'
 import { cn } from '@/lib/cn'
 import type { TenderCard, TenderGroup } from '@/lib/radar/contract'
-import { agencyLine, deadlineShort, displayTitle, meEppSummary } from '@/lib/radar/format'
+import { agencyLine, deadlineShort, displayTitle, meEppSummary, daysUntil } from '@/lib/radar/format'
 import { cardHeadline, deadlineLabel } from '@/lib/radar/headline'
 import { mayShowUrgency, statusChipLabel } from '@/lib/radar/tender-status'
 import { format, messages } from '@/lib/messages'
@@ -149,6 +149,7 @@ export function TenderCardView({
   now = new Date(),
   href,
   action,
+  showUrgencyColor = false,
 }: {
   tender: TenderCard
   now?: Date
@@ -176,6 +177,12 @@ export function TenderCardView({
    * could be reporting.
    */
   action?: ReactNode
+  /**
+   * When true, color the countdown badge based on urgency (red ≤2 days,
+   * yellow 3-7 days, green >7 days). Used by `/conta/favoritos` to surface
+   * urgent deadlines. Radar does not use this.
+   */
+  showUrgencyColor?: boolean
 }) {
   const status = STATUS[tender.group]
   const headline = cardHeadline(tender, now)
@@ -192,6 +199,20 @@ export function TenderCardView({
     !urgency || headline.anchor?.fact === 'deadline'
       ? null
       : deadlineLabel(tender.proposalsCloseAt, now)
+
+  // Urgency color for the countdown: red ≤2 days, yellow 3-7 days, green >7 days.
+  // daysUntil is computed here (and also in sortFavourites for sorting); this is
+  // unavoidable without passing it as a prop, and the cost is minimal.
+  const daysLeft =
+    showUrgencyColor && countdown ? daysUntil(tender.proposalsCloseAt, now) : null
+  const countdownColor =
+    daysLeft !== null
+      ? daysLeft <= 2
+        ? 'text-attention'
+        : daysLeft <= 7
+          ? 'text-attention-soft'
+          : 'text-success'
+      : 'text-ink'
 
   const body = (
     <>
@@ -216,7 +237,7 @@ export function TenderCardView({
             — while being the number that decides whether anyone opens the
             tender at all. `ink` on `surface` is 17.9:1. */}
         {countdown === null ? null : (
-          <span className="text-meta font-medium text-ink">{countdown}</span>
+          <span className={cn('text-meta font-medium', countdownColor)}>{countdown}</span>
         )}
       </div>
 
