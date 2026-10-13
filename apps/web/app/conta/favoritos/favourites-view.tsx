@@ -123,7 +123,7 @@ export function FavouritesView({
             </select>
           </div>
 
-          <div className="@container">
+          <div style={{ containerType: 'inline-size' }}>
             <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
               {sorted.map((one) => (
                 <li key={one.card.id}>
