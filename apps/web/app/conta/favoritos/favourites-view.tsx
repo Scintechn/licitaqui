@@ -229,7 +229,7 @@ export function FavouritesView({
                 ))}
               </ul>
             </div>
-            </div>
+          </div>
           )}
       </main>
     </div>
