@@ -110,7 +110,12 @@ def test_the_optout_confirmation_renders_now_that_its_question_is_answered() -> 
 #: `charge-reminder` was approved on 2026-10-12 (**F24**) — the same sentences
 #: as the e-mail, with `*bold*` on the two labels, and with *"toque no botão"*
 #: struck as redundant beside a visible button.
-APPROVED_WHATSAPP_COPY = {"founders-opening", "charge-reminder"}
+#: Approved WhatsApp copy. `payment-failed` joined on 2026-10-13, when Sci
+#: ruled that the payment notice goes by both channels — and **approved is
+#: not deliverable** for it: the whole channel is refused with
+#: `no_optout_path` until **F40** builds the `SAIR` path the privacy policy
+#: promises.
+APPROVED_WHATSAPP_COPY = {"founders-opening", "charge-reminder", "payment-failed"}
 
 #: The **e-mail** copy Sci has signed off, and the channel that carries every
 #: notice terms §14 obliges us to send.

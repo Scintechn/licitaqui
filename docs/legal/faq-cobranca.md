@@ -36,11 +36,11 @@ Não. A vaga volta para a oferta e o preço promocional não é restabelecido em
 
 **Vou ser cobrado de surpresa?**
 
-Não. **Avisamos por e-mail 3 dias antes de cada cobrança**, com a data e o valor. Se você tiver informado um celular com WhatsApp, avisamos também por lá. Dá tempo de conferir, trocar o cartão ou cancelar antes.
+Não. **Avisamos por e-mail 3 dias antes de cada cobrança**, com a data e o valor. Se a cobrança for por pix, avisamos também pelo WhatsApp que você informou. Dá tempo de conferir, trocar o cartão ou cancelar antes.
 
 **E se o meu cartão falhar?**
 
-Tentamos de novo e avisamos você. Se não houver pagamento em **10 dias** contados do vencimento, o acesso pago é suspenso e a conta volta ao plano Básico. Nada é apagado nesse momento — é só pagar para voltar de onde parou.
+Avisamos você por e-mail e também pelo WhatsApp que você informou. Se a cobrança for por cartão, tentamos de novo; se for por pix, ela continua disponível para pagamento, porque o pix não é debitado automaticamente. Se não houver pagamento em **10 dias** contados do vencimento, o acesso pago é suspenso e a conta volta ao plano Básico. Nada é apagado nesse momento.
 
 **Emitem nota fiscal?**
 

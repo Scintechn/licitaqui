@@ -1328,11 +1328,12 @@ def test_a_card_subscriber_is_skipped_for_the_reminder_and_not_for_the_failure(
     row = _row(charge_billing_type="CREDIT_CARD")
     context = billing.build_context(row)
 
-    def reason_for(template: str) -> str:
-        """The skip *reason* — `_whatsapp_skip` returns only `"skipped"`, and the
-        reason is in the event, which is where a dashboard reads it."""
+    def outcome_for(template: str) -> tuple[str, list[str]]:
+        """The outcome, and the skip reasons recorded — `_whatsapp_skip` returns
+        only `"skipped"`, and the reason lives in the event, which is where a
+        dashboard reads it from."""
         conn = _FakeConn()
-        billing.send_charge_notice_whatsapp(
+        result = billing.send_charge_notice_whatsapp(
             conn,  # type: ignore[arg-type]
             found=row,
             user_id=7,
@@ -1342,15 +1343,18 @@ def test_a_card_subscriber_is_skipped_for_the_reminder_and_not_for_the_failure(
             template=template,
             email_delivered=True,
         )
-        events = conn.named("whatsapp.skipped")
-        assert events, f"{template} did not skip at all"
-        return str(events[0]["reason"])
+        return result, [str(event["reason"]) for event in conn.named("whatsapp.skipped")]
 
-    assert reason_for(billing.REMINDER_TEMPLATE) == billing.SKIP_NOT_PIX
-    failure = reason_for(billing.FAILED_TEMPLATE)
-    assert failure != billing.SKIP_NOT_PIX, "a card that failed still has to be paid by hand"
-    # Its copy is a draft, so this is where it stops today — not at the method.
-    assert failure == billing.SKIP_TEMPLATE_BLOCKED
+    reminder, reminder_reasons = outcome_for(billing.REMINDER_TEMPLATE)
+    assert (reminder, reminder_reasons) == ("skipped", [billing.SKIP_NOT_PIX])
+
+    failure, failure_reasons = outcome_for(billing.FAILED_TEMPLATE)
+    assert billing.SKIP_NOT_PIX not in failure_reasons, (
+        "a card that failed still has to be paid by hand"
+    )
+    # Both deliveries are off in this suite, so reaching the transport is a dry
+    # run — which is what *"not stopped at the method"* looks like.
+    assert failure == "dry_run"
 
 
 def test_a_notice_with_no_whatsapp_copy_never_reaches_that_sender(
@@ -1401,7 +1405,12 @@ def test_the_approved_copy_renders_from_a_real_row() -> None:
     fast suite rather than at 07:15 BRT.
 
     The row is the overdue shape: a charge in the past, a payable invoice URL,
-    `ends_on` set as the encerramento notice needs. A **blank**
+    `ends_on` set as the encerramento notice needs. `subscription-suspended` is
+    **not** here: Sci approved its wording and then ruled that a suspension
+    ends the Asaas subscription, which made one of its sentences false, so its
+    body carries a `TODO(Sci):` and cannot render **by design**. That state is
+    asserted as an equivalence in
+    `test_unapproved_copy_cannot_be_sent_and_the_gate_says_why`. A **blank**
     `link_pagamento` is a different case and is deliberately not this test's —
     `templates.py` refuses a blank as hard as a missing one, the sweep records
     the placeholder name and claims nothing, and the row is swept again
@@ -1412,7 +1421,15 @@ def test_the_approved_copy_renders_from_a_real_row() -> None:
         next_charge_on=date(2026, 11, 17),
         ends_on=date(2026, 12, 16),
     )
-    for template in (billing.FAILED_TEMPLATE, billing.ENDED_TEMPLATE, billing.SUSPENDED_TEMPLATE):
+    # **Every notice a sweep can enqueue**, which is self-maintaining: the day
+    # F42 adds the suspension to `NOTICES`, this covers it — and fails while
+    # its body still carries the `TODO(Sci):` that Sci's own ruling put there.
+    assert set(billing.NOTICES) == {
+        billing.REMINDER_TEMPLATE,
+        billing.FAILED_TEMPLATE,
+        billing.ENDED_TEMPLATE,
+    }, "a notice was added or removed; this test covers whatever is sendable"
+    for template in billing.NOTICES:
         assert billing.unrenderable_reason(row, template) is None, (
             f"{template} cannot be filled in for an ordinary subscriber"
         )
