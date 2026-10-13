@@ -40,7 +40,7 @@ Não. **Avisamos por e-mail 3 dias antes de cada cobrança**, com a data e o val
 
 **E se o meu cartão falhar?**
 
-Avisamos você por e-mail e também pelo WhatsApp que você informou. Se a cobrança for por cartão, tentamos de novo; se for por pix, ela continua disponível para pagamento, porque o pix não é debitado automaticamente. Se não houver pagamento em **10 dias** contados do vencimento, o acesso pago é suspenso e a conta volta ao plano Básico. Nada é apagado nesse momento.
+Avisamos você por e-mail e também pelo WhatsApp que você informou. Se a cobrança for por cartão, tentamos de novo; se for por pix, ela continua disponível para pagamento, porque o pix não é debitado automaticamente. Se não houver pagamento em **10 dias** contados do vencimento, o acesso pago é suspenso, a conta volta ao plano Básico e a assinatura é encerrada. Nada é apagado — e para voltar, basta assinar de novo.
 
 **Emitem nota fiscal?**
 

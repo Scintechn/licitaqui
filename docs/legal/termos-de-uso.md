@@ -75,7 +75,7 @@ Esta é a cláusula mais importante do contrato para quem entra pelo plano Promo
 - A cobrança é feita pelo **Asaas** (meio de pagamento), por cartão de crédito ou pix, conforme as opções disponíveis no checkout. **Não temos acesso ao número do seu cartão.**
 - A assinatura é **recorrente**: renova automaticamente a cada mês na mesma data, até que você cancele.
 - **Avisamos você por e-mail 3 (três) dias antes de cada cobrança**, informando a data e o valor que será cobrado. Quando a cobrança for por **pix** — que depende de você para ser paga — enviamos esse mesmo aviso também pelo WhatsApp que você informou. O e-mail é o canal oficial: se você pedir para parar de receber as mensagens no WhatsApp, o aviso continua chegando por e-mail.
-- Falha no pagamento: avisaremos você por e-mail e também pelo WhatsApp que você informou. Se a cobrança for por cartão, tentaremos novamente; se for por pix, a cobrança continua disponível para pagamento, porque o pix não é debitado automaticamente. Se não houver pagamento em **10 (dez) dias corridos** contados do vencimento, o acesso aos recursos pagos é suspenso e a conta volta ao plano Básico. Nada é excluído nesse momento (ver seção 12).
+- Falha no pagamento: avisaremos você por e-mail e também pelo WhatsApp que você informou. Se a cobrança for por cartão, tentaremos novamente; se for por pix, a cobrança continua disponível para pagamento, porque o pix não é debitado automaticamente. Se não houver pagamento em **10 (dez) dias corridos** contados do vencimento, o acesso aos recursos pagos é suspenso, a conta volta ao plano Básico e a assinatura é encerrada — não haverá novas cobranças. Nada é excluído nesse momento (ver seção 12). Para voltar ao plano pago, é só assinar de novo.
 - Valores são em reais e incluem os tributos aplicáveis. A emissão de documento fiscal segue a legislação vigente.
 
 ## 8. Cancelamento, renovação, arrependimento e garantia
@@ -157,7 +157,7 @@ Antes de qualquer medida judicial, escreva para contato@licitaquiapp.com.br ou c
 | 1.1 | 21/09/2026 | §7: aviso por e-mail 3 dias antes de cada cobrança |
 | 1.2 | 21/09/2026 | §2 reescrito: o que a ferramenta faz e o que não faz |
 | 1.4 | 13/10/2026 | §6, §7 e §14: o aviso de cobrança vai para o celular que você informou ao assinar, e não depende de autorização separada |
-| 1.5 | 13/10/2026 | §7 e §14: no WhatsApp vão os dois avisos que dependem de uma ação sua — a cobrança por pix e o pagamento não recebido. §7 passa a dizer que só a cobrança por cartão é tentada novamente |
+| 1.5 | 13/10/2026 | §7 e §14: no WhatsApp vão os dois avisos que dependem de uma ação sua — a cobrança por pix e o pagamento não recebido. §7 passa a dizer que só a cobrança por cartão é tentada novamente, e que depois de 10 dias sem pagamento a assinatura é encerrada, sem novas cobranças, podendo ser contratada de novo quando você quiser |
 
 ---
 
