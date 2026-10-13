@@ -83,7 +83,7 @@ export function FavouritesView({
           </Link>
         }
       />
-      <main className="flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10">
+      <main className="mx-auto w-full flex grow flex-col gap-4 px-gutter pt-6 pb-10" style={{ maxWidth: '1400px' }}>
         <div>
           <h1 className="font-display text-[32px] leading-tight font-semibold">{copy.title}</h1>
           <p className="text-meta text-muted">{copy.intro}</p>
