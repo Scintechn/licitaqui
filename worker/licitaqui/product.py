@@ -77,6 +77,20 @@ PRICE_CHANGE_NOTICE_DAYS: Final = 30
 #: `tests/test_product.py` holds this file to it.
 CHARGE_REMINDER_DAYS: Final = 3
 
+#: Calendar days after a vencimento before the subscription is suspended
+#: (terms §7: *"Se não houver pagamento em 10 (dez) dias corridos contados do
+#: vencimento, o acesso aos recursos pagos é suspenso e a conta volta ao plano
+#: Básico"*).
+#:
+#: **The direction of the obligation is the opposite of the two above**, and
+#: that is the thing to hold on to when this number is ever changed: those are
+#: warnings we owe *before* acting, so sending earlier is always safe. This one
+#: is a grace period we owe the subscriber, so suspending **earlier** than the
+#: tenth day breaks the contract and suspending later is a gift we may make.
+#: `docs/product.json` holds it as `notice.suspendAfterDays` and
+#: `tests/test_product.py` holds this file to it.
+SUSPEND_AFTER_DAYS: Final = 10
+
 
 def brl(amount: int) -> str:
     """``57`` → ``"R$ 57"`` — the form running copy uses.
@@ -116,4 +130,5 @@ def template_context() -> dict[str, str]:
         "meses_promocionais": str(PROMO_MONTHS),
         "vagas": str(FOUNDER_SEATS_TOTAL),
         "dias_aviso_preco": str(PRICE_CHANGE_NOTICE_DAYS),
+        "dias_suspensao": str(SUSPEND_AFTER_DAYS),
     }

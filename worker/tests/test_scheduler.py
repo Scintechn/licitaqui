@@ -109,6 +109,12 @@ def test_the_schedule_holds_only_the_collector_jobs_that_exist():
         # overnight cluster, because it is pure SQL and the boundary it acts on
         # is a date — any hour of the day after `ends_on` is the same answer.
         "charge_reminder",
+        # **F41, and it is here rather than inside `charge_reminder`** because
+        # the two read `subscriptions` from opposite sides of the due date and
+        # the reminder's window is a single day: a failure that took both would
+        # lose that day's charges for ever. 07:15, in the same wake, so a reader
+        # finds both answers together.
+        "overdue_notice",
         "expire_subscriptions",
         # `sweep_tender_values` is on the clock for the same reason
         # `sweep_titles` is, and a sharper one: the per-tender follow-up that

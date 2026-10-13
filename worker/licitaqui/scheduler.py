@@ -270,6 +270,20 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # state is now *not* blocked, and a blocked event is a regression rather
     # than the status quo.
     ScheduleEntry(kind="charge_reminder", daily_at="07:05", priority=9),
+    # **Terms §7's other promise about a charge: the one that did not arrive.**
+    # F41. Ten minutes after the reminder, in the same wake — the two read the
+    # same table from opposite sides of the due date, and a reader looking at
+    # 07:00 BRT should find both answers together.
+    #
+    # Separate entries rather than one job doing both, for the reason the
+    # module docstring gives about cohorts: the reminder's window is a *single*
+    # day, so a failure there loses that charge's notice for ever, while this
+    # one sees an unpaid charge again tomorrow. Nothing that can fail should
+    # have both in it.
+    #
+    # Asaas decides who is late, not this schedule: the sweep only reads
+    # `status = 'overdue'`, which the webhook writes on `PAYMENT_OVERDUE`.
+    ScheduleEntry(kind="overdue_notice", daily_at="07:15", priority=9),
     # **The other half of a one-click cancel (D8).** Terms §8: cancelling
     # switches off auto-renewal and paid access runs to the last day already
     # paid for. `subscriptions.ends_on` is that day;
