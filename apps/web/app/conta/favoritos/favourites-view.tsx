@@ -1,7 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { AppBar, StateCard, Icon } from '@/components'
+import { AppBar, Logo, StateCard, Icon } from '@/components'
 import type { Favourite } from '@/lib/favourites/store'
 import { messages } from '@/lib/messages'
 import { TenderCardView } from '@/app/radar/tender-card'
@@ -78,7 +79,13 @@ export function FavouritesView({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppBar />
+      <AppBar
+        leading={
+          <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
+            <Logo size={30} />
+          </Link>
+        }
+      />
       <main className="mx-auto w-full flex grow flex-col gap-4 px-gutter pt-6 pb-10" style={{ maxWidth: '1400px' }}>
         <div>
           <h1 className="font-display text-[32px] leading-tight font-semibold">{copy.title}</h1>

@@ -7,7 +7,6 @@ import {
   Button,
   Field,
   Icon,
-  Logo,
   Select,
   StateCard,
 } from '@/components'
@@ -1338,11 +1337,6 @@ export function RadarView({
       </a>
 
       <AppBar
-        leading={
-          <Link href="/" aria-label={copy.nav.home} className="inline-flex">
-            <Logo size={30} />
-          </Link>
-        }
         actions={
           <>
             <AppBarActionLink icon="alert" label={copy.nav.alerts} href={ALERTS_HREF} />
