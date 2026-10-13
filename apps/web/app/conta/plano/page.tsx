@@ -53,8 +53,14 @@ export default async function PlanPage({ searchParams }: { searchParams?: Search
       // name, so an account with `users.name = ' '` was offered a button that
       // bounced straight to `/conta/empresa` — the screen and the server
       // disagreeing about the same condition, which review found.
-      canBill={Boolean(account.cnpj?.trim())
-        && Boolean((account.companyName ?? account.userName ?? '').trim())}
+      // **F31: `userName`, not `companyName ?? userName`.** The old expression
+      // accepted the company's registered name in place of the subscriber's,
+      // which is how a paying account could have no name of its own (F29) and
+      // a charge notice with nothing to greet. `startCheckout` now reads
+      // `row.name` alone and this is the same condition, in the same words —
+      // the two disagreeing about one `.trim()` is a defect review has already
+      // caught here once.
+      canBill={Boolean(account.cnpj?.trim()) && Boolean(account.userName?.trim())}
       state={planState(search.estado)}
       confirmingCancel={search.cancelar === '1'}
       onCheckout={goToCheckout}

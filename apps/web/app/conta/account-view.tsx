@@ -2,7 +2,7 @@ import { Button, SectionLabel } from '@/components'
 import { AccountChrome } from './account-chrome'
 import { format, messages } from '@/lib/messages'
 import type { QuotaView } from '@/lib/radar/contract'
-import { ALERTS_HREF, COMPANY_PATH, PLAN_PATH } from '@/lib/routes'
+import { ALERTS_HREF, COMPANY_PATH, PLAN_PATH, PROFILE_PATH } from '@/lib/routes'
 
 /**
  * `/conta` — what this account is and what is left of it (spec §10).
@@ -91,6 +91,22 @@ export function AccountView({
           </Button>
           <Button href={COMPANY_PATH} variant="secondary">
             {messages.radar.menu.company}
+          </Button>
+          {/*
+            **F31, and it is the only way back to that screen.** `/conta/perfil`
+            was linked from exactly one place — the plan screen's
+            no-checkout branch — and that block disappears the moment
+            `canBill` is true. So a subscriber who mistyped their mobile could
+            never reach the form again, and `users.name` and `users.whatsapp`
+            had no edit path at all. Found by review 2026-10-13; the screen's
+            own docstring had called itself an edit form.
+
+            It matters more than it looks: the mobile is what reaches Asaas as
+            `mobilePhone` and what `billing.py` dials for the terms §7 charge
+            notice. A wrong one is a notice that never arrives.
+          */}
+          <Button href={PROFILE_PATH} variant="secondary">
+            {messages.account.profile.editAction}
           </Button>
           <Button href={PLAN_PATH} variant="secondary">
             {messages.radar.menu.billing}

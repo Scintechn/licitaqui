@@ -353,9 +353,77 @@ nowhere** — 0 references outside tests, alongside `consent.email` and `consent
 (**F37**). So the sentence you are being asked for is not an amendment to copy that ships; it is the
 copy for an opt-in that has to be built.
 
-**What would settle all of it**, if it is one decision rather than three: wording for a separate,
-unticked box authorising **billing** notices on WhatsApp, which F31's form renders and a column
-records. Items **C** and **H** are the same list and the same footer being short of it.
+**Sci ruled on 2026-10-13**: *"We do not need a new checkbox, add this new policy to our policies,
+that the user may receive whatsapp message regarding the payment."* So no box, no column — the
+basis becomes the contract, and the documents say so. Draft below, for your review; it is **not**
+in `docs/legal/` and must not be until you approve it.
+
+---
+
+### Draft B — the charge notice on WhatsApp, without a checkbox
+
+**Say the substantive thing first, because it is the part worth a second opinion.** This changes
+the **legal basis** for one message from **consent** (art. 7º, I) to **execução de contrato**
+(art. 7º, V). That is a defensible reading and probably the right one — terms §7 already *obliges*
+us to warn you 3 days before each charge, so the notice is us performing the contract rather than
+marketing to you, and consent is the wrong basis for something you cannot decline anyway
+(`notifications.billingHelp` already tells people the billing messages *"não dá para desligar"*).
+It is still a change of basis on a channel, so if any of this ends up in front of the lawyer, this
+is the paragraph to show them. Everything below is wording; this is the decision.
+
+**It also means the terms have to change, not only the policy** — which the earlier version of this
+item got wrong. It claimed §7 *"authorises the WhatsApp copy without any amendment"*. §7 is
+**conditional**: *"Se você tiver **conectado** WhatsApp ou Telegram"*, and nothing in the product
+lets anybody connect anything but Telegram. Dropping the checkbox does not satisfy that condition —
+it removes the thing that would have. So §7's condition is the first thing to amend.
+
+#### Terms §7 — the 3-day notice
+
+> - **Avisamos você por e-mail 3 (três) dias antes de cada cobrança**, informando a data e o valor que será cobrado. Se você tiver informado um celular com WhatsApp, avisamos também por lá. O e-mail é o canal oficial: se você pedir para parar de receber as mensagens no WhatsApp, o aviso continua chegando por e-mail.
+
+That last clause is what keeps **SAIR** working without breaking §7, and it matches how the code
+already behaves: the WhatsApp copy is only attempted **after** the e-mail is recorded as sent
+(`SKIP_EMAIL_NOT_SENT` in `billing.py`), so somebody who opts out of WhatsApp has already been
+notified through the channel the contract names.
+
+#### Terms §7 item 4 — the 30-day price-change notice, same shape
+
+> 4. **Avisaremos você com pelo menos 30 (trinta) dias de antecedência** da primeira cobrança de R$ 75,00, por e-mail e, se você tiver informado um celular com WhatsApp, também por lá. O aviso informará a data e o novo valor.
+
+#### Terms §12 — which channel is which
+
+> Usaremos o e-mail cadastrado e o app. **Avisos sobre a sua assinatura — cobrança, atraso, mudança de preço, suspensão e encerramento — são sempre enviados por e-mail, que é o canal oficial, e também pelo WhatsApp que você informou.** Telegram e WhatsApp para alertas de editais e novidades dependem da sua autorização. Mantenha seu e-mail atualizado.
+
+#### Privacy policy §5 — one row added
+
+> | Avisar você sobre a cobrança da assinatura, por e-mail e no WhatsApp que você informou | Execução de contrato (art. 7º, V) — avisar antes de cada cobrança é uma obrigação nossa prevista nos termos de uso |
+
+#### Privacy policy §6 — one paragraph added, because §6 currently implies every WhatsApp message is consented
+
+> Os **avisos sobre a sua assinatura** (a cobrança que vem, um pagamento em atraso, mudança de preço, suspensão) não dependem de consentimento: são obrigação nossa prevista nos termos de uso e vão por e-mail, que é o canal oficial, e pelo WhatsApp que você informou ao assinar. Você pode pedir para parar de recebê-los no WhatsApp respondendo **SAIR** — eles continuam chegando por e-mail, porque sem eles você seria cobrado sem aviso.
+
+#### Privacy policy §8 — the vendor table's Evolution row
+
+> | WhatsApp, via Evolution API | Envio dos avisos de cobrança e das mensagens de alerta e novidades a quem autorizou |
+
+---
+
+**What this unblocks in code, and it is deliberately one line.**
+`billing.py`'s `_whatsapp_notices_consented` returns `False` for everybody today — the gate F31 had
+to add, because making the mobile required ended the accident that had been keeping the channel off
+(every account's number was null). When the wording above ships, that function becomes *"does this
+subscriber have a mobile"*, which is already guaranteed by the form, and `_opted_out` beside it
+keeps honouring SAIR. It was written as a function rather than a literal so that there is exactly
+one place to change and the skip stays counted in the sweep meanwhile.
+
+**And one thing this does not settle.** `consent.whatsapp`, `consent.email` and
+`consent.contactRequired` are approved strings that render nowhere and describe a *per-channel*
+consent model the product never built (**F37**). Dropping the billing checkbox does not delete
+them: alerts and novidades still rest on consent, per the §6 draft above. That is still a separate
+ruling — build the per-channel boxes, or delete the three strings.
+
+Items **C** and **H** are the same list and the same footer being short of this, and the §12 draft
+above is most of what **C** needs.
 
 ## H. The e-mail footer tells a subscriber they can stop receiving a notice they cannot — found 2026-10-12
 
@@ -420,6 +488,79 @@ por menor de idade, ela é encerrada e os dados são apagados."* Collected for a
 would not be.
 
 The wording is yours (brief §5). See `CLAIMS.md`'s row and cards **F30**, **F31**, **F32**.
+
+**Update 2026-10-13 — F31 shipped without the blocked fields, so this is no longer holding a form
+hostage.** `/conta/perfil` is live with **name, mobile and CNPJ**: the three the policy as it
+stands already names, which is why they could ship. The gate before the checkout is built,
+**F29 is closed**, and `birth_date` and `cpf` are still written by nothing — `setUserProfile` is
+deliberately narrow and `profileInput` drops both even when they are posted, asserted in
+`lib/profile/input.test.ts`.
+
+So what this item asks for has not changed, but what it blocks has shrunk to **two fields on an
+existing screen** rather than the screen itself. Both halves are now measured rather than
+predicted:
+
+| | |
+|---|---|
+| **Date of birth** | still named nowhere in the file. The four places above are still the four places |
+| **Mobile** | the *"se informar"* clause **is** now stale, not "may be" — the form makes it required, per your ruling. It has its own `CLAIMS.md` row and the same amendment settles it |
+
+**Why the mobile shipped required while the birth date did not**, since the two look alike and are
+not: §4(b) and §2 both already name WhatsApp among what we collect, so requiring it gathers
+**nothing undisclosed** — one clause merely calls a required field optional, which is a copy
+correction. A date of birth appears in the file **not at all**, so collecting one would be an
+undisclosed personal datum, which is an LGPD problem rather than a wording one. That line is why
+one of them is a row in the register and the other is a column nothing writes.
+
+---
+
+### Sci ruled on 2026-10-13: *"Include date of birth and CPF in our policy — simply."*
+
+Below is a **draft for your review**. It is not in `docs/legal/` and must not be until you approve
+it — the wording is yours (brief §5) and this is me doing what you asked: *"draft it for me to
+review and approve."* Once you approve, it lands in `politica-de-privacidade.md`, `/privacidade`
+rebuilds from it at build time, and **only then** do `birth_date` and `cpf` get collected (one
+small PR: two fields on a screen that already exists).
+
+**One correction to the item above.** It said §4(b) had gone stale because the mobile is now
+required. **It had not.** §4(b) is *"Quando você **cria conta** (plano Básico)"* and F31's gate is
+before **subscribing** — a free account is still never asked for a mobile, which is the whole point
+of putting the gate there. The section that is actually short is **§4(c)**, the paid plan, which
+lists only what Asaas handles and not the three fields we now collect ourselves. So the amendment
+is **three places**, not four, and §13 is in scope only because of the CPF.
+
+#### §2 — the summary table, one row replaced
+
+> | Que dados pedimos | Nome, e-mail, celular com WhatsApp e CNPJ da sua empresa. Para assinar, também a sua data de nascimento e CPF ou CNPJ |
+
+#### §4(c) — replaces the current two-line block
+
+> **c) Quando você assina um plano pago**
+> - Para emitir a cobrança no seu nome: **nome completo, data de nascimento, celular com WhatsApp e CPF ou CNPJ**. Pedimos a data de nascimento apenas para confirmar que você tem 18 anos ou mais, como diz o final da seção 4, e o CPF ou CNPJ porque o meio de pagamento exige um documento para emitir a cobrança.
+> - Dados de cobrança tratados pelo meio de pagamento (Asaas): identificação, forma de pagamento e situação das faturas. **Não recebemos nem armazenamos o número do seu cartão.**
+
+#### §5 — one row added to the finalidade / base legal table
+
+> | Confirmar que você tem 18 anos ou mais | Execução de contrato e obrigação legal (art. 7º, V e II) — o serviço não é destinado a menores, como diz o final da seção 4 |
+
+This is the row the table does not have today: the 18+ rule is stated in §4 as a *fact*, and §5 is
+where a purpose gets a legal basis. Without it we collect a date of birth for a purpose the
+basis table never declares.
+
+#### §13 — the CPF sentence, which currently means two different things
+
+§13 lists *"mascaramento de CPF"* among the security measures. §4(f) scopes that to **award
+records** — a third party's CPF in a PNCP result. **Your own CPF, if you give one, has to be stored
+unmasked**, because that is what reaches Asaas. A reader cannot tell those apart today, and after
+this amendment the file would promise to mask the very number it sends. Draft:
+
+> …criptografia em trânsito (TLS), **mascaramento do CPF de terceiros que aparece em resultados de licitação (seção 4f)**, backups…
+
+**What I did not draft, because it is a decision and not wording:** whether a CPF is ever actually
+collected. **F32 is parked** — Sci ruled a CNPJ stays required to use the Radar, so no form asks
+for a CPF and `users.cpf` is empty. The draft above names it anyway, which is the safe order
+(disclose, then collect). If you would rather not mention a field nothing collects, drop the CPF
+from §2 and §4(c) and leave §13, and F32 brings it back the day a CPF-only payer appears.
 
 ## D. Suspension at 10 days is promised in the contract and mentioned nowhere in the product
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { parseBrazilianMobile } from '@/lib/profile/phone'
 import { normaliseCnpj } from '@/lib/cnpj'
 
 export { normaliseCnpj }
@@ -30,30 +31,27 @@ export const ERROR_CODES = {
   cnpj: 'cnpjInvalid',
 } as const
 
-/** Digits only, so "(11) 99999-9999" and "11999999999" are the same number. */
-function digits(value: string): string {
-  return value.replace(/\D+/g, '')
-}
-
 /**
- * Brazilian mobile in E.164: country code 55, a two-digit area code (11..99)
- * and an 8- or 9-digit subscriber number. A leading 55 or +55 is accepted and
- * not doubled; a 9-digit mobile must start with 9, which is how ANATEL numbers
- * mobiles and the only cheap way to reject a landline typed by mistake.
+ * Brazilian mobile in E.164 — now a thin wrapper, and the rewrite closed a
+ * live defect rather than tidying one.
+ *
+ * It used to strip every non-digit **first**, which threw away the one
+ * character that says the country code was stated. Measured 2026-10-13 against
+ * the shipped function: `normaliseWhatsapp('+1 299 555 0000')` returned
+ * **`+5512995550000`** — area code 12 is Sao Jose dos Campos and
+ * `99555-0000` is a well-formed mobile there, so a US number became a real
+ * stranger's Brazilian one, in the form whose numbers the opening broadcast
+ * dials. `evolution.py`'s `normalise_number` had already been written against
+ * exactly this and carried the comment; this side had not.
+ *
+ * The rules are unchanged and the surface is unchanged: this form takes
+ * Brazilian numbers only, because the message it promises is a WhatsApp one
+ * and `normalise_number` refuses to dial anything else. `parseMobile` in
+ * `lib/profile/phone.ts` is where they live now, and F31's profile form uses
+ * the same parser to *accept* a stated foreign code.
  */
 export function normaliseWhatsapp(raw: string): string | null {
-  let value = digits(raw)
-  if (value.length > 11 && value.startsWith('55')) value = value.slice(2)
-  if (value.length !== 10 && value.length !== 11) return null
-
-  const area = Number(value.slice(0, 2))
-  if (!Number.isInteger(area) || area < 11 || area > 99) return null
-
-  const subscriber = value.slice(2)
-  if (subscriber.length === 9 && !subscriber.startsWith('9')) return null
-  if (subscriber.length === 8 && !/^[2-9]/.test(subscriber)) return null
-
-  return `+55${value}`
+  return parseBrazilianMobile(raw)
 }
 
 /**

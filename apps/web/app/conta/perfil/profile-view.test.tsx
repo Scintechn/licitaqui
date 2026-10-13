@@ -1,0 +1,134 @@
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { messages } from '@/lib/messages'
+import { ProfileView } from './profile-view'
+
+/**
+ * `/conta/perfil`'s form — task **F31**.
+ *
+ * §4c: this suite has no jsdom, so these are markup assertions. What they can
+ * pin is the **mechanism** — that the three inputs exist, inside the form, with
+ * the names the action reads, and that the two fields the privacy policy does
+ * not name are absent. What they cannot pin is a submit; `e2e/` is where the
+ * result belongs, and the PR says which does which.
+ */
+
+const copy = messages.account.profile
+const EMPTY = { name: null, mobile: null, cnpj: null }
+
+const render = (props: Partial<Parameters<typeof ProfileView>[0]> = {}) =>
+  renderToStaticMarkup(
+    <ProfileView
+      action={() => {}}
+      values={EMPTY}
+      errors={[]}
+      plan="promocional"
+      planName="Fundador"
+      {...props}
+    />,
+  )
+
+/** The one `<input>` tag whose `name` is this, or a failure that says so. */
+function inputNamed(markup: string, name: string): string {
+  const found = [...markup.matchAll(/<input[^>]*>/g)].filter((tag) =>
+    tag[0].includes(`name="${name}"`),
+  )
+  if (found.length !== 1) throw new Error(`expected one input named ${name}, found ${found.length}`)
+  return found[0]![0]
+}
+
+describe('the profile form', () => {
+  it('asks for exactly the three fields the privacy policy covers', () => {
+    const out = render()
+    expect(out).toContain('name="nome"')
+    expect(out).toContain('name="celular"')
+    expect(out).toContain('name="cnpj"')
+    expect(out).toContain(copy.nameLabel)
+    expect(out).toContain(copy.mobileLabel)
+    expect(out).toContain(copy.cnpjLabel)
+  })
+
+  /*
+   * The whole reason this form ships with three fields instead of five. The
+   * columns exist (`0016_profile_identity.sql`, applied) and
+   * `politica-de-privacidade.md` names neither, so collecting one would be an
+   * undisclosed personal datum. `TO_VALIDATE` **I** is the request to Sci, and
+   * this test is what makes adding a field a deliberate act.
+   */
+  it('does not ask for a date of birth or a CPF, which the policy does not name', () => {
+    const out = render()
+    expect(out).not.toContain('name="nascimento"')
+    expect(out).not.toContain('name="cpf"')
+    expect(out.toLowerCase()).not.toContain('nascimento')
+    expect(out.toLowerCase()).not.toContain('cpf')
+  })
+
+  /* F38 brings the column; until then the field would discard its answer. */
+  it('does not ask for a business name, which has nowhere to go yet', () => {
+    expect(render()).not.toContain('name="empresa"')
+  })
+
+  it('posts all three to the action, inside the form', () => {
+    const out = render()
+    const form = out.slice(out.indexOf('<form'), out.indexOf('</form>'))
+    for (const field of ['name="nome"', 'name="celular"', 'name="cnpj"']) {
+      // Inside the form, not merely on the page: an input outside it posts
+      // nothing, and the action would read three blanks and reject all three.
+      expect(form, field).toContain(field)
+    }
+    expect(form).toContain(copy.submit)
+  })
+
+  it('pre-fills what the account already has, so a fix is an edit', () => {
+    const out = render({
+      values: { name: 'Maria Silva', mobile: '+5511999999999', cnpj: '36955612000185' },
+    })
+    expect(out).toContain('value="Maria Silva"')
+    expect(out).toContain('value="+5511999999999"')
+    // Formatted for a reader, the way `company-form.tsx` does it.
+    expect(out).toContain('value="36.955.612/0001-85"')
+  })
+
+  it('shows the error on the field that was rejected and not on the others', () => {
+    const out = render({ errors: ['celular'] })
+    expect(out).toContain(copy.mobileInvalid)
+    expect(out).not.toContain(copy.nameInvalid)
+    expect(out).not.toContain(copy.cnpjInvalid)
+    // The error replaces the hint rather than stacking under it.
+    expect(out).not.toContain(copy.mobileHelp)
+    expect(out).toContain(copy.nameHelp)
+  })
+
+  it('can show every error at once', () => {
+    const out = render({ errors: ['nome', 'celular', 'cnpj'] })
+    expect(out).toContain(copy.nameInvalid)
+    expect(out).toContain(copy.mobileInvalid)
+    expect(out).toContain(copy.cnpjInvalid)
+  })
+
+  /*
+   * `type="tel"`, not `inputMode="numeric"`: Sci's ruling was *"mobile number
+   * (BR or other country)"*, and a numeric keypad has no `+`. That one
+   * attribute is the difference between an international number being typeable
+   * and not — `lib/profile/phone.ts` reads the `+` as the only signal that the
+   * country code was stated.
+   */
+  it('lets a country code be typed', () => {
+    // The whole `<input>` tag, found by its name rather than by a window of N
+    // characters around it: the first version of this test sliced 200 either
+    // side, and `type="tel"` sits ~250 before `name=` because `Field` spreads
+    // the caller's props ahead of its own. It failed on an attribute that was
+    // there, which is a test reporting a defect in itself.
+    expect(inputNamed(render(), 'celular')).toContain('type="tel"')
+    expect(inputNamed(render(), 'cnpj')).toContain('inputMode="numeric"')
+    expect(render()).toContain(copy.mobileHelp)
+  })
+
+  it('links the privacy policy it is collecting under', () => {
+    const out = render()
+    expect(out).toContain('href="/privacidade"')
+    expect(out).toContain(copy.privacyLink)
+    // The placeholder is substituted, not printed.
+    expect(out).not.toContain('{politica}')
+  })
+})

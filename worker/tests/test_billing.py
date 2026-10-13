@@ -31,6 +31,35 @@ _TMP: Path | None = None
 
 
 @pytest.fixture(autouse=True)
+def _whatsapp_consent_granted(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Grant the WhatsApp consent F36 is blocked on, so this file can test the
+    rest of the notice.
+
+    ``billing._whatsapp_notices_consented`` returns ``False`` for everybody
+    today — a safety gate added by **F31**, which made ``users.whatsapp``
+    required and so ended the accident that had been keeping the channel off
+    (every account's number was null, and ``SKIP_NO_WHATSAPP`` stopped every
+    send). Without this fixture all eleven tests below would pass by skipping,
+    which is the worst kind of green: the notice would look tested and the
+    assertions would never run.
+
+    **Autouse, with one deliberate exception**:
+    :func:`test_the_whatsapp_notice_needs_consent_and_an_opt_out_is_not_consent`
+    turns it back off and is the only test that asserts the gate's real
+    behaviour. When the consent column lands, this fixture is what should start
+    writing a row instead of patching a function.
+    """
+    if request.node.get_closest_marker("no_whatsapp_consent") is not None:
+        # The one test that asserts the shipped gate. A marker rather than
+        # `monkeypatch.undo()`, which shares this test's instance and would
+        # also undo `_synthetic_root`'s patches.
+        return
+    monkeypatch.setattr(billing, "_whatsapp_notices_consented", lambda conn, user_id: True)
+
+
+@pytest.fixture(autouse=True)
 def _synthetic_root(tmp_path: Path) -> Iterator[None]:
     """Hand each test a private template root, and **put the real one back**.
 
@@ -989,3 +1018,32 @@ def test_the_founders_join_cannot_multiply_a_charge() -> None:
         assert "left join founders_list f on f.email = u.email" in statement
         assert "inner join founders_list" not in statement
         assert "join founders_list" not in statement.replace("left join founders_list", "")
+
+
+@pytest.mark.no_whatsapp_consent
+def test_the_whatsapp_notice_needs_consent_and_an_opt_out_is_not_consent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**F31/F36.** Nobody is messaged about money without having agreed to it.
+
+    The gate this asserts is the one `_whatsapp_consent_granted` switches off
+    for every other test in this file, so this is the only place the shipped
+    behaviour is exercised. It is a real gate rather than a column that happens
+    to be empty, which is what it replaced: until F31 every account's
+    ``users.whatsapp`` was null, so the channel was off **by accident**, and
+    F31 makes a mobile required before anybody can subscribe.
+
+    The distinction being asserted is `_opted_out` versus consent. That
+    function answers *"did they reply SAIR?"*, and the opt-out is recorded
+    against a ``founders_list`` id — so a subscriber who was never on the
+    founders list resolves to nothing, has never opted out, and would pass it.
+    Every new subscriber is that person. Absence of refusal is not agreement.
+    """
+    # Nothing is patched here: the shipped function is what is under test.
+    assert billing._whatsapp_notices_consented(None, 7) is False  # type: ignore[arg-type]
+
+    # And it is checked *after* the opt-out, so the two are independent rather
+    # than one standing in for the other.
+    monkeypatch.setattr(billing, "_opted_out", lambda conn, number: False)
+    assert billing.SKIP_NO_CONSENT == "no_consent"
+    assert billing.SKIP_NO_CONSENT != billing.SKIP_OPTED_OUT

@@ -31,6 +31,7 @@ type Row = {
   plan: string
   email: string
   name: string | null
+  whatsapp: string | null
   cnpj: string | null
   founder_seat: number | null
 }
@@ -65,6 +66,21 @@ export type AccountData = {
    * keeps a person's name off the screens that do not need it.
    */
   userName: string | null
+  /**
+   * `users.whatsapp` — the mobile, in E.164. Read so `/conta/perfil` can
+   * pre-fill it (**F31**). Not rendered anywhere else: §12 keeps a number off
+   * the screens that do not need it.
+   *
+   * **This comment used to say "F36 is why nothing messages it yet", and that
+   * was false** — the sentence a reader would have trusted instead of
+   * checking. `worker/licitaqui/billing.py` selects `u.whatsapp` and
+   * `send_charge_notice_whatsapp` dials it; what kept the channel quiet was
+   * that the column was null for every account, which is an accident and not a
+   * gate. **F31 ends that accident** by making the mobile required, so the
+   * gate is now explicit: `_whatsapp_notices_consented` in that file returns
+   * `False` for everybody until the consent column F36 waits on exists.
+   */
+  whatsapp: string | null
 }
 
 /**
@@ -86,7 +102,7 @@ export async function readAccountData(): Promise<AccountData> {
 
   const executor = db()
   const found = await executor.execute<Row>(sql`
-    select plan, email, name, cnpj, founder_seat from users where id = ${id}::bigint
+    select plan, email, name, whatsapp, cnpj, founder_seat from users where id = ${id}::bigint
   `)
   const user = found.rows[0]
   // The session names a user who is gone. Signing in again is the only honest
@@ -112,5 +128,6 @@ export async function readAccountData(): Promise<AccountData> {
     companyName: company?.rows[0]?.name ?? null,
     founderSeat: user.founder_seat === null ? null : Number(user.founder_seat),
     userName: user.name,
+    whatsapp: user.whatsapp,
   }
 }

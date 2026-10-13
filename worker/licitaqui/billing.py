@@ -169,6 +169,11 @@ EVENT_WHATSAPP_FALLBACK = "billing.whatsapp_fallback"
 #: contract names (terms §7, §12), so none of these is a failure of the notice.
 SKIP_NO_WHATSAPP = "no_whatsapp"
 SKIP_OPTED_OUT = "opted_out"
+#: **No record that this subscriber agreed to be messaged about money.**
+#: Distinct from ``opted_out``, and the difference is the whole point: that one
+#: means somebody replied ``SAIR``, this one means nobody ever said yes. See
+#: :func:`_whatsapp_notices_consented`.
+SKIP_NO_CONSENT = "no_consent"
 SKIP_NO_PAYMENT_LINK = "no_payment_link"
 SKIP_AMBIGUOUS_LINK = "ambiguous_payment_link"
 SKIP_NOT_PIX = "charges_itself"
@@ -869,6 +874,10 @@ def send_charge_notice_whatsapp(
     if _opted_out(conn, number):
         return _whatsapp_skip(conn, log, user_id, common, SKIP_OPTED_OUT)
 
+    # **Consent, which is not the absence of an opt-out** (F31, F36).
+    if not _whatsapp_notices_consented(conn, user_id):
+        return _whatsapp_skip(conn, log, user_id, common, SKIP_NO_CONSENT)
+
     # §7.2: a job can run twice. Per-recipient evidence is `events`, and the
     # row this reads is the one written below.
     if _already_sent_on_whatsapp(conn, template, subscription_id, due_on):
@@ -1175,6 +1184,46 @@ def _already_sent_on_whatsapp(
         )
         row = cur.fetchone()
     return bool(row and row[0])
+
+
+def _whatsapp_notices_consented(conn: psycopg.Connection, user_id: int | None) -> bool:
+    """Whether this subscriber agreed to be told about **money** on WhatsApp.
+
+    **Always ``False`` today, deliberately, and this is a safety gate rather
+    than dead code.** Added 2026-10-13 by **F31**, which is what made it
+    necessary: until that day ``users.whatsapp`` was null for every account, so
+    :data:`SKIP_NO_WHATSAPP` above stopped every send and the channel was off
+    by accident. F31's profile form makes a mobile **required** before anybody
+    can subscribe, so that accident ends — and without this gate the first Pix
+    subscriber to complete the form would be messaged about a charge having
+    never agreed to it.
+
+    The product's own documents require agreement, and the gate above is not
+    it:
+
+    * terms §7 — *"Se você tiver **conectado** WhatsApp ou Telegram, avisamos
+      também por lá"*. Connecting is an act the subscriber performs. Nothing in
+      the product lets them: ``/conta/alertas`` offers Telegram only.
+    * ``politica-de-privacidade.md`` lists Evolution API for *"envio de
+      mensagens a quem **consentiu**"*.
+    * the only WhatsApp consent string that exists, ``consent.whatsapp``, names
+      *"a minha vaga de fundador e … editais"* — not a charge — and renders
+      nowhere at all (**F37**).
+
+    :func:`_opted_out` is the inverse and cannot substitute: it answers *"did
+    they say stop?"*, and for somebody who was never asked the answer is no,
+    which reads as permission. A subscriber who was never on the founders list
+    resolves to nothing there, so **every** new subscriber would pass it.
+
+    **What makes this return something other than ``False``**: the column
+    **F36** is waiting on, written by an unticked box on F31's profile form,
+    whose wording is Sci's (legal brief §5, ``TO_VALIDATE`` **G**). It is
+    written as a function rather than a literal so that there is exactly one
+    place to change, and so the skip is counted and visible in the sweep
+    instead of the channel being off because a column happened to be empty.
+    """
+    _ = (conn, user_id)
+    return False
 
 
 def _opted_out(conn: psycopg.Connection, number: str) -> bool:

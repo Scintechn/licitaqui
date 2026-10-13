@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PROFILE_PATH } from '@/lib/routes'
 
 /** What happened, in order. The order is the correctness argument for cancel. */
 const order = vi.hoisted(() => [] as string[])
@@ -227,12 +228,23 @@ describe('goToCheckout', () => {
     expect(await where(() => goToCheckout(form()))).toBe('/conta/plano?estado=aguardando')
   })
 
-  it('sends an account with no document to the company screen', async () => {
+  it('sends an incomplete account to the profile form, not the company screen', async () => {
     startCheckout.mockResolvedValue({ outcome: 'needs_company' })
-    // **No invented sentence.** Nothing in the catalogue says "we need your
-    // CNPJ before we can charge you"; copy is Sci's (legal brief §5), so this
-    // is a navigation affordance and card F8 carries the silence.
-    expect(await where(() => goToCheckout(form()))).toBe('/conta/empresa')
+    /*
+     * **F31 changed the destination, and the destination is the point.**
+     * This asserted `/conta/empresa`, which only ever changed the CNPJ — so an
+     * account missing a *name* was sent to a screen that does not ask for one
+     * and bounced straight back. `/conta/perfil` asks for both and arrives
+     * pre-filled.
+     *
+     * The old comment said there was no sentence explaining why and that card
+     * F8 carried the silence. The silence is now filled, because `canBill`
+     * also got stricter in the same change: more accounts reach this branch
+     * than did, and a stricter gate with the same silence is a regression. The
+     * three strings are drafts with a `TODO(Sci)`, so **F8 closes on his word,
+     * not here**.
+     */
+    expect(await where(() => goToCheckout(form()))).toBe(PROFILE_PATH)
   })
 
   it('says the payment page could not be opened when billing is switched off', async () => {
@@ -376,6 +388,10 @@ describe('the states these actions redirect with', () => {
       'sem-assinatura',
       'erro',
       'muitas-tentativas',
+      // F31: `saveProfile` redirects with this, and `plan-view.tsx` renders
+      // `account.profile.saved` for it. Added to both in the same change —
+      // this guard is what makes adding one to only one of them fail.
+      'cadastro-salvo',
     ])
   })
 })

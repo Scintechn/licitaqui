@@ -203,3 +203,32 @@ export async function setUserCnpj(
     update users set cnpj = ${cnpj} where id = ${userId}::bigint
   `)
 }
+
+/**
+ * The subscriber's own name and mobile — task **F31**.
+ *
+ * Separate from `setUserCnpj` because the CNPJ carries a side effect that
+ * these two do not: it has to `ensureCompanyRow` so the worker has something
+ * to resolve. These are a plain update, and the caller has already validated
+ * both through `lib/profile/input.ts`.
+ *
+ * **Neither value is logged, here or by the caller** (§12): a name and a
+ * mobile are personal data, and the mobile is the one WhatsApp dials.
+ *
+ * `cpf` and `birth_date` are **not** written. The columns exist and
+ * `docs/legal/politica-de-privacidade.md` names neither, so nothing may write
+ * them until it does — `docs/TO_VALIDATE.md` **I**. This function is
+ * deliberately narrow so that it is not the place somebody adds one.
+ */
+export async function setUserProfile(
+  userId: number,
+  profile: { name: string; mobile: string },
+  database: Executor = db(),
+): Promise<void> {
+  await database.execute(sql`
+    update users
+       set name = ${profile.name},
+           whatsapp = ${profile.mobile}
+     where id = ${userId}::bigint
+  `)
+}

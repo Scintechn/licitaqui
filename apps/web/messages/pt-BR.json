@@ -6,6 +6,7 @@
     "scope": "Covers the flows E0 owns: founders offer and consent, plans and prices, billing and the promo price change, Telegram linking, notification preferences, and the AI disclaimer. Screen copy for Radar, Opportunity and Screening belongs to tasks D3/D4.",
     "todo": [
       "TODO(Sci): gap G3 — publish the privacy policy and terms of use, then fill legal.privacyUrl and legal.termsUrl.",
+      "TODO(Sci): review account.profile.* word by word — task F31. Form labels and errors, not legal wording; the two fields the privacy policy does not name (date of birth, CPF) are deliberately absent and are TO_VALIDATE item I. account.profile.needProfile* fill the silence card F8 records.",
       "TODO(Sci): review consent.* word by word — this is the LGPD consent record for WhatsApp and email contact (spec §12).",
       "TODO(Sci): review billing.priceChange.* — it must match the price-change clause in the terms and the email in worker/templates/email/price-change-30-days.md.",
       "TODO(Sci): gap G13 — nothing here mentions nota fiscal, on purpose. Decide with the accountant before adding anything.",
@@ -1357,6 +1358,30 @@
       "companySaved": "Empresa atualizada. Os próximos avisos usam o novo CNPJ.",
       "companyInvalid": "Confira o CNPJ: são 14 números.",
       "companyPending": "Estamos buscando os dados desta empresa. Pode levar alguns segundos."
+    },
+    "profile": {
+      "title": "Falta pouco para assinar",
+      "subtitle": "A gente precisa destes dados para emitir a cobrança no seu nome. Leva menos de um minuto.",
+      "nameLabel": "Seu nome completo",
+      "namePlaceholder": "Maria Silva",
+      "nameHelp": "É o nome que vai na cobrança e nos avisos que a gente manda.",
+      "nameInvalid": "Digite seu nome completo.",
+      "mobileLabel": "Seu celular",
+      "mobilePlaceholder": "(11) 99999-9999",
+      "mobileHelp": "Com DDD. De fora do Brasil, comece com + e o código do país.",
+      "mobileInvalid": "Confira o celular: DDD e número. De fora do Brasil, comece com + e o código do país.",
+      "cnpjLabel": "CNPJ da sua empresa",
+      "cnpjPlaceholder": "00.000.000/0001-00",
+      "cnpjHelp": "Só os 14 números. É o CNPJ que vai na cobrança e que escolhe os seus editais.",
+      "cnpjInvalid": "Confira o CNPJ: são 14 números.",
+      "submit": "Salvar e continuar",
+      "saved": "Dados salvos.",
+      "privacy": "Usamos estes dados para emitir a cobrança e falar com você sobre a sua assinatura. Veja a {politica}.",
+      "privacyLink": "política de privacidade",
+      "needProfileTitle": "Complete seu cadastro para assinar",
+      "needProfileBody": "Para emitir a cobrança a gente precisa do seu nome, do seu celular e do CNPJ da sua empresa.",
+      "needProfileAction": "Completar cadastro",
+      "editAction": "Meus dados"
     }
   }
 }
