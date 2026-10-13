@@ -1,12 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { StateCard } from '@/components'
+import { StateCard, Icon } from '@/components'
 import type { Favourite } from '@/lib/favourites/store'
 import { messages } from '@/lib/messages'
 import { TenderCardView } from '@/app/radar/tender-card'
 import { editalPath } from '@/lib/radar/client'
 import { daysUntil } from '@/lib/radar/format'
+import { cn } from '@/lib/cn'
 import { AccountChrome } from '../account-chrome'
 
 /**
@@ -160,20 +161,38 @@ export function FavouritesView({
             </div>
           </nav>
 
-          {/* Sort control */}
+          {/* Sort control — styled like Radar */}
           <div className="px-gutter pb-3 pt-3">
-            <select
-              id="favourites-sort"
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.currentTarget.value as SortOrder)}
-              className="min-h-control rounded-control border border-field-line bg-surface px-3 text-base text-ink"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <details key={sortOrder} className="group/sort inline-block">
+              <summary
+                className={cn(
+                  'flex min-h-touch cursor-pointer list-none items-center gap-1 text-body text-muted',
+                  'whitespace-nowrap [&::-webkit-details-marker]:hidden',
+                )}
+              >
+                <span>Ordenar: {SORT_OPTIONS.find((o) => o.value === sortOrder)?.label.split('(')[0].trim()}</span>
+                <Icon
+                  name="chevronRight"
+                  size={16}
+                  className="transition-transform group-open/sort:rotate-90"
+                />
+              </summary>
+              <ul className="absolute left-gutter z-20 mt-1 w-max rounded-control border border-line-strong bg-surface py-1">
+                {SORT_OPTIONS.map((opt) => (
+                  <li key={opt.value}>
+                    <button
+                      onClick={() => setSortOrder(opt.value as SortOrder)}
+                      className={cn(
+                        'flex w-full min-h-touch items-center px-3 text-body whitespace-nowrap text-left',
+                        sortOrder === opt.value ? 'font-semibold text-ink' : 'text-ink hover:bg-fill-muted',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
           </div>
 
           {/* Grid of cards */}
