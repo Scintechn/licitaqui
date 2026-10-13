@@ -184,6 +184,13 @@ WHATSAPP_FOOTER = "LicitaQui"
 #: makes sense to somebody who has to pay it by hand.
 BILLING_TYPE_PIX = "PIX"
 
+#: Asaas's `billingType` for the method that **does** charge itself, and the
+#: only other one the checkout offers (`SubscriptionMethod` is a union of
+#: exactly these two, and `goToCheckout` refuses anything else). It is named
+#: here so the payment-failed notice can say *"tentaremos novamente"* to the
+#: method that will be retried and not to the one that cannot be.
+BILLING_TYPE_CARD = "CREDIT_CARD"
+
 #: Events. The delivery log reuses `email.py`'s names on purpose, so one query
 #: answers "what e-mail reached this person?" across every sender.
 EVENT_REMINDER_BLOCKED = "billing.reminder_blocked"
@@ -1604,6 +1611,18 @@ def build_context(row: dict[str, Any]) -> dict[str, Any]:
         # continua liberada"* would be telling them that something they never
         # had is still theirs.
         "conta_liberada": str(row.get("status") or "") != "pending",
+        # **The method, as two flags rather than one** — Sci, 2026-10-13:
+        # *"For pix we need to notify the costomer for then proceed to the
+        # payment we only can notify it and send the payment link"*. A pix
+        # charge is never debited, so terms §7's *"tentaremos novamente"* is
+        # true of a tokenised card and false of a pix, and the one sentence
+        # cannot serve both. Two flags and not `pix` plus its negation because
+        # an **unknown** method must render neither sentence rather than the
+        # wrong one: `subscription_payments.status` is deliberately
+        # unconstrained (`0015`) precisely because Asaas adds values without a
+        # version bump, and `billing_type` is the same kind of field.
+        "pix": str(row.get("charge_billing_type") or "") == BILLING_TYPE_PIX,
+        "cartao": str(row.get("charge_billing_type") or "") == BILLING_TYPE_CARD,
         # **The last day the paid plan was kept** — terms §8's `ends_on`, and
         # the date the encerramento notice is about (F41). Blank for a live
         # subscription, and only `subscription-ended.md` declares it, so a

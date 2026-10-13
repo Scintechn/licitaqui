@@ -1420,3 +1420,45 @@ def test_the_approved_copy_renders_from_a_real_row() -> None:
         body = loaded.render(billing.build_context(row))
         assert "{{" not in body and "TODO" not in body
         assert loaded.render_subject(billing.build_context(row))
+
+
+@pytest.mark.parametrize(
+    ("method", "present", "absent"),
+    [
+        ("PIX", "não é debitado automaticamente", "tentar novamente"),
+        ("CREDIT_CARD", "tentar novamente", "não é debitado automaticamente"),
+    ],
+)
+def test_the_payment_notice_says_the_right_thing_about_the_method(
+    method: str, present: str, absent: str
+) -> None:
+    """Sci, 2026-10-13: *"For pix we need to notify the costomer for then
+    proceed to the payment we only can notify it and send the payment link"*.
+
+    Terms §7 says *"tentaremos novamente"*, which is true of a tokenised card
+    and **false of a pix** — nothing is ever debited, so the only thing we can
+    do is say the charge is open and hand over the link. One body cannot serve
+    both, so the sentence is per method, and this is the pair that proves
+    neither reaches the wrong one.
+    """
+    row = _subscription_row(status="overdue", charge_billing_type=method)
+    body = templates.load("email", billing.FAILED_TEMPLATE).render(billing.build_context(row))
+    assert present in body
+    assert absent not in body
+    assert "Pagar agora" in body, "either method can be paid by hand, and this is the link"
+
+
+def test_an_unrecognised_method_gets_neither_sentence() -> None:
+    """**Neither, not the wrong one.** `billing_type` is an Asaas field and
+    `0015` leaves its sibling `status` unconstrained on purpose, because their
+    docs warn that new values arrive without a version bump. So the two flags
+    are independent rather than one and its negation: a `BOLETO` — which the
+    checkout refuses, and which is exactly what a crafted request would send —
+    must not be told we will retry it.
+    """
+    row = _subscription_row(status="overdue", charge_billing_type="BOLETO")
+    body = templates.load("email", billing.FAILED_TEMPLATE).render(billing.build_context(row))
+    assert "tentar novamente" not in body
+    assert "não é debitado automaticamente" not in body
+    # The notice is still a notice: the charge, the amount and where to pay it.
+    assert "ainda não foi paga" in body and "Pagar agora" in body
