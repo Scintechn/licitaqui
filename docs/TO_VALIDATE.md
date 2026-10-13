@@ -333,6 +333,30 @@ different products.
 This is a copy decision and the wording is yours (brief §5). The same resolution should settle item
 **C**, which is the same list being short.
 
+**Correction, 2026-10-13 — one sentence above is wrong, and it is the one that matters.** This item
+said *"the right to send it is not in doubt"*, reading terms §7 as a standing authorisation. §7 is
+**conditional**, and the condition is a word: *"Se você tiver **conectado** WhatsApp ou Telegram"*.
+Connecting is an act the subscriber performs, and **nothing in the product lets them perform it** —
+`/conta/alertas` offers Telegram only, with **0** occurrences of `whatsapp` in all of `app/conta/`,
+and no copy anywhere offers a WhatsApp connection. So §7 authorises the notice for a subscriber who
+connected, there are none, and there can be none. Measured the same day: **0 of 4 users have
+`users.whatsapp`**; the only WhatsApp number in the database sits in `founders_list`, typed into the
+founders form under `consent.founders` — *"o aviso de abertura das vagas"*, narrower still than the
+sentence quoted at the top of this item.
+
+That matters because **F36 was carded to close the gap with `coalesce(u.whatsapp, f.whatsapp)`** —
+reading the founders number as a fallback, exactly as `billing.py` already recovers the *name*. It
+would have messaged people about money on a number consented for a seats-opening notice, and this
+item's own *"not in doubt"* is what would have made that look authorised. F36 is now **blocked** on
+this item instead, and the audit turned up a third thing: `consent.whatsapp` itself **renders
+nowhere** — 0 references outside tests, alongside `consent.email` and `consent.contactRequired`
+(**F37**). So the sentence you are being asked for is not an amendment to copy that ships; it is the
+copy for an opt-in that has to be built.
+
+**What would settle all of it**, if it is one decision rather than three: wording for a separate,
+unticked box authorising **billing** notices on WhatsApp, which F31's form renders and a column
+records. Items **C** and **H** are the same list and the same footer being short of it.
+
 ## H. The e-mail footer tells a subscriber they can stop receiving a notice they cannot — found 2026-10-12
 
 `partial-footer.md` — *"Você recebe este e-mail porque autorizou o contato quando entrou na **lista de
@@ -358,21 +382,24 @@ The wording is yours (brief §5). The likely answer is a second footer, or one s
 contractual notice from a marketing one; the same resolution would settle item **C**, which is the same list
 being short.
 
-## I. The privacy policy does not cover the CPF or the date of birth F31 asks for — found 2026-10-12
+## I. The privacy policy does not cover the date of birth F31 asks for — found 2026-10-12
 
-Sci asked on 2026-10-12 for a simplified profile form: name, **date of birth**, mobile,
-**CPF or CNPJ**, company optional. Two of those fields are not in the policy, and **F31 is
-blocked on this and nothing else** — the columns already exist (`0016_profile_identity.sql`)
-and deliberately nothing writes them.
+Sci asked on 2026-10-12 for a simplified profile form: name, **date of birth**, mobile, CNPJ,
+company optional. **One field is not in the policy, and F31 is blocked on it and nothing else** —
+the column already exists (`0016_profile_identity.sql`, applied 2026-10-12) and deliberately
+nothing writes it.
+
+A CPF would have been a second missing field. **F32 is parked** instead: Sci ruled that a CNPJ
+stays required to use the Radar, which leaves a CPF needed only where the payer is a natural
+person, and nothing in the product writes or collects one. `users.cpf` exists and stays empty,
+so this item asks for one sentence instead of two.
 
 `docs/legal/politica-de-privacidade.md` §4(b) says, verbatim:
 
 > - Nome, e-mail e, se informar, WhatsApp.
 > - CNPJ da empresa e as atividades (CNAE) que buscamos em fontes públicas.
 
-No own-CPF. No date of birth. §4(c)'s *"identificação"* arguably covers **sending** a document
-to Asaas; it does not cover **storing** one here. Every other CPF in the file is a third party
-in an award record, and masked.
+No date of birth, anywhere in the file.
 
 **Four places in that one file, so it can be amended once:**
 
@@ -381,7 +408,7 @@ in an award record, and masked.
 | **§2** *Resumo em uma tabela* | *"Nome, e-mail, WhatsApp, CNPJ da sua empresa…"* — the table a reader actually reads |
 | **§4(b)** | the detailed list |
 | **§5** finalidade / base legal | has **no row for age verification**, so the 18+ purpose is stated but not declared |
-| **§13** | lists *"mascaramento de CPF"*, scoped in §4(f) to award records — the subscriber's own CPF must be stored **unmasked** to reach Asaas |
+| **§13** | lists *"mascaramento de CPF"*, scoped in §4(f) to award records — in scope only if **F32** is ever unparked |
 
 **A third field may need naming too.** Sci asked that *all* users inform their mobile. §4(b)
 says *"e, se informar, WhatsApp"* — optional. If the form makes it required, that clause is
