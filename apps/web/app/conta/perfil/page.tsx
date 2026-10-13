@@ -49,13 +49,14 @@ export default async function ProfilePage({
   const raw = Array.isArray(search.erro) ? search.erro[0] : search.erro
   const errors = String(raw ?? '')
     .split(',')
-    .filter((field) => field === 'nome' || field === 'celular' || field === 'cnpj')
+    .filter((field) => ['nome', 'nascimento', 'celular', 'cnpj'].includes(field))
 
   return (
     <ProfileView
       action={saveProfile}
       values={{
         name: draft?.name ?? account.userName,
+        birthDate: draft?.birthDate ?? account.birthDate,
         mobile: draft?.mobile ?? account.whatsapp,
         cnpj: draft?.cnpj ?? account.cnpj,
       }}

@@ -32,6 +32,7 @@ type Row = {
   email: string
   name: string | null
   whatsapp: string | null
+  birth_date: string | null
   cnpj: string | null
   founder_seat: number | null
 }
@@ -81,6 +82,13 @@ export type AccountData = {
    * `False` for everybody until the consent column F36 waits on exists.
    */
   whatsapp: string | null
+  /**
+   * `users.birth_date` as `YYYY-MM-DD`, which is what `<input type="date">`
+   * wants. Read only so `/conta/perfil` can pre-fill it (**F31**); collected
+   * only for the 18+ rule (`lib/profile/age.ts`), never rendered elsewhere and
+   * never logged (§12).
+   */
+  birthDate: string | null
 }
 
 /**
@@ -102,7 +110,8 @@ export async function readAccountData(): Promise<AccountData> {
 
   const executor = db()
   const found = await executor.execute<Row>(sql`
-    select plan, email, name, whatsapp, cnpj, founder_seat from users where id = ${id}::bigint
+    select plan, email, name, whatsapp, birth_date::text as birth_date, cnpj, founder_seat
+      from users where id = ${id}::bigint
   `)
   const user = found.rows[0]
   // The session names a user who is gone. Signing in again is the only honest
@@ -129,5 +138,6 @@ export async function readAccountData(): Promise<AccountData> {
     founderSeat: user.founder_seat === null ? null : Number(user.founder_seat),
     userName: user.name,
     whatsapp: user.whatsapp,
+    birthDate: user.birth_date,
   }
 }

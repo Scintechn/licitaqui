@@ -14,7 +14,7 @@ import { ProfileView } from './profile-view'
  */
 
 const copy = messages.account.profile
-const EMPTY = { name: null, mobile: null, cnpj: null }
+const EMPTY = { name: null, birthDate: null, mobile: null, cnpj: null }
 
 const render = (props: Partial<Parameters<typeof ProfileView>[0]> = {}) =>
   renderToStaticMarkup(
@@ -38,29 +38,39 @@ function inputNamed(markup: string, name: string): string {
 }
 
 describe('the profile form', () => {
-  it('asks for exactly the three fields the privacy policy covers', () => {
+  it('asks for exactly the four fields the privacy policy covers', () => {
     const out = render()
-    expect(out).toContain('name="nome"')
-    expect(out).toContain('name="celular"')
-    expect(out).toContain('name="cnpj"')
-    expect(out).toContain(copy.nameLabel)
-    expect(out).toContain(copy.mobileLabel)
-    expect(out).toContain(copy.cnpjLabel)
+    for (const field of ['nome', 'nascimento', 'celular', 'cnpj']) {
+      expect(out, field).toContain(`name="${field}"`)
+    }
+    for (const label of [copy.nameLabel, copy.birthLabel, copy.mobileLabel, copy.cnpjLabel]) {
+      expect(out).toContain(label)
+    }
   })
 
   /*
-   * The whole reason this form ships with three fields instead of five. The
-   * columns exist (`0016_profile_identity.sql`, applied) and
-   * `politica-de-privacidade.md` names neither, so collecting one would be an
-   * undisclosed personal datum. `TO_VALIDATE` **I** is the request to Sci, and
-   * this test is what makes adding a field a deliberate act.
+   * **This test used to assert the date of birth was absent.** It shipped that
+   * way because the privacy policy named no date of birth anywhere, so
+   * collecting one would have been an undisclosed personal datum. Sci approved
+   * the amendment on 2026-10-13 (policy v1.4: §2, §4c and a §5 purpose row),
+   * and the field arrived with it — which is the order this repository wants:
+   * disclose, then collect.
+   *
+   * The CPF is still absent, and now for a product reason rather than a legal
+   * one: **F32**, Sci's ruling that a CNPJ stays required, which leaves a CPF
+   * satisfying only Asaas. The assertion stays so that adding one is a
+   * deliberate act.
    */
-  it('does not ask for a date of birth or a CPF, which the policy does not name', () => {
+  it('does not ask for a CPF, which no form collects by F32', () => {
     const out = render()
-    expect(out).not.toContain('name="nascimento"')
     expect(out).not.toContain('name="cpf"')
-    expect(out.toLowerCase()).not.toContain('nascimento')
     expect(out.toLowerCase()).not.toContain('cpf')
+  })
+
+  it('collects the date of birth the policy now names, as a date input', () => {
+    expect(inputNamed(render(), 'nascimento')).toContain('type="date"')
+    // The purpose, said on the screen, because it is the only one §5 declares.
+    expect(render()).toContain(copy.birthHelp)
   })
 
   /* F38 brings the column; until then the field would discard its answer. */
@@ -68,10 +78,10 @@ describe('the profile form', () => {
     expect(render()).not.toContain('name="empresa"')
   })
 
-  it('posts all three to the action, inside the form', () => {
+  it('posts all four to the action, inside the form', () => {
     const out = render()
     const form = out.slice(out.indexOf('<form'), out.indexOf('</form>'))
-    for (const field of ['name="nome"', 'name="celular"', 'name="cnpj"']) {
+    for (const field of ['name="nome"', 'name="nascimento"', 'name="celular"', 'name="cnpj"']) {
       // Inside the form, not merely on the page: an input outside it posts
       // nothing, and the action would read three blanks and reject all three.
       expect(form, field).toContain(field)
@@ -81,9 +91,15 @@ describe('the profile form', () => {
 
   it('pre-fills what the account already has, so a fix is an edit', () => {
     const out = render({
-      values: { name: 'Maria Silva', mobile: '+5511999999999', cnpj: '36955612000185' },
+      values: {
+        name: 'Maria Silva',
+        birthDate: '1980-05-20',
+        mobile: '+5511999999999',
+        cnpj: '36955612000185',
+      },
     })
     expect(out).toContain('value="Maria Silva"')
+    expect(out).toContain('value="1980-05-20"')
     expect(out).toContain('value="+5511999999999"')
     // Formatted for a reader, the way `company-form.tsx` does it.
     expect(out).toContain('value="36.955.612/0001-85"')
@@ -100,7 +116,8 @@ describe('the profile form', () => {
   })
 
   it('can show every error at once', () => {
-    const out = render({ errors: ['nome', 'celular', 'cnpj'] })
+    const out = render({ errors: ['nome', 'nascimento', 'celular', 'cnpj'] })
+    expect(out).toContain(copy.birthInvalid)
     expect(out).toContain(copy.nameInvalid)
     expect(out).toContain(copy.mobileInvalid)
     expect(out).toContain(copy.cnpjInvalid)

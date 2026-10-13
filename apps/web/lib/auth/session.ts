@@ -215,20 +215,26 @@ export async function setUserCnpj(
  * **Neither value is logged, here or by the caller** (§12): a name and a
  * mobile are personal data, and the mobile is the one WhatsApp dials.
  *
- * `cpf` and `birth_date` are **not** written. The columns exist and
- * `docs/legal/politica-de-privacidade.md` names neither, so nothing may write
- * them until it does — `docs/TO_VALIDATE.md` **I**. This function is
- * deliberately narrow so that it is not the place somebody adds one.
+ * **`birth_date` is written and `cpf` is not**, and the asymmetry has a reason
+ * on each side. The policy's v1.4 amendment (13/10/2026) names the date of
+ * birth and declares the 18+ purpose in §5, so it may be collected — and
+ * `0016_profile_identity.sql`'s comment on the column binds it to that one
+ * purpose. The policy names a CPF too, but **no form asks for one**: Sci's
+ * F32 ruling was that a CNPJ stays required, so a CPF would satisfy only
+ * Asaas. `users.cpf` therefore stays empty, which **F32** carries.
+ *
+ * Still deliberately narrow, so this is not where a fourth column appears.
  */
 export async function setUserProfile(
   userId: number,
-  profile: { name: string; mobile: string },
+  profile: { name: string; mobile: string; birthDate: string },
   database: Executor = db(),
 ): Promise<void> {
   await database.execute(sql`
     update users
        set name = ${profile.name},
-           whatsapp = ${profile.mobile}
+           whatsapp = ${profile.mobile},
+           birth_date = ${profile.birthDate}::date
      where id = ${userId}::bigint
   `)
 }

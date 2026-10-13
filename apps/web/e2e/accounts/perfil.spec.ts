@@ -13,9 +13,11 @@ import { SESSION_COOKIE } from '@/lib/auth/config'
  *
  *  * that `saveProfile` is reachable from the form at all,
  *  * that a rejected field comes back **with its error rendered** — the seam
- *    where the schema's `name`/`mobile` meet the form's `nome`/`celular`, and
- *    the one place a green suite would hide a form that refuses an entry and
- *    then shows nothing,
+ *    where the schema's `name`/`birthDate`/`mobile` meet the form's
+ *    `nome`/`nascimento`/`celular`, and the one place a green suite would hide
+ *    a form that refuses an entry and then shows nothing,
+ *  * that the **other** fields keep what was typed, which travels in a cookie
+ *    and so cannot be asserted from a prop,
  *  * and that the subscribe button, absent a moment ago, is there afterwards.
  *
  * ## Why it does not run by default
@@ -59,14 +61,15 @@ test.describe('The profile gate before the checkout (F31)', () => {
     ])
   })
 
-  test('asks for three fields and not for a CPF or a date of birth', async ({ page }) => {
+  test('asks for four fields and not for a CPF', async ({ page }) => {
     await page.goto('/conta/perfil')
-    await expect(page.locator('input[name="nome"]')).toBeVisible()
-    await expect(page.locator('input[name="celular"]')).toBeVisible()
-    await expect(page.locator('input[name="cnpj"]')).toBeVisible()
-    // The two the privacy policy does not name. `TO_VALIDATE` I.
+    for (const field of ['nome', 'nascimento', 'celular', 'cnpj']) {
+      await expect(page.locator(`input[name="${field}"]`)).toBeVisible()
+    }
+    // No form collects a CPF: Sci's F32 ruling keeps the CNPJ required, so a
+    // CPF would satisfy only Asaas. The policy names it from v1.4, so this is
+    // a product gate now rather than a legal one.
     await expect(page.locator('input[name="cpf"]')).toHaveCount(0)
-    await expect(page.locator('input[name="nascimento"]')).toHaveCount(0)
   })
 
   /*
@@ -78,6 +81,7 @@ test.describe('The profile gate before the checkout (F31)', () => {
   test('a rejected mobile comes back with its error on the field', async ({ page }) => {
     await page.goto('/conta/perfil')
     await page.fill('input[name="nome"]', 'Maria Silva')
+    await page.fill('input[name="nascimento"]', '1980-05-20')
     await page.fill('input[name="celular"]', '12345')
     await page.fill('input[name="cnpj"]', '36955612000185')
     await page.getByRole('button', { name: /salvar/i }).click()
@@ -88,11 +92,19 @@ test.describe('The profile gate before the checkout (F31)', () => {
     // The sentence itself, not merely the red border: a form that goes red and
     // says nothing is the silence F8 is about, one field down.
     await expect(page.locator('#perfil-celular-error')).toBeVisible()
+
+    // **The round-trip the unit tests cannot see.** The redirect is a fresh
+    // GET, so the post body is gone — the other three fields come back from
+    // the draft cookie, not from a database that is null for this account.
+    await expect(page.locator('input[name="nome"]')).toHaveValue('Maria Silva')
+    await expect(page.locator('input[name="nascimento"]')).toHaveValue('1980-05-20')
+    await expect(page.locator('input[name="cnpj"]')).toHaveValue('36955612000185')
   })
 
   test('a complete profile reaches the plan screen with a checkout on it', async ({ page }) => {
     await page.goto('/conta/perfil')
     await page.fill('input[name="nome"]', 'Maria Silva')
+    await page.fill('input[name="nascimento"]', '1980-05-20')
     await page.fill('input[name="celular"]', '+55 11 99999-9999')
     await page.fill('input[name="cnpj"]', '36955612000185')
     await page.getByRole('button', { name: /salvar/i }).click()

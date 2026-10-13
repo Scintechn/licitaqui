@@ -1,8 +1,8 @@
 # Termos de Uso — LicitaQui
 
-**Minuta v1.3 · 20/09/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Publicado em 21/09/2026; este aviso é metadado de trabalho e é removido na renderização das páginas públicas.
+**Minuta v1.4 · 13/10/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Publicado em 21/09/2026; este aviso é metadado de trabalho e é removido na renderização das páginas públicas.
 
-**Última atualização:** 21/09/2026 · **Vigência:** 21/09/2026
+**Última atualização:** 13/10/2026 · **Vigência:** 13/10/2026
 
 ---
 
@@ -64,7 +64,7 @@ Esta é a cláusula mais importante do contrato para quem entra pelo plano Promo
 1. A **Oferta Fundadores** é limitada a **25 assinantes**, liberados em dois lotes (17 e depois 8), por ordem de contratação, enquanto houver vagas. Se todas as vagas abertas estiverem ocupadas, você entra em uma **lista de espera** e é chamado, na ordem, se abrirmos o lote seguinte. Estar na lista de espera não garante vaga nem preço.
 2. O preço promocional é de **R$ 57,00 por mês durante os 3 (três) primeiros meses**, contados da **primeira cobrança confirmada**. Esse é o período em que o plano Essencial ainda está sendo construído.
 3. **A partir do 4º mês**, a assinatura passa automaticamente a custar **R$ 75,00 por mês**, que é o preço do plano Essencial vigente.
-4. **Avisaremos você com pelo menos 30 (trinta) dias de antecedência** da primeira cobrança de R$ 75,00, por e-mail e, se você tiver autorizado, por WhatsApp. O aviso informará a data e o novo valor.
+4. **Avisaremos você com pelo menos 30 (trinta) dias de antecedência** da primeira cobrança de R$ 75,00, por e-mail e, se você tiver informado um celular com WhatsApp, também por lá. O aviso informará a data e o novo valor.
 5. **Você pode cancelar a qualquer momento, sem custo**, inclusive depois do aviso e antes da primeira cobrança no novo valor. O cancelamento feito antes da data de renovação impede a cobrança seguinte.
 6. A vaga de fundador é **pessoal e intransferível**, vinculada ao CNPJ da assinatura. Se você cancelar, a vaga volta para a oferta e o preço promocional não é restabelecido em uma nova assinatura, salvo se ainda houver vagas e nós concordarmos expressamente.
 7. **Se aumentarmos o preço do plano Essencial durante os 3 meses promocionais**, você continua pagando R$ 57,00 até o fim do período; do 4º mês em diante passa a valer o preço vigente, comunicado no mesmo aviso de 30 dias.
@@ -74,7 +74,7 @@ Esta é a cláusula mais importante do contrato para quem entra pelo plano Promo
 
 - A cobrança é feita pelo **Asaas** (meio de pagamento), por cartão de crédito ou pix, conforme as opções disponíveis no checkout. **Não temos acesso ao número do seu cartão.**
 - A assinatura é **recorrente**: renova automaticamente a cada mês na mesma data, até que você cancele.
-- **Avisamos você por e-mail 3 (três) dias antes de cada cobrança**, informando a data e o valor que será cobrado. Se você tiver conectado WhatsApp ou Telegram, avisamos também por lá.
+- **Avisamos você por e-mail 3 (três) dias antes de cada cobrança**, informando a data e o valor que será cobrado. Se você tiver informado um celular com WhatsApp, avisamos também por lá. O e-mail é o canal oficial: se você pedir para parar de receber as mensagens no WhatsApp, o aviso continua chegando por e-mail.
 - Falha no pagamento: tentaremos novamente e avisaremos você. Se não houver pagamento em **10 (dez) dias corridos** contados do vencimento, o acesso aos recursos pagos é suspenso e a conta volta ao plano Básico. Nada é excluído nesse momento (ver seção 12).
 - Valores são em reais e incluem os tributos aplicáveis. A emissão de documento fiscal segue a legislação vigente.
 
@@ -141,7 +141,7 @@ Alterações relevantes — inclusive de preço — serão comunicadas com **pel
 
 ## 14. Comunicações
 
-Usaremos o e-mail cadastrado, o app e — se você tiver consentido — Telegram e WhatsApp. Avisos contratuais (mudança de preço, suspensão, encerramento) são sempre enviados também por **e-mail**, que é o canal oficial. Mantenha seu e-mail atualizado.
+Usaremos o e-mail cadastrado e o app. **Avisos sobre a sua assinatura — cobrança, atraso, mudança de preço, suspensão e encerramento — são sempre enviados por e-mail, que é o canal oficial, e também pelo WhatsApp que você informou.** Telegram e WhatsApp para alertas de editais e novidades dependem da sua autorização. Mantenha seu e-mail atualizado.
 
 ## 15. Lei aplicável e foro
 
@@ -156,6 +156,7 @@ Antes de qualquer medida judicial, escreva para contato@licitaquiapp.com.br ou c
 | 1.0 | 20/09/2026 | Primeira versão publicada |
 | 1.1 | 21/09/2026 | §7: aviso por e-mail 3 dias antes de cada cobrança |
 | 1.2 | 21/09/2026 | §2 reescrito: o que a ferramenta faz e o que não faz |
+| 1.4 | 13/10/2026 | §6, §7 e §14: o aviso de cobrança vai para o celular que você informou ao assinar, e não depende de autorização separada |
 
 ---
 

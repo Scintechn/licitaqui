@@ -310,7 +310,7 @@ Correct that they cannot be switched off, but the list is short by three: the 3-
 payment-failed notice and the suspension notice are all ours now (brief §2, F4). A user reading
 this will not expect them.
 
-## G. `consent.whatsapp` does not mention billing, and from 17/10 it carries billing — found 2026-10-12
+## ~~G. `consent.whatsapp` does not mention billing, and from 17/10 it carries billing~~ — **resolved 2026-10-13**
 
 `consent.whatsapp` — *"Autorizo a LicitaQui a me enviar mensagens no WhatsApp sobre **a minha vaga
 de fundador e sobre editais**. Posso parar quando quiser respondendo SAIR."*
@@ -425,6 +425,62 @@ ruling — build the per-channel boxes, or delete the three strings.
 Items **C** and **H** are the same list and the same footer being short of this, and the §12 draft
 above is most of what **C** needs.
 
+---
+
+### ✅ Resolved 2026-10-13 — Sci approved the draft and it is in the documents
+
+`termos-de-uso.md` **v1.4** (§6 item 4, §7 and §14) and `politica-de-privacidade.md` **v1.4**
+(§5, §6, §8), plus `faq-cobranca.md`, which the draft above **did not name** and which carried the
+same sentence — left alone it would have had two published documents contradicting each other. That
+one is the only thing extended beyond what Sci read; everything else is the approved wording
+verbatim.
+
+**One wording clarification to my own draft, worth a glance.** §8's operator row read *"Envio dos
+avisos de cobrança e das mensagens de alerta e novidades **a quem autorizou**"*, where the consent
+clause can be read as governing the charge notices too — which §6 says it does not. Reordered to
+*"Envio dos avisos de cobrança e, **para quem autorizou**, das mensagens de alerta e novidades"*, so
+it can only govern the alerts. Same meaning as approved, one reading fewer.
+
+**Two citation corrections, because the draft above has them wrong too.** It says *"terms §7 and
+§12"*; §12 is *"Prazo, suspensão e encerramento"* and did not change — the sentence about *"o canal
+oficial"* lives in **§14**, and the 30-day notice is **§6 item 4**. The mis-citation was inherited
+from three pre-existing copies in `billing.py` and the WhatsApp template, now fixed. And the terms
+history row first called this **1.3** while the header said **1.4**; the header was already one
+ahead of its table before this round.
+
+**The condition is now satisfiable.** §7 said *"se você tiver **conectado** WhatsApp"* and nothing in
+the product could connect; it now reads *"se você tiver **informado um celular com WhatsApp**"*,
+which `/conta/perfil` guarantees for every subscriber.
+
+**In code:** `billing.py`'s `_whatsapp_notices_consented` gate is **removed** — it existed for one
+day, to stop F31 switching the channel on without agreement. The basis is execução de contrato, so
+consent is no longer the question.
+
+**But §6's other promise is not deliverable, and review caught it the same day.** That paragraph
+says a subscriber can stop the WhatsApp copy by replying **SAIR**. They cannot: the opt-out is keyed
+on a `founders_list` id (`RESOLVE_NUMBER_SQL` is `select id from founders_list …`) and **nothing
+enqueues the inbound job** — there is no WhatsApp webhook route at all, so a reply reaches no code.
+After F31 most subscribers are not on that list, so `_opted_out` answers `False` always. This item's
+own resolution note asserted the opposite until now, which is the sentence a reader would have
+trusted.
+
+So the channel is **gated off** rather than shipped with a remedy nobody can use:
+`_optout_is_enforceable` returns `False`, the WhatsApp copy is skipped as `no_optout_path` at
+`warning`, and **the e-mail still goes** — which is what terms §7 actually obliges. **F40** builds
+the inbound route and re-keys the opt-out on the number; the first notice would otherwise fire
+around 14/11. Nothing here asks Sci for a sentence: the wording is right, the code is missing.
+
+**What this does *not* unblock, and the distinction is the whole of F36:** the amendment covers *"o
+WhatsApp que você **informou ao assinar**"*. A number in `founders_list` was typed into the founders
+form under *"o aviso de abertura das vagas"* — not informed at subscribing — so
+`coalesce(u.whatsapp, f.whatsapp)` is **still** the wrong fix and `billing.py` still reads
+`u.whatsapp` bare. **F36 stays blocked**, and what it is blocked on is now a ruling rather than a
+sentence.
+
+**Still open, and untouched by this:** alerts and novidades on WhatsApp rest on consent, per the §6
+wording — so **F37** (three approved consent strings rendering nowhere, describing a per-channel
+model nobody built) is still a ruling Sci owes. Items **C** and **H** are narrowed but not closed.
+
 ## H. The e-mail footer tells a subscriber they can stop receiving a notice they cannot — found 2026-10-12
 
 `partial-footer.md` — *"Você recebe este e-mail porque autorizou o contato quando entrou na **lista de
@@ -450,7 +506,7 @@ The wording is yours (brief §5). The likely answer is a second footer, or one s
 contractual notice from a marketing one; the same resolution would settle item **C**, which is the same list
 being short.
 
-## I. The privacy policy does not cover the date of birth F31 asks for — found 2026-10-12
+## ~~I. The privacy policy does not cover the date of birth F31 asks for~~ — **resolved 2026-10-13**
 
 Sci asked on 2026-10-12 for a simplified profile form: name, **date of birth**, mobile, CNPJ,
 company optional. **One field is not in the policy, and F31 is blocked on it and nothing else** —
@@ -561,6 +617,28 @@ collected. **F32 is parked** — Sci ruled a CNPJ stays required to use the Rada
 for a CPF and `users.cpf` is empty. The draft above names it anyway, which is the safe order
 (disclose, then collect). If you would rather not mention a field nothing collects, drop the CPF
 from §2 and §4(c) and leave §13, and F32 brings it back the day a CPF-only payer appears.
+
+---
+
+### ✅ Resolved 2026-10-13 — Sci approved the draft and it is in the document
+
+`politica-de-privacidade.md` **v1.4**: §2's summary row, §4(c), two new §5 rows (the 18+ purpose,
+which the table had no row for, and the charge notice from item **G**), §6, §8 and §13's CPF
+scoping, plus a §17 history row.
+
+**The field shipped with it**, which is the order this repository wants — disclose, then collect.
+`/conta/perfil` now asks for **name, date of birth, mobile and CNPJ**; `lib/profile/age.ts` applies
+the 18+ rule and nothing else, in the **product's timezone**, because somebody turning 18 today in
+Brasília is still 17 by a UTC clock for three hours of every night.
+
+**The CPF is still not collected** and that is no longer a legal question: **F32**, Sci's ruling that
+a CNPJ stays required, is what stops it. `users.cpf` exists, stays empty, and the schema drops a
+posted `cpf` — asserted, so adding one is a deliberate act.
+
+**One pre-existing inconsistency noticed and left alone:** the policy's header said *v1.3* while
+§17's table stopped at **1.1**, so two amendments (the cookie change among them) were never given
+history rows. Mine is **1.4**; the gap is not filled, because inventing rows for changes I did not
+make would be worse than the gap. Worth one line from Sci if it matters.
 
 ## D. Suspension at 10 days is promised in the contract and mentioned nowhere in the product
 

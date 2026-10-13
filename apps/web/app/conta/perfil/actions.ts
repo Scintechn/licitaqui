@@ -45,6 +45,7 @@ export async function saveProfile(formData: FormData): Promise<void> {
 
   const typed = {
     name: String(formData.get('nome') ?? ''),
+    birthDate: String(formData.get('nascimento') ?? ''),
     mobile: String(formData.get('celular') ?? ''),
     cnpj: String(formData.get('cnpj') ?? ''),
   }
@@ -62,7 +63,12 @@ export async function saveProfile(formData: FormData): Promise<void> {
      * with no error on it at all. Caught by `actions.test.ts`, which asserts
      * the query string this produces against the names the page accepts.
      */
-    const FIELD_NAMES: Record<string, string> = { name: 'nome', mobile: 'celular', cnpj: 'cnpj' }
+    const FIELD_NAMES: Record<string, string> = {
+      name: 'nome',
+      birthDate: 'nascimento',
+      mobile: 'celular',
+      cnpj: 'cnpj',
+    }
     const fields = Object.keys(profileErrors(parsed.error))
       .map((field) => FIELD_NAMES[field] ?? field)
       .join(',')
@@ -88,7 +94,7 @@ export async function saveProfile(formData: FormData): Promise<void> {
     return redirect(withQuery(PROFILE_PATH, `erro=${encodeURIComponent(fields)}`))
   }
 
-  const { name, mobile, cnpj } = parsed.data
+  const { name, birthDate, mobile, cnpj } = parsed.data
 
   try {
     await companyOrLookup(cnpj)
@@ -108,7 +114,7 @@ export async function saveProfile(formData: FormData): Promise<void> {
    * explanation. Either both land or neither does.
    */
   await db().transaction(async (tx) => {
-    await setUserProfile(Number(id), { name, mobile }, tx)
+    await setUserProfile(Number(id), { name, birthDate, mobile }, tx)
     await setUserCnpj(Number(id), cnpj, tx)
   })
 

@@ -36,7 +36,7 @@ Não. A vaga volta para a oferta e o preço promocional não é restabelecido em
 
 **Vou ser cobrado de surpresa?**
 
-Não. **Avisamos por e-mail 3 dias antes de cada cobrança**, com a data e o valor. Se você conectar o WhatsApp ou o Telegram, avisamos também por lá. Dá tempo de conferir, trocar o cartão ou cancelar antes.
+Não. **Avisamos por e-mail 3 dias antes de cada cobrança**, com a data e o valor. Se você tiver informado um celular com WhatsApp, avisamos também por lá. Dá tempo de conferir, trocar o cartão ou cancelar antes.
 
 **E se o meu cartão falhar?**
 

@@ -46,25 +46,24 @@ PAY = f"pay-{RUN_ID}"
 
 
 @pytest.fixture(autouse=True)
-def _whatsapp_consent_granted(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Grant the WhatsApp consent F36 is blocked on, so this file can exercise
-    the rest of the notice. The twin of the fixture in ``test_billing.py``.
+def _optout_enforceable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make a ``SAIR`` honourable, so this file can exercise the rest of the
+    notice. The twin of the fixture in ``test_billing.py``.
 
-    ``billing._whatsapp_notices_consented`` returns ``False`` for everybody — a
-    safety gate added by **F31**, which made ``users.whatsapp`` required and so
-    ended the accident that had kept the channel off (every account's number
-    was null, and ``SKIP_NO_WHATSAPP`` stopped every send). Without this, the
-    WhatsApp assertions here would pass by skipping, which is the worst kind of
-    green: the notice would look tested and nothing would have been checked.
+    ``billing._optout_is_enforceable`` returns ``False`` for everybody — the
+    gate added 2026-10-13 after review found that `politica-de-privacidade.md`
+    §6 promises an opt-out the product cannot hear: it is keyed on a
+    ``founders_list`` id and **nothing enqueues the inbound job**. Card
+    **F40**.
 
-    The gate's own behaviour is asserted in
-    ``test_billing.py::test_the_whatsapp_notice_needs_consent_and_an_opt_out_is_not_consent``,
-    which is the one place it runs unpatched. **This is deliberately not in
-    ``conftest.py``**: that file is shared with every other worker lane and
-    CLAUDE.md says not to edit it when several tasks run in parallel. Two local
-    copies and one place that asserts the real thing beats a shared edit.
+    Without this, the WhatsApp assertions here pass by skipping — which is how
+    this file failed once already: the first version of this round removed the
+    old consent fixture and did not add this one, so
+    ``test_the_whatsapp_copy_reads_the_three_facts_the_lateral_join_adds``
+    expected ``dry_run`` and got ``skipped``. The gate's own behaviour is
+    asserted in ``test_billing.py``, under the ``real_optout_gate`` marker.
     """
-    monkeypatch.setattr(billing, "_whatsapp_notices_consented", lambda conn, user_id: True)
+    monkeypatch.setattr(billing, "_optout_is_enforceable", lambda conn, number: True)
 
 
 @pytest.fixture(autouse=True)

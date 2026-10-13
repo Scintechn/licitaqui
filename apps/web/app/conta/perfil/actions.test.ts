@@ -73,6 +73,7 @@ const form = (fields: Record<string, string>) => {
 
 const VALID = {
   nome: 'Maria Silva',
+  nascimento: '1980-05-20',
   celular: '+55 11 99999-9999',
   cnpj: '36.955.612/0001-85',
 }
@@ -104,6 +105,7 @@ describe('saveProfile (F31)', () => {
     expect(setUserProfile.mock.calls[0]?.[0]).toBe(7)
     expect(setUserProfile.mock.calls[0]?.[1]).toEqual({
       name: 'Maria Silva',
+      birthDate: '1980-05-20',
       mobile: '+5511999999999',
     })
     expect(setUserCnpj).toHaveBeenCalledTimes(1)
@@ -128,13 +130,18 @@ describe('saveProfile (F31)', () => {
    */
   it('names the rejected fields the way the form and the page do', async () => {
     expect(await run({ ...VALID, nome: '' })).toBe(`${PROFILE_PATH}?erro=nome`)
+    expect(await run({ ...VALID, nascimento: '2020-01-01' })).toBe(
+      `${PROFILE_PATH}?erro=nascimento`,
+    )
     expect(await run({ ...VALID, celular: 'x' })).toBe(`${PROFILE_PATH}?erro=celular`)
     expect(await run({ ...VALID, cnpj: '123' })).toBe(`${PROFILE_PATH}?erro=cnpj`)
   })
 
   it('names every rejected field, not just the first', async () => {
-    const to = await run({ nome: '', celular: 'x', cnpj: '' })
-    expect(to).toBe(`${PROFILE_PATH}?erro=${encodeURIComponent('nome,celular,cnpj')}`)
+    const to = await run({ nome: '', nascimento: '', celular: 'x', cnpj: '' })
+    expect(to).toBe(
+      `${PROFILE_PATH}?erro=${encodeURIComponent('nome,nascimento,celular,cnpj')}`,
+    )
   })
 
   it('writes nothing at all when anything is rejected', async () => {
@@ -160,10 +167,12 @@ describe('saveProfile (F31)', () => {
     expect(setUserProfile.mock.calls[0]?.[0]).toBe(7)
   })
 
-  it('does not write a CPF or a birth date even when they are posted', async () => {
-    await run({ ...VALID, cpf: '12345678909', nascimento: '1980-01-01' })
+  /* F32: no form collects a CPF, so nothing here may write `users.cpf`. */
+  it('does not write a CPF even when one is posted', async () => {
+    await run({ ...VALID, cpf: '12345678909' })
     expect(setUserProfile.mock.calls[0]?.[1]).toEqual({
       name: 'Maria Silva',
+      birthDate: '1980-05-20',
       mobile: '+5511999999999',
     })
   })
@@ -181,8 +190,13 @@ describe('saveProfile (F31)', () => {
  * is handed and can never notice. This asserts the carrier.
  */
 describe('saveProfile and what was typed', () => {
-  it('carries all three fields back when one is rejected', async () => {
-    await run({ nome: 'Maria Silva', celular: '11999999999', cnpj: '36.955.612/0001-8' })
+  it('carries every field back when one is rejected', async () => {
+    await run({
+      nome: 'Maria Silva',
+      nascimento: '1980-05-20',
+      celular: '11999999999',
+      cnpj: '36.955.612/0001-8',
+    })
 
     expect(jar.set).toHaveBeenCalledTimes(1)
     const [name, value, options] = jar.set.mock.calls[0] as [string, string, Record<string, unknown>]
@@ -190,11 +204,13 @@ describe('saveProfile and what was typed', () => {
     // Every field, not only the valid ones: the person typed all three.
     expect(JSON.parse(value)).toEqual({
       n: 'Maria Silva',
+      b: '1980-05-20',
       m: '11999999999',
       c: '36.955.612/0001-8',
     })
     expect(decodeDraft(value)).toEqual({
       name: 'Maria Silva',
+      birthDate: '1980-05-20',
       mobile: '11999999999',
       cnpj: '36.955.612/0001-8',
     })
@@ -206,9 +222,10 @@ describe('saveProfile and what was typed', () => {
   })
 
   it('never puts a typed value in the redirect URL', async () => {
-    const to = await run({ nome: 'Maria Silva', celular: '11999999999', cnpj: '123' })
+    const to = await run({ ...VALID, cnpj: '123' })
     expect(to).not.toContain('Maria')
     expect(to).not.toContain('11999999999')
+    expect(to).not.toContain('1980')
     expect(to).toBe(`${PROFILE_PATH}?erro=cnpj`)
   })
 
@@ -227,15 +244,26 @@ describe('saveProfile and what was typed', () => {
 
 describe('decodeDraft', () => {
   it('refuses anything this module did not write', () => {
-    for (const raw of [undefined, '', 'not json', '{}', '[]', 'null', '{"n":"a","m":"b"}', '{"n":1,"m":2,"c":3}']) {
+    for (const raw of [
+      undefined,
+      '',
+      'not json',
+      '{}',
+      '[]',
+      'null',
+      '{"n":"a","m":"b"}',
+      '{"n":"a","b":"c","m":"d"}',
+      '{"n":1,"b":2,"m":3,"c":4}',
+    ]) {
       expect(decodeDraft(raw as string | undefined), JSON.stringify(raw)).toBeNull()
     }
   })
 
   it('caps each field, so a crafted post cannot push a large cookie back', () => {
     const long = 'x'.repeat(500)
-    const draft = decodeDraft(JSON.stringify({ n: long, m: long, c: long }))
+    const draft = decodeDraft(JSON.stringify({ n: long, b: long, m: long, c: long }))
     expect(draft?.name.length).toBe(160)
+    expect(draft?.birthDate.length).toBe(160)
     expect(draft?.mobile.length).toBe(160)
     expect(draft?.cnpj.length).toBe(160)
   })

@@ -46,7 +46,7 @@ export const DRAFT_PATH = '/conta/perfil'
 /** Seconds. Long enough to correct a field, short enough not to be storage. */
 export const DRAFT_MAX_AGE = 120
 
-export type ProfileDraft = { name: string; mobile: string; cnpj: string }
+export type ProfileDraft = { name: string; birthDate: string; mobile: string; cnpj: string }
 
 /**
  * Caps, so a crafted post cannot push a large cookie back at the browser —
@@ -58,21 +58,42 @@ const MAX_FIELD = 160
 const clip = (value: unknown): string => String(value ?? '').slice(0, MAX_FIELD)
 
 export function encodeDraft(draft: ProfileDraft): string {
-  return JSON.stringify({ n: clip(draft.name), m: clip(draft.mobile), c: clip(draft.cnpj) })
+  return JSON.stringify({
+    n: clip(draft.name),
+    b: clip(draft.birthDate),
+    m: clip(draft.mobile),
+    c: clip(draft.cnpj),
+  })
 }
 
-/** `null` for anything that is not a draft this module wrote. */
+/**
+ * `null` for anything that is not a draft this module wrote.
+ *
+ * **Adding a field invalidates cookies written by the previous deploy**, which
+ * is intended: the birth date arrived in the same change, and a three-key
+ * draft from the version before it would fill three fields from the cookie and
+ * the fourth from the database. One person mid-correction at deploy time loses
+ * their typed values once, inside `DRAFT_MAX_AGE`, which is 120 seconds — and
+ * then the form is pre-filled from the account as it always was.
+ */
 export function decodeDraft(raw: string | undefined): ProfileDraft | null {
   if (!raw) return null
   try {
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return null
-    const { n, m, c } = parsed as Record<string, unknown>
-    // All three keys or none: a half-decoded draft would fill some fields from
-    // the cookie and the rest from the database, which is the confusing state
-    // this module exists to avoid.
-    if (typeof n !== 'string' || typeof m !== 'string' || typeof c !== 'string') return null
-    return { name: clip(n), mobile: clip(m), cnpj: clip(c) }
+    const { n, b, m, c } = parsed as Record<string, unknown>
+    // Every key or none: a half-decoded draft would fill some fields from the
+    // cookie and the rest from the database, which is the confusing state this
+    // module exists to avoid.
+    if (
+      typeof n !== 'string' ||
+      typeof b !== 'string' ||
+      typeof m !== 'string' ||
+      typeof c !== 'string'
+    ) {
+      return null
+    }
+    return { name: clip(n), birthDate: clip(b), mobile: clip(m), cnpj: clip(c) }
   } catch {
     // Not JSON. Somebody else's cookie, or a truncated one.
     return null

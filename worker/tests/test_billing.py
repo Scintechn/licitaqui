@@ -31,32 +31,23 @@ _TMP: Path | None = None
 
 
 @pytest.fixture(autouse=True)
-def _whatsapp_consent_granted(
-    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Grant the WhatsApp consent F36 is blocked on, so this file can test the
-    rest of the notice.
+def _optout_enforceable(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make a ``SAIR`` honourable, so this file can test the rest of the notice.
 
-    ``billing._whatsapp_notices_consented`` returns ``False`` for everybody
-    today — a safety gate added by **F31**, which made ``users.whatsapp``
-    required and so ended the accident that had been keeping the channel off
-    (every account's number was null, and ``SKIP_NO_WHATSAPP`` stopped every
-    send). Without this fixture all eleven tests below would pass by skipping,
-    which is the worst kind of green: the notice would look tested and the
-    assertions would never run.
+    ``billing._optout_is_enforceable`` returns ``False`` for everybody today —
+    the gate added 2026-10-13 after review found that the policy promises an
+    opt-out the product cannot hear: the opt-out is keyed on a ``founders_list``
+    id, and **nothing enqueues the inbound job** that would record one. Card
+    **F40**.
 
-    **Autouse, with one deliberate exception**:
-    :func:`test_the_whatsapp_notice_needs_consent_and_an_opt_out_is_not_consent`
-    turns it back off and is the only test that asserts the gate's real
-    behaviour. When the consent column lands, this fixture is what should start
-    writing a row instead of patching a function.
+    Without this fixture every WhatsApp assertion below would pass by skipping,
+    which is the worst kind of green. The gate's own behaviour is asserted by
+    :func:`test_a_number_whose_sair_could_not_be_heard_is_not_messaged`, which
+    carries the marker and drives the real path.
     """
-    if request.node.get_closest_marker("no_whatsapp_consent") is not None:
-        # The one test that asserts the shipped gate. A marker rather than
-        # `monkeypatch.undo()`, which shares this test's instance and would
-        # also undo `_synthetic_root`'s patches.
+    if request.node.get_closest_marker("real_optout_gate") is not None:
         return
-    monkeypatch.setattr(billing, "_whatsapp_notices_consented", lambda conn, user_id: True)
+    monkeypatch.setattr(billing, "_optout_is_enforceable", lambda conn, number: True)
 
 
 @pytest.fixture(autouse=True)
@@ -702,10 +693,20 @@ def test_a_recorded_sair_suppresses_the_whatsapp_copy_and_not_the_e_mail() -> No
 
 
 def test_a_number_that_is_on_no_founders_row_has_not_opted_out() -> None:
-    """A subscriber who was never on the founders list resolves to nothing.
-    That is *"no opt-out recorded"*, which is the correct answer rather than a
-    missing one — `memory: empty-result-is-not-absence` cuts the other way
-    here, and the query is a lookup by number rather than a walk."""
+    """A subscriber who was never on the founders list resolves to nothing, so
+    ``_opted_out`` answers *"no opt-out recorded"*.
+
+    **That answer was load-bearing and should not have been**, which review
+    found on 2026-10-13. This test asserted ``"sent"`` with no gate in front of
+    it, and its docstring called the ``None`` *"the correct answer rather than a
+    missing one"* — true of the lookup, and the wrong thing to build a send on:
+    after F31 most subscribers are not on the founders list, so the answer was
+    *always* no and nothing could ever stop the channel.
+
+    It still asserts ``"sent"``, but only because ``_optout_enforceable``
+    grants what :func:`_optout_is_enforceable` withholds. The honest version of
+    this case is the test below.
+    """
     conn = _FakeConn(founder=None, opted_out=True)
     assert _notice(conn, _StubEvolution()) == "sent"
 
@@ -1020,30 +1021,40 @@ def test_the_founders_join_cannot_multiply_a_charge() -> None:
         assert "join founders_list" not in statement.replace("left join founders_list", "")
 
 
-@pytest.mark.no_whatsapp_consent
-def test_the_whatsapp_notice_needs_consent_and_an_opt_out_is_not_consent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """**F31/F36.** Nobody is messaged about money without having agreed to it.
+@pytest.mark.real_optout_gate
+def test_a_number_whose_sair_could_not_be_heard_is_not_messaged() -> None:
+    """**F31/F40.** The policy promises an opt-out; the notice waits for one.
 
-    The gate this asserts is the one `_whatsapp_consent_granted` switches off
-    for every other test in this file, so this is the only place the shipped
-    behaviour is exercised. It is a real gate rather than a column that happens
-    to be empty, which is what it replaced: until F31 every account's
-    ``users.whatsapp`` was null, so the channel was off **by accident**, and
-    F31 makes a mobile required before anybody can subscribe.
+    This drives the real :func:`send_charge_notice_whatsapp` with the shipped
+    gate — no patch — which is the correction to the first version of this
+    test: that one monkeypatched ``_opted_out`` and then asserted the
+    monkeypatch, calling neither ``send_charge_notice_whatsapp`` nor ``send``.
+    Review caught it, and a mutation proved it: replacing ``_opted_out``'s body
+    with ``return False`` left it passing.
 
-    The distinction being asserted is `_opted_out` versus consent. That
-    function answers *"did they reply SAIR?"*, and the opt-out is recorded
-    against a ``founders_list`` id — so a subscriber who was never on the
-    founders list resolves to nothing, has never opted out, and would pass it.
-    Every new subscriber is that person. Absence of refusal is not agreement.
+    What it pins is the shape of the refusal, which is the part that matters:
+    the **WhatsApp copy is withheld** and recorded with a reason, and nothing
+    is sent to the client. The e-mail is untouched — it is sent by ``send``
+    before this function is reached at all, which is what makes policy §6's
+    *"eles continuam chegando por e-mail"* true.
     """
-    # Nothing is patched here: the shipped function is what is under test.
-    assert billing._whatsapp_notices_consented(None, 7) is False  # type: ignore[arg-type]
+    conn = _FakeConn(founder=None)
+    client = _StubEvolution()
 
-    # And it is checked *after* the opt-out, so the two are independent rather
-    # than one standing in for the other.
-    monkeypatch.setattr(billing, "_opted_out", lambda conn, number: False)
-    assert billing.SKIP_NO_CONSENT == "no_consent"
-    assert billing.SKIP_NO_CONSENT != billing.SKIP_OPTED_OUT
+    assert _notice(conn, client) == "skipped"
+    # Nothing reached Evolution: a promise we cannot keep is not sent.
+    assert client.calls == []
+    assert conn.named("whatsapp.skipped")[0]["reason"] == billing.SKIP_NO_OPTOUT_PATH
+
+
+@pytest.mark.real_optout_gate
+def test_the_opt_out_gate_is_distinct_from_having_opted_out() -> None:
+    """Two different outcomes, because they are two different facts: one person
+    asked us to stop, the other could not have asked at all. A single reason
+    for both would make the sweep unable to tell a working channel from a
+    broken one."""
+    assert billing.SKIP_NO_OPTOUT_PATH == "no_optout_path"
+    assert billing.SKIP_NO_OPTOUT_PATH != billing.SKIP_OPTED_OUT
+    # The basis for this message is the contract, so no consent gate survives.
+    assert not hasattr(billing, "_whatsapp_notices_consented")
+    assert not hasattr(billing, "SKIP_NO_CONSENT")

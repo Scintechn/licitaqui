@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { normaliseCnpj } from '@/lib/cnpj'
+import { parseBirthDate } from './age'
 import { parseMobile } from './phone'
 
 /**
@@ -10,15 +11,22 @@ import { parseMobile } from './phone'
  * simplify form"*, and the gate goes **before subscribing** rather than across
  * the app, so the free Radar stays frictionless.
  *
- * ## Two of the fields Sci asked for are not here
+ * ## One of the fields Sci asked for is not here
  *
- * **`birth_date` and `cpf` are deliberately absent.** The columns exist
- * (`0016_profile_identity.sql`, applied) and nothing writes them, because
- * `docs/legal/politica-de-privacidade.md` does not say we collect either one.
- * Collecting an undisclosed personal datum is an LGPD problem and the wording
- * is Sci's (legal brief §5) — `docs/TO_VALIDATE.md` **I** is the request. This
- * schema is the half that the policy as it stands already covers, so the form
- * ships and gains two fields later rather than waiting on a sentence.
+ * **`cpf` is absent, and `birth_date` is not** — this docblock said both were
+ * absent until 2026-10-13, which review caught as one file stating the
+ * opposite of the schema sixty lines below it.
+ *
+ * The date of birth arrived with the policy: Sci approved the amendment and
+ * `politica-de-privacidade.md` **v1.4** names it in §2 and §4(c) and declares
+ * the 18+ purpose in §5. Disclose, then collect. `./age.ts` applies that one
+ * rule and nothing else, which is what data minimisation requires of it.
+ *
+ * The **CPF** is still not collected, and no longer for a legal reason — v1.4
+ * names it too. What stops it is **F32**, Sci's own ruling that a CNPJ stays
+ * required to use the Radar, which leaves a CPF satisfying only Asaas.
+ * `users.cpf` exists and stays empty, and this schema drops a posted `cpf`
+ * (asserted), so F32 and not a stray caller is what starts writing it.
  *
  * ## Why the CNPJ is required and the CPF is not the alternative
  *
@@ -40,6 +48,7 @@ import { parseMobile } from './phone'
  */
 export const PROFILE_ERRORS = {
   name: 'nameRequired',
+  birthDate: 'birthDateInvalid',
   mobile: 'mobileInvalid',
   cnpj: 'cnpjInvalid',
 } as const
@@ -69,6 +78,22 @@ export const profileInput = z.object({
     // A name of punctuation passes a length check. At least one letter —
     // Unicode, because `José` and `Ngô` are names and `\w` is not enough.
     .refine((value) => /\p{L}/u.test(value), { message: PROFILE_ERRORS.name }),
+
+  /**
+   * **Collected only to apply the 18+ rule**, which `politica-de-privacidade.md`
+   * §4 states and §5 declares as a purpose with a legal basis from v1.4
+   * (13/10/2026). That amendment is what unblocked this field: before it, the
+   * policy named no date of birth anywhere, so collecting one was an
+   * undisclosed personal datum. See `./age.ts`, including why the age is
+   * computed in the product's timezone.
+   */
+  birthDate: z
+    .string({ error: PROFILE_ERRORS.birthDate })
+    .transform((value) => parseBirthDate(value))
+    .refine((value): value is NonNullable<typeof value> => value !== null, {
+      message: PROFILE_ERRORS.birthDate,
+    })
+    .transform((value) => value.iso),
 
   /** E.164. See `./phone.ts` for why the `+` is read before anything else. */
   mobile: z
