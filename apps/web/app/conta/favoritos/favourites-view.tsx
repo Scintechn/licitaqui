@@ -112,12 +112,12 @@ export function FavouritesView({
           </div>
         </nav>
         <div className="pb-3 pt-3">
-          <details key={sortOrder} className="group/sort inline-block">
+          <details key={sortOrder} className="group/sort relative inline-block">
             <summary className={cn('flex min-h-touch cursor-pointer list-none items-center gap-1 text-body text-muted', 'whitespace-nowrap [&::-webkit-details-marker]:hidden')}>
               <span>Ordenar: {SORT_OPTIONS.find((o) => o.value === sortOrder)?.label.split('(')[0].trim()}</span>
               <Icon name="chevronRight" size={16} className="transition-transform group-open/sort:rotate-90" />
             </summary>
-            <ul className="absolute left-gutter z-20 mt-1 w-max rounded-control border border-line-strong bg-surface py-1">
+            <ul className="absolute right-0 z-20 mt-1 w-max rounded-control border border-line-strong bg-surface py-1">
               {SORT_OPTIONS.map((opt) => (
                 <li key={opt.value}>
                   <button
