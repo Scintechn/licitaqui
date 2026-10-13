@@ -47,6 +47,23 @@ guards is not *"has Sci written it yet"* but *"can this render a whole
 e-mail"*, and the answer can go back to no — a renamed placeholder, a footer
 that grows a fourth one, a file moved in a refactor.
 
+## Three notices since F41, and one table that says which is which
+
+This module was the charge reminder. Terms §14 names **five** notices — a
+cobrança, o atraso, a mudança de preço, a suspensão e o encerramento — and on
+2026-10-13 it could send one of them. It now sends three: the reminder, the
+`payment-failed` notice (`overdue_notice`, daily, over the charges Asaas has
+called late) and the `subscription-ended` notice (inside
+`expire_subscriptions`, the day after `ends_on`). The price change is **F3**;
+the suspension is **F42**, because no code writes the state it announces.
+
+:data:`NOTICES` is the one place that says, per notice, which template it is,
+which `billing_reminders.kind` makes it once-only, which subscription statuses
+it is still *true* for, and whether it has a WhatsApp copy at all. The point of
+the table is that `send()` is shared: without it those four facts would be
+chosen in four different places, which is how two of §14's notices came to be
+named in a card marked `done` with nothing joining them up.
+
 ## **Two channels, and only one of them is promised**
 
 Terms §7: *"Avisamos você **por e-mail** 3 (três) dias antes de cada cobrança,
@@ -102,7 +119,7 @@ from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, timedelta
 from logging import Logger
-from typing import Any
+from typing import Any, Final
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -118,18 +135,39 @@ from .resend import ResendClient, ResendError
 
 #: The daily sweeps, enqueued by `scheduler.py`, and the per-subscriber send.
 REMINDER_SWEEP_KIND = "charge_reminder"
+#: The overdue sweep (F41): terms §7's *"tentaremos novamente e avisaremos
+#: você"*. Separate from the reminder because it answers a different question —
+#: that one asks which charges fall due in three days, this one which charges
+#: have already passed their due date unpaid — and because one of them failing
+#: must not take the other's cohort with it.
+OVERDUE_KIND = "overdue_notice"
 EXPIRE_KIND = "expire_subscriptions"
 SEND_KIND = "send_billing_email"
 
-#: `billing_reminders.kind`. The other two values the column allows —
-#: `payment_failed` and `suspension` — are the rest of F4 and nothing writes
-#: them; see the card, not this comment.
+#: `billing_reminders.kind` — *"one message about one charge, at most once"*,
+#: which is what the table's primary key spells. `0015` named the first three
+#: of these; `ended` is the fourth and is keyed on `ends_on` rather than on a
+#: charge, which is the same shape (one date, one message) under a different
+#: name. **`0015` is not edited to say so** — it was applied to the shared test
+#: database on 2026-10-08 and editing it there is B46 — so this is where the
+#: fourth value is written down.
 REMINDER_ROW_KIND = "charge_reminder"
+FAILED_ROW_KIND = "payment_failed"
+SUSPENDED_ROW_KIND = "suspension"
+ENDED_ROW_KIND = "ended"
 
 #: The reminder's copy, approved by Sci on 2026-10-12.
 #: `worker/templates/email/charge-reminder.md`, and the WhatsApp copy of the
 #: same notice under the same id in `worker/templates/whatsapp/`.
 REMINDER_TEMPLATE = "charge-reminder"
+
+#: The three notices terms §14 names and nothing sent before F41. All three
+#: are `status: draft` with an unresolved `TODO(Sci):`, which is what stops
+#: them going out over unapproved copy: `template_ready()` is false, the sweep
+#: refuses **before claiming anything**, and the reason reaches `events`.
+FAILED_TEMPLATE = "payment-failed"
+SUSPENDED_TEMPLATE = "subscription-suspended"
+ENDED_TEMPLATE = "subscription-ended"
 
 #: The button's label, as it was sent to Sci's handset and approved on
 #: 2026-10-12. One button, `type: "url"`, to the Asaas invoice — see
@@ -156,6 +194,10 @@ EVENT_REMINDER_QUEUED = "billing.reminder_queued"
 #: claimed for them, and this is the loud half of that. See **F29**.
 EVENT_REMINDER_UNRENDERABLE = "billing.reminder_unrenderable"
 EVENT_EXPIRED = "billing.expired"
+#: The overdue sweep's own counters, under their own names so a dashboard can
+#: tell *"nobody is late"* from *"the late notice is blocked"*.
+EVENT_OVERDUE_QUEUED = "billing.overdue_queued"
+EVENT_ENDED_QUEUED = "billing.ended_queued"
 
 #: **The counter that makes a silent degradation visible.** One row per message
 #: that went out as plain text because Evolution refused the button payload —
@@ -185,6 +227,12 @@ SKIP_EMAIL_NOT_SENT = "email_not_sent"
 #: `events.props`, and a dashboard groups by them.
 SKIP_NO_SUBSCRIPTION = "no_subscription"
 SKIP_CANCELLED = "cancelled"
+#: **The status moved between the sweep and the send, and the notice is no
+#: longer true.** The one that matters is the payment-failed notice: somebody
+#: who paid in those minutes is `active` again, and telling them their payment
+#: failed is the worst message in this module. Distinct from `cancelled`, which
+#: is the same mechanism with the one reason spec §10 names outright.
+SKIP_STATUS_MOVED = "status_moved"
 SKIP_NO_EMAIL = "no_email"
 SKIP_TEMPLATE_BLOCKED = "template_blocked"
 
@@ -266,6 +314,12 @@ select s.asaas_subscription_id,
        -- the last event wins and it may be the older charge. Hence
        -- `payable_charges` below. **F28** stores the per-charge URL.
        s.checkout_url,
+       -- `{{data_encerramento}}`: the last day the paid plan was kept, which
+       -- terms §8 defines and `lastPaidDay()` in `lib/asaas/subscription.ts`
+       -- computes. Null for every live subscription, and only the encerramento
+       -- notice declares the placeholder — so a null cannot reach a render
+       -- that needs it (F41).
+       s.ends_on,
        u.email,
        -- `users.name` is nullable; the founders list holds the name they
        -- typed, under the same e-mail. See `DUE_SQL`, and **F29**.
@@ -333,6 +387,110 @@ select exists (
 )
 """
 
+#: **The charges that have already passed their due date unpaid** — terms §7's
+#: *"Falha no pagamento: tentaremos novamente e avisaremos você"*.
+#:
+#: **The first version of this query could not have messaged anybody on 17/10,
+#: and the tests passed.** It read ``status = 'overdue'``, on the stated
+#: grounds that the status is *"Asaas's own judgement"*. The grounds were half
+#: true and the half that is missing is the whole cohort: `'overdue'` is
+#: written in exactly one place in the repository —
+#: `lib/asaas/entitlement.ts:292` — and only ``if (event.event ===
+#: 'PAYMENT_OVERDUE' && row.status === 'active')``, while
+#: `upsertSubscription` creates **every** row `pending`. So a founder who
+#: subscribes by pix and never pays stays `pending` for ever: the webhook
+#: arrives, the guard refuses it, and the sweep reports `due = 0` and looks
+#: healthy. On opening day a never-paid pix subscription is the *only*
+#: population there is. The same latch bites again from month two — the grant
+#: path sets `active` on any non-cancelled row, so paying an older charge hides
+#: a newer one that is already past due.
+#:
+#: Found by review (§4b), and the integration fixtures could not have found it:
+#: they write `status` into the row by hand, so every one of them asserted
+#: against a state no production path reaches.
+#:
+#: So **the charge is the judgement, not the subscription**. What is left:
+#:
+#: - ``status`` is every status a subscriber with an unpaid charge can hold
+#:   (:data:`NOTICES`) — `pending` included — and excludes only `canceled` and
+#:   the state F42 will write.
+#: - ``next_charge_on`` is in the **past** at the product's clock. The column is
+#:   the earliest unsettled due date (`refreshNextCharge`), so this is that
+#:   charge's vencimento, and it is what the message names.
+#: - the charge at that date is **still payable** in Asaas's own vocabulary.
+#:   This is now the predicate that carries the meaning: it is per charge, it
+#:   is Asaas's word for it, and it is re-read at send time as well
+#:   (`Notice.payable_charge`), because the minutes in between are when
+#:   somebody pays.
+#:
+#: No `left join founders_list` and no `coalesce(u.name, …)`: the row this
+#: returns is a *candidate*, and the message is rendered from
+#: :func:`_notice_row`, which is the one definition of a notice's context.
+OVERDUE_SQL = """
+select s.asaas_subscription_id,
+       s.user_id,
+       s.next_charge_on
+  from subscriptions s
+ where s.status = any(%(statuses)s)
+   and s.ends_on is null
+   and s.next_charge_on < (now() at time zone 'America/Sao_Paulo')::date
+   and exists (
+         select 1
+           from subscription_payments p
+          where p.asaas_subscription_id = s.asaas_subscription_id
+            and p.due_on = s.next_charge_on
+            and p.status = any(%(payable)s)
+       )
+ order by s.asaas_subscription_id
+"""
+
+#: **The subscriptions whose paid period has actually run out** — terms §14's
+#: *encerramento*, the fifth notice and the one no card had before F41.
+#:
+#: Deliberately **not** the moment somebody cancels: terms §8 keeps the paid
+#: plan until ``ends_on`` and the plan screen already confirms the cancellation
+#: on the spot, so *"sua assinatura foi encerrada"* on cancellation day would
+#: be false for up to a month.
+#:
+#: **The seven-day window is a backstop, not a schedule.** The claim in
+#: `billing_reminders` is what makes this once-only; the window is what stops
+#: the first run after deploy mailing every subscription that ever ended. That
+#: set is empty today — E8 measured `select count(*) from subscriptions` = 0 on
+#: 2026-10-05 — and this is what makes it safe the day it is not. The cost is
+#: that an outage longer than a week loses the notice rather than sending a
+#: stale one, which is the right way round for a message with a date in it.
+ENDED_NOTICE_DAYS: Final = 7
+
+ENDED_SQL = """
+select s.asaas_subscription_id,
+       s.user_id,
+       s.ends_on
+  from subscriptions s
+ where s.status = any(%(statuses)s)
+   and s.ends_on is not null
+   and s.ends_on < (now() at time zone 'America/Sao_Paulo')::date
+   and s.ends_on >= (now() at time zone 'America/Sao_Paulo')::date
+                    - make_interval(days => %(days)s)
+   -- **The guard `EXPIRE_SQL` already spells, and for the same reason.**
+   -- `0015`'s unique index scopes "one live subscription" to the four live
+   -- statuses, so a `canceled` row and a new live row coexist by design —
+   -- somebody who cancelled and subscribed again. `expire()` knows not to
+   -- downgrade them; without this the *notice* would still go, and it would
+   -- tell a paying subscriber that their subscription had ended and that they
+   -- were on the free plan. Both sentences false, the second contradicting
+   -- `users.plan`, which `expire()` deliberately left alone. Found by review;
+   -- the fixtures could not find it because each one inserts its own user, so
+   -- no test in the file had two subscriptions on one account.
+   and not exists (
+         select 1
+           from subscriptions live
+          where live.user_id = s.user_id
+            and live.asaas_subscription_id <> s.asaas_subscription_id
+            and live.status in ('pending', 'active', 'overdue', 'suspended')
+       )
+ order by s.asaas_subscription_id
+"""
+
 #: The downgrade. Scoped to accounts with **no other** live subscription, so
 #: somebody who cancelled and subscribed again is not dropped to Básico by the
 #: expiry of the row they replaced.
@@ -386,6 +544,231 @@ class Delivery:
     whatsapp: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class Notice:
+    """One billing notice: its copy, its once-ness key, and when it is true.
+
+    ``statuses`` is the question *"is this message still true for this
+    subscriber?"*, asked again at send time rather than trusted from the sweep.
+    The reminder has always done this for `canceled` (spec §10), and
+    generalising it is what makes the other notices safe: the minutes between
+    the sweep and the send are exactly when somebody pays, and a
+    *"não recebemos o pagamento"* that arrives after their money did is the
+    worst message this module could produce.
+    """
+
+    template: str
+    kind: str
+    statuses: tuple[str, ...]
+    #: Whether this notice has an additive WhatsApp copy at all.
+    #:
+    #: **Found by writing the test, not by reading the code.** `send()` handed
+    #: *every* notice to :func:`send_charge_notice_whatsapp`, which loads
+    #: ``whatsapp/<template>.md`` — and only the reminder has one. The load is
+    #: inside a ``try``, so the job would not have failed: it would have
+    #: recorded a `whatsapp.failed` with `template_blocked` for every overdue
+    #: notice, for ever, on the one counter that exists to make a silent
+    #: WhatsApp degradation visible (`rpatinacao`, 2026-06-09).
+    #:
+    #: Sci, 2026-10-13, asked for the payment notice on both channels, and for
+    #: this notice that is sharper than the §7 scoping it overrides: a **card**
+    #: subscriber whose charge failed has to act too, so *"a card charges
+    #: itself"* — the reason the reminder is pix-only — is exactly false here.
+    whatsapp: bool = False
+    #: Whether the WhatsApp copy is for **pix only**.
+    #:
+    #: True for the reminder: three days before a charge, a card subscriber has
+    #: nothing to do. False for the payment-failed notice, where everybody does.
+    whatsapp_pix_only: bool = True
+    #: Whether the charge at ``next_charge_on`` must still be **payable** at
+    #: send time for this notice to be true.
+    #:
+    #: **The subscription's status cannot answer that any more, and that is why
+    #: this exists.** Until review, `payment-failed` was gated on
+    #: `status = 'overdue'`, which looked like proof the money had not arrived.
+    #: It was not even reachable (see :data:`OVERDUE_SQL`), and widening the
+    #: statuses to the ones a late subscriber actually holds — `pending`
+    #: included — removes the last of that illusion: a `pending` row says
+    #: nothing about any charge. The charge itself does, in Asaas's own
+    #: vocabulary, so it is re-read in `send()` the way the reminder re-reads
+    #: the cancel.
+    payable_charge: bool = False
+
+
+#: Every notice this module can send, by template id.
+#:
+#: **One row per notice rather than a branch per notice.** `send()` is shared,
+#: so without this the status gate, the `billing_reminders.kind` and the
+#: template id would be chosen in three different places — and F41 exists
+#: because two of §14's five notices had been *named* in a closed card while
+#: nothing joined them up.
+#:
+#: `subscription-suspended` is **absent on purpose**: nothing writes the state
+#: it announces (**F42**), so there is no status it would be true for. It is a
+#: drafted template with no sender, which CLAUDE.md allows only with a card —
+#: that card.
+NOTICES: Final[dict[str, Notice]] = {
+    REMINDER_TEMPLATE: Notice(REMINDER_TEMPLATE, REMINDER_ROW_KIND, REMINDABLE, whatsapp=True),
+    # **Every status a subscriber with an unpaid charge can actually hold**, and
+    # the list is this long because of a defect review found rather than by
+    # design — see :data:`OVERDUE_SQL`. `canceled` is excluded (nothing is owed
+    # on a subscription that ended) and `suspended` is excluded because F42's
+    # own notice replaces this one at that point.
+    FAILED_TEMPLATE: Notice(
+        FAILED_TEMPLATE,
+        FAILED_ROW_KIND,
+        ("pending", "active", "overdue"),
+        whatsapp=True,
+        whatsapp_pix_only=False,
+        payable_charge=True,
+    ),
+    # `canceled` is the only status an ended subscription has: `expire()` and
+    # this notice read the same row, one day after `ends_on`.
+    ENDED_TEMPLATE: Notice(ENDED_TEMPLATE, ENDED_ROW_KIND, ("canceled",)),
+}
+
+
+def _overdue_params() -> dict[str, Any]:
+    """:data:`OVERDUE_SQL`'s parameters, so the sweep and the send cannot
+    disagree about who is late.
+
+    ``statuses`` is the notice's **own** allow-list rather than a literal
+    ``'overdue'`` repeated here: `send()` re-reads it to decide whether the
+    message is still true, and two copies of that fact is how a sweep queues a
+    notice its own sender then refuses.
+
+    ``payable`` is :func:`whatsapp_payable_statuses`, whose name is narrower
+    than its content. Reusing it is not a convenience — it is **required**:
+    `refreshNextCharge` in `lib/asaas/entitlement.ts` computes
+    ``next_charge_on`` as ``min(due_on)`` over exactly that allow-list
+    (``AWAITING``), so a sweep reading that column with a *different* notion of
+    "still owed" would be looking for a charge the column does not track.
+    `test_billing.py` already asserts the Python and TypeScript spellings agree.
+    """
+    return {
+        "statuses": list(NOTICES[FAILED_TEMPLATE].statuses),
+        "payable": sorted(whatsapp_payable_statuses()),
+    }
+
+
+def _ended_params() -> dict[str, Any]:
+    """:data:`ENDED_SQL`'s parameters. Same reasoning as above for the status."""
+    return {
+        "statuses": list(NOTICES[ENDED_TEMPLATE].statuses),
+        "days": ENDED_NOTICE_DAYS,
+    }
+
+
+def notice_for(template: str) -> Notice:
+    """The notice this template is, or a loud failure.
+
+    A payload naming a template we do not know is **our** bug — a stale job row
+    or a typo in a sweep — so it raises rather than falling back to the
+    reminder's gate, which would send one notice's copy under another's rules.
+    """
+    try:
+        return NOTICES[template]
+    except KeyError:
+        raise ValueError(f"no billing notice is defined for template '{template}'") from None
+
+
+def _notice_row(
+    conn: psycopg.Connection, *, user_id: int, subscription_id: str
+) -> dict[str, Any] | None:
+    """The one row every billing notice is rendered from, or ``None``.
+
+    Factored out of :func:`send` by F41 so a sweep can ask *"could this
+    subscriber's message be filled in?"* from exactly the row the sender will
+    use. The alternative — each sweep selecting its own candidate shape — is
+    how a notice passes its pre-flight and then fails to render, which is the
+    failure `template_ready()`'s docstring is written against.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            REMINDER_ROW_SQL,
+            {
+                "user_id": user_id,
+                "subscription": subscription_id,
+                "payable": sorted(whatsapp_payable_statuses()),
+            },
+        )
+        row = cur.fetchone()
+        columns = [column.name for column in cur.description or ()]
+    return None if row is None else dict(zip(columns, row, strict=True))
+
+
+def _queue_notice(
+    conn: psycopg.Connection,
+    *,
+    notice: Notice,
+    user_id: int,
+    subscription: str,
+    due_on: str,
+    key: str,
+    log: Logger,
+    priority: int = 4,
+) -> str:
+    """Claim one notice and enqueue its send. ``"queued"`` or ``"claimed"``.
+
+    **The claim is committed before the enqueue, so a failed enqueue has to
+    give it back.** ``ctx.conn`` is autocommit (`registry.py`), so the row is
+    already durable; if ``queue.enqueue`` raises, the primary key makes the
+    next sweep skip this charge and it arrives with no warning — the exact
+    outcome this module exists to prevent. ``RELEASE_REMINDER_SQL`` was written
+    for this and was called from nowhere until review said so.
+
+    ``"claimed"`` means another run already holds the row: the notice exists,
+    this caller did not create it. A dedupe inside ``queue.enqueue`` is
+    ``"queued"`` instead — the claim was ours and a live job for the pair is
+    already there, so the row is the record of this notice either way.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            CLAIM_REMINDER_SQL,
+            {"subscription": subscription, "due_on": due_on, "kind": notice.kind},
+        )
+        claimed = cur.fetchone() is not None
+    if not claimed:
+        return "claimed"
+
+    try:
+        job_id = queue.enqueue(
+            conn,
+            SEND_KIND,
+            key,
+            priority=priority,
+            payload={
+                "template": notice.template,
+                "user_id": user_id,
+                "subscription": subscription,
+                "due_on": due_on,
+            },
+        )
+    except Exception:
+        with conn.cursor() as cur:
+            cur.execute(
+                RELEASE_REMINDER_SQL,
+                {"subscription": subscription, "due_on": due_on, "kind": notice.kind},
+            )
+        log.exception(
+            "billing notice could not be enqueued; claim released",
+            extra={"template": notice.template, "subscription": subscription, "due_on": due_on},
+        )
+        raise
+    if job_id is not None:
+        with conn.cursor() as cur:
+            cur.execute(
+                ATTACH_JOB_SQL,
+                {
+                    "job_id": job_id,
+                    "subscription": subscription,
+                    "due_on": due_on,
+                    "kind": notice.kind,
+                },
+            )
+    return "queued"
+
+
 def default_client() -> ResendClient:
     """A seam, so a test can replace the transport. Resolves no credentials."""
     return ResendClient()
@@ -399,6 +782,26 @@ def reminder_job_key(subscription_id: str, due_on: str) -> str:
     too, behind the primary key that already stopped it.
     """
     return f"reminder:{subscription_id}:{due_on}"
+
+
+def notice_job_key(kind: str, subscription_id: str, due_on: str) -> str:
+    """One send per (notice, subscription, date).
+
+    **The notice kind has to be in the key.** `jobs_dedupe` is unique on
+    ``(kind, key)`` and every notice is enqueued under the same *job* kind,
+    ``send_billing_email`` — so without it the overdue notice for a charge
+    would dedupe against that charge's reminder, which was queued three days
+    earlier for the same pair, and the second message would silently never
+    exist.
+
+    The reminder keeps :func:`reminder_job_key`'s older spelling rather than
+    being folded in here, and that is not a style the next notice should copy:
+    `tests/test_integration_billing.py` deletes its fixtures with ``key like
+    'reminder:…'`` against the **shared** test database, so renaming it would
+    leave rows nothing cleans up — the per-run isolation rule in CLAUDE.md,
+    seen from the other side.
+    """
+    return f"{kind}:{subscription_id}:{due_on}"
 
 
 # -- the reminder sweep -------------------------------------------------------
@@ -484,68 +887,24 @@ def sweep(conn: psycopg.Connection, *, log: Logger | None = None) -> Sweep:
             unrenderable += 1
             continue
 
-        with conn.cursor() as cur:
-            cur.execute(
-                CLAIM_REMINDER_SQL,
-                {"subscription": subscription, "due_on": due_on, "kind": REMINDER_ROW_KIND},
-            )
-            claimed = cur.fetchone() is not None
-        if not claimed:
-            continue
-
-        # **The claim is committed before the enqueue, so a failed enqueue has
-        # to give it back.** ``ctx.conn`` is autocommit (``registry.py``), so
-        # the row above is already durable; if ``queue.enqueue`` raises, the
-        # primary key makes tomorrow's sweep skip this charge and it arrives
-        # with no warning — the exact outcome this module exists to prevent.
-        # ``RELEASE_REMINDER_SQL`` was written for this and was called from
-        # nowhere until review said so, which is the dead-constant shape
-        # CLAUDE.md names five worked examples of.
-        try:
-            job_id = queue.enqueue(
+        # The claim-then-enqueue dance, with the release that a committed claim
+        # and a failed enqueue need, is :func:`_queue_notice` — one definition
+        # for all three notices since F41. The reminder passes its **own** job
+        # key rather than `notice_job_key`'s: see that function for why the
+        # older spelling is kept here and is not a style to copy.
+        if (
+            _queue_notice(
                 conn,
-                SEND_KIND,
-                reminder_job_key(subscription, due_on),
-                priority=4,
-                payload={
-                    "template": REMINDER_TEMPLATE,
-                    "user_id": int(row["user_id"]),
-                    "subscription": subscription,
-                    "due_on": due_on,
-                },
+                notice=NOTICES[REMINDER_TEMPLATE],
+                user_id=int(row["user_id"]),
+                subscription=subscription,
+                due_on=due_on,
+                key=reminder_job_key(subscription, due_on),
+                log=log,
             )
-        except Exception:
-            with conn.cursor() as cur:
-                cur.execute(
-                    RELEASE_REMINDER_SQL,
-                    {
-                        "subscription": subscription,
-                        "due_on": due_on,
-                        "kind": REMINDER_ROW_KIND,
-                    },
-                )
-            log.exception(
-                "charge_reminder could not enqueue; claim released",
-                extra={"subscription": subscription, "due_on": due_on},
-            )
-            raise
-        if job_id is None:
-            # The claim succeeded and the enqueue deduped, which means a live
-            # job for this pair already exists. Leave the row; it is the record
-            # of *this* charge's reminder either way.
+            == "queued"
+        ):
             queued += 1
-            continue
-        with conn.cursor() as cur:
-            cur.execute(
-                ATTACH_JOB_SQL,
-                {
-                    "job_id": job_id,
-                    "subscription": subscription,
-                    "due_on": due_on,
-                    "kind": REMINDER_ROW_KIND,
-                },
-            )
-        queued += 1
 
     _record(
         conn,
@@ -560,7 +919,7 @@ def sweep(conn: psycopg.Connection, *, log: Logger | None = None) -> Sweep:
     return Sweep(due=len(due), queued=queued, unrenderable=unrenderable)
 
 
-def unrenderable_reason(row: dict[str, Any]) -> str | None:
+def unrenderable_reason(row: dict[str, Any], template: str | None = None) -> str | None:
     """Why this subscriber's notice cannot be rendered, or ``None``.
 
     Renders the **whole e-mail** the sender would render — subject, body and
@@ -575,7 +934,7 @@ def unrenderable_reason(row: dict[str, Any]) -> str | None:
     """
     context = build_context(row)
     try:
-        loaded = templates.load(EMAIL_CHANNEL, REMINDER_TEMPLATE)
+        loaded = templates.load(EMAIL_CHANNEL, template or REMINDER_TEMPLATE)
         loaded.render_subject(context)
         loaded.render(context)
         for partial_id in loaded.partials:
@@ -587,8 +946,22 @@ def unrenderable_reason(row: dict[str, Any]) -> str | None:
     return None
 
 
-def template_ready() -> bool:
-    """Whether the reminder template exists and can render **a whole e-mail**.
+def template_ready_on(channel: str, template: str) -> bool:
+    """:func:`template_ready` for any channel.
+
+    The e-mail gate runs **before** a sweep claims anything, because the e-mail
+    is the obligation. The WhatsApp copy is additive and is checked at send
+    time, where its answer is a skip rather than a refusal to claim.
+    """
+    try:
+        loaded = templates.load(channel, template)
+    except templates.TemplateError:
+        return False
+    return loaded.ready_to_send and bool(loaded.subject)
+
+
+def template_ready(template: str | None = None) -> bool:
+    """Whether the template exists and can render **a whole e-mail**.
 
     Separate from the render itself so the sweep can refuse *before* it claims
     anything. A missing file and an unresolved ``TODO(Sci):`` are the same
@@ -602,12 +975,134 @@ def template_ready() -> bool:
     survives the retry, and tomorrow's sweep looks for ``next_charge_on =
     today + 3`` and never sees that charge again. **One cohort of reminders,
     lost silently, on the day the copy landed.** Found by review.
+
+    **The default is ``None`` and not ``REMINDER_TEMPLATE``**, which looks like
+    a stylistic choice and is not: a default argument binds its value **once,
+    at import**, so the module constant would be frozen into this signature and
+    a later rebinding of it — which is how
+    `test_a_missing_template_is_the_same_answer_as_an_unwritten_one` points the
+    gate at a file that does not exist — would no longer reach it. The test
+    caught it; reading the diff did not.
+
+    F41 made it take the template id. The three notices it adds ship as
+    ``status: draft`` with a ``TODO(Sci):`` in the body, so this returns
+    ``False`` for them until Sci approves the copy — which is the whole gate on
+    unapproved wording reaching a subscriber, and it is a loud one: the sweep
+    records `template_blocked` and names the template.
     """
-    try:
-        template = templates.load(EMAIL_CHANNEL, REMINDER_TEMPLATE)
-    except templates.TemplateError:
-        return False
-    return template.ready_to_send and bool(template.subject)
+    return template_ready_on(EMAIL_CHANNEL, template or REMINDER_TEMPLATE)
+
+
+# -- the overdue sweep (F41) --------------------------------------------------
+
+
+@REGISTRY.job(OVERDUE_KIND)
+def overdue_notice(ctx: JobContext) -> None:
+    """Queue one *"não recebemos o pagamento"* per charge already past due."""
+    overdue_sweep(ctx.conn, log=ctx.log)
+
+
+def overdue_sweep(conn: psycopg.Connection, *, log: Logger | None = None) -> Sweep:
+    """Terms §7's *"tentaremos novamente e avisaremos você"*, once per charge.
+
+    The same three-step shape as :func:`sweep` and for the same reasons —
+    refuse before claiming if there is no message, refuse per subscriber if
+    this one cannot be filled in, then claim and enqueue — with one difference
+    worth stating. The reminder looks at a **single** day (`today + 3`), so a
+    subscriber skipped today is skipped for ever and every refusal has to be
+    loud. This sweep's window is *every day the charge stays unpaid*, so a row
+    it cannot handle today it sees again tomorrow. The refusals are still
+    recorded, because a notice that silently takes four days to go out is worth
+    seeing, but none of them loses the message.
+    """
+    log = log or _log
+    if not template_ready(FAILED_TEMPLATE):
+        with conn.cursor() as cur:
+            cur.execute(OVERDUE_SQL, _overdue_params())
+            waiting = len(cur.fetchall())
+        # Loud and **before** anything is claimed, exactly as the reminder
+        # does: a claimed row would record this notice as handled on a day
+        # nothing could be sent. Today this is the ordinary state of affairs —
+        # the copy is a draft until Sci approves it — so the subscriber count
+        # is what says whether it matters yet.
+        _record(
+            conn,
+            EVENT_REMINDER_BLOCKED,
+            None,
+            {"template": FAILED_TEMPLATE, "reason": SKIP_TEMPLATE_BLOCKED, "subscribers": waiting},
+        )
+        log.error(
+            "overdue_notice blocked: template not ready to send",
+            extra={"template": FAILED_TEMPLATE, "subscribers": waiting},
+        )
+        return Sweep(due=waiting, queued=0, blocked=True)
+
+    with conn.cursor() as cur:
+        cur.execute(OVERDUE_SQL, _overdue_params())
+        rows = cur.fetchall()
+        columns = [column.name for column in cur.description or ()]
+    late = [dict(zip(columns, row, strict=True)) for row in rows]
+
+    notice = NOTICES[FAILED_TEMPLATE]
+    queued = 0
+    unrenderable = 0
+    for candidate in late:
+        subscription = str(candidate["asaas_subscription_id"])
+        due_on = str(candidate["next_charge_on"])
+        user_id = int(candidate["user_id"])
+
+        # The row the **sender** will render from, not the candidate row: see
+        # :func:`_notice_row`.
+        row = _notice_row(conn, user_id=user_id, subscription_id=subscription)
+        problem = None if row is None else unrenderable_reason(row, FAILED_TEMPLATE)
+        if row is None or problem is not None:
+            _record(
+                conn,
+                EVENT_REMINDER_UNRENDERABLE,
+                user_id,
+                {
+                    "template": FAILED_TEMPLATE,
+                    "subscription": subscription,
+                    "due_on": due_on,
+                    "reason": problem or SKIP_NO_SUBSCRIPTION,
+                },
+            )
+            log.error(
+                "overdue_notice cannot render this subscriber's notice; nothing claimed",
+                extra={
+                    "subscription": subscription,
+                    "due_on": due_on,
+                    "reason": problem or SKIP_NO_SUBSCRIPTION,
+                },
+            )
+            unrenderable += 1
+            continue
+
+        if (
+            _queue_notice(
+                conn,
+                notice=notice,
+                user_id=user_id,
+                subscription=subscription,
+                due_on=due_on,
+                key=notice_job_key(notice.kind, subscription, due_on),
+                log=log,
+            )
+            == "queued"
+        ):
+            queued += 1
+
+    _record(
+        conn,
+        EVENT_OVERDUE_QUEUED,
+        None,
+        {"due": len(late), "queued": queued, "unrenderable": unrenderable or None},
+    )
+    log.info(
+        "overdue_notice swept",
+        extra={"due": len(late), "queued": queued, "unrenderable": unrenderable},
+    )
+    return Sweep(due=len(late), queued=queued, unrenderable=unrenderable)
 
 
 # -- the message --------------------------------------------------------------
@@ -655,27 +1150,44 @@ def send(
         "due_on": due_on,
     }
 
-    with conn.cursor() as cur:
-        cur.execute(
-            REMINDER_ROW_SQL,
-            {
-                "user_id": user_id,
-                "subscription": subscription_id,
-                "payable": sorted(whatsapp_payable_statuses()),
-            },
-        )
-        row = cur.fetchone()
-        columns = [column.name for column in cur.description or ()]
-    if row is None:
+    found = _notice_row(conn, user_id=user_id, subscription_id=subscription_id)
+    if found is None:
         return _skip(conn, log, user_id, common, SKIP_NO_SUBSCRIPTION, job_id, attempt)
-    found = dict(zip(columns, row, strict=True))
 
     # Spec §10: *"never sent for a cancelled subscription"*. Re-checked here
     # rather than trusted from the sweep — the cancel can land in the minutes
     # between the two, and that is exactly the message a cancelled subscriber
     # must not receive.
-    if str(found["status"]) not in REMINDABLE:
-        return _skip(conn, log, user_id, common, SKIP_CANCELLED, job_id, attempt, level="warning")
+    #
+    # F41 made the allow-list the notice's own (:data:`NOTICES`) instead of
+    # `REMINDABLE` for everything. The reminder's behaviour is unchanged; what
+    # changes is that each notice now states the statuses it is *true* for, so
+    # the encerramento notice can require `canceled` — which this check used to
+    # be the refusal of.
+    notice = notice_for(template)
+    status = str(found["status"])
+    if status not in notice.statuses:
+        # `cancelled` where spec §10 names it, so the existing dashboards and
+        # the events already written keep their meaning; `status_moved`
+        # otherwise, which is the paid-in-the-meantime case.
+        reason = SKIP_CANCELLED if status == "canceled" else SKIP_STATUS_MOVED
+        return _skip(conn, log, user_id, common, reason, job_id, attempt, level="warning")
+
+    # **The charge, re-read — the gate that actually protects the payer.**
+    #
+    # For the payment-failed notice the subscription's status proves nothing: a
+    # late subscriber may be `pending` (never paid anything) or `active` (paid
+    # an older charge), so the only thing that can say the money has not
+    # arrived is the charge, in Asaas's own vocabulary. The minutes between the
+    # sweep and this job are exactly when somebody pays, and *"não recebemos o
+    # pagamento"* landing after their money did is the worst message this
+    # module can produce.
+    if notice.payable_charge:
+        charge_status = str(found.get("charge_status") or "")
+        if charge_status and charge_status not in whatsapp_payable_statuses():
+            return _skip(
+                conn, log, user_id, common, SKIP_CHARGE_SETTLED, job_id, attempt, level="warning"
+            )
     address = found.get("email")
     if not address:
         return _skip(conn, log, user_id, common, SKIP_NO_EMAIL, job_id, attempt, level="warning")
@@ -741,18 +1253,24 @@ def send(
     # WhatsApp copy is a second delivery of a notice that has already been
     # sent, it is attempted only once the required one is recorded, and it
     # cannot fail this job — see the function's own docstring.
-    whatsapp_outcome = send_charge_notice_whatsapp(
-        conn,
-        found=found,
-        user_id=user_id,
-        context=context,
-        subscription_id=subscription_id,
-        due_on=due_on,
-        template=template,
-        email_delivered=result.delivered,
-        job_id=job_id,
-        log=log,
-    )
+    #
+    # **Only for a notice that has a WhatsApp copy** (:class:`Notice`). The
+    # three F41 notices do not: `Delivery.whatsapp` is `None` for them, which
+    # the dataclass already means as *"never reached"*.
+    whatsapp_outcome: str | None = None
+    if notice.whatsapp:
+        whatsapp_outcome = send_charge_notice_whatsapp(
+            conn,
+            found=found,
+            user_id=user_id,
+            context=context,
+            subscription_id=subscription_id,
+            due_on=due_on,
+            template=template,
+            email_delivered=result.delivered,
+            job_id=job_id,
+            log=log,
+        )
     return Delivery(
         outcome=result.status,
         message_id=result.message_id,
@@ -840,7 +1358,7 @@ def send_charge_notice_whatsapp(
     method = str(found.get("charge_billing_type") or "").strip().upper()
     if not method:
         return _whatsapp_skip(conn, log, user_id, common, SKIP_UNKNOWN_METHOD, level="warning")
-    if method != BILLING_TYPE_PIX:
+    if notice_for(template).whatsapp_pix_only and method != BILLING_TYPE_PIX:
         return _whatsapp_skip(conn, log, user_id, common, SKIP_NOT_PIX)
 
     status = str(found.get("charge_status") or "").strip().upper()
@@ -912,6 +1430,18 @@ def send_charge_notice_whatsapp(
     # row this reads is the one written below.
     if _already_sent_on_whatsapp(conn, template, subscription_id, due_on):
         return SKIP_WHATSAPP_SENT
+
+    # **A draft is a skip, not a failure**, and the difference is what the one
+    # counter below means. The `except` that follows records `whatsapp.failed`
+    # — the signal that exists because `rpatinacao`'s 2026-06-09 incident
+    # logged `status: "sent"` for a message nobody could act on — and *"Sci has
+    # not approved this copy yet"* is not that. F41 is what made the
+    # distinction matter: its WhatsApp copy ships as a draft, so without this
+    # every overdue notice would write a failure for the expected state, for
+    # ever, on the alarm that means a delivery silently degraded. Same shape as
+    # the §4d rule: when a limit turns out not to be one, change the shape.
+    if not template_ready_on(whatsapp.CHANNEL, template):
+        return _whatsapp_skip(conn, log, user_id, common, SKIP_TEMPLATE_BLOCKED, level="warning")
 
     try:
         loaded = templates.load(whatsapp.CHANNEL, template)
@@ -1052,10 +1582,33 @@ def build_context(row: dict[str, Any]) -> dict[str, Any]:
         #
         # Blank when `subscriptions.checkout_url` is null, which is a state
         # rather than a fault — before the first charge exists there is nothing
-        # to point at. No template declares it, so a blank never reaches
-        # `templates.py`'s own refusal to render one; the WhatsApp notice gates
-        # on it instead (:func:`send_charge_notice_whatsapp`).
+        # to point at. The charge reminder does not declare it, so a blank never
+        # reaches `templates.py`'s own refusal to render one and the WhatsApp
+        # notice gates on it instead (:func:`send_charge_notice_whatsapp`).
+        # **F41's notices do declare it**, behind the `tem_link` flag below.
         "link_pagamento": str(row.get("checkout_url") or ""),
+        # **The two `[[se: …]]` flags F41's notices need** (`templates/README.md`
+        # §8: an optional row is a block, never a placeholder set to `""`).
+        #
+        # `tem_link` is what makes a null `checkout_url` a *state* rather than a
+        # refusal. The comment above used to say a blank could never reach
+        # `templates.py` because no template declared the placeholder; two of
+        # them do now, and a blank declared value is a `MissingPlaceholder` by
+        # design — so without this flag an overdue subscriber with no invoice
+        # link would be refused by `unrenderable_reason` every single day and
+        # terms §14's notice would never arrive. Found by review.
+        "tem_link": bool(row.get("checkout_url")),
+        # `conta_liberada` is false for a subscription that has **never been
+        # paid**, which is `pending`. That is the ordinary case on opening day —
+        # a pix founder who does not pay stays `pending` — and *"sua conta
+        # continua liberada"* would be telling them that something they never
+        # had is still theirs.
+        "conta_liberada": str(row.get("status") or "") != "pending",
+        # **The last day the paid plan was kept** — terms §8's `ends_on`, and
+        # the date the encerramento notice is about (F41). Blank for a live
+        # subscription, and only `subscription-ended.md` declares it, so a
+        # blank cannot reach a render that needs one.
+        "data_encerramento": _brt_date(row.get("ends_on")),
         "email_contato": "contato@licitaquiapp.com.br",
         "link_assinatura": f"{config.app_base_url()}/conta/plano",
         "link_privacidade": f"{config.app_base_url()}/privacidade",
@@ -1151,8 +1704,18 @@ def _brt_date(value: Any) -> str:
 
 @REGISTRY.job(EXPIRE_KIND)
 def expire_subscriptions(ctx: JobContext) -> None:
-    """Drop to Básico the accounts whose paid period has run out."""
+    """Drop to Básico the accounts whose paid period has run out, and say so.
+
+    Two steps, in this order and **independent of each other**: the downgrade,
+    and terms §14's *encerramento* notice. The notice is not driven by the
+    downgrade's own rows, and that is deliberate — `EXPIRE_SQL` only returns an
+    account it actually moved (`u.plan <> 'basico'`), so a notice hung off it
+    would be lost for ever the day the enqueue failed after the update
+    committed. :func:`ended_notices` reads the subscription's own end date, so
+    tomorrow's run finds it again until the claim exists.
+    """
     expire(ctx.conn, log=ctx.log)
+    ended_notices(ctx.conn, log=ctx.log)
 
 
 def expire(conn: psycopg.Connection, *, log: Logger | None = None) -> int:
@@ -1171,6 +1734,107 @@ def expire(conn: psycopg.Connection, *, log: Logger | None = None) -> int:
     if rows:
         log.info("expired cancelled subscriptions", extra={"accounts": len(rows)})
     return len(rows)
+
+
+def ended_notices(conn: psycopg.Connection, *, log: Logger | None = None) -> Sweep:
+    """Terms §14's *encerramento*: one notice per subscription that has ended.
+
+    The fifth of §14's five notices and the only one that was in no card and no
+    template before F41 — the word appears nowhere else in this repository's
+    plan. See :data:`ENDED_SQL` for why it fires the day **after** ``ends_on``
+    rather than on the day somebody cancels, and why it looks back only
+    :data:`ENDED_NOTICE_DAYS`.
+    """
+    log = log or _log
+    if not template_ready(ENDED_TEMPLATE):
+        with conn.cursor() as cur:
+            cur.execute(ENDED_SQL, _ended_params())
+            waiting = len(cur.fetchall())
+        _record(
+            conn,
+            EVENT_REMINDER_BLOCKED,
+            None,
+            {"template": ENDED_TEMPLATE, "reason": SKIP_TEMPLATE_BLOCKED, "subscribers": waiting},
+        )
+        # **`warning`, not `error`, and this is the one place the two differ.**
+        # A blocked reminder means a charge is about to arrive unannounced,
+        # which is money leaving somebody's account; a blocked encerramento
+        # notice means a subscription that is already over was not announced.
+        # Both are worth seeing and only one is urgent, and an `error` that is
+        # routine teaches a reader to ignore the ones that are not.
+        log.warning(
+            "ended_notices blocked: template not ready to send",
+            extra={"template": ENDED_TEMPLATE, "subscribers": waiting},
+        )
+        return Sweep(due=waiting, queued=0, blocked=True)
+
+    with conn.cursor() as cur:
+        cur.execute(ENDED_SQL, _ended_params())
+        rows = cur.fetchall()
+        columns = [column.name for column in cur.description or ()]
+    ended = [dict(zip(columns, row, strict=True)) for row in rows]
+
+    notice = NOTICES[ENDED_TEMPLATE]
+    queued = 0
+    unrenderable = 0
+    for candidate in ended:
+        subscription = str(candidate["asaas_subscription_id"])
+        ends_on = str(candidate["ends_on"])
+        user_id = int(candidate["user_id"])
+
+        row = _notice_row(conn, user_id=user_id, subscription_id=subscription)
+        problem = None if row is None else unrenderable_reason(row, ENDED_TEMPLATE)
+        if row is None or problem is not None:
+            _record(
+                conn,
+                EVENT_REMINDER_UNRENDERABLE,
+                user_id,
+                {
+                    "template": ENDED_TEMPLATE,
+                    "subscription": subscription,
+                    "due_on": ends_on,
+                    "reason": problem or SKIP_NO_SUBSCRIPTION,
+                },
+            )
+            log.error(
+                "ended_notices cannot render this subscriber's notice; nothing claimed",
+                extra={
+                    "subscription": subscription,
+                    "due_on": ends_on,
+                    "reason": problem or SKIP_NO_SUBSCRIPTION,
+                },
+            )
+            unrenderable += 1
+            continue
+
+        if (
+            _queue_notice(
+                conn,
+                notice=notice,
+                user_id=user_id,
+                subscription=subscription,
+                # `billing_reminders.due_on` holds `ends_on` for this kind:
+                # one date, one message, which is what the key means.
+                due_on=ends_on,
+                key=notice_job_key(notice.kind, subscription, ends_on),
+                log=log,
+            )
+            == "queued"
+        ):
+            queued += 1
+
+    _record(
+        conn,
+        EVENT_ENDED_QUEUED,
+        None,
+        {"due": len(ended), "queued": queued, "unrenderable": unrenderable or None},
+    )
+    if ended:
+        log.info(
+            "ended_notices swept",
+            extra={"due": len(ended), "queued": queued, "unrenderable": unrenderable},
+        )
+    return Sweep(due=len(ended), queued=queued, unrenderable=unrenderable)
 
 
 # -- the delivery log ---------------------------------------------------------

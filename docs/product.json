@@ -117,7 +117,8 @@
   "notice": {
     "priceChangeDays": 30,
     "chargeReminderDays": 3,
-    "$noticeComment": "priceChangeDays is the CONTRACTUAL FLOOR (terms §6.4), not the operating value. Sending earlier is always allowed; later never is."
+    "suspendAfterDays": 10,
+    "$noticeComment": "priceChangeDays is the CONTRACTUAL FLOOR (terms §6.4), not the operating value. Sending earlier is always allowed; later never is. suspendAfterDays is terms §7's grace period, counted in calendar days from the vencimento: suspending EARLIER than this would break the contract, later is ours to give."
   },
 
   "refund": {
