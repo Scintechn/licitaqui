@@ -133,7 +133,7 @@ export function FavouritesView({
         <>
           <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
 
-          <div className="flex w-screen flex-col gap-4 -mx-gutter px-gutter pb-10">
+          <div className="flex w-full flex-col gap-4 -mx-gutter px-gutter pb-10">
           {/* Tab controls: Open / Closed */}
           <nav className="border-b border-line-strong">
             <div className="flex gap-0 -mx-gutter px-gutter">
