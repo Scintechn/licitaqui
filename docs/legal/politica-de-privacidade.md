@@ -1,6 +1,6 @@
 # Política de Privacidade — LicitaQui
 
-**Minuta v1.4 · 13/10/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Publicado em 21/09/2026; este aviso é metadado de trabalho e é removido na renderização das páginas públicas.
+**Minuta v1.5 · 13/10/2026 · não é parecer jurídico.** Este texto foi escrito para ser revisado por um advogado antes de publicar. Publicado em 21/09/2026; este aviso é metadado de trabalho e é removido na renderização das páginas públicas.
 
 **Última atualização:** 13/10/2026 · **Vigência:** 13/10/2026
 
@@ -72,7 +72,7 @@ Não coletamos dados sensíveis (art. 5º, II da LGPD) e o serviço não é dest
 | Aplicar os limites do visitante e prevenir abuso e fraude | Legítimo interesse (art. 7º, IX) |
 | Cobrar a assinatura, emitir documentos fiscais e cumprir obrigações contábeis | Obrigação legal e execução de contrato (art. 7º, II e V) |
 | Confirmar que você tem 18 anos ou mais | Execução de contrato e obrigação legal (art. 7º, V e II) — o serviço não é destinado a menores, como diz o final da seção 4 |
-| Avisar você sobre a cobrança da assinatura, por e-mail e no WhatsApp que você informou | Execução de contrato (art. 7º, V) — avisar antes de cada cobrança é uma obrigação nossa prevista nos termos de uso |
+| Avisar você sobre a cobrança da assinatura, por e-mail e — nos casos previstos na seção 7 dos termos de uso — também no WhatsApp que você informou | Execução de contrato (art. 7º, V) — avisar antes de cada cobrança é uma obrigação nossa prevista nos termos de uso |
 | Enviar alertas de editais no Telegram ou no WhatsApp | Execução de contrato (quando faz parte do plano) e consentimento (art. 7º, I) para mensagens promocionais |
 | Enviar novidades, convites e a abertura para fundadores | Consentimento (art. 7º, I), revogável a qualquer momento |
 | Medir audiência, entender como o site é usado e melhorar o produto | Legítimo interesse (art. 7º, IX) |
@@ -84,7 +84,7 @@ Quando usamos **legítimo interesse**, limitamos o tratamento ao necessário, av
 
 O consentimento é pedido de forma separada e específica, com caixa de marcação não pré-assinalada, para (a) receber mensagens no WhatsApp e no e-mail e (b) participar da lista de fundadores.
 
-Os **avisos sobre a sua assinatura** (a cobrança que vem, um pagamento em atraso, mudança de preço, suspensão) não dependem de consentimento: são obrigação nossa prevista nos termos de uso e vão por e-mail, que é o canal oficial, e pelo WhatsApp que você informou ao assinar. Você pode pedir para parar de recebê-los no WhatsApp respondendo **SAIR** — eles continuam chegando por e-mail, porque sem eles você seria cobrado sem aviso.
+Os **avisos sobre a sua assinatura** (a cobrança que vem, um pagamento em atraso, mudança de preço, suspensão) não dependem de consentimento: são obrigação nossa prevista nos termos de uso e vão por e-mail, que é o canal oficial. Pelo WhatsApp que você informou ao assinar vão os dois avisos que dependem de uma ação sua: a cobrança por pix e o pagamento não recebido (seção 7 dos termos de uso). Você pode pedir para parar de recebê-los no WhatsApp respondendo **SAIR** — eles continuam chegando por e-mail, porque sem eles você seria cobrado sem aviso.
 
 Você pode revogar quando quiser: responda **SAIR** na mensagem, use o link de descadastramento no e-mail, ajuste os alertas no app ou escreva para privacidade@licitaquiapp.com.br. A revogação não afeta o que foi feito antes dela.
 
@@ -188,3 +188,4 @@ Esta política é regida pela lei brasileira, e as questões dela decorrentes se
 | 1.0 | 21/09/2026 | Primeira versão publicada |
 | 1.1 | 23/09/2026 | Medição de audiência com o Google Analytics 4: seções 4, 5, 8, 10 e 11 |
 | 1.4 | 13/10/2026 | Cadastro para assinar (data de nascimento, celular, CPF ou CNPJ) e os avisos de cobrança no WhatsApp: seções 2, 4, 5, 6, 8 e 13 |
+| 1.5 | 13/10/2026 | Seções 5 e 6: no WhatsApp vão os dois avisos que dependem de uma ação sua — a cobrança por pix e o pagamento não recebido. O escopo passa a ser lido na seção 7 dos termos de uso, para não haver duas listas |

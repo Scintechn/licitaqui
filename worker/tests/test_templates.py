@@ -110,7 +110,35 @@ def test_the_optout_confirmation_renders_now_that_its_question_is_answered() -> 
 #: `charge-reminder` was approved on 2026-10-12 (**F24**) — the same sentences
 #: as the e-mail, with `*bold*` on the two labels, and with *"toque no botão"*
 #: struck as redundant beside a visible button.
-APPROVED_WHATSAPP_COPY = {"founders-opening", "charge-reminder"}
+#: Approved WhatsApp copy. `payment-failed` joined on 2026-10-13, when Sci
+#: ruled that the payment notice goes by both channels — and **approved is
+#: not deliverable** for it: the whole channel is refused with
+#: `no_optout_path` until **F40** builds the `SAIR` path the privacy policy
+#: promises.
+APPROVED_WHATSAPP_COPY = {"founders-opening", "charge-reminder", "payment-failed"}
+
+#: The **e-mail** copy Sci has signed off, and the channel that carries every
+#: notice terms §14 obliges us to send.
+#:
+#: The WhatsApp list below has existed since 2026-09-25 for a reason this
+#: channel had no guard for: `status` gates nothing — `ready_to_send` is
+#: `TODO_MARKER not in body` and never reads it — so a template flipped to
+#: `approved` by somebody who was not asked to sign it off changes no behaviour
+#: and leaves no trace. F41 added three e-mail notices in one pass, which is
+#: when the asymmetry became worth closing rather than noting.
+APPROVED_EMAIL_COPY = {
+    "charge-reminder",
+    "founders-opening",
+    "founders-waitlist",
+    "founders-welcome",
+    "partial-footer",
+    # Approved 2026-10-13 with F41. `subscription-suspended` is approved and
+    # **sent by nothing** — `billing.NOTICES` has no row for it, because no code
+    # writes the state it announces (**F42**).
+    "payment-failed",
+    "subscription-ended",
+    "subscription-suspended",
+}
 
 
 def test_only_the_whatsapp_copy_sci_signed_off_is_approved() -> None:
@@ -133,6 +161,24 @@ def test_only_the_whatsapp_copy_sci_signed_off_is_approved() -> None:
     approved = {name for name, status in statuses.items() if status == "approved"}
 
     assert approved == APPROVED_WHATSAPP_COPY, statuses
+
+
+def test_only_the_email_copy_sci_signed_off_is_approved() -> None:
+    """The same record for the channel the contract actually obliges.
+
+    Terms §14 makes e-mail *"o canal oficial"* for every subscription notice,
+    so this is the list that matters most and the one that had no tripwire
+    until F41. Both directions fail here, which is the point: approving a
+    template Sci was not asked about, and reverting one he was.
+    """
+    statuses = {
+        path.stem: templates.load("email", path.stem).status
+        for path in sorted((REAL_TEMPLATES / "email").glob("*.md"))
+        if path.stem != "README"
+    }
+    approved = {name for name, status in statuses.items() if status == "approved"}
+
+    assert approved == APPROVED_EMAIL_COPY, statuses
 
 
 # -- the format ------------------------------------------------------------
