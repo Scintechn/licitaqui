@@ -200,7 +200,9 @@ export function TenderCardView({
       ? null
       : deadlineLabel(tender.proposalsCloseAt, now)
 
-  // Urgency color for the countdown: red ≤2 days, yellow 3-7 days, green >7 days
+  // Urgency color for the countdown: red ≤2 days, yellow 3-7 days, green >7 days.
+  // daysUntil is computed here (and also in sortFavourites for sorting); this is
+  // unavoidable without passing it as a prop, and the cost is minimal.
   const daysLeft =
     showUrgencyColor && countdown ? daysUntil(tender.proposalsCloseAt, now) : null
   const countdownColor =

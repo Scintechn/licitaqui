@@ -83,7 +83,7 @@ export function FavouritesView({
   plan,
   planName,
   favourites,
-  now = new Date(),
+  now,
 }: {
   plan: string
   planName: string
@@ -92,11 +92,12 @@ export function FavouritesView({
   now?: Date
 }) {
   const [sortOrder, setSortOrder] = useState<SortOrder>('deadline-asc')
+  const currentTime = useMemo(() => now ?? new Date(), [now])
 
-  const sorted = useMemo(() => sortFavourites(favourites, sortOrder, now), [
+  const sorted = useMemo(() => sortFavourites(favourites, sortOrder, currentTime), [
     favourites,
     sortOrder,
-    now,
+    currentTime,
   ])
 
   return (
@@ -125,14 +126,14 @@ export function FavouritesView({
           <div className="@container">
             <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
               {sorted.map((one) => (
-                <li key={one.card.id} className="flex">
+                <li key={one.card.id}>
                   {/* No search to carry: this list is not a search result, so
                       "Voltar" from the tender goes to a bare Radar. Inventing a
                       query string here would take the reader back to a list
                       they never ran. */}
                   <TenderCardView
                     tender={one.card}
-                    now={now}
+                    now={currentTime}
                     href={editalPath(one.card.id)}
                     showUrgencyColor
                   />
