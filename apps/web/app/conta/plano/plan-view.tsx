@@ -8,7 +8,7 @@ import {
   DEFAULT_SUBSCRIPTION_METHOD,
   SUBSCRIPTION_METHODS,
 } from '@/lib/asaas/method'
-import { COMPANY_PATH, PLAN_HREF, PLAN_PATH } from '@/lib/routes'
+import { PLAN_HREF, PLAN_PATH, PROFILE_PATH } from '@/lib/routes'
 import { withQuery } from '@/lib/url'
 import { AccountChrome } from '../account-chrome'
 import { screeningsLabel } from '../account-view'
@@ -54,6 +54,7 @@ import type { PlanState } from './states'
 
 const copy = messages.account.screen
 const billing = messages.billing
+const profile = messages.account.profile
 
 /**
  * `"2026-10-17"` → `"17/10/2026"`.
@@ -97,6 +98,11 @@ function notice(state: PlanState | null): { title: string | null; body: string }
   }
   if (state === 'aguardando') {
     return { title: billing.status.pending, body: billing.subscribe.redirect }
+  }
+  // **F31.** `saveProfile` redirects here, and the one thing that changed is
+  // that the subscribe button now exists. One line, draft (`TODO(Sci)`).
+  if (state === 'cadastro-salvo') {
+    return { title: null, body: profile.saved }
   }
   if (state === 'erro' || state === 'muitas-tentativas' || state === 'sem-assinatura') {
     // One sentence for all three, and it is true of all three: we could not
@@ -376,16 +382,33 @@ export function PlanView({
         ) : null}
 
         {/*
-          No CNPJ, so Asaas has no document to bill. The company screen is
-          where that is fixed. **The sentence explaining it does not exist**
-          (card F8) — this is a navigation affordance, not an explanation, and
-          the silence is recorded in `docs/CLAIMS.md` rather than papered over
-          with copy nobody approved.
+          **F31 fills F8's silence, because the gate it ships would otherwise
+          widen it.** `canBill` now needs `users.name` as well as a CNPJ, so
+          strictly *more* accounts land here than before — and the screen used
+          to offer a bare "Empresa" button and no reason for it. A stricter
+          gate with the same silence is a regression, not a feature, so the
+          explanation ships with it.
+
+          The three strings are drafts carrying a `TODO(Sci)` in
+          `pt-BR.json` (`account.profile.needProfile*`): they are form copy,
+          like `radar.states.needCnpj*` beside them, not the legal wording
+          brief §5 reserves — but F8 asked for Sci's word and this is not it
+          yet, so the marker stays until he reads them.
+
+          `PROFILE_PATH`, not `COMPANY_PATH`: the profile form collects the
+          name *and* the CNPJ, arrives pre-filled, and is where
+          `goToCheckout`'s `needs_company` branch now sends people. Sending
+          them to `/conta/empresa` would ask for the one field they may already
+          have and never ask for the one they are missing.
         */}
         {(!live || cancelled) && !canBill ? (
-          <Button href={COMPANY_PATH} variant="secondary">
-            {messages.radar.menu.company}
-          </Button>
+          <div className="flex flex-col gap-2">
+            <h2 className="text-lead font-semibold">{profile.needProfileTitle}</h2>
+            <p className="text-body text-muted">{profile.needProfileBody}</p>
+            <Button href={PROFILE_PATH} variant="secondary" className="self-start">
+              {profile.needProfileAction}
+            </Button>
+          </div>
         ) : null}
 
         {/* `PLAN_HREF`, not `PLAN_PATH`: during the founders window the offer

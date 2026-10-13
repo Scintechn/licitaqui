@@ -203,3 +203,38 @@ export async function setUserCnpj(
     update users set cnpj = ${cnpj} where id = ${userId}::bigint
   `)
 }
+
+/**
+ * The subscriber's own name and mobile — task **F31**.
+ *
+ * Separate from `setUserCnpj` because the CNPJ carries a side effect that
+ * these two do not: it has to `ensureCompanyRow` so the worker has something
+ * to resolve. These are a plain update, and the caller has already validated
+ * both through `lib/profile/input.ts`.
+ *
+ * **Neither value is logged, here or by the caller** (§12): a name and a
+ * mobile are personal data, and the mobile is the one WhatsApp dials.
+ *
+ * **`birth_date` is written and `cpf` is not**, and the asymmetry has a reason
+ * on each side. The policy's v1.4 amendment (13/10/2026) names the date of
+ * birth and declares the 18+ purpose in §5, so it may be collected — and
+ * `0016_profile_identity.sql`'s comment on the column binds it to that one
+ * purpose. The policy names a CPF too, but **no form asks for one**: Sci's
+ * F32 ruling was that a CNPJ stays required, so a CPF would satisfy only
+ * Asaas. `users.cpf` therefore stays empty, which **F32** carries.
+ *
+ * Still deliberately narrow, so this is not where a fourth column appears.
+ */
+export async function setUserProfile(
+  userId: number,
+  profile: { name: string; mobile: string; birthDate: string },
+  database: Executor = db(),
+): Promise<void> {
+  await database.execute(sql`
+    update users
+       set name = ${profile.name},
+           whatsapp = ${profile.mobile},
+           birth_date = ${profile.birthDate}::date
+     where id = ${userId}::bigint
+  `)
+}

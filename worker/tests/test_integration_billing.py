@@ -46,6 +46,27 @@ PAY = f"pay-{RUN_ID}"
 
 
 @pytest.fixture(autouse=True)
+def _optout_enforceable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make a ``SAIR`` honourable, so this file can exercise the rest of the
+    notice. The twin of the fixture in ``test_billing.py``.
+
+    ``billing._optout_is_enforceable`` returns ``False`` for everybody — the
+    gate added 2026-10-13 after review found that `politica-de-privacidade.md`
+    §6 promises an opt-out the product cannot hear: it is keyed on a
+    ``founders_list`` id and **nothing enqueues the inbound job**. Card
+    **F40**.
+
+    Without this, the WhatsApp assertions here pass by skipping — which is how
+    this file failed once already: the first version of this round removed the
+    old consent fixture and did not add this one, so
+    ``test_the_whatsapp_copy_reads_the_three_facts_the_lateral_join_adds``
+    expected ``dry_run`` and got ``skipped``. The gate's own behaviour is
+    asserted in ``test_billing.py``, under the ``real_optout_gate`` marker.
+    """
+    monkeypatch.setattr(billing, "_optout_is_enforceable", lambda conn, number: True)
+
+
+@pytest.fixture(autouse=True)
 def _fresh_templates() -> None:
     templates.cache_clear()
 

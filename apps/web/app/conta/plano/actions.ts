@@ -13,7 +13,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { recordEventSafely } from '@/lib/events'
 import { rateLimitRequest } from '@/lib/rate-limit'
-import { ACCOUNT_CREATE_PATH, COMPANY_PATH, PLAN_PATH } from '@/lib/routes'
+import { ACCOUNT_CREATE_PATH, PLAN_PATH, PROFILE_PATH } from '@/lib/routes'
 import { withQuery } from '@/lib/url'
 import type { PlanState } from './states'
 
@@ -130,12 +130,13 @@ export async function goToCheckout(formData: FormData): Promise<void> {
     case 'already_active':
       return redirect(to('ativo'))
     case 'needs_company':
-      // Asaas requires a document and a name. The screen does not offer this
-      // button without a CNPJ, so reaching here means the account lost one
-      // between render and submit; `/conta/empresa` is where it is fixed.
-      // **The sentence that explains why is Sci's and does not exist** —
-      // card F8, and a `docs/CLAIMS.md` row.
-      return redirect(COMPANY_PATH)
+      // Asaas requires a document and a name, and **F31** is the screen that
+      // collects both: `/conta/perfil`, not `/conta/empresa`, which only
+      // changes the company on an account that already has one. It arrives
+      // pre-filled, so somebody who has a CNPJ and no name types one field.
+      // The plan screen does not offer this button without both, so reaching
+      // here is the guard rather than the normal path.
+      return redirect(PROFILE_PATH)
     case 'dry_run':
       // Loud on purpose: a deploy that forgot `ASAAS_BILLING=live` must not
       // look like a provider outage. The reader sees `billing.subscribe.error`,

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { db, type Executor } from '@/lib/db'
 import { messages } from '@/lib/messages'
+import { parseMobile } from '@/lib/profile/phone'
 import { AsaasClient, AsaasError, DRY_RUN, externalReference, type Maybe, type SubscriptionMethod } from './client'
 import { safeInvoiceUrl } from './config'
 import { AWAITING } from './entitlement'
@@ -78,8 +79,6 @@ type SubscriberRow = {
   whatsapp: string | null
   cnpj: string | null
   founder_seat: number | null
-  legal_name: string | null
-  trade_name: string | null
   /** Today in the product's clock, so the first charge is dated in BRT. */
   today_brt: string
 }
@@ -150,8 +149,31 @@ export async function startCheckout(
   }
 
   const document = (row.cnpj ?? '').replace(/\D/g, '')
-  const name = (row.name ?? row.legal_name ?? row.trade_name ?? '').trim()
+  /*
+   * **`users.name` only — the company's name is no longer a substitute**
+   * (task **F31**).
+   *
+   * This read `row.name ?? row.legal_name ?? row.trade_name`, so an account
+   * with a CNPJ and no name of its own was billable: Asaas got the company's
+   * registered name as the *customer* name, and `users.name` stayed null. That
+   * is **F29**, and it is not cosmetic — `billing.py` greets `{{nome}}` from
+   * `coalesce(u.name, f.name)`, and `templates.py` refuses a blank as hard as
+   * a missing value, so that subscriber's 3-day charge notice is the one thing
+   * terms §7 obliges us to send and the one thing that could not render.
+   *
+   * `/conta/perfil` now collects it before anybody reaches here, and this is
+   * the server-side half of that gate. `already_active` is checked **above**,
+   * so tightening it cannot lock an existing subscriber out of their own
+   * screen — it only stops a *new* subscription being created without a name.
+   */
+  const name = (row.name ?? '').trim()
   if (!document || !name) return { outcome: 'needs_company' }
+
+  // Parsed once, and it is the **parsed** value that is sent: the column is
+  // `text`, so normalising here means Asaas gets E.164 even for a row written
+  // before `lib/profile/phone.ts` existed. `null` for a foreign number — see
+  // the `mobilePhone` note below.
+  const mobile = brazilianMobile(row.whatsapp)
 
   const reference = externalReference(userId)
 
@@ -161,7 +183,24 @@ export async function startCheckout(
       cpfCnpj: document,
       externalReference: reference,
       email: row.email,
-      ...(row.whatsapp ? { mobilePhone: row.whatsapp } : {}),
+      /*
+       * **A Brazilian number only** (F31, found by review 2026-10-13).
+       * `mobilePhone` is an Asaas field for a Brazilian mobile, and F31 made
+       * the profile form accept an explicit foreign country code — Sci asked
+       * for *"BR or other country"*. So `users.whatsapp` can now hold
+       * `+351963602316`, and sending that unguarded is at best junk on the
+       * customer record and at worst a 400 from `ensureCustomer` that fails
+       * the checkout for exactly the subscriber the widening was for.
+       *
+       * The number is re-parsed rather than trusted: the column is `text` and
+       * nothing stops a hand-edited row. `parseMobile` is the same function
+       * the form validated with, so the two cannot drift.
+       *
+       * A foreign subscriber therefore reaches Asaas with no mobile, which is
+       * what happened for *every* subscriber until F31 and is why the field was
+       * always conditional. **F39** is what they lose and what to do about it.
+       */
+      ...(mobile ? { mobilePhone: mobile } : {}),
     })
     if (customerId === DRY_RUN) return { outcome: 'dry_run', plan: price.plan, amount: price.reais }
 
@@ -318,6 +357,18 @@ export function descriptionFor(plan: string): string {
   return `LicitaQui · ${name}`
 }
 
+/**
+ * Whether a stored number is one Asaas's `mobilePhone` and Evolution can both
+ * take — which is one question, because both mean a Brazilian mobile.
+ *
+ * `null` for a foreign number, so the field is omitted rather than filled with
+ * something the provider will reject. See the call site.
+ */
+function brazilianMobile(value: string | null): string | null {
+  const parsed = parseMobile(value ?? '')
+  return parsed !== null && parsed.country === 'BR' ? parsed.e164 : null
+}
+
 async function subscriber(userId: number, database: Executor): Promise<SubscriberRow | null> {
   const result = await database.execute<SubscriberRow>(sql`
     select u.email::text                                       as email,
@@ -325,14 +376,11 @@ async function subscriber(userId: number, database: Executor): Promise<Subscribe
            u.whatsapp,
            u.cnpj::text                                        as cnpj,
            u.founder_seat,
-           c.legal_name,
-           c.trade_name,
            -- CLAUDE.md, Clocks: the database is UTC and every date a person
            -- reads is Brasília. An Asaas nextDueDate computed from a UTC
            -- midnight is tomorrow's charge for three hours every night.
            (now() at time zone 'America/Sao_Paulo')::date::text as today_brt
       from users u
-      left join companies c on c.cnpj = u.cnpj
      where u.id = ${userId}::bigint
   `)
   return result.rows[0] ?? null

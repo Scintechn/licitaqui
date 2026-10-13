@@ -108,3 +108,22 @@ describe('signupInput', () => {
     expect(signupInput.parse({ ...valid, source: '' }).source).toBeUndefined()
   })
 })
+
+/*
+ * The regression, measured on the shipped function before it was rewired:
+ * `normaliseWhatsapp('+1 299 555 0000')` returned `+5512995550000` — a real
+ * mobile in Sao Jose dos Campos — because every non-digit was stripped before
+ * the `+` could be read. This form dials the numbers it collects, so the test
+ * is here as well as in `lib/profile/phone.test.ts`.
+ */
+describe('normaliseWhatsapp and an explicit foreign country code (F31)', () => {
+  it('refuses it rather than turning it into a Brazilian number', () => {
+    expect(normaliseWhatsapp('+1 299 555 0000')).toBeNull()
+    expect(normaliseWhatsapp('+351 963 602 316')).toBeNull()
+    expect(normaliseWhatsapp('+44 7700 900123')).toBeNull()
+  })
+
+  it("still accepts bare digits as Brazilian, which is this form's rule", () => {
+    expect(normaliseWhatsapp('12995550000')).toBe('+5512995550000')
+  })
+})

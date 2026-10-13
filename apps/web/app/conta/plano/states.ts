@@ -26,6 +26,12 @@ export const PLAN_STATES = [
   'erro',
   /** The rate limiter refused. Rendered as `erro`: it is true of both. */
   'muitas-tentativas',
+  /**
+   * `saveProfile` just filled the profile in (**F31**), so the subscribe
+   * button is there now where a moment ago it was not. Without this the person
+   * lands back on an unchanged-looking screen having just typed three fields.
+   */
+  'cadastro-salvo',
 ] as const
 
 export type PlanState = (typeof PLAN_STATES)[number]

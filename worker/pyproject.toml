@@ -35,3 +35,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  # The tests that assert the shipped WhatsApp opt-out gate rather than the
+  # autouse fixture granting it (F31/F40, tests/test_billing.py).
+  "real_optout_gate: run with billing._optout_is_enforceable unpatched",
+]

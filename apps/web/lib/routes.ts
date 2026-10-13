@@ -62,6 +62,14 @@ export const ALERTS_HREF: string = ALERTS_PATH
 export const COMPANY_PATH = '/conta/empresa'
 
 /**
+ * The profile a subscriber completes before paying (task **F31**): name,
+ * mobile and CNPJ. Separate from `COMPANY_PATH`, which changes the company on
+ * an account that already has one — this is the gate before the checkout, and
+ * `goToCheckout`'s `needs_company` branch sends people here.
+ */
+export const PROFILE_PATH = '/conta/perfil'
+
+/**
  * The favourites section — the tenders a person marked (card D23).
  *
  * *Favoritos*, not *acompanhando*: the design already spends *acompanhar* on

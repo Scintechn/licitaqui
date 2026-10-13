@@ -50,7 +50,7 @@ that grows a fourth one, a file moved in a refactor.
 ## **Two channels, and only one of them is promised**
 
 Terms §7: *"Avisamos você **por e-mail** 3 (três) dias antes de cada cobrança,
-informando a data e o valor… Se você tiver conectado WhatsApp ou Telegram,
+informando a data e o valor… Se você tiver informado um celular com WhatsApp,
 avisamos também por lá"*, and §12 makes e-mail *"o canal oficial"*. So the
 e-mail is the obligation and the WhatsApp copy is **additive**:
 :func:`send_charge_notice_whatsapp` runs after the e-mail is recorded, never
@@ -169,6 +169,10 @@ EVENT_WHATSAPP_FALLBACK = "billing.whatsapp_fallback"
 #: contract names (terms §7, §12), so none of these is a failure of the notice.
 SKIP_NO_WHATSAPP = "no_whatsapp"
 SKIP_OPTED_OUT = "opted_out"
+#: **We cannot honour an opt-out for this number, so we do not message it.**
+#: See :func:`_optout_is_enforceable`. Distinct from ``opted_out``: that one
+#: means somebody asked us to stop, this one means we could not hear them ask.
+SKIP_NO_OPTOUT_PATH = "no_optout_path"
 SKIP_NO_PAYMENT_LINK = "no_payment_link"
 SKIP_AMBIGUOUS_LINK = "ambiguous_payment_link"
 SKIP_NOT_PIX = "charges_itself"
@@ -732,7 +736,7 @@ def send(
     )
 
     # **Additive, and after the e-mail on purpose.** Terms §7: *"Avisamos você
-    # por e-mail … Se você tiver conectado WhatsApp ou Telegram, avisamos
+    # por e-mail … Se você tiver informado um celular com WhatsApp, avisamos
     # também por lá"*, and §12 makes e-mail the official channel. So the
     # WhatsApp copy is a second delivery of a notice that has already been
     # sent, it is attempted only once the required one is recorded, and it
@@ -866,8 +870,43 @@ def send_charge_notice_whatsapp(
     if int(found.get("payable_charges") or 0) > 1:
         return _whatsapp_skip(conn, log, user_id, common, SKIP_AMBIGUOUS_LINK, level="warning")
 
+    # **There is no consent gate here, and that is a decision with a date.**
+    #
+    # Between 2026-10-13 and this commit there was one: F31 made
+    # ``users.whatsapp`` required, which ended the accident that had kept this
+    # channel off (every account's number was null, so ``SKIP_NO_WHATSAPP``
+    # stopped every send), and nothing recorded agreement. Sci then ruled that
+    # no checkbox is needed and amended the documents instead, so the basis for
+    # **this one message** is execution of contract rather than consent:
+    #
+    # * terms §7 — *"Avisamos você por e-mail 3 dias antes de cada cobrança…
+    #   Se você tiver **informado um celular com WhatsApp**, avisamos também
+    #   por lá"* (v1.3, 13/10/2026). The condition is now one the product can
+    #   satisfy; it used to say *"conectado"*, which nothing could.
+    # * `politica-de-privacidade.md` §5 and §6 (v1.4) — *"não dependem de
+    #   consentimento: são obrigação nossa prevista nos termos de uso"*.
+    #
+    # **One thing that keeps load-bearing**, and one that turned out not to be
+    # true when review checked it.
+    #
+    # The number must be the one the subscriber *informed when subscribing*,
+    # which is `users.whatsapp` and why the query above reads it **bare** —
+    # adding the `founders_list` fallback would message a number given for
+    # *"o aviso de abertura das vagas"*, which the amendment does not cover.
+    # That is **F36**, and it stays blocked.
+    #
+    # The comment here used to add *"and SAIR still stops the channel, below"*.
+    # **It does not**, for anybody who was not on the founders list — the
+    # opt-out is keyed on a `founders_list` id and nothing enqueues the inbound
+    # job at all. That is :func:`_optout_is_enforceable` below and card
+    # **F40**, and it is the reason the WhatsApp copy is withheld rather than
+    # sent with a remedy nobody can use.
     if _opted_out(conn, number):
         return _whatsapp_skip(conn, log, user_id, common, SKIP_OPTED_OUT)
+
+    # **The promise above has to be keepable before the message goes out.**
+    if not _optout_is_enforceable(conn, number):
+        return _whatsapp_skip(conn, log, user_id, common, SKIP_NO_OPTOUT_PATH, level="warning")
 
     # §7.2: a job can run twice. Per-recipient evidence is `events`, and the
     # row this reads is the one written below.
@@ -1175,6 +1214,47 @@ def _already_sent_on_whatsapp(
         )
         row = cur.fetchone()
     return bool(row and row[0])
+
+
+def _optout_is_enforceable(conn: psycopg.Connection, number: str) -> bool:
+    """Whether a ``SAIR`` from **this** number could actually stop the channel.
+
+    **False for everybody who is not on the founders list, which after F31 is
+    most subscribers — found by review on 2026-10-13, and it is why this gate
+    exists rather than a comment.**
+
+    The policy amendment Sci approved that day promises the remedy in writing:
+    `politica-de-privacidade.md` §6 — *"Você pode pedir para parar de
+    recebê-los no WhatsApp respondendo **SAIR** — eles continuam chegando por
+    e-mail"* — and terms §7 says the same. Two things make that promise
+    undeliverable today, and both are measured rather than suspected:
+
+    1. **The opt-out is keyed on a `founders_list` id, not on a number.**
+       :func:`_opted_out` resolves through ``whatsapp.resolve_number``, whose
+       ``RESOLVE_NUMBER_SQL`` is ``select id from founders_list where …``. A
+       subscriber who filled F31's profile form and was never on that list
+       resolves to ``None``, so ``_opted_out`` returns ``False`` **always** —
+       and ``record_optout`` takes a ``founders_list_id``, so there is nowhere
+       to record their refusal either.
+    2. **Nothing enqueues the job that would record one.**
+       ``whatsapp.INBOUND_JOB_KIND`` has a handler and a registration and **no
+       producer**: there is no WhatsApp webhook route — ``apps/web/app/api/``
+       holds ``asaas/webhook`` and ``telegram/webhook`` and nothing else. A
+       reply of ``SAIR`` reaches no code at all.
+
+    So until **F40** builds the inbound route and keys the opt-out on the
+    number, a notice sent here could not be stopped by the person receiving
+    it. Sending anyway would make §6 a sentence the product does not mean,
+    which is what `docs/CLAIMS.md` exists to prevent — so the WhatsApp copy is
+    withheld and the **e-mail still goes**, which is the channel terms §7
+    actually obliges us to use.
+
+    It is a function with one place to change, logged at ``warning`` and
+    counted as :data:`SKIP_NO_OPTOUT_PATH` in the sweep, so the cost of the gap
+    is visible rather than being a channel that is quietly off.
+    """
+    _ = (conn, number)
+    return False
 
 
 def _opted_out(conn: psycopg.Connection, number: str) -> bool:

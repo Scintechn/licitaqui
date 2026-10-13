@@ -4,7 +4,7 @@ import type { Subscription } from '@/lib/asaas/subscription'
 import { messages } from '@/lib/messages'
 import { FOUNDERS, PLAN_PRICES } from '@/lib/product'
 import type { QuotaView } from '@/lib/radar/contract'
-import { COMPANY_PATH, PLAN_HREF, PLAN_PATH } from '@/lib/routes'
+import { PLAN_HREF, PLAN_PATH, PROFILE_PATH } from '@/lib/routes'
 import { PlanView } from './plan-view'
 
 /**
@@ -40,6 +40,7 @@ import { PlanView } from './plan-view'
 
 const copy = messages.account.screen
 const billing = messages.billing
+const profile = messages.account.profile
 
 const BASICO: QuotaView = {
   feature: 'screening',
@@ -141,24 +142,45 @@ describe('the plan screen, with no subscription', () => {
 })
 
 describe('the plan screen, with an account Asaas cannot bill', () => {
-  it('offers the company screen instead of a checkout', () => {
+  it('offers the profile form instead of a checkout', () => {
     const out = render({ canBill: false })
-    expect(out).toContain(`href="${COMPANY_PATH}"`)
+    expect(out).toContain(`href="${PROFILE_PATH}"`)
     expect(out).not.toContain(billing.subscribe.cta)
   })
 
   /**
-   * **A deliberate silence, recorded rather than papered over.** No string in
-   * the catalogue says "we need your CNPJ before we can charge you", copy is
-   * Sci's (legal brief §5), and inventing one here is the line this repository
-   * does not cross. Card **F8** and a `docs/CLAIMS.md` row carry it.
+   * **This test used to assert a silence, and F31 is what filled it.**
    *
-   * This asserts the silence so that *filling* it is a visible change rather
-   * than something that quietly never happens.
+   * It read *"explains nothing, because the sentence that would does not exist
+   * yet"* and asserted `not.toContain('CNPJ')` — card **F8**: the screen hid
+   * the subscribe button and gave no reason, and inventing copy was the line
+   * the repository would not cross.
+   *
+   * It is replaced rather than deleted because **F31 made the silence worse
+   * before it made it better**: `canBill` now requires `users.name` as well as
+   * a CNPJ, so strictly more accounts reach this branch than did. A stricter
+   * gate with the same silence is a regression. The three strings are drafts
+   * carrying a `TODO(Sci)` in `pt-BR.json` — form copy, like
+   * `radar.states.needCnpj*` beside them — so F8 is *answered* here and not
+   * closed; it closes on Sci's word.
    */
-  it('explains nothing, because the sentence that would does not exist yet', () => {
+  it('says what is missing and where to fix it', () => {
     const out = render({ canBill: false })
-    expect(out).not.toContain('CNPJ')
+    expect(out).toContain(profile.needProfileTitle)
+    expect(out).toContain(profile.needProfileBody)
+    expect(out).toContain(profile.needProfileAction)
+  })
+
+  /**
+   * The gate's own condition, asserted at the screen rather than inferred
+   * from `canBill`. `startCheckout` reads `users.name` alone, and `page.tsx`
+   * computes the same thing — the two disagreeing about one `.trim()` is a
+   * defect review caught here once already.
+   */
+  it('offers the checkout once the profile is complete', () => {
+    const out = render({ canBill: true })
+    expect(out).toContain(billing.subscribe.cta)
+    expect(out).not.toContain(profile.needProfileTitle)
   })
 })
 
