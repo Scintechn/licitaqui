@@ -504,6 +504,8 @@
       "visitorSpent": "Crie sua conta gratuita e continue com {$triagensBasico} triagens por mês.",
       "basicLeft": "{count, plural, =0 {Você já usou suas {$triagensBasico} triagens deste mês} one {Resta 1 triagem neste mês} other {Restam # triagens neste mês}}",
       "basicSpent": "Suas triagens deste mês acabaram. Elas voltam no dia {data}, ou você pode assinar e ler sem limite.",
+      "deepAnalysisLeft": "{count, plural, =0 {Você já usou suas análises completas deste mês} one {Resta 1 análise completa neste mês} other {Restam # análises completas neste mês}}",
+      "deepAnalysisSpent": "Suas análises completas deste mês acabaram. Elas voltam no dia {data}.",
       "cta": "Assinar"
     }
   },
@@ -1081,9 +1083,12 @@
       "systemLink": "Abrir no portal de compras",
       "screeningCta": "Ver triagem por IA",
       "screeningCtaRequested": "Ver sua triagem",
+      "deepAnalysisCta": "Análise completa",
       "barRecord": "Itens e Documentos",
       "screeningCost": "Usa 1 das suas triagens.",
       "screeningCostReady": "Este edital já foi lido pela IA. Abrir usa 1 das suas triagens.",
+      "deepAnalysisCost": "Usa 1 análise de seu limite mensal.",
+      "deepAnalysisCostReady": "Este edital já foi analisado. Abrir usa 1 análise de seu limite mensal.",
       "tabs": {
         "items": "Itens",
         "files": "Documentos"
