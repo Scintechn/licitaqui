@@ -467,7 +467,7 @@ export function PriceView({
     return (
       <div className="flex min-h-dvh flex-col">
         {bar}
-        <main className="mx-auto w-full max-w-[960px] px-gutter pb-10">
+        <main className="mx-auto w-full px-gutter pb-10" style={{ maxWidth: '1400px' }}>
           <h1 className="sr-only">{page.title}</h1>
           {status.kind === 'analyzing' ? (
             <StateCard
@@ -639,7 +639,7 @@ export function PriceView({
     <div className="flex min-h-dvh flex-col">
       {bar}
 
-      <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3.5 px-gutter pb-10">
+      <main className="mx-auto flex w-full grow flex-col gap-3.5 px-gutter pb-10" style={{ maxWidth: '1400px' }}>
         <h1 className="sr-only">{page.title}</h1>
         {/* §3.5. A price band on a suspended tender is still a true reading of
             the public results; what it must not do is imply there is a bid to

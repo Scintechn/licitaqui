@@ -116,7 +116,7 @@ export default async function AdminPage() {
         }
       />
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-gutter py-6">
+      <main className="mx-auto flex w-full flex-col gap-8 px-gutter py-6" style={{ maxWidth: '1400px' }}>
         {'error' in board ? (
           <StateCard
             kind="limit"

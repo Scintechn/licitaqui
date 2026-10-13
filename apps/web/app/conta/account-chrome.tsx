@@ -64,7 +64,7 @@ export function AccountChrome({
           </>
         }
       />
-      <main className="mx-auto flex w-full max-w-[560px] grow flex-col gap-4 px-gutter pt-6 pb-10">
+      <main className="mx-auto flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10" style={{ maxWidth: '1400px' }}>
         <h1 className="font-display text-[26px] leading-tight font-semibold">{title}</h1>
         {children}
       </main>

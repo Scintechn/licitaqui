@@ -583,7 +583,7 @@ function Pending({
         : copy.states.errorTitle
 
   return (
-    <main className="mx-auto w-full max-w-[960px] px-gutter pb-10">
+    <main className="mx-auto w-full px-gutter pb-10" style={{ maxWidth: '1400px' }}>
       <h1 className="sr-only">{title}</h1>
       {status.kind === 'analyzing' ? (
         <StateCard
@@ -750,7 +750,7 @@ export function OpportunityView({
     <div className="flex min-h-dvh flex-col">
       {bar}
 
-      <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3.5 px-gutter pb-10">
+      <main className="mx-auto flex w-full grow flex-col gap-3.5 px-gutter pb-10" style={{ maxWidth: '1400px' }}>
         {/* Above the title, because it governs everything under it (§3.1). */}
         <TenderStatusBanner tender={tender} />
 
