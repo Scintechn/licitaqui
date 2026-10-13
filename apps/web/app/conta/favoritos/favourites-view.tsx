@@ -209,8 +209,8 @@ export function FavouritesView({
               </p>
             </div>
           ) : (
-            <div className="@container">
-              <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
+            <div>
+              <ul className="grid list-none grid-cols-1 gap-2.5 p-0 md:grid-cols-2 lg:grid-cols-3">
                 {filtered.map((one) => (
                   <li key={one.card.id}>
                     {/* No search to carry: this list is not a search result, so
