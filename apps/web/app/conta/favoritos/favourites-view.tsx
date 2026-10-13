@@ -45,12 +45,18 @@ import { AccountChrome } from '../account-chrome'
 const copy = messages.radar.favourites
 
 type SortOrder = 'deadline-asc' | 'deadline-desc' | 'recent'
+type FavouriteTab = 'open' | 'closed'
 
 const SORT_OPTIONS = [
   { value: 'deadline-asc', label: 'Vence em (próximo)' },
   { value: 'deadline-desc', label: 'Vence em (depois)' },
   { value: 'recent', label: 'Recém adicionado' },
 ]
+
+function isClosed(favourite: Favourite, now: Date): boolean {
+  const days = daysUntil(favourite.card.proposalsCloseAt, now)
+  return days !== null && days < 0
+}
 
 function sortFavourites(
   favourites: Favourite[],
@@ -92,6 +98,7 @@ export function FavouritesView({
   now?: Date
 }) {
   const [sortOrder, setSortOrder] = useState<SortOrder>('deadline-asc')
+  const [activeTab, setActiveTab] = useState<FavouriteTab>('open')
   const currentTime = useMemo(() => now ?? new Date(), [now])
 
   const sorted = useMemo(() => sortFavourites(favourites, sortOrder, currentTime), [
@@ -99,6 +106,23 @@ export function FavouritesView({
     sortOrder,
     currentTime,
   ])
+
+  const openCount = useMemo(
+    () => sorted.filter((f) => !isClosed(f, currentTime)).length,
+    [sorted, currentTime],
+  )
+  const closedCount = useMemo(
+    () => sorted.filter((f) => isClosed(f, currentTime)).length,
+    [sorted, currentTime],
+  )
+
+  const filtered = useMemo(
+    () =>
+      sorted.filter((f) =>
+        activeTab === 'open' ? !isClosed(f, currentTime) : isClosed(f, currentTime),
+      ),
+    [sorted, activeTab, currentTime],
+  )
 
   return (
     <AccountChrome plan={plan} planName={planName} title={copy.title}>
@@ -108,7 +132,36 @@ export function FavouritesView({
         <>
           <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
 
-          <div className="px-gutter pb-3">
+          {/* Tab controls: Open / Closed */}
+          <nav className="border-b border-line-strong">
+            <div className="flex gap-0 px-gutter">
+              <button
+                onClick={() => setActiveTab('open')}
+                className={`flex min-h-9 items-center gap-1.5 border-b-2 px-3 text-meta font-medium transition-colors ${
+                  activeTab === 'open'
+                    ? 'border-blue text-blue'
+                    : 'border-transparent text-muted hover:text-ink'
+                }`}
+              >
+                Abertos
+                <span className="font-mono text-label">{openCount}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('closed')}
+                className={`flex min-h-9 items-center gap-1.5 border-b-2 px-3 text-meta font-medium transition-colors ${
+                  activeTab === 'closed'
+                    ? 'border-blue text-blue'
+                    : 'border-transparent text-muted hover:text-ink'
+                }`}
+              >
+                Encerrados
+                <span className="font-mono text-label">{closedCount}</span>
+              </button>
+            </div>
+          </nav>
+
+          {/* Sort control */}
+          <div className="px-gutter pb-3 pt-3">
             <select
               id="favourites-sort"
               value={sortOrder}
@@ -123,24 +176,35 @@ export function FavouritesView({
             </select>
           </div>
 
-          <div className="@container">
-            <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
-              {sorted.map((one) => (
-                <li key={one.card.id}>
-                  {/* No search to carry: this list is not a search result, so
-                      "Voltar" from the tender goes to a bare Radar. Inventing a
-                      query string here would take the reader back to a list
-                      they never ran. */}
-                  <TenderCardView
-                    tender={one.card}
-                    now={currentTime}
-                    href={editalPath(one.card.id)}
-                    showUrgencyColor
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Grid of cards */}
+          {filtered.length === 0 ? (
+            <div className="px-gutter py-8 text-center">
+              <p className="text-meta text-muted">
+                {activeTab === 'open'
+                  ? 'Nenhum edital aberto nos favoritos'
+                  : 'Nenhum edital encerrado nos favoritos'}
+              </p>
+            </div>
+          ) : (
+            <div style={{ containerType: 'inline-size' }}>
+              <ul className="grid list-none grid-cols-1 gap-2.5 p-0 px-gutter @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
+                {filtered.map((one) => (
+                  <li key={one.card.id}>
+                    {/* No search to carry: this list is not a search result, so
+                        "Voltar" from the tender goes to a bare Radar. Inventing a
+                        query string here would take the reader back to a list
+                        they never ran. */}
+                    <TenderCardView
+                      tender={one.card}
+                      now={currentTime}
+                      href={editalPath(one.card.id)}
+                      showUrgencyColor
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       )}
     </AccountChrome>
