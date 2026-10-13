@@ -9,7 +9,6 @@ import { TenderCardView } from '@/app/radar/tender-card'
 import { editalPath } from '@/lib/radar/client'
 import { daysUntil } from '@/lib/radar/format'
 import { cn } from '@/lib/cn'
-import { MenuButton } from '@/components/menu-trigger'
 
 const copy = messages.radar.favourites
 
@@ -83,7 +82,6 @@ export function FavouritesView({
             <Logo size={30} />
           </Link>
         }
-        actions={<MenuButton />}
       />
       <main className="flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10">
         <div>
