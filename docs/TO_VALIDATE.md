@@ -333,6 +333,30 @@ different products.
 This is a copy decision and the wording is yours (brief §5). The same resolution should settle item
 **C**, which is the same list being short.
 
+**Correction, 2026-10-13 — one sentence above is wrong, and it is the one that matters.** This item
+said *"the right to send it is not in doubt"*, reading terms §7 as a standing authorisation. §7 is
+**conditional**, and the condition is a word: *"Se você tiver **conectado** WhatsApp ou Telegram"*.
+Connecting is an act the subscriber performs, and **nothing in the product lets them perform it** —
+`/conta/alertas` offers Telegram only, with **0** occurrences of `whatsapp` in all of `app/conta/`,
+and no copy anywhere offers a WhatsApp connection. So §7 authorises the notice for a subscriber who
+connected, there are none, and there can be none. Measured the same day: **0 of 4 users have
+`users.whatsapp`**; the only WhatsApp number in the database sits in `founders_list`, typed into the
+founders form under `consent.founders` — *"o aviso de abertura das vagas"*, narrower still than the
+sentence quoted at the top of this item.
+
+That matters because **F36 was carded to close the gap with `coalesce(u.whatsapp, f.whatsapp)`** —
+reading the founders number as a fallback, exactly as `billing.py` already recovers the *name*. It
+would have messaged people about money on a number consented for a seats-opening notice, and this
+item's own *"not in doubt"* is what would have made that look authorised. F36 is now **blocked** on
+this item instead, and the audit turned up a third thing: `consent.whatsapp` itself **renders
+nowhere** — 0 references outside tests, alongside `consent.email` and `consent.contactRequired`
+(**F37**). So the sentence you are being asked for is not an amendment to copy that ships; it is the
+copy for an opt-in that has to be built.
+
+**What would settle all of it**, if it is one decision rather than three: wording for a separate,
+unticked box authorising **billing** notices on WhatsApp, which F31's form renders and a column
+records. Items **C** and **H** are the same list and the same footer being short of it.
+
 ## H. The e-mail footer tells a subscriber they can stop receiving a notice they cannot — found 2026-10-12
 
 `partial-footer.md` — *"Você recebe este e-mail porque autorizou o contato quando entrou na **lista de
