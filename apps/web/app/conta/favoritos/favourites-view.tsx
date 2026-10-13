@@ -126,14 +126,17 @@ export function FavouritesView({
   )
 
   return (
-    <AccountChrome plan={plan} planName={planName} title={copy.title}>
-      {favourites.length === 0 ? (
-        <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
-      ) : (
-        <>
+    <>
+      <AccountChrome plan={plan} planName={planName} title={copy.title}>
+        {favourites.length === 0 ? (
+          <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
+        ) : (
           <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
+        )}
+      </AccountChrome>
 
-          <div className="flex w-full flex-col gap-4 -mx-gutter px-gutter pb-10">
+      {favourites.length > 0 && (
+        <div className="w-full flex flex-col gap-4 px-gutter pb-10">
           {/* Tab controls: Open / Closed */}
           <nav className="border-b border-line-strong">
             <div className="flex gap-0 -mx-gutter px-gutter">
@@ -225,9 +228,8 @@ export function FavouritesView({
               </ul>
             </div>
           )}
-          </div>
-        </>
+        </div>
       )}
-    </AccountChrome>
+    </>
   )
 }
