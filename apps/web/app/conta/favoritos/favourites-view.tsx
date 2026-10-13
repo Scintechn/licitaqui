@@ -126,19 +126,14 @@ export function FavouritesView({
   )
 
   return (
-    <>
-      {/* Header section with max-width constraint */}
-      <AccountChrome plan={plan} planName={planName} title={copy.title}>
-        {favourites.length === 0 ? (
-          <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
-        ) : (
+    <AccountChrome plan={plan} planName={planName} title={copy.title}>
+      {favourites.length === 0 ? (
+        <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
+      ) : (
+        <>
           <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
-        )}
-      </AccountChrome>
 
-      {/* Full-width grid section — breaks out of AccountChrome's max-width constraint */}
-      {favourites.length > 0 && (
-        <div className="flex w-full grow flex-col gap-4 px-gutter pb-10">
+          <div className="flex w-screen flex-col gap-4 -mx-gutter px-gutter pb-10">
           {/* Tab controls: Open / Closed */}
           <nav className="border-b border-line-strong">
             <div className="flex gap-0 -mx-gutter px-gutter">
@@ -230,8 +225,9 @@ export function FavouritesView({
               </ul>
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
-    </>
+    </AccountChrome>
   )
 }
