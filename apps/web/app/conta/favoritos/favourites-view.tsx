@@ -126,17 +126,19 @@ export function FavouritesView({
   )
 
   return (
-    <>
-      <AccountChrome plan={plan} planName={planName} title={copy.title}>
+    <div className="flex min-h-dvh flex-col">
+      {/* Header */}
+      <header className="border-b border-line-strong px-gutter py-4">
+        <h1 className="font-display text-[26px] leading-tight font-semibold">{copy.title}</h1>
+      </header>
+
+      {/* Content */}
+      <main className="flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10">
         {favourites.length === 0 ? (
           <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
         ) : (
-          <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
-        )}
-      </AccountChrome>
-
-      {favourites.length > 0 && (
-        <div className="w-full flex flex-col gap-4 px-gutter pb-10">
+          <>
+            <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
           {/* Tab controls: Open / Closed */}
           <nav className="border-b border-line-strong">
             <div className="flex gap-0 -mx-gutter px-gutter">
@@ -227,9 +229,9 @@ export function FavouritesView({
                 ))}
               </ul>
             </div>
+            </>
           )}
-        </div>
-      )}
-    </>
+      </main>
+    </div>
   )
 }
