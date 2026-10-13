@@ -59,6 +59,39 @@ describe('DEVELOPMENT_PLAN.md §5', () => {
 })
 
 /**
+ * **The legend names the blocked cards, which is a third copy of the status
+ * column.** It drifted the moment it was written: on 2026-10-13 the column had
+ * ten blocked rows and the legend named eight, missing **F32** and **F36** —
+ * both from the lane that added them, so both invisible to the reader who goes
+ * to that list precisely because it is *"the list worth reading first"*. The
+ * count in the same sentence drifted with it. Same reasoning as the §4.2 test
+ * below: two places holding one fact is how this repo's defects start.
+ */
+describe('the legend lists the blocked cards', () => {
+  const blocked = rows.filter((row) => cells(row)[3]?.trim() === 'blocked').map((row) => cells(row)[1]!.trim())
+
+  /** The sentence wraps across two source lines, so read both. */
+  const lines = PLAN.split('\n')
+  const at = lines.findIndex((line) => line.includes('Currently **'))
+  const legend = `${lines[at]} ${lines[at + 1]}`
+
+  it('finds the sentence at all, so a reword cannot make this vacuous', () => {
+    expect(at).toBeGreaterThan(-1)
+    expect(blocked.length).toBeGreaterThan(0)
+  })
+
+  it('names every blocked card and no others', () => {
+    const named = [...legend.matchAll(/([A-Z]\d+[a-z]?)/g)].map((m) => m[1]!)
+    expect(named.sort()).toEqual([...blocked].sort())
+  })
+
+  it('states how many there are', () => {
+    const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
+    expect(legend).toContain(`the ${WORDS[blocked.length]} rows`)
+  })
+})
+
+/**
  * §4.2's MoSCoW rows restate a card's status, and two places holding one fact
  * is how this repo's defects start. A row naming only §5 card ids must agree
  * with §5 — and where a row names several, with the **least complete** of
