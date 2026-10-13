@@ -1,13 +1,15 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { StateCard, Icon } from '@/components'
+import { AppBar, Logo, StateCard, Icon } from '@/components'
 import type { Favourite } from '@/lib/favourites/store'
 import { messages } from '@/lib/messages'
 import { TenderCardView } from '@/app/radar/tender-card'
 import { editalPath } from '@/lib/radar/client'
 import { daysUntil } from '@/lib/radar/format'
 import { cn } from '@/lib/cn'
+import { MenuButton } from '@/components/menu-trigger'
 
 const copy = messages.radar.favourites
 
@@ -73,26 +75,21 @@ export function FavouritesView({
     [sorted, activeTab, currentTime],
   )
 
-  if (favourites.length === 0) {
-    return (
-      <div className="flex min-h-dvh flex-col">
-        <header className="mx-auto w-full max-w-[560px] border-b border-line-strong px-gutter py-4">
-          <h1 className="font-display text-[26px] leading-tight font-semibold">{copy.title}</h1>
-        </header>
-        <main className="mx-auto w-full max-w-[560px] flex grow flex-col gap-4 px-gutter pt-6 pb-10">
-          <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
-        </main>
-      </div>
-    )
-  }
-
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="mx-auto w-full max-w-[560px] border-b border-line-strong px-gutter py-4">
-        <h1 className="font-display text-[26px] leading-tight font-semibold">{copy.title}</h1>
-      </header>
+      <AppBar
+        leading={
+          <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
+            <Logo size={30} />
+          </Link>
+        }
+        actions={<MenuButton />}
+      />
       <main className="flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10">
-        <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
+        <div>
+          <h1 className="font-display text-[32px] leading-tight font-semibold">{copy.title}</h1>
+          <p className="text-meta text-muted">{copy.intro}</p>
+        </div>
         <nav className="border-b border-line-strong">
           <div className="flex gap-0 -mx-gutter px-gutter">
             <button
@@ -133,7 +130,9 @@ export function FavouritesView({
             </ul>
           </details>
         </div>
-        {filtered.length === 0 ? (
+        {favourites.length === 0 ? (
+          <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
+        ) : filtered.length === 0 ? (
           <div className="py-8 text-center">
             <p className="text-meta text-muted">{activeTab === 'open' ? 'Nenhum edital aberto nos favoritos' : 'Nenhum edital encerrado nos favoritos'}</p>
           </div>
