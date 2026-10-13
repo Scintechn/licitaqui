@@ -137,7 +137,7 @@ export function FavouritesView({
         {favourites.length === 0 ? (
           <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
         ) : (
-          <>
+          <div className="space-y-4">
             <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
           {/* Tab controls: Open / Closed */}
           <nav className="border-b border-line-strong">
@@ -229,7 +229,7 @@ export function FavouritesView({
                 ))}
               </ul>
             </div>
-            </>
+            </div>
           )}
       </main>
     </div>
