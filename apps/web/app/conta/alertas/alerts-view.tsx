@@ -1,5 +1,4 @@
-import Link from 'next/link'
-import { AppBar, Button, Card, CardRow, Field, Logo, SectionLabel, Select } from '@/components'
+import { AppBar, Button, Card, CardRow, Field, SectionLabel, Select } from '@/components'
 import { format, messages } from '@/lib/messages'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
 import { ALERTS_PATH } from '@/lib/routes'
@@ -143,13 +142,7 @@ export function AlertsView({
 }: AlertsViewProps) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppBar
-        leading={
-          <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
-            <Logo size={30} />
-          </Link>
-        }
-      />
+      <AppBar />
       <main className="mx-auto flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10" style={{ maxWidth: '1400px' }}>
         <h1 className="font-display text-[26px] leading-tight font-semibold">{prefs.title}</h1>
         <Note>{prefs.intro}</Note>
