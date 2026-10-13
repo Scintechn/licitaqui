@@ -55,10 +55,44 @@
   half still to come. Do not run two at once: they share those databases, which
   is B24.
 - Schema changes only via `db/migrations`, in their own PR. **They apply
-  themselves**: `.github/workflows/migrate.yml` runs `db/migrate.py` on every
-  push to `main` that touches `db/migrations/**`, so a merged migration is
-  live within seconds and `pnpm db:migrate` by hand is for recovery, not for
-  shipping. On 2026-10-01 a whole manual procedure was written out for Sci —
+  themselves — to `main`, and to nothing else**:
+  `.github/workflows/migrate.yml` runs `db/migrate.py` on every push to `main`
+  that touches `db/migrations/**`, so a merged migration is live on the Neon
+  **`main`** branch within seconds and `pnpm db:migrate` by hand is for
+  recovery, not for shipping.
+
+  **The `staging` branch is Sci's to migrate, by hand, every time.** This
+  project has two Neon branches: `main` (endpoint `ep-flat-firefly-acai77cp`,
+  production, what the workflow applies to) and **`staging`** (endpoint
+  `ep-small-cake-ac4lizlb`, created 2026-10-10), which is what
+  `apps/web/.env.local`'s `DATABASE_URL` points at and therefore what
+  `pnpm dev` reads. Nothing applies migrations to `staging`. Sci's decision on
+  2026-10-13 was to keep it manual — migrations are rare — so after a migration
+  merges, from the **main checkout** (the env files are gitignored and do not
+  exist in a worktree):
+
+  ```bash
+  pnpm db:migrate     # the Neon main branch, via MIGRATOR_DATABASE_URL
+  MIGRATOR_DATABASE_URL="$(sed -n 's/^DATABASE_URL_UNPOOLED=//p' .env.local | tr -d '"' | head -1)" \
+    pnpm db:migrate --allow-other-database     # the staging branch the dev server reads
+  ```
+
+  `--allow-other-database` is required on the second line and that is the
+  point: since **B50**, `migrate.py` prints the endpoint, database and role it
+  is about to change and **refuses** when that endpoint is not the one
+  `DATABASE_URL` names. `pnpm db:migrate --check` applies nothing and exits
+  non-zero with the pending list.
+
+  **Why this is a rule and not a note.** On 2026-10-13 `/conta/favoritos`
+  returned `column "birth_date" does not exist` — from `readAccountData`, which
+  every `/conta/*` page calls, so one pending migration took out the whole
+  account area and the stack trace named the wrong file. `pnpm db:migrate` was
+  run and printed `0 applied, 15 already present` while the page stayed broken,
+  because it had migrated `main` and the dev server reads `staging`. Production
+  was never affected. When `staging` feels stale in **data** as well as schema,
+  Neon's *Reset from parent* fixes both at once and is the cheaper move.
+
+  On 2026-10-01 a whole manual procedure was written out for Sci —
   credentials, roles, pooling, the lot — for a workflow that had already run
   the migration eighteen seconds after the PR merged. **Before writing any
   operational runbook, grep `.github/workflows/`**: the question is almost
