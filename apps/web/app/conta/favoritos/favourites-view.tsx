@@ -1,12 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { StateCard } from '@/components'
+import { StateCard, Icon } from '@/components'
 import type { Favourite } from '@/lib/favourites/store'
 import { messages } from '@/lib/messages'
 import { TenderCardView } from '@/app/radar/tender-card'
 import { editalPath } from '@/lib/radar/client'
 import { daysUntil } from '@/lib/radar/format'
+import { cn } from '@/lib/cn'
 import { AccountChrome } from '../account-chrome'
 
 /**
@@ -125,16 +126,22 @@ export function FavouritesView({
   )
 
   return (
-    <AccountChrome plan={plan} planName={planName} title={copy.title}>
-      {favourites.length === 0 ? (
-        <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
-      ) : (
-        <>
+    <>
+      {/* Header section with max-width constraint */}
+      <AccountChrome plan={plan} planName={planName} title={copy.title}>
+        {favourites.length === 0 ? (
+          <StateCard kind="empty" title={copy.emptyTitle} description={copy.emptyBody} />
+        ) : (
           <p className="text-meta leading-relaxed text-muted">{copy.intro}</p>
+        )}
+      </AccountChrome>
 
+      {/* Full-width grid section — breaks out of AccountChrome's max-width constraint */}
+      {favourites.length > 0 && (
+        <div className="flex w-full grow flex-col gap-4 px-gutter pb-10">
           {/* Tab controls: Open / Closed */}
           <nav className="border-b border-line-strong">
-            <div className="flex gap-0 px-gutter">
+            <div className="flex gap-0 -mx-gutter px-gutter">
               <button
                 onClick={() => setActiveTab('open')}
                 className={`flex min-h-9 items-center gap-1.5 border-b-2 px-3 text-meta font-medium transition-colors ${
@@ -160,25 +167,43 @@ export function FavouritesView({
             </div>
           </nav>
 
-          {/* Sort control */}
-          <div className="px-gutter pb-3 pt-3">
-            <select
-              id="favourites-sort"
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.currentTarget.value as SortOrder)}
-              className="min-h-control rounded-control border border-field-line bg-surface px-3 text-base text-ink"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+          {/* Sort control — styled like Radar */}
+          <div className="pb-3 pt-3">
+            <details key={sortOrder} className="group/sort inline-block">
+              <summary
+                className={cn(
+                  'flex min-h-touch cursor-pointer list-none items-center gap-1 text-body text-muted',
+                  'whitespace-nowrap [&::-webkit-details-marker]:hidden',
+                )}
+              >
+                <span>Ordenar: {SORT_OPTIONS.find((o) => o.value === sortOrder)?.label.split('(')[0].trim()}</span>
+                <Icon
+                  name="chevronRight"
+                  size={16}
+                  className="transition-transform group-open/sort:rotate-90"
+                />
+              </summary>
+              <ul className="absolute left-gutter z-20 mt-1 w-max rounded-control border border-line-strong bg-surface py-1">
+                {SORT_OPTIONS.map((opt) => (
+                  <li key={opt.value}>
+                    <button
+                      onClick={() => setSortOrder(opt.value as SortOrder)}
+                      className={cn(
+                        'flex w-full min-h-touch items-center px-3 text-body whitespace-nowrap text-left',
+                        sortOrder === opt.value ? 'font-semibold text-ink' : 'text-ink hover:bg-fill-muted',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
           </div>
 
           {/* Grid of cards */}
           {filtered.length === 0 ? (
-            <div className="px-gutter py-8 text-center">
+            <div className="py-8 text-center">
               <p className="text-meta text-muted">
                 {activeTab === 'open'
                   ? 'Nenhum edital aberto nos favoritos'
@@ -186,8 +211,8 @@ export function FavouritesView({
               </p>
             </div>
           ) : (
-            <div style={{ containerType: 'inline-size' }}>
-              <ul className="grid list-none grid-cols-1 gap-2.5 p-0 px-gutter @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
+            <div className="@container">
+              <ul className="grid list-none grid-cols-1 gap-2.5 p-0 @min-[860px]:grid-cols-2 @min-[1080px]:grid-cols-3">
                 {filtered.map((one) => (
                   <li key={one.card.id}>
                     {/* No search to carry: this list is not a search result, so
@@ -205,8 +230,8 @@ export function FavouritesView({
               </ul>
             </div>
           )}
-        </>
+        </div>
       )}
-    </AccountChrome>
+    </>
   )
 }
