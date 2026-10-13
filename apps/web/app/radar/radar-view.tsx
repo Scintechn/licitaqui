@@ -1370,7 +1370,7 @@ export function RadarView({
         }
       />
 
-      <main id="radar" className="mx-auto flex w-full max-w-[1120px] grow flex-col pb-10">
+      <main id="radar" className="mx-auto flex w-full grow flex-col pb-10 gap-4" style={{ maxWidth: '1400px' }}>
         <div className="flex flex-col gap-1 px-gutter pb-2.5">
           <h1 className="font-display text-[28px] leading-tight font-semibold">{list.title}</h1>
           <CompanyLine grouping={grouping} query={query} status={status} />

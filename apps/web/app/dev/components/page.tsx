@@ -479,7 +479,7 @@ function TelegramAlert() {
 
 export default function DevComponentsPage() {
   return (
-    <main className="mx-auto flex max-w-[1600px] flex-col gap-7 px-gutter py-9 xl:px-10">
+    <main className="mx-auto flex w-full flex-col gap-7 px-gutter py-9 xl:px-10" style={{ maxWidth: '1400px' }}>
       <div className="flex flex-wrap items-baseline gap-4">
         <h1 className="font-display text-[clamp(28px,6vw,36px)] font-semibold">
           LicitaQui · design system

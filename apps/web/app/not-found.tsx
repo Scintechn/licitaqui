@@ -26,7 +26,7 @@ export default function NotFound() {
           </Link>
         }
       />
-      <main className="mx-auto flex w-full max-w-[560px] grow flex-col gap-4 px-gutter pt-8">
+      <main className="mx-auto flex w-full grow flex-col gap-4 px-gutter pt-8" style={{ maxWidth: '1400px' }}>
         <h1 className="font-display text-[28px] leading-tight font-semibold">{copy.title}</h1>
         <StateCard kind="empty" title={messages.errors.notFound} description={copy.body} />
         <div className="flex flex-col gap-2 min-[560px]:flex-row">

@@ -65,7 +65,7 @@ export function SignInView({
           </Link>
         }
       />
-      <main className="mx-auto flex w-full max-w-[460px] grow flex-col gap-4 px-gutter pt-6 pb-10">
+      <main className="mx-auto flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10" style={{ maxWidth: '1400px' }}>
         <h1 className="font-display text-[26px] leading-tight font-semibold">{copy.title}</h1>
         <p className="text-body leading-relaxed text-muted">{copy.subtitle}</p>
 

@@ -23,7 +23,14 @@ const SORT_OPTIONS = [
 
 function isClosed(favourite: Favourite, now: Date): boolean {
   const days = daysUntil(favourite.card.proposalsCloseAt, now)
-  return days !== null && days < 0
+  if (days === null) return false
+  if (days < 0) return true
+  // When days === 0 (same calendar day), check if the deadline time has passed
+  if (days === 0 && favourite.card.proposalsCloseAt) {
+    const deadline = new Date(favourite.card.proposalsCloseAt)
+    return now > deadline
+  }
+  return false
 }
 
 function sortFavourites(favourites: Favourite[], order: SortOrder, now: Date): Favourite[] {
@@ -46,13 +53,9 @@ function sortFavourites(favourites: Favourite[], order: SortOrder, now: Date): F
 }
 
 export function FavouritesView({
-  plan,
-  planName,
   favourites,
   now,
 }: {
-  plan: string
-  planName: string
   favourites: Favourite[]
   now?: Date
 }) {

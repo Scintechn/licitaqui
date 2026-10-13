@@ -50,7 +50,7 @@ function favourite(over: Partial<Favourite['card']> = {}): Favourite {
 
 function render(favourites: Favourite[]) {
   return renderToStaticMarkup(
-    <FavouritesView plan="essencial" planName="Essencial" favourites={favourites} now={NOW} />,
+    <FavouritesView favourites={favourites} now={NOW} />,
   )
 }
 

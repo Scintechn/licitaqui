@@ -549,7 +549,7 @@ export function ScreeningView({
         }
       />
 
-      <main className="mx-auto flex w-full max-w-[960px] grow flex-col gap-3 px-gutter pb-10">
+      <main className="mx-auto flex w-full grow flex-col gap-3 px-gutter pb-10" style={{ maxWidth: '1400px' }}>
         {/* §3.5: the same banner on every AI result screen for the tender.
             Screening a suspended edital is still worth doing — the findings
             hold whatever the órgão does next — it is just not urgent, and a

@@ -42,8 +42,6 @@ export default async function FavouritesPage() {
 
   return (
     <FavouritesView
-      plan={account.plan}
-      planName={account.planName}
       favourites={await listFavourites(account.userId, { compatible, check, fits })}
     />
   )
