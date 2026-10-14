@@ -36,3 +36,6 @@ export type { SheetProps } from './sheet'
 
 export { Tag, TagList } from './tag'
 export type { TagProps, TagTone } from './tag'
+
+export { WelcomeBanner } from './welcome-banner'
+export type { WelcomeBannerProps } from './welcome-banner'

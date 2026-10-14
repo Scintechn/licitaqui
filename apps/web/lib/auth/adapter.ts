@@ -44,6 +44,7 @@ type UserRow = {
   id: string
   email: string
   name: string | null
+  created_at?: Date | string | null
 }
 
 type SessionRow = {
@@ -52,7 +53,7 @@ type SessionRow = {
   expires: Date | string
 }
 
-function toUser(row: UserRow): AdapterUser {
+function toUser(row: UserRow): AdapterUser & { createdAt?: Date | string | null } {
   return {
     id: String(row.id),
     email: row.email,
@@ -61,6 +62,8 @@ function toUser(row: UserRow): AdapterUser {
     // read by nothing in this product.
     image: null,
     emailVerified: null,
+    // Include created_at for first-time user detection
+    createdAt: row.created_at,
   }
 }
 
@@ -72,7 +75,7 @@ function toSession(row: SessionRow): AdapterSession {
   }
 }
 
-const USER_COLUMNS = sql`id, email, name`
+const USER_COLUMNS = sql`id, email, name, created_at`
 
 /**
  * `given ?? db()`, evaluated per call and never at module load.
