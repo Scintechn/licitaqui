@@ -119,6 +119,21 @@ export const authConfig: NextAuthConfig = {
       }
       return session
     },
+    redirect({ url, baseUrl }) {
+      // If redirecting to the default /radar path and it looks like a new user,
+      // add the welcome parameter. Check if url contains createdAt info or
+      // if it's a fresh redirect without any existing query params.
+      if (url.includes('/radar')) {
+        // Return the URL as-is; client-side redirect logic will handle welcome=1
+        return url
+      }
+      // For any other redirect, prepend baseUrl if it's a relative path
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`
+      }
+      // Absolute URLs stay as-is
+      return url
+    },
   },
   events: {
     /**

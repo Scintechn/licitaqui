@@ -129,16 +129,30 @@ export function Header({ signedIn }: { signedIn: boolean }) {
           <a href="#perguntas" className={`hidden min-[900px]:inline-flex ${NAV_LINK}`}>
             {nav.faq}
           </a>
-          {/* `/conta/criar` is U1's, so this — like every other account
-              control — goes through `lib/routes.ts`. `ACCOUNT_HREF` already
-              sends a signed-in visitor to `/conta`; what was missing was
-              saying so on the button before they clicked it. */}
-          <Link
-            href={signedIn ? '/radar' : ACCOUNT_HREF}
-            className={`inline-flex ${NAV_LINK} ml-1.5 rounded-control border border-line-strong bg-surface`}
-          >
-            {signedIn ? nav.toRadar : nav.signIn}
-          </Link>
+          {/* Navigation buttons: different for signed-in vs signed-out users */}
+          {signedIn ? (
+            <Link
+              href="/radar"
+              className={`inline-flex ${NAV_LINK} ml-1.5 rounded-control border border-line-strong bg-surface`}
+            >
+              {nav.toRadar}
+            </Link>
+          ) : (
+            <div className="flex gap-2 ml-1.5">
+              <Link
+                href={`${ACCOUNT_HREF}?mode=login`}
+                className={`inline-flex ${NAV_LINK} rounded-control border border-line-strong bg-surface`}
+              >
+                {nav.signIn}
+              </Link>
+              <Link
+                href={`${ACCOUNT_HREF}?mode=signup`}
+                className={`inline-flex ${NAV_LINK} rounded-control border border-blue bg-blue text-surface`}
+              >
+                {nav.signUp}
+              </Link>
+            </div>
+          )}
         </nav>
       </Wrap>
     </header>
