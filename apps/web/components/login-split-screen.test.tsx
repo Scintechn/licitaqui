@@ -63,9 +63,9 @@ describe('LoginFormSide', () => {
     expect(out).toContain('Test Form Content')
   })
 
-  it('uses ivory background color', () => {
+  it('uses dark background color for outer container', () => {
     const out = renderToStaticMarkup(<LoginFormSide>Test</LoginFormSide>)
-    expect(out).toContain('--color-ivory')
+    expect(out).toContain('1a1a1a')
   })
 
   it('uses ink text color', () => {
@@ -78,10 +78,42 @@ describe('LoginFormSide', () => {
     expect(out).toContain('<main')
   })
 
-  it('applies flex layout classes', () => {
+  it('applies flex layout classes for centering', () => {
     const out = renderToStaticMarkup(<LoginFormSide>Test</LoginFormSide>)
     expect(out).toContain('flex')
     expect(out).toContain('flex-col')
+    expect(out).toContain('items-center')
+    expect(out).toContain('justify-center')
+  })
+
+  it('wraps content in a white card container', () => {
+    const out = renderToStaticMarkup(
+      <LoginFormSide>
+        <div>Card Content</div>
+      </LoginFormSide>,
+    )
+    expect(out).toContain('--color-surface')
+  })
+
+  it('applies rounded corners to card', () => {
+    const out = renderToStaticMarkup(<LoginFormSide>Test</LoginFormSide>)
+    expect(out).toContain('rounded-lg')
+  })
+
+  it('applies shadow to card', () => {
+    const out = renderToStaticMarkup(<LoginFormSide>Test</LoginFormSide>)
+    expect(out).toContain('shadow-md')
+  })
+
+  it('applies padding inside card', () => {
+    const out = renderToStaticMarkup(<LoginFormSide>Test</LoginFormSide>)
+    expect(out).toContain('p-10')
+  })
+
+  it('makes card full width on mobile, constrained on desktop', () => {
+    const out = renderToStaticMarkup(<LoginFormSide>Test</LoginFormSide>)
+    expect(out).toContain('w-full')
+    expect(out).toContain('lg:w-96')
   })
 })
 
@@ -147,11 +179,21 @@ describe('LoginSplitScreen', () => {
     expect(out).toContain('TestForm')
   })
 
-  it('uses ivory background for the container', () => {
+  it('uses ivory background for the split screen wrapper', () => {
     const out = renderToStaticMarkup(
       <LoginSplitScreen formContent={formContent} />,
     )
     expect(out).toContain('--color-ivory')
+  })
+
+  it('applies card styling to form content', () => {
+    const out = renderToStaticMarkup(
+      <LoginSplitScreen formContent={formContent} />,
+    )
+    // Verify that LoginFormSide applies card styling
+    expect(out).toContain('rounded-lg')
+    expect(out).toContain('shadow-md')
+    expect(out).toContain('--color-surface')
   })
 })
 
