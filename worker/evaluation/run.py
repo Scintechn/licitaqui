@@ -1,9 +1,11 @@
 """The screening evaluation: run the real path over the three answer keys and score it.
 
 ```bash
-python -m evaluation                 # live if a key is configured, replay otherwise
-python -m evaluation --mode recorded # replay the recorded answers: no API call, no cost
-python -m evaluation --mode record   # live, and save each answer for replaying later
+python -m evaluation                           # live lite (triagem), or replay if no key
+python -m evaluation --mode recorded           # replay recorded answers: no API call, no cost
+python -m evaluation --mode record             # live, and save each answer for replaying later
+python -m evaluation --ai-mode deep            # evaluate deep analysis instead of lite
+python -m evaluation --ai-mode deep --mode recorded  # replay deep analysis recorded answers
 python -m evaluation --doc 01_EditalPE221_26 --verbose
 ```
 
@@ -145,8 +147,8 @@ def _capturing_call(store: list[dict[str, Any]]) -> Any:
     return call
 
 
-def run_case(case: Case, *, model: str, mode: str, key: str | None) -> CaseReport:
-    """Screen one answer-key document and score the answer."""
+def run_case(case: Case, *, model: str, mode: str, ai_mode: str, key: str | None) -> CaseReport:
+    """Screen one answer-key document and score the answer (lite or deep)."""
     captured: list[dict[str, Any]] = []
     if mode == "recorded":
         path = recorded_path(case.name, model)
@@ -162,18 +164,27 @@ def run_case(case: Case, *, model: str, mode: str, key: str | None) -> CaseRepor
     else:
         call = _capturing_call(captured)
 
-    screening: Screening = ai_tender.screen(
-        case.document, key=key or "recorded", model=model, call=call
-    )
+    if ai_mode == "deep":
+        screening: Screening = ai_tender.deep_analysis(
+            case.document, key=key or "recorded", model=model, call=call
+        )
+    else:
+        screening: Screening = ai_tender.screen(
+            case.document, key=key or "recorded", model=model, call=call
+        )
 
     if mode == "record" and screening.status == "ok":
         recorded_path(case.name, model).parent.mkdir(parents=True, exist_ok=True)
+        prompt_version = (
+            ai_tender.PROMPT_VERSION_DEEP if ai_mode == "deep" else ai_tender.PROMPT_VERSION_LITE
+        )
         recorded_path(case.name, model).write_text(
             json.dumps(
                 {
                     "document": case.name,
                     "model": model,
-                    "prompt_version": ai_tender.PROMPT_VERSION_LITE,
+                    "ai_mode": ai_mode,
+                    "prompt_version": prompt_version,
                     "extraction_version": ai_tender.EXTRACTION_VERSION,
                     "recorded_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
                     "calls": captured,
@@ -261,6 +272,7 @@ def print_report(reports: list[CaseReport], *, model: str, mode: str, threshold:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score the screening against the answer keys")
     parser.add_argument("--mode", choices=("auto", "live", "record", "recorded"), default="auto")
+    parser.add_argument("--ai-mode", choices=("lite", "deep"), default="lite", help="lite (triagem) or deep analysis")
     parser.add_argument("--model", default=ai_tender.SCREENING_MODEL)
     parser.add_argument("--doc", action="append", default=[], help="answer key name; repeatable")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
@@ -276,7 +288,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     names = args.doc or case_names()
-    reports = [run_case(load_case(name), model=args.model, mode=mode, key=key) for name in names]
+    reports = [run_case(load_case(name), model=args.model, mode=mode, ai_mode=args.ai_mode, key=key) for name in names]
 
     if args.verbose:
         for report in reports:
