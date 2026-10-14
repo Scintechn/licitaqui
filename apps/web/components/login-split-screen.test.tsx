@@ -5,11 +5,6 @@ import { LoginBrandSide } from './login-brand-side'
 import { LoginFormSide } from './login-form-side'
 
 describe('LoginBrandSide', () => {
-  it('renders the brand logo', () => {
-    const out = renderToStaticMarkup(<LoginBrandSide />)
-    expect(out).toContain('LicitaQui')
-  })
-
   it('renders the brand tagline', () => {
     const out = renderToStaticMarkup(<LoginBrandSide />)
     expect(out).toContain('Encontre o edital que a sua empresa consegue atender')

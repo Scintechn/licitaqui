@@ -1,5 +1,3 @@
-import Link from 'next/link'
-import { Logo } from './logo'
 import { messages } from '@/lib/messages'
 
 export interface LoginBrandSideProps {
@@ -28,12 +26,7 @@ export function LoginBrandSide({ className = '' }: LoginBrandSideProps) {
         color: 'var(--color-on-brand)',
       }}
     >
-      {/* Logo */}
-      <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
-        <Logo size={40} tone="ivory" />
-      </Link>
-
-      {/* Value Proposition */}
+      {/* Value Proposition (logo removed — AppBar renders it at the top) */}
       <div className="flex flex-col gap-4">
         <h2
           className="font-display text-2xl font-semibold leading-tight"
@@ -54,8 +47,8 @@ export function LoginBrandSide({ className = '' }: LoginBrandSideProps) {
         </p>
       </div>
 
-      {/* Benefit Bullets (optional visual hierarchy) */}
-      <div className="flex flex-col gap-3 pt-4">
+      {/* Benefit Bullets — explain what the account unlocks */}
+      <div className="flex flex-col gap-4 pt-2">
         {[
           { title: 'Sem senha', desc: 'Entra com email ou Google' },
           { title: 'Grátis por sempre', desc: 'Cria sua conta em 30 segundos' },

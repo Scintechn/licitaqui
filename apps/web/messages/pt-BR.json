@@ -1331,7 +1331,7 @@
         "help": "Dúvida ou problema: {email}",
         "fallback": "Se o botão não funcionar, copie e cole este endereço no navegador:"
       },
-      "keepBrowsing": "Continuar sem conta",
+      "keepBrowsing": "Ver editais sem criar conta",
       "errorTitle": "Não deu para entrar",
       "errorBody": "Alguma coisa falhou no caminho de volta. Tente de novo.",
       "emailMissing": "Digite o seu e-mail para receber o link.",

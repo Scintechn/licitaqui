@@ -118,11 +118,11 @@ export function SignInView({
               />
               <span>
                 {consent.termsBefore}
-                <a href={messages.legal.termsUrl} className="text-blue">
+                <a href={messages.legal.termsUrl} className="text-blue" aria-label={`${messages.legal.termsLabel} (abre em nova aba)`}>
                   {messages.legal.termsLabel}
                 </a>
                 {consent.termsBetween}
-                <a href={messages.legal.privacyUrl} className="text-blue">
+                <a href={messages.legal.privacyUrl} className="text-blue" aria-label={`${messages.legal.privacyLabel} (abre em nova aba)`}>
                   {messages.legal.privacyLabel}
                 </a>
                 {consent.termsAfter}
