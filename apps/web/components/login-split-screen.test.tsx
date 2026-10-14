@@ -113,7 +113,7 @@ describe('LoginFormSide', () => {
   it('makes card full width on mobile, constrained on desktop', () => {
     const out = renderToStaticMarkup(<LoginFormSide>Test</LoginFormSide>)
     expect(out).toContain('w-full')
-    expect(out).toContain('lg:w-96')
+    expect(out).toContain('lg:max-w-lg')
   })
 })
 

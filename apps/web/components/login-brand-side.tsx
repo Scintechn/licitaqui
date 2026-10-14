@@ -29,7 +29,7 @@ export function LoginBrandSide({ className = '' }: LoginBrandSideProps) {
       }}
     >
       {/* Logo */}
-      <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex pl-24">
+      <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex px-24">
         <Logo size={40} tone="ivory" />
       </Link>
 
