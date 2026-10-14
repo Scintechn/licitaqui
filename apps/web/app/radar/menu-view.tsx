@@ -74,8 +74,8 @@ const MAIN: Item[] = [
   { id: 'radar', href: '/radar', icon: 'search', label: copy.radar },
   { id: 'alerts', href: '/conta/alertas', icon: 'alert', label: copy.alerts },
   { id: 'favourites', href: FAVOURITES_PATH, icon: 'star', label: copy.favourites },
-  { id: 'company', href: COMPANY_PATH, icon: 'company', label: copy.company },
-  { id: 'billing', href: PLAN_PATH, icon: 'money', label: copy.billing },
+  { id: 'company', href: '/conta?tab=empresa', icon: 'company', label: copy.company },
+  { id: 'billing', href: '/conta?tab=plano', icon: 'money', label: copy.billing },
 ]
 
 /**
@@ -85,12 +85,15 @@ const MAIN: Item[] = [
  * six links at once. The row is out until the route exists; `copy.help` stays
  * in the catalogue for the day it does.
  *
- * `Perfil` goes to `ACCOUNT_PATH` (`/conta`), not `ACCOUNT_HREF`
- * (`/conta/criar`). The strip above it only renders for a signed-in viewer,
- * so the sign-up screen is the one page that item can never mean.
+ * All account sections now point to `/conta` (unified dashboard):
+ * - `Perfil` goes to `/conta?tab=perfil`
+ * - `Minha empresa` goes to `/conta?tab=empresa`
+ * - `Plano e pagamento` goes to `/conta?tab=plano`
+ * The strip above renders only for a signed-in viewer, so the sign-up screen
+ * is the one page these items can never mean.
  */
 const ACCOUNT: Item[] = [
-  { id: 'profile', href: ACCOUNT_PATH, icon: 'account', label: copy.profile },
+  { id: 'profile', href: '/conta?tab=perfil', icon: 'account', label: copy.profile },
 ]
 
 /**
