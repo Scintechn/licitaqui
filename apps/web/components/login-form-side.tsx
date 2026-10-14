@@ -19,9 +19,11 @@ export interface LoginFormSideProps {
  *
  * **Responsive behavior:**
  * - Mobile (<lg): Card takes full width minus gutters, ivory background fills viewport
- * - Desktop (lg+): Card width constrained, centered on ivory background
+ * - Desktop (lg+): Card width set to max-w-lg (512px), centered on ivory background
+ *   - Provides comfortable spacing for signup form fields (name, birth date, mobile, CNPJ)
+ *   - 432px content width after padding (40px on each side)
  *
- * On desktop (1024px+): Takes the right 50% of the screen.
+ * On desktop (1024px+): Takes the right 50% of the screen with max width constraint.
  * On mobile (<640px): Takes full width and appears below the brand side.
  */
 export function LoginFormSide({ children, className = '' }: LoginFormSideProps) {
@@ -35,7 +37,7 @@ export function LoginFormSide({ children, className = '' }: LoginFormSideProps) 
     >
       {/* Card container with white background, rounded corners, and shadow */}
       <div
-        className="w-full lg:w-96 flex flex-col gap-4 p-10 rounded-lg shadow-md"
+        className="w-full lg:max-w-lg flex flex-col gap-4 p-10 rounded-lg shadow-md"
         style={{
           backgroundColor: 'var(--color-surface)',
         }}
