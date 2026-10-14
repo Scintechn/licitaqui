@@ -1015,7 +1015,7 @@ def deep_analysis(
     if analysis.ok:
         analysis.rules = compute_rules(analysis.result, "deep")
         analysis.citation_check = check_excerpt_citations(
-            analysis.result, document, sent_pages=selection.kept
+            analysis.result, document
         )
     return Screening(
         status="ok" if analysis.ok else "failed",
