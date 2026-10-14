@@ -1,7 +1,5 @@
-import Link from 'next/link'
-import { AppBar, Logo, Tag } from '@/components'
+import { AppBar, Tag } from '@/components'
 import { MenuTrigger } from '@/components/menu-trigger'
-import { messages } from '@/lib/messages'
 
 /**
  * The frame the three account screens share — card **D22**.
@@ -47,11 +45,6 @@ export function AccountChrome({
   return (
     <div className="flex min-h-dvh flex-col">
       <AppBar
-        leading={
-          <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
-            <Logo size={30} />
-          </Link>
-        }
         actions={
           <>
             <Tag tone="muted">{planName || plan}</Tag>
