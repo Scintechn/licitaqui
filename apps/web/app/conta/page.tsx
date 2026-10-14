@@ -62,7 +62,7 @@ export default async function AccountPage({
         companyAction: saveCompany,
       }}
       plan={{
-        quota: account.quota,
+        quota: account.quota!,
         founderSeat: account.founderSeat,
         seatTotal: FOUNDERS.seatsTotal,
         subscription:
