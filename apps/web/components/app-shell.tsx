@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { createContext, useCallback, useContext, useId, useMemo, useState, useSyncExternalStore } from 'react'
 import { Icon } from './icon'
 import { MenuView } from '@/app/radar/menu-view'
@@ -148,14 +148,20 @@ export function useAppMenu(): AppMenu | null {
  * renders, so the next entry added without a branch here fails with nobody
  * editing a list.
  */
-export function currentItem(pathname: string | null): string | undefined {
+export function currentItem(pathname: string | null, searchParams?: URLSearchParams): string | undefined {
   if (!pathname) return undefined
   if (pathname.startsWith('/conta/alertas')) return 'alerts'
   if (pathname.startsWith('/conta/favoritos')) return 'favourites'
-  if (pathname.startsWith('/conta/empresa')) return 'company'
-  if (pathname.startsWith('/conta/plano')) return 'billing'
   if (pathname.startsWith('/conta/criar')) return undefined
-  if (pathname.startsWith('/conta')) return 'profile'
+  // Handle unified dashboard with tabs (/conta?tab=empresa, etc.)
+  if (pathname.startsWith('/conta')) {
+    const tab = searchParams?.get('tab')
+    if (tab === 'empresa') return 'company'
+    if (tab === 'plano') return 'billing'
+    if (tab === 'perfil') return 'profile'
+    // Default to profile for /conta without tab param
+    return 'profile'
+  }
   if (pathname.startsWith('/radar')) return 'radar'
   return undefined
 }
@@ -223,7 +229,7 @@ export function AppShell({
   favouriteCount?: number | null
   children: React.ReactNode
 }) {
-  const current = currentItem(usePathname())
+  const current = currentItem(usePathname(), useSearchParams())
   const [open, setOpen] = useState(false)
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, serverCollapsed)
   const toggleRail = useCallback(() => writeCollapsed(!readCollapsed()), [])
