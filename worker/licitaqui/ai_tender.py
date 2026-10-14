@@ -80,6 +80,11 @@ PROMPTS = prompts.PROMPTS
 #: about R$ 0,004 per edital; `worker/evaluation` is how a change is checked.
 SCREENING_MODEL = "qwen/qwen3.7-flash"
 
+#: Deep analysis: 68/69 on answer keys, ~R$ 0.10 per tender.
+DEEP_ANALYSIS_MODEL = "openai/gpt-5.6-luna"
+#: Fallback if the primary model fails.
+DEEP_ANALYSIS_MODEL_FALLBACK = "google/gemini-3.8-flash"
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_KEY_VAR = "OPENROUTER_API_KEY"
 #: Name of the circuit breaker the job wraps the API calls in (§7.2).
@@ -975,6 +980,41 @@ def screen(
     if analysis.ok:
         analysis.rules = compute_rules(analysis.result, "lite")
         analysis.citation_check = check_citations(
+            analysis.result, document, sent_pages=selection.kept
+        )
+    return Screening(
+        status="ok" if analysis.ok else "failed",
+        analysis=analysis,
+        document=document,
+        selection=selection,
+        error=analysis.error,
+    )
+
+
+def deep_analysis(
+    document: Document,
+    *,
+    key: str | None = None,
+    model: str | None = None,
+    max_chars: int | None = None,
+    call: Any = None,
+) -> Screening:
+    """Deep analysis of one extracted document (Option A: Depth).
+
+    Same documents as lite, whole document (320k chars vs 60k), every claim
+    carrying a verbatim excerpt checked by check_excerpt_citations.
+    """
+    if not document.has_text:
+        return Screening(status=NO_TEXT, document=document)
+
+    if model is None:
+        model = DEEP_ANALYSIS_MODEL
+
+    selection = select_pages(document, max_chars or LIMITS["deep"]["max_chars"], "deep")
+    analysis = analyse(model, "deep", selection.text, key or api_key(), call=call)
+    if analysis.ok:
+        analysis.rules = compute_rules(analysis.result, "deep")
+        analysis.citation_check = check_excerpt_citations(
             analysis.result, document, sent_pages=selection.kept
         )
     return Screening(

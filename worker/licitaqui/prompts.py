@@ -82,4 +82,30 @@ No máximo 3 bloqueadores. Nota 0 = impossível para empresa pequena, 10 = muito
 DOCUMENTO (trechos mais relevantes, em ordem de página):
 """
 
-PROMPTS = {"lite": (PROMPT_VERSION_LITE, PROMPT_LITE)}
+PROMPT_DEEP = """ANÁLISE COMPLETA (deep dive). Preencha exatamente este JSON.
+
+Para cada item de "exigencias", "riscos" e "pontos_de_esclarecimento", copie em "trecho" uma frase CURTA
+(até 200 caracteres) EXATAMENTE como está no documento, e a "pagina" onde ela está.
+Se não conseguir citar um trecho real, NÃO inclua o item.
+
+{
+  "triagem": { "objeto": "o que está sendo contratado, em 1 frase", "tipo_objeto": "produto | servico | obra | misto", "orgao": null, "municipio_uf": null, "modalidade": null, "criterio_julgamento": "ex.: menor preço por item | menor preço global | maior desconto", "plataforma_disputa": null, "prazo_envio_proposta": "AAAA-MM-DD HH:MM ou null", "data_sessao_disputa": "AAAA-MM-DD HH:MM ou null", "valor_estimado_total": null, "orcamento_sigiloso": true/false/null, "registro_de_precos": true/false/null, "vigencia_meses": "meses do contrato; em registro de preços, vigência da ata", "beneficio_me_epp": {"situacao": "exclusivo | cota_reservada | misto | tratamento_favorecido | sem_beneficio | conflito | nao_informado", "itens_exclusivos": [], "itens_cota_reservada": [], "pagina": null, "observacao": null}, "atestado_capacidade_tecnica": {"exige": true/false/null, "resumo": "o que precisa comprovar, com números", "pagina": null}, "capital_ou_patrimonio_minimo": {"exige": true/false/null, "resumo": "copie o percentual e a base de cálculo, sem fazer contas", "percentual": null, "base": "valor_total | valor_anual | valor_mensal | outro | null", "pagina": null}, "amostra_ou_prova_de_conceito": {"tipo": "amostra | prova_de_conceito | nenhuma | nao_informado", "resumo": null, "pagina": null}, "garantia_contratual": {"situacao": "exigida | nao_exigida | nao_informado", "percentual": null, "pagina": null}, "visita_tecnica": "obrigatoria | facultativa | nao_ha | nao_informado", "consorcio": "permitido | vedado | nao_informado", "prazo_execucao_ou_entrega_dias": null, "entrega": {"local": null, "parcelada": true/false/null, "validade_minima_produto": "ex.: 75% da validade na entrega", "pagina": null}, "prazo_pagamento_dias": "número; se for 'X dias fora a dezena', use X e explique em observacao_pagamento", "observacao_pagamento": null, "exigencias_produto": {"registro_anvisa": true/false/null, "afe_anvisa": true/false/null, "licenca_ou_alvara_sanitario": true/false/null, "inmetro": true/false/null, "catalogo_ou_ficha_tecnica": true/false/null, "aceita_distribuidor_revendedor": "sim | nao | com_condicoes | nao_informado", "pagina": null}, "bloqueadores_pequena_empresa": [{"ponto": "exigência que pode impedir uma empresa pequena", "pagina": null}], "nota_triagem_0_a_10": null, "vale_deep_dive": true/false, "motivo": "1 frase explicando a nota" },
+  "itens": [
+    {"numero": null, "descricao": "", "unidade": null, "quantidade": null, "valor_estimado_unitario": null, "especificacao_minima": ["atributos obrigatórios"], "pagina": null}
+  ],
+  "exigencias": [
+    {"categoria": "habilitacao_juridica | fiscal_trabalhista | tecnica | economico_financeira | proposta | execucao | certificacao | outra", "descricao": "o que é exigido, com números", "trecho": "", "pagina": null}
+  ],
+  "prazos": {"implantacao_ou_entrega_dias": null, "pagamento_dias": null, "vigencia_meses": null, "validade_proposta_dias": null, "reajuste": null, "pagina": null},
+  "penalidades": {"multa_atraso": null, "multa_inexecucao": null, "impedimento": null, "pagina": null},
+  "subcontratacao": {"situacao": "permitida | vedada | nao_informado", "limite": null, "pagina": null},
+  "riscos": [{"risco": "risco concreto para empresa pequena", "gravidade": "alta | media | baixa", "trecho": "", "pagina": null}],
+  "pontos_de_esclarecimento": [{"pergunta": "dúvida ou possível inconsistência que vale perguntar ao órgão", "trecho": "", "pagina": null}],
+  "atividade_cnae_sugerida": ["CNAE/atividade necessária"],
+  "nota_viabilidade_0_a_10": {"micro_empresa": null, "pequena_empresa": null, "justificativa": "1-2 frases"}
+}
+
+DOCUMENTO:
+"""
+
+PROMPTS = {"lite": (PROMPT_VERSION_LITE, PROMPT_LITE), "deep": (PROMPT_VERSION_DEEP, PROMPT_DEEP)}
