@@ -47,7 +47,9 @@ export type SignInViewProps = {
   /** The magic link was just sent. */
   sent?: boolean
   /** `email` — no address was typed; anything else — the provider refused. */
-  error?: 'email' | 'provider' | null
+  error?: 'email' | 'provider' | null | 'validation'
+  /** Validation errors for profile fields (signup only) */
+  validationErrors?: Record<string, string>
   googleAction: (formData: FormData) => void | Promise<void>
   emailAction: (formData: FormData) => void | Promise<void>
   /** Whether this is a login flow (returning users) or signup flow (new users) */
@@ -59,6 +61,7 @@ export function SignInView({
   next,
   sent = false,
   error = null,
+  validationErrors = {},
   googleAction,
   emailAction,
   mode = 'signup',
@@ -83,6 +86,13 @@ export function SignInView({
       {error === 'provider' ? (
         <StateCard kind="empty" title={copy.errorTitle} description={copy.errorBody} />
       ) : null}
+      {error === 'validation' ? (
+        <StateCard
+          kind="empty"
+          title={copy.errorTitle}
+          description="Verifique os campos acima. Todos são obrigatórios para criar a conta."
+        />
+      ) : null}
 
       {noWayIn ? (
         <StateCard
@@ -98,6 +108,62 @@ export function SignInView({
         <Card className="flex flex-col gap-4">
           <form className="flex flex-col gap-4">
             <input type="hidden" name="next" value={next} />
+            <input type="hidden" name="mode" value={mode} />
+
+            {/*
+              Profile fields on signup: name, birth date, mobile, and optional CNPJ.
+              Only shown in signup mode. Fields are optional at signup but
+              required for billing (per migration 0016_profile_identity.sql).
+            */}
+            {isSignup ? (
+              <div className="flex flex-col gap-4">
+                <Field
+                  id="signup-name"
+                  label={messages.account.profile.nameLabel}
+                  name="name"
+                  type="text"
+                  placeholder={messages.account.profile.namePlaceholder}
+                  hint={messages.account.profile.nameHelp}
+                  error={validationErrors.name}
+                  required
+                  autoComplete="name"
+                />
+
+                <Field
+                  id="signup-birth"
+                  label={messages.account.profile.birthLabel}
+                  name="birth_date"
+                  type="date"
+                  hint={messages.account.profile.birthHelp}
+                  error={validationErrors.birth_date}
+                  required
+                />
+
+                <Field
+                  id="signup-mobile"
+                  label={messages.account.profile.mobileLabel}
+                  name="whatsapp"
+                  type="tel"
+                  placeholder={messages.account.profile.mobilePlaceholder}
+                  hint={messages.account.profile.mobileHelp}
+                  error={validationErrors.whatsapp}
+                  required
+                  autoComplete="tel"
+                />
+
+                <Field
+                  id="signup-cnpj"
+                  label={messages.account.profile.cnpjLabel}
+                  name="cnpj"
+                  type="text"
+                  placeholder={messages.account.profile.cnpjPlaceholder}
+                  hint={messages.account.profile.cnpjHelp}
+                  error={validationErrors.cnpj}
+                  inputMode="numeric"
+                  autoComplete="organization"
+                />
+              </div>
+            ) : null}
 
             {/*
               The consent record (§12). Required, never pre-ticked (LGPD art.

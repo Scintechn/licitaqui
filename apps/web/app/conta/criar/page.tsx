@@ -57,7 +57,16 @@ export default async function CreateAccountPage({ searchParams }: { searchParams
           availability={providerAvailability()}
           next={next}
           sent={magicLinkWasSent(params)}
-          error={erro === 'email' ? 'email' : erro ? 'provider' : null}
+          error={
+            erro === 'email'
+              ? 'email'
+              : erro === 'validation'
+                ? 'validation'
+                : erro
+                  ? 'provider'
+                  : null
+          }
+          validationErrors={{}}
           googleAction={signInWithGoogle}
           emailAction={signInWithEmail}
           mode={mode}

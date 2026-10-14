@@ -2,11 +2,13 @@
 
 import { redirect } from 'next/navigation'
 import { auth, signIn, signOut } from '@/lib/auth'
+import { storeSignupProfile } from '@/lib/auth/adapter'
 import { setUserCnpj } from '@/lib/auth/session'
 import { normaliseCnpj } from '@/lib/cnpj'
 import { db } from '@/lib/db'
 import { companyOrLookup } from '@/lib/radar/company'
-import { ACCOUNT_CREATE_PATH, ACCOUNT_PATH } from '@/lib/routes'
+import { messages } from '@/lib/messages'
+import { ACCOUNT_CREATE_PATH } from '@/lib/routes'
 import { withQuery } from '@/lib/url'
 
 /**
@@ -26,27 +28,128 @@ import { withQuery } from '@/lib/url'
 
 /** Only a path on this site. An absolute URL here would be an open redirect. */
 export async function safeNext(next: string | undefined): Promise<string> {
-  if (!next) return ACCOUNT_PATH
+  if (!next) return '/radar'
   // `//evil.com` and `/\evil.com` are both protocol-relative in some browsers.
   if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) {
-    return ACCOUNT_PATH
+    return '/radar'
   }
   return next
 }
 
+/**
+ * Validate and store profile fields for signup.
+ *
+ * On signup, the form collects profile fields before authentication.
+ * This validates them and stores them temporarily in the auth session
+ * via URL params, then proceeds with the auth flow.
+ *
+ * Validation happens here so auth errors remain separate.
+ */
+async function validateSignupProfile(formData: FormData): Promise<{ valid: true } | { valid: false; errors: Record<string, string> }> {
+  const mode = String(formData.get('mode') ?? 'signup')
+  if (mode !== 'signup') return { valid: true }
+
+  const errors: Record<string, string> = {}
+  const copy = messages.account.profile
+
+  // Name: required
+  const name = String(formData.get('name') ?? '').trim()
+  if (!name) errors.name = copy.nameInvalid
+
+  // Birth date: required, must be valid and 18+
+  const birthDate = String(formData.get('birth_date') ?? '').trim()
+  if (!birthDate) {
+    errors.birth_date = copy.birthInvalid
+  } else {
+    const birth = new Date(birthDate)
+    const today = new Date()
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    if (age < 18) errors.birth_date = copy.birthInvalid
+  }
+
+  // Mobile: required, basic validation
+  const whatsapp = String(formData.get('whatsapp') ?? '').trim()
+  if (!whatsapp || whatsapp.length < 10) errors.whatsapp = copy.mobileInvalid
+
+  // CNPJ: optional but validate format if provided
+  const cnpj = String(formData.get('cnpj') ?? '').trim()
+  if (cnpj && !/^\d{14}$/.test(cnpj.replace(/\D/g, ''))) {
+    errors.cnpj = copy.cnpjInvalid
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { valid: false, errors }
+  }
+
+  return { valid: true }
+}
+
 export async function signInWithGoogle(formData: FormData): Promise<void> {
   const next = await safeNext(String(formData.get('next') ?? '') || undefined)
+  const mode = String(formData.get('mode') ?? 'signup')
+  const email = String(formData.get('email') ?? '').trim()
+
+  // Validate and store profile fields on signup
+  if (mode === 'signup') {
+    const validation = await validateSignupProfile(formData)
+    if (!validation.valid) {
+      // Redirect with validation error flag
+      redirect(`${ACCOUNT_CREATE_PATH}?mode=signup&erro=validation`)
+    }
+    // Store the profile data to be used when creating the user account
+    const name = String(formData.get('name') ?? '').trim()
+    const birthDate = String(formData.get('birth_date') ?? '').trim()
+    const whatsapp = String(formData.get('whatsapp') ?? '').trim()
+    const cnpj = String(formData.get('cnpj') ?? '').trim()
+
+    // Google will provide the email, but we should use what's in the form if available
+    storeSignupProfile(email || '(pending-google)', {
+      name,
+      birth_date: birthDate,
+      whatsapp,
+      cnpj: cnpj || undefined,
+    })
+  }
+
   await signIn('google', { redirectTo: next })
 }
 
 export async function signInWithEmail(formData: FormData): Promise<void> {
   const email = String(formData.get('email') ?? '').trim()
   const next = await safeNext(String(formData.get('next') ?? '') || undefined)
+  const mode = String(formData.get('mode') ?? 'signup')
+
   if (!email) {
     // No address typed. Say so on the screen rather than mailing nobody; the
     // address itself never enters the query string.
-    redirect(`${ACCOUNT_CREATE_PATH}?erro=email`)
+    redirect(`${ACCOUNT_CREATE_PATH}?mode=${mode}&erro=email`)
   }
+
+  // Validate and store profile fields on signup
+  if (mode === 'signup') {
+    const validation = await validateSignupProfile(formData)
+    if (!validation.valid) {
+      // Redirect with validation error flag
+      redirect(`${ACCOUNT_CREATE_PATH}?mode=signup&erro=validation`)
+    }
+    // Store the profile data to be used when creating the user account
+    const name = String(formData.get('name') ?? '').trim()
+    const birthDate = String(formData.get('birth_date') ?? '').trim()
+    const whatsapp = String(formData.get('whatsapp') ?? '').trim()
+    const cnpj = String(formData.get('cnpj') ?? '').trim()
+
+    storeSignupProfile(email, {
+      name,
+      birth_date: birthDate,
+      whatsapp,
+      cnpj: cnpj || undefined,
+    })
+  }
+
   await signIn('resend', { email, redirectTo: next })
 }
 

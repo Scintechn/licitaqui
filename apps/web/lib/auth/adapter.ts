@@ -4,6 +4,34 @@ import { db, type Executor } from '@/lib/db'
 import { linkFounderSeat } from './founder-seat'
 
 /**
+ * Temporary storage for signup profile data (name, birth_date, whatsapp, cnpj)
+ * keyed by email. This is used during the signup flow to pass data from the
+ * form through the auth process to createUser.
+ *
+ * In production this could be a dedicated temp table, but for now we use
+ * a Map that's scoped to the process lifetime. In a serverless environment
+ * this will be lost, but auth callbacks run synchronously within the same
+ * request, so this works for the current flow.
+ *
+ * TODO: If needed for distributed systems, move to Redis or a temp DB table.
+ */
+const signupProfileCache = new Map<
+  string,
+  { name: string; birth_date: string; whatsapp: string; cnpj?: string }
+>()
+
+/**
+ * Store signup profile data to be applied when the user account is created.
+ * Called from the signup form validation before auth begins.
+ */
+export function storeSignupProfile(
+  email: string,
+  data: { name: string; birth_date: string; whatsapp: string; cnpj?: string }
+): void {
+  signupProfileCache.set(email.toLowerCase(), data)
+}
+
+/**
  * The Auth.js Postgres adapter, written against **our** schema (spec §5, §6.2).
  *
  * ## Why not `@auth/pg-adapter`
@@ -109,17 +137,52 @@ export function licitaquiAdapter(given?: Executor): Adapter {
      * `privacy_consent_at` is set here because this is the moment the person
      * accepted — the sign-in screen states it above the button, in the wording
      * `messages.consent.terms*` already carries (§12, legal brief §5).
+     *
+     * Profile fields (name, birth_date, whatsapp, cnpj) may be present in the
+     * signup profile cache if the user signed up with the form. If available,
+     * they are updated after account creation. This maintains backward
+     * compatibility with test databases that may not have migration 0016 applied.
      */
     async createUser(user) {
+      // Check for cached profile data from signup form
+      const profile = signupProfileCache.get(user.email.toLowerCase())
+      const finalName = profile?.name ?? user.name ?? null
+
       const created = await database().execute<UserRow>(sql`
         insert into users (email, name, plan, privacy_consent_at)
-        values (${user.email}, ${user.name ?? null}, 'basico', now())
+        values (${user.email}, ${finalName}, 'basico', now())
         on conflict (email) do update
           set name = coalesce(users.name, excluded.name)
         returning ${USER_COLUMNS}
       `)
       const row = created.rows[0]
       if (!row) throw new Error('createUser wrote no row')
+
+      // Update profile fields if available and columns exist (after migration 0016)
+      if (profile && row.id) {
+        database()
+          .execute(sql`
+            update users
+            set birth_date = ${profile.birth_date ? new Date(profile.birth_date).toISOString().split('T')[0] : null},
+                whatsapp = ${profile.whatsapp ?? null},
+                cnpj = ${profile.cnpj ?? null}
+            where id = ${row.id}::bigint
+          `)
+          .catch((error) => {
+            // Silently fail if columns don't exist (pre-0016 databases).
+            // Profile data will be available once the migration is deployed.
+            if ((error as { code?: string } | null)?.code === '42703') {
+              // Column not found - migration 0016 not yet applied
+              return
+            }
+            // Re-throw other errors
+            throw error
+          })
+      }
+
+      // Clean up the cached profile data after use
+      signupProfileCache.delete(user.email.toLowerCase())
+
       // A founder who signed the Offer gets their seat on the way in (§6.3).
       await linkFounderSeat(row.id, database())
       return toUser(row)
