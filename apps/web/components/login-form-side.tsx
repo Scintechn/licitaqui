@@ -10,9 +10,16 @@ export interface LoginFormSideProps {
 /**
  * Right side of the split-screen login layout.
  *
- * Wraps the sign-in form and manages its responsive layout within the
- * split-screen structure. Handles spacing and alignment for both desktop
- * and mobile layouts.
+ * Wraps the sign-in form in a white card container with rounded corners and shadow,
+ * set against an ivory background for visual separation and elevation.
+ *
+ * **Layout:**
+ * - Outer container: Ivory background, centered flex layout
+ * - Inner card: White background, rounded corners, subtle shadow, padding
+ *
+ * **Responsive behavior:**
+ * - Mobile (<lg): Card takes full width minus gutters, ivory background fills viewport
+ * - Desktop (lg+): Card width constrained, centered on ivory background
  *
  * On desktop (1024px+): Takes the right 50% of the screen.
  * On mobile (<640px): Takes full width and appears below the brand side.
@@ -20,13 +27,21 @@ export interface LoginFormSideProps {
 export function LoginFormSide({ children, className = '' }: LoginFormSideProps) {
   return (
     <main
-      className={`flex flex-col items-stretch justify-center gap-4 px-gutter py-10 ${className}`}
+      className={`flex flex-col items-center justify-center gap-4 px-gutter py-10 lg:py-0 min-h-dvh lg:min-h-auto ${className}`}
       style={{
         backgroundColor: 'var(--color-ivory)',
         color: 'var(--color-ink)',
       }}
     >
-      {children}
+      {/* Card container with white background, rounded corners, and shadow */}
+      <div
+        className="w-full lg:w-96 flex flex-col gap-4 p-10 rounded-lg shadow-md"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+        }}
+      >
+        {children}
+      </div>
     </main>
   )
 }

@@ -1,7 +1,6 @@
-import Link from 'next/link'
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { AppBar, Logo, LoginSplitScreen } from '@/components'
+import { LoginSplitScreen } from '@/components'
 import { auth } from '@/lib/auth'
 import { providerAvailability } from '@/lib/auth/config'
 import { magicLinkWasSent, one } from '@/lib/auth/verify-request'
@@ -51,26 +50,17 @@ export default async function CreateAccountPage({ searchParams }: { searchParams
   const erro = one(params.erro) ?? one(params.error)
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <AppBar
-        leading={
-          <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
-            <Logo size={30} />
-          </Link>
-        }
-      />
-      <LoginSplitScreen
-        formContent={
-          <SignInView
-            availability={providerAvailability()}
-            next={next}
-            sent={magicLinkWasSent(params)}
-            error={erro === 'email' ? 'email' : erro ? 'provider' : null}
-            googleAction={signInWithGoogle}
-            emailAction={signInWithEmail}
-          />
-        }
-      />
-    </div>
+    <LoginSplitScreen
+      formContent={
+        <SignInView
+          availability={providerAvailability()}
+          next={next}
+          sent={magicLinkWasSent(params)}
+          error={erro === 'email' ? 'email' : erro ? 'provider' : null}
+          googleAction={signInWithGoogle}
+          emailAction={signInWithEmail}
+        />
+      }
+    />
   )
 }

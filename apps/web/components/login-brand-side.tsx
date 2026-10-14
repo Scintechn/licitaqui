@@ -22,21 +22,21 @@ export function LoginBrandSide({ className = '' }: LoginBrandSideProps) {
 
   return (
     <aside
-      className={`hidden lg:flex flex-col items-start justify-center gap-8 px-gutter py-10 ${className}`}
+      className={`hidden lg:flex flex-col items-start justify-center gap-6 px-gutter py-10 ${className}`}
       style={{
         backgroundColor: 'var(--color-brand-panel)',
         color: 'var(--color-on-brand)',
       }}
     >
       {/* Logo */}
-      <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
+      <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex pl-24">
         <Logo size={40} tone="ivory" />
       </Link>
 
       {/* Value Proposition */}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 px-24">
         <h2
-          className="font-display text-2xl font-semibold leading-tight"
+          className="font-display text-2xl font-semibold leading-snug"
           style={{
             color: 'var(--color-on-brand)',
           }}
@@ -55,7 +55,7 @@ export function LoginBrandSide({ className = '' }: LoginBrandSideProps) {
       </div>
 
       {/* Benefit Bullets (optional visual hierarchy) */}
-      <div className="flex flex-col gap-3 pt-4">
+      <div className="flex flex-col gap-3 pt-2 px-24">
         {[
           { title: 'Sem senha', desc: 'Entra com email ou Google' },
           { title: 'Grátis por sempre', desc: 'Cria sua conta em 30 segundos' },
