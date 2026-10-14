@@ -35,19 +35,31 @@ export async function safeNext(next: string | undefined): Promise<string> {
 }
 
 export async function signInWithGoogle(formData: FormData): Promise<void> {
-  const next = await safeNext(String(formData.get('next') ?? '') || undefined)
-  await signIn('google', { redirectTo: next })
+  const nextParam = String(formData.get('next') ?? '').trim()
+  const next = await safeNext(nextParam || undefined)
+  // After sign-in, users should land on the Radar, not the account page.
+  // The Radar's RadarWithWelcome component checks createdAt in the session
+  // to show the welcome banner for first-time users. If a specific ?next=
+  // destination was provided (e.g. a tender URL), honor that instead.
+  const destination = next === ACCOUNT_PATH && !nextParam ? '/radar' : next
+  await signIn('google', { redirectTo: destination })
 }
 
 export async function signInWithEmail(formData: FormData): Promise<void> {
   const email = String(formData.get('email') ?? '').trim()
-  const next = await safeNext(String(formData.get('next') ?? '') || undefined)
+  const nextParam = String(formData.get('next') ?? '').trim()
+  const next = await safeNext(nextParam || undefined)
   if (!email) {
     // No address typed. Say so on the screen rather than mailing nobody; the
     // address itself never enters the query string.
     redirect(`${ACCOUNT_CREATE_PATH}?erro=email`)
   }
-  await signIn('resend', { email, redirectTo: next })
+  // After sign-in, users should land on the Radar, not the account page.
+  // The Radar's RadarWithWelcome component checks createdAt in the session
+  // to show the welcome banner for first-time users. If a specific ?next=
+  // destination was provided (e.g. a tender URL), honor that instead.
+  const destination = next === ACCOUNT_PATH && !nextParam ? '/radar' : next
+  await signIn('resend', { email, redirectTo: destination })
 }
 
 /**
