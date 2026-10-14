@@ -34,7 +34,7 @@ export function LoginBrandSide({ className = '' }: LoginBrandSideProps) {
       </Link>
 
       {/* Value Proposition */}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 px-4">
         <h2
           className="font-display text-2xl font-semibold leading-snug"
           style={{
@@ -55,7 +55,7 @@ export function LoginBrandSide({ className = '' }: LoginBrandSideProps) {
       </div>
 
       {/* Benefit Bullets (optional visual hierarchy) */}
-      <div className="flex flex-col gap-3 pt-2">
+      <div className="flex flex-col gap-3 pt-2 px-4">
         {[
           { title: 'Sem senha', desc: 'Entra com email ou Google' },
           { title: 'Grátis por sempre', desc: 'Cria sua conta em 30 segundos' },
