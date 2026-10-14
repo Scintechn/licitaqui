@@ -3,6 +3,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import type { Metadata, Viewport } from 'next'
 import Script from 'next/script'
 import { fontVariables } from './fonts'
+import { Providers } from './providers'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -66,7 +67,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             style={{ display: 'none', visibility: 'hidden' }}
           />
         </noscript>
-        {children}
+        <Providers>{children}</Providers>
         {/*
           Vercel Analytics and Speed Insights (spec §5: "events table + Vercel
           Analytics"). Both are cookieless and store no personal data, which is
