@@ -37,5 +37,14 @@ export type { SheetProps } from './sheet'
 export { Tag, TagList } from './tag'
 export type { TagProps, TagTone } from './tag'
 
+export { LoginBrandSide } from './login-brand-side'
+export type { LoginBrandSideProps } from './login-brand-side'
+
+export { LoginFormSide } from './login-form-side'
+export type { LoginFormSideProps } from './login-form-side'
+
+export { LoginSplitScreen } from './login-split-screen'
+export type { LoginSplitScreenProps } from './login-split-screen'
+
 export { WelcomeBanner } from './welcome-banner'
 export type { WelcomeBannerProps } from './welcome-banner'

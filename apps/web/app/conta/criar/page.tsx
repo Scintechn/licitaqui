@@ -1,5 +1,7 @@
+import Link from 'next/link'
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { AppBar, Logo, LoginSplitScreen } from '@/components'
 import { auth } from '@/lib/auth'
 import { providerAvailability } from '@/lib/auth/config'
 import { magicLinkWasSent, one } from '@/lib/auth/verify-request'
@@ -21,6 +23,12 @@ import { SignInView } from './sign-in-view'
  * the visitor was reading so they land back on it. It is run through
  * `safeNext()` before it reaches a redirect: an absolute URL there would be an
  * open redirect with our domain's name on it.
+ *
+ * ## Layout: Split-screen (task D41)
+ *
+ * The page uses a split-screen layout with a brand panel on the left
+ * (desktop only) and the sign-in form on the right. On mobile and tablet,
+ * the form takes the full width and the brand panel is hidden.
  */
 
 export const dynamic = 'force-dynamic'
@@ -43,13 +51,26 @@ export default async function CreateAccountPage({ searchParams }: { searchParams
   const erro = one(params.erro) ?? one(params.error)
 
   return (
-    <SignInView
-      availability={providerAvailability()}
-      next={next}
-      sent={magicLinkWasSent(params)}
-      error={erro === 'email' ? 'email' : erro ? 'provider' : null}
-      googleAction={signInWithGoogle}
-      emailAction={signInWithEmail}
-    />
+    <div className="flex min-h-dvh flex-col">
+      <AppBar
+        leading={
+          <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
+            <Logo size={30} />
+          </Link>
+        }
+      />
+      <LoginSplitScreen
+        formContent={
+          <SignInView
+            availability={providerAvailability()}
+            next={next}
+            sent={magicLinkWasSent(params)}
+            error={erro === 'email' ? 'email' : erro ? 'provider' : null}
+            googleAction={signInWithGoogle}
+            emailAction={signInWithEmail}
+          />
+        }
+      />
+    </div>
   )
 }
