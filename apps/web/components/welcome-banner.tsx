@@ -49,7 +49,12 @@ export function WelcomeBanner({
 
   return (
     <div
-      className="bg-blue-50 border-l-4 border-blue text-graphite p-4 rounded flex items-start gap-3 animate-fade-in"
+      className="border-l-4 p-4 rounded flex items-start gap-3"
+      style={{
+        backgroundColor: 'var(--color-blue-soft)',
+        borderLeftColor: 'var(--color-blue)',
+        color: 'var(--color-ink)',
+      }}
       role="status"
       aria-live="polite"
     >
@@ -58,7 +63,8 @@ export function WelcomeBanner({
       </div>
       <button
         onClick={handleDismiss}
-        className="flex-shrink-0 text-graphite hover:text-graphite/70 transition-colors"
+        className="flex-shrink-0 transition-opacity hover:opacity-70"
+        style={{ color: 'var(--color-ink)' }}
         aria-label="Fechar"
         type="button"
       >

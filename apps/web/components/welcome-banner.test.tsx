@@ -20,8 +20,8 @@ describe('WelcomeBanner', () => {
     const out = renderToStaticMarkup(
       <WelcomeBanner message="Welcome" />,
     )
-    expect(out).toContain('border-blue')
-    expect(out).toContain('bg-blue')
+    expect(out).toContain('--color-blue-soft')
+    expect(out).toContain('--color-blue')
   })
 
   it('has role=status and aria-live=polite for accessibility', () => {
