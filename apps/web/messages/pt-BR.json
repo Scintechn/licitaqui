@@ -633,6 +633,9 @@
       "radarTitle": "Radar · LicitaQui",
       "radarDescription": "Os editais abertos que combinam com as atividades do seu CNPJ."
     },
+    "welcome": {
+      "message": "Bem-vindo! Comece buscando o CNPJ da sua empresa para ver os editais que combinam com você."
+    },
     "menu": {
       "title": "Menu",
       "collapseRail": "Recolher o menu",

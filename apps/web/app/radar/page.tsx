@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { messages } from '@/lib/messages'
 import { listScopes } from '@/lib/radar/scope'
 import { loadingStatus } from './bare-radar'
-import { RadarScreen } from './radar-screen'
+import { RadarWithWelcome } from './radar-with-welcome'
 import { RadarView } from './radar-view'
 
 /**
@@ -92,7 +92,7 @@ export default async function RadarPage() {
         />
       }
     >
-      <RadarScreen scopes={scopes} />
+      <RadarWithWelcome scopes={scopes} />
     </Suspense>
   )
 }

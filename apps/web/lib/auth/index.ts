@@ -108,7 +108,15 @@ export const authConfig: NextAuthConfig = {
   },
   callbacks: {
     session({ session, user }) {
-      if (session.user && user) session.user.id = String(user.id)
+      if (session.user && user) {
+        session.user.id = String(user.id)
+        // Include createdAt for welcome banner detection on first login
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const userWithCreated = user as any
+        if (userWithCreated.createdAt) {
+          Object.assign(session.user, { createdAt: userWithCreated.createdAt })
+        }
+      }
       return session
     },
   },
