@@ -1338,7 +1338,14 @@
       "unavailableTitle": "Entrar não funciona neste endereço",
       "unavailablePreview": "Esta é uma versão de teste do site, com endereço temporário, e o login com Google só aceita o endereço oficial. Use o site publicado para entrar. Buscar editais aqui continua funcionando normalmente.",
       "unavailableConfig": "O login ainda não está configurado neste ambiente.",
-      "radar": "Ir para o Radar"
+      "radar": "Ir para o Radar",
+      "login": {
+        "title": "Bem-vindo de volta",
+        "subtitle": "Entre na sua conta para continuar",
+        "google": "Continuar com Google",
+        "emailSubmit": "Enviar link de acesso",
+        "createAccount": "Não tem uma conta? Criar conta"
+      }
     },
     "screen": {
       "title": "Sua conta",

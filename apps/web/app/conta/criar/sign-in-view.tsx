@@ -1,5 +1,6 @@
 import { Button, Card, Field, StateCard } from '@/components'
 import type { ProviderAvailability } from '@/lib/auth/config'
+import { ACCOUNT_CREATE_PATH } from '@/lib/routes'
 import { messages } from '@/lib/messages'
 
 /**
@@ -49,6 +50,8 @@ export type SignInViewProps = {
   error?: 'email' | 'provider' | null
   googleAction: (formData: FormData) => void | Promise<void>
   emailAction: (formData: FormData) => void | Promise<void>
+  /** Whether this is a login flow (returning users) or signup flow (new users) */
+  mode?: 'login' | 'signup'
 }
 
 export function SignInView({
@@ -58,13 +61,20 @@ export function SignInView({
   error = null,
   googleAction,
   emailAction,
+  mode = 'signup',
 }: SignInViewProps) {
   const noWayIn = !availability.google && !availability.magicLink
+  const isLogin = mode === 'login'
+  const isSignup = mode === 'signup'
 
   return (
     <>
-      <h1 className="font-display text-[26px] leading-tight font-semibold">{copy.title}</h1>
-      <p className="text-body leading-relaxed text-muted">{copy.subtitle}</p>
+      <h1 className="font-display text-[26px] leading-tight font-semibold">
+        {isLogin ? copy.login.title : copy.title}
+      </h1>
+      <p className="text-body leading-relaxed text-muted">
+        {isLogin ? copy.login.subtitle : copy.subtitle}
+      </p>
 
       {sent ? <StateCard kind="found" title={copy.sentTitle} description={copy.sentBody} /> : null}
       {error === 'email' ? (
@@ -103,35 +113,40 @@ export function SignInView({
               on the last screen before conversion. The mechanics are
               unchanged: one box, one record, still `required`, still not
               pre-ticked. Only the order moved.
+
+              In login flow, the user already consented on signup, so this box
+              does not appear.
             */}
-            <label className="flex items-start gap-2.5 text-meta leading-relaxed text-muted">
-              <input
-                type="checkbox"
-                name="consent"
-                required
-                /*
-                  20px, not 16. The wrapping <label> already makes the
-                  effective target pass, so this is comfort rather than
-                  compliance — and a good deal of this audience is over 60.
-                */
-                className="mt-0.5 size-5 shrink-0 accent-blue"
-              />
-              <span>
-                {consent.termsBefore}
-                <a href={messages.legal.termsUrl} className="text-blue">
-                  {messages.legal.termsLabel}
-                </a>
-                {consent.termsBetween}
-                <a href={messages.legal.privacyUrl} className="text-blue">
-                  {messages.legal.privacyLabel}
-                </a>
-                {consent.termsAfter}
-              </span>
-            </label>
+            {isSignup ? (
+              <label className="flex items-start gap-2.5 text-meta leading-relaxed text-muted">
+                <input
+                  type="checkbox"
+                  name="consent"
+                  required
+                  /*
+                    20px, not 16. The wrapping <label> already makes the
+                    effective target pass, so this is comfort rather than
+                    compliance — and a good deal of this audience is over 60.
+                  */
+                  className="mt-0.5 size-5 shrink-0 accent-blue"
+                />
+                <span>
+                  {consent.termsBefore}
+                  <a href={messages.legal.termsUrl} className="text-blue">
+                    {messages.legal.termsLabel}
+                  </a>
+                  {consent.termsBetween}
+                  <a href={messages.legal.privacyUrl} className="text-blue">
+                    {messages.legal.privacyLabel}
+                  </a>
+                  {consent.termsAfter}
+                </span>
+              </label>
+            ) : null}
 
             {availability.google ? (
               <Button type="submit" formAction={googleAction} fullWidth iconEnd="arrowRight">
-                {copy.google}
+                {isLogin ? copy.login.google : copy.google}
               </Button>
             ) : null}
 
@@ -169,7 +184,7 @@ export function SignInView({
                   error={error === 'email' ? copy.emailMissing : undefined}
                 />
                 <Button type="submit" formAction={emailAction} variant="secondary" fullWidth>
-                  {copy.emailSubmit}
+                  {isLogin ? copy.login.emailSubmit : copy.emailSubmit}
                 </Button>
               </>
             ) : null}
@@ -178,9 +193,20 @@ export function SignInView({
       )}
 
       <div className="flex flex-col gap-1">
-        <Button href="/radar" variant="link">
-          {noWayIn ? copy.radar : copy.keepBrowsing}
-        </Button>
+        {isLogin ? (
+          <>
+            <Button href={`${ACCOUNT_CREATE_PATH}?mode=signup`} variant="link">
+              {copy.login.createAccount}
+            </Button>
+            <Button href="/radar" variant="link">
+              {copy.keepBrowsing}
+            </Button>
+          </>
+        ) : (
+          <Button href="/radar" variant="link">
+            {noWayIn ? copy.radar : copy.keepBrowsing}
+          </Button>
+        )}
       </div>
     </>
   )
