@@ -214,7 +214,7 @@ def run_case(case: Case, *, model: str, mode: str, ai_mode: str, key: str | None
     return report
 
 
-def print_report(reports: list[CaseReport], *, model: str, mode: str, threshold: float) -> bool:
+def print_report(reports: list[CaseReport], *, model: str, mode: str, threshold: float, ai_mode: str = "lite") -> bool:
     """Print the per-document table and return whether the gate passes."""
     passed = sum(report.passed for report in reports)
     total = sum(report.total for report in reports)
@@ -226,7 +226,8 @@ def print_report(reports: list[CaseReport], *, model: str, mode: str, threshold:
     label = {"recorded": "REPLAYED (no API call, nothing spent)", "record": "LIVE + recorded"}
     print()
     print(f"Screening evaluation · model {model} · {label.get(mode, 'LIVE')}")
-    print(f"prompt {ai_tender.PROMPT_VERSION_LITE} · extraction v{ai_tender.EXTRACTION_VERSION}")
+    prompt_version = ai_tender.PROMPT_VERSION_DEEP if ai_mode == "deep" else ai_tender.PROMPT_VERSION_LITE
+    print(f"prompt {prompt_version} · extraction v{ai_tender.EXTRACTION_VERSION}")
     print("-" * 92)
     header = f"{'Answer key':32} {'Correct':>9} {'%':>7} {'Citations':>11}"
     print(f"{header} {'R$':>8} {'s':>6} {'status':>8}")
@@ -273,11 +274,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score the screening against the answer keys")
     parser.add_argument("--mode", choices=("auto", "live", "record", "recorded"), default="auto")
     parser.add_argument("--ai-mode", choices=("lite", "deep"), default="lite", help="lite (triagem) or deep analysis")
-    parser.add_argument("--model", default=ai_tender.SCREENING_MODEL)
+    parser.add_argument("--model", help="model to use; defaults to SCREENING_MODEL for lite, DEEP_ANALYSIS_MODEL for deep")
     parser.add_argument("--doc", action="append", default=[], help="answer key name; repeatable")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument("--verbose", action="store_true", help="print every check, not only ✗")
     args = parser.parse_args(argv)
+    if args.model is None:
+        args.model = ai_tender.DEEP_ANALYSIS_MODEL if args.ai_mode == "deep" else ai_tender.SCREENING_MODEL
 
     key = config.resolve_secret(ai_tender.OPENROUTER_KEY_VAR)
     mode = args.mode
@@ -296,7 +299,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for check in report.checks:
                 print(f"  {'✓' if check.ok else '✗'} {check.name:44} {check.found}")
 
-    return 0 if print_report(reports, model=args.model, mode=mode, threshold=args.threshold) else 1
+    return 0 if print_report(reports, model=args.model, mode=mode, threshold=args.threshold, ai_mode=args.ai_mode) else 1
 
 
 if __name__ == "__main__":
