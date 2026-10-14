@@ -10,6 +10,8 @@ import { PlanView } from './plano/plan-view'
 import { ProfileView } from './perfil/profile-view'
 import type { AccountNotice } from './account-view'
 import type { QuotaView } from '@/lib/radar/contract'
+import type { Subscription } from '@/lib/asaas/subscription'
+import type { PlanState } from './plano/states'
 
 export type AccountDashboardProps = {
   account: AccountViewProps & { quota?: QuotaView }
@@ -20,15 +22,15 @@ export type AccountDashboardProps = {
     companyAction: (formData: FormData) => void | Promise<void>
   }
   plan: {
-    quota?: QuotaView
-    founderSeat: number
+    quota: QuotaView
+    founderSeat: number | null
     seatTotal: number
-    subscription: string | Record<string, string> | null
+    subscription: Subscription | null | 'unavailable'
     canBill: boolean
-    state: string
-    confirmingCancel: boolean
-    onCheckout: (data: FormData) => void | Promise<void>
-    onCancel: (data: FormData) => void | Promise<void>
+    state?: PlanState | null
+    confirmingCancel?: boolean
+    onCheckout: (data: FormData) => void
+    onCancel: () => void
   }
   profile: {
     action: (formData: FormData) => Promise<void>
