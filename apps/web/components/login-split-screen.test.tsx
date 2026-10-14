@@ -63,9 +63,9 @@ describe('LoginFormSide', () => {
     expect(out).toContain('Test Form Content')
   })
 
-  it('uses dark background color for outer container', () => {
+  it('uses ivory background color for outer container', () => {
     const out = renderToStaticMarkup(<LoginFormSide>Test</LoginFormSide>)
-    expect(out).toContain('1a1a1a')
+    expect(out).toContain('--color-ivory')
   })
 
   it('uses ink text color', () => {
