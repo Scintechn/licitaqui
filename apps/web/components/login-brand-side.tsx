@@ -57,9 +57,9 @@ export function LoginBrandSide({ className = '' }: LoginBrandSideProps) {
       {/* Benefit Bullets (optional visual hierarchy) */}
       <div className="flex flex-col gap-3 pt-2 px-24">
         {[
-          { title: 'Sem senha', desc: 'Entra com email ou Google' },
-          { title: 'Grátis por sempre', desc: 'Cria sua conta em 30 segundos' },
-          { title: 'Pronto para usar', desc: 'Veja seus editais na hora' },
+          { title: 'Editais do seu tamanho', desc: 'Só o que sua empresa consegue atender — sem perder tempo com o resto' },
+          { title: 'Lance certo', desc: 'Saiba até onde pode baixar o preço sem sair no prejuízo' },
+          { title: 'Na hora que abre', desc: 'Você recebe, analisa e decide — antes dos concorrentes' },
         ].map((item) => (
           <div key={item.title} className="flex flex-col gap-1">
             <p
