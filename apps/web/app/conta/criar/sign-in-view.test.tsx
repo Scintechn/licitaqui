@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ProviderAvailability } from '@/lib/auth/config'
+import { ACCOUNT_CREATE_PATH } from '@/lib/routes'
 import { messages } from '@/lib/messages'
 import { SignInView } from './sign-in-view'
 
@@ -162,5 +163,61 @@ describe('SignInView', () => {
     const out = render({ google: true, magicLink: true })
     expect(out).toContain(copy.title)
     expect(out).not.toMatch(/\{[a-zA-Z]+\}/)
+  })
+
+  describe('login flow', () => {
+    it('renders "Bem-vindo de volta" heading and login subtitle for login mode', () => {
+      const out = render({ google: true }, { mode: 'login' })
+      expect(out).toContain(copy.login.title)
+      expect(out).toContain(copy.login.subtitle)
+      expect(out).not.toContain(copy.title)
+    })
+
+    it('hides the consent checkbox in login mode', () => {
+      const out = render({ google: true }, { mode: 'login' })
+      expect(out).not.toContain('type="checkbox"')
+      expect(out).not.toContain('required=""')
+    })
+
+    it('shows "Continuar com Google" button text for login mode', () => {
+      const out = render({ google: true }, { mode: 'login' })
+      expect(out).toContain(copy.login.google)
+      expect(out).not.toContain(copy.google)
+    })
+
+    it('shows "Enviar link de acesso" button text for login mode', () => {
+      const out = render({ google: true, magicLink: true }, { mode: 'login' })
+      expect(out).toContain(copy.login.emailSubmit)
+      expect(out).not.toContain(copy.emailSubmit)
+    })
+
+    it('shows "Não tem uma conta? Criar conta" link in login mode', () => {
+      const out = render({ google: true }, { mode: 'login' })
+      expect(out).toContain(copy.login.createAccount)
+      expect(out).toContain(`href="${ACCOUNT_CREATE_PATH}?mode=signup"`)
+    })
+
+    it('renders signup content and consent for signup mode (default)', () => {
+      const out = render({ google: true })
+      expect(out).toContain(copy.title)
+      expect(out).toContain(copy.subtitle)
+      expect(out).toContain(copy.google)
+      expect(out).toContain('type="checkbox"')
+      expect(out).toContain('required=""')
+    })
+
+    it('shows signup button text for explicit signup mode', () => {
+      const out = render({ google: true, magicLink: true }, { mode: 'signup' })
+      expect(out).toContain(copy.google)
+      expect(out).toContain(copy.emailSubmit)
+      expect(out).not.toContain(copy.login.google)
+      expect(out).not.toContain(copy.login.emailSubmit)
+    })
+
+    it('does not show "Criar conta" link in signup mode', () => {
+      const out = render({ google: true }, { mode: 'signup' })
+      expect(out).not.toContain(copy.login.createAccount)
+      expect(out).not.toContain('mode=signup')
+    })
   })
 })

@@ -44,6 +44,7 @@ type Search = Promise<{ [key: string]: string | string[] | undefined }>
 export default async function CreateAccountPage({ searchParams }: { searchParams: Search }) {
   const params = await searchParams
   const next = await safeNext(one(params.next))
+  const mode = (one(params.mode) === 'login' ? 'login' : 'signup') as 'login' | 'signup'
 
   const session = await auth().catch(() => null)
   if (session?.user) redirect(ACCOUNT_PATH)
@@ -68,6 +69,7 @@ export default async function CreateAccountPage({ searchParams }: { searchParams
             error={erro === 'email' ? 'email' : erro ? 'provider' : null}
             googleAction={signInWithGoogle}
             emailAction={signInWithEmail}
+            mode={mode}
           />
         }
       />
