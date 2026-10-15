@@ -663,3 +663,146 @@ def test_the_digest_renders_for_five_accounts_at_once(e1_conn: psycopg.Connectio
         assert text.count("Ler o edital:") == 3
         assert text.count("Item exclusivo para ME/EPP") == 3
         assert "{{" not in text
+
+
+# -- custom alerts (E30) --------------------------------------------------------
+
+
+def make_custom_alert(
+    conn: psycopg.Connection,
+    user_id: int,
+    *,
+    name: str = "Meu Alerta",
+    states: list[str] | None = None,
+    keywords: list[str] | None = None,
+    active: bool = True,
+) -> int:
+    """Create a custom alert (not weekly digest)."""
+    words = list(keywords or [])
+    row = conn.execute(
+        """
+        insert into alerts (user_id, kind, value, keywords, states, channel, frequency, name, active)
+        values (%s, %s, %s, %s, %s, 'telegram', 'daily', %s, %s)
+        returning id
+        """,
+        (
+            user_id,
+            "keyword" if words else "cnae",
+            words[0] if words else None,
+            words,
+            states,
+            name,
+            active,
+        ),
+    ).fetchone()
+    assert row
+    return int(row[0])
+
+
+def test_custom_alerts_match_by_keywords_and_states(e1_conn: psycopg.Connection) -> None:
+    """E30: custom alerts match tenders by keywords AND states."""
+    cnae, segment = a_compatible_cnae(e1_conn)
+    cnpj = make_company(e1_conn, "custom1", cnae)
+    user_id = make_user(e1_conn, "custom1", cnpj=cnpj)
+    link_telegram(e1_conn, user_id, e1_chat_id(50))
+    alert_id = make_custom_alert(e1_conn, user_id, states=["SP"], keywords=["papel"])
+
+    make_tender(
+        e1_conn, 100, segment="Inexistente", state="SP", object_text="Compra de papel A4"
+    )
+    make_tender(
+        e1_conn, 101, segment="Inexistente", state="RJ", object_text="Compra de papel A3"
+    )
+
+    tenders = telegram_alerts.select_custom_alert_tenders(
+        e1_conn,
+        cnpj=cnpj,
+        keywords=("papel",),
+        states=("SP",),
+        alert_id=alert_id,
+    )
+
+    assert len(tenders) == 1
+    assert tenders[0].id == e1_tender_id(100)
+
+
+def test_custom_alert_notification_renders_correctly(e1_conn: psycopg.Connection) -> None:
+    """E30: the custom alert message includes alert name and tender info."""
+    cnae, segment = a_compatible_cnae(e1_conn)
+    cnpj = make_company(e1_conn, "custom2", cnae)
+    user_id = make_user(e1_conn, "custom2", cnpj=cnpj, name="João Silva")
+    link_telegram(e1_conn, user_id, e1_chat_id(51))
+    alert_id = make_custom_alert(
+        e1_conn, user_id, name="Alerta Papel", states=["SP"], keywords=["papel"]
+    )
+
+    tender_id = make_tender(
+        e1_conn, 102, segment="Inexistente", state="SP", object_text="Compra de papel A4"
+    )
+
+    client = Recorder()
+    telegram_alerts.send(
+        e1_conn,
+        template="custom-alert-match",
+        user_id=user_id,
+        chat_id=e1_chat_id(51),
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert len(client.sent) == 1
+    text = client.sent[0][1]
+    assert "Novo edital" in text
+    assert "Alerta Papel" in text
+    assert "João Silva" in text
+    assert "papel" in text or "A4" in text
+    assert "{{" not in text
+
+
+def test_custom_alert_is_idempotent_on_alert_tender_pair(e1_conn: psycopg.Connection) -> None:
+    """E30: the same (alert, tender) never sends twice."""
+    cnae, segment = a_compatible_cnae(e1_conn)
+    cnpj = make_company(e1_conn, "custom3", cnae)
+    user_id = make_user(e1_conn, "custom3", cnpj=cnpj)
+    link_telegram(e1_conn, user_id, e1_chat_id(52))
+    alert_id = make_custom_alert(e1_conn, user_id, states=["SP"], keywords=["papel"])
+
+    tender_id = e1_tender_id(103)
+    # Record the delivery
+    telegram_alerts.record_deliveries(e1_conn, alert_id, [tender_id])
+
+    # Try to select it again
+    tenders = telegram_alerts.select_custom_alert_tenders(
+        e1_conn,
+        cnpj=cnpj,
+        keywords=("papel",),
+        states=("SP",),
+        alert_id=alert_id,
+    )
+
+    # Should not find it because it's already recorded
+    assert not any(t.id == tender_id for t in tenders)
+
+
+def test_eligible_custom_alerts_excludes_paused_and_unlinked(e1_conn: psycopg.Connection) -> None:
+    """E30: the sweep finds only active alerts with Telegram linked."""
+    cnae, segment = a_compatible_cnae(e1_conn)
+    cnpj1 = make_company(e1_conn, "custom4a", cnae)
+    cnpj2 = make_company(e1_conn, "custom4b", cnae)
+    cnpj3 = make_company(e1_conn, "custom4c", cnae)
+
+    active_linked = make_user(e1_conn, "custom4a", cnpj=cnpj1)
+    link_telegram(e1_conn, active_linked, e1_chat_id(53))
+    make_custom_alert(e1_conn, active_linked, active=True)
+
+    paused = make_user(e1_conn, "custom4b", cnpj=cnpj2)
+    link_telegram(e1_conn, paused, e1_chat_id(54))
+    make_custom_alert(e1_conn, paused, active=False)
+
+    unlinked = make_user(e1_conn, "custom4c", cnpj=cnpj3)
+    make_custom_alert(e1_conn, unlinked, active=True)
+
+    eligible = {alert.user_id for alert in telegram_alerts.eligible_custom_alerts(e1_conn)}
+
+    assert active_linked in eligible
+    assert paused not in eligible
+    assert unlinked not in eligible

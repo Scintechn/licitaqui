@@ -347,6 +347,10 @@ DEFAULT_SCHEDULE: tuple[ScheduleEntry, ...] = (
     # ones do not. Two SELECTs and one INSERT per run.
     ScheduleEntry(kind="opening_broadcast_check", daily_at="09:00", priority=8),
     ScheduleEntry(kind="opening_broadcast_check", daily_at="15:00", priority=8),
+    # **E30: Custom alerts Telegram notifications.** Daily, matching tenders to user alerts
+    # and enqueuing notifications. 06:00 BRT, before the weekly digest at 07:00, so both
+    # sweeps can share the same wake.
+    ScheduleEntry(kind="sync_custom_alerts", daily_at="06:00", priority=9),
 )
 
 
