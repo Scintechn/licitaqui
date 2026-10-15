@@ -16,7 +16,7 @@ export function AccountViewRedesigned({
       {/* Account Information Cards */}
       <section>
         <h2 className="sr-only">Account Information</h2>
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <AccountCard
             label="Account Status"
             value="Active"
@@ -39,7 +39,7 @@ export function AccountViewRedesigned({
       {/* Usage Statistics */}
       <section>
         <h2 className="sr-only">Account Limits</h2>
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <AccountCard
             label="Screenings"
             value="5"
@@ -63,7 +63,7 @@ export function AccountViewRedesigned({
       {/* Quick Actions */}
       <section>
         <h2 className="sr-only">Account Management</h2>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <ActionCard
             title="Profile Settings"
             description="Update your personal information and contact preferences"
