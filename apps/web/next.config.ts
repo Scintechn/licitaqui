@@ -137,7 +137,7 @@ const nextConfig: NextConfig = {
    * See: docs/DEVELOPMENT_PLAN.md D48 and recent deployment history.
    */
   outputFileTracingIncludes: {
-    '/**/*': ['../docs/product.json'],
+    '/**/*': ['../../docs/product.json'],
   },
   async headers() {
     return [
