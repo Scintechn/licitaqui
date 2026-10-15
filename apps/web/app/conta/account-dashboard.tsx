@@ -79,7 +79,10 @@ export function AccountDashboard({
 
   return (
     <div className="mx-auto w-full flex flex-col gap-4 px-gutter pt-6 pb-10">
-      <h1 className="text-headline">{messages.account.screen.title}</h1>
+      <div>
+        <h1 className="font-display text-[32px] leading-tight font-semibold">{messages.account.screen.title}</h1>
+        <p className="text-meta text-muted">{messages.account.screen.subtitle}</p>
+      </div>
 
       <Tabs
         items={tabs}
