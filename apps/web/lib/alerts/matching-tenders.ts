@@ -3,13 +3,13 @@
 import { sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 
-export interface MatchingTender {
+export interface MatchingTender extends Record<string, unknown> {
   id: string
   title: string
   location: string
   value: string
   deadline: string
-  matchType: 'compatible' | 'check'
+  matchType?: 'compatible' | 'check'
 }
 
 /**
@@ -24,7 +24,7 @@ export async function getMatchingTenders(
   userId: number,
   state: string,
   keywords: string[],
-): Promise<MatchingTender[]> {
+): Promise<Array<MatchingTender & { matchType: 'compatible' | 'check' }>> {
   const executor = db()
 
   // Get user's CNPJ and company CNAE segments
@@ -35,8 +35,6 @@ export async function getMatchingTenders(
   if (!userResult.rows[0]?.cnpj) {
     return []
   }
-
-  const cnpj = userResult.rows[0].cnpj
 
   // Build the query - match state and keywords
   // For demo: return up to 3 matching tenders

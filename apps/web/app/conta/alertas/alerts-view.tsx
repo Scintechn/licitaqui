@@ -1,10 +1,9 @@
-import { AppBar, Button, Card, CardRow, Field, SectionLabel, Select } from '@/components'
-import { MenuTrigger } from '@/components/menu-trigger'
+import { AppBar, Button, Card, CardRow, SectionLabel } from '@/components'
+import { AlertsPreferencesForm } from './alerts-preferences-form'
 import { format, messages } from '@/lib/messages'
-import { UF_OPTIONS } from '@/lib/radar/ufs'
 import { ALERTS_PATH } from '@/lib/routes'
 import { HANDOFF_MINUTES, type LinkPhase } from '@/lib/telegram/handoff'
-import { type AlertLimits, keywordFields, MAX_KEYWORD_CHARS } from '@/lib/telegram/quota'
+import { type AlertLimits } from '@/lib/telegram/quota'
 import { CompanyForm } from '../company-form'
 
 /**
@@ -65,6 +64,8 @@ const prefs = messages.notifications
 export type AlertNotice = 'saved' | 'disconnected' | 'company' | 'cnpj-invalid' | null
 
 export type AlertsViewProps = {
+  /** User ID for live preview matching. */
+  userId: number
   /** Where the Telegram hand-off has got to. See `lib/telegram/handoff.ts`. */
   phase: LinkPhase
   /** Whether the weekly digest is switched on. False after `/pausar`. */
@@ -180,6 +181,7 @@ function TelegramExamplePreview() {
 }
 
 export function AlertsView({
+  userId,
   phase,
   active,
   limits,
@@ -346,6 +348,7 @@ export function AlertsView({
           )}
         </section>
 
+<<<<<<< HEAD
         <form action={saveAction} className="flex flex-col gap-3 pt-4">
           <div className="border-t border-line pt-4">
             <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
@@ -396,6 +399,18 @@ export function AlertsView({
             {messages.common.save}
           </Button>
         </form>
+=======
+        <section className="flex flex-col gap-3 pt-2">
+          <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
+          <AlertsPreferencesForm
+            userId={userId}
+            limits={limits}
+            states={states}
+            keywords={keywords}
+            saveAction={saveAction}
+          />
+        </section>
+>>>>>>> 1fce54d (fix(D48): Integrate keyword input and tender preview into alerts form)
       </main>
     </div>
   )

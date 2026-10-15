@@ -100,6 +100,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Searc
 
   return (
     <AlertsView
+      userId={userId}
       phase={phase}
       active={status.active}
       limits={limits}

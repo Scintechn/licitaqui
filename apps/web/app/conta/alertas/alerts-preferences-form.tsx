@@ -9,7 +9,6 @@ import { UF_OPTIONS } from '@/lib/radar/ufs'
 import { getMatchingTenders } from '@/lib/alerts/matching-tenders'
 import { type AlertLimits } from '@/lib/telegram/quota'
 
-const copy = messages.telegram
 const prefs = messages.notifications
 
 export interface AlertsPreferencesFormProps {
