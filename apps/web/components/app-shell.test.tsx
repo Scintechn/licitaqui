@@ -274,7 +274,7 @@ describe('currentItem — exactly one nav item is marked', () => {
 
   it('gives every destination the rail offers its own answer', () => {
     const paths = railPaths()
-    const marked = paths.map(currentItem)
+    const marked = paths.map((path) => currentItem(path))
     expect(
       new Set(marked).size,
       `two rail destinations mark the same item: ${paths
@@ -318,13 +318,15 @@ describe('D22 — three entries, three destinations', () => {
     // guard that cannot drift is `gives every destination the rail offers its
     // own answer` above, which reads the paths out of the rendered rail; this
     // one stays as the readable statement of the prefix order.
-    const marked = [
-      '/conta',
-      '/conta/empresa',
-      '/conta/plano',
-      '/conta/alertas',
-      '/conta/favoritos',
-    ].map(currentItem)
+    // With the unified dashboard, /conta/empresa and /conta/plano are now /conta?tab=empresa and /conta?tab=plano
+    const paths = [
+      { path: '/conta', params: undefined },
+      { path: '/conta', params: new URLSearchParams('tab=empresa') },
+      { path: '/conta', params: new URLSearchParams('tab=plano') },
+      { path: '/conta/alertas', params: undefined },
+      { path: '/conta/favoritos', params: undefined },
+    ]
+    const marked = paths.map(({ path, params }) => currentItem(path, params))
     expect(new Set(marked).size).toBe(marked.length)
   })
 })

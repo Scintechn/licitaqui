@@ -85,19 +85,19 @@ export function AccountDashboard({
         idPrefix="account"
       />
 
-      <TabPanel idPrefix="account" id="conta">
+      <TabPanel idPrefix="account" id="conta" isActive={activeTab === 'conta'}>
         <AccountView {...account} />
       </TabPanel>
 
-      <TabPanel idPrefix="account" id="empresa">
+      <TabPanel idPrefix="account" id="empresa" isActive={activeTab === 'empresa'}>
         <CompanyView {...company} plan={plan_key} planName={planName} />
       </TabPanel>
 
-      <TabPanel idPrefix="account" id="plano">
+      <TabPanel idPrefix="account" id="plano" isActive={activeTab === 'plano'}>
         <PlanView {...plan} plan={plan_key} planName={planName} />
       </TabPanel>
 
-      <TabPanel idPrefix="account" id="perfil">
+      <TabPanel idPrefix="account" id="perfil" isActive={activeTab === 'perfil'}>
         <ProfileView {...profile} />
       </TabPanel>
     </div>

@@ -131,12 +131,19 @@ export type TabPanelProps = {
   idPrefix: string
   /** The tab this panel belongs to. */
   id: string
+  /** Whether this panel is currently active. */
+  isActive?: boolean
   children: ReactNode
   className?: string
 }
 
 /** The panel under the strip, named by its tab so the pair is announced. */
-export function TabPanel({ idPrefix, id, children, className }: TabPanelProps) {
+export function TabPanel({ idPrefix, id, isActive = true, children, className }: TabPanelProps) {
+  // Only render content if this panel is active or if isActive is not specified
+  if (isActive === false) {
+    return null
+  }
+
   return (
     <div
       role="tabpanel"
