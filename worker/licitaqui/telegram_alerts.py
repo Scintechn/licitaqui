@@ -1283,7 +1283,7 @@ def send_custom_alert(ctx: JobContext) -> None:
 
     # Fetch the alert name
     with ctx.conn.cursor() as cur:
-        cur.execute("select name from alerts where id = %s", (int(alert_id),))
+        cur.execute("select value from alerts where id = %s", (int(alert_id),))
         row = cur.fetchone()
         if not row:
             raise ValueError(f"alert {alert_id} not found")

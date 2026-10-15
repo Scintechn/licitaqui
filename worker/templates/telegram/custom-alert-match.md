@@ -2,7 +2,7 @@
 id: custom-alert-match
 channel: telegram
 status: draft
-placeholders: [nome, nome_empresa, alerta_nome, objeto, orgao, uf, modalidade, prazo_proposta, link_edital, marcador_meepp]
+placeholders: [nome, alerta_nome, objeto, orgao, uf, modalidade, prazo_proposta, link_edital, marcador_meepp]
 flags: [tem_nome, tem_meepp]
 notes: One custom alert notification (E30). Sent when a new tender matches a user's alert. marcador_meepp is guarded by tem_meepp and uses the same ME/EPP marker logic as weekly-digest items.
 ---
