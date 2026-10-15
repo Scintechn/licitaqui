@@ -161,7 +161,7 @@ export async function savePreferences(formData: FormData): Promise<void> {
  * Unlike the preferences form which manages a single Telegram weekly digest,
  * this creates a new alert row that the user can manage independently.
  */
-export async function createAlert(formData: FormData): Promise<void> {
+export async function createAlert(formData: FormData): Promise<{ success: true }> {
   const userId = await currentUserId()
   const executor = db()
   const plan = await planOf(userId)
@@ -222,7 +222,7 @@ export async function createAlert(formData: FormData): Promise<void> {
 export async function updateAlert(
   alertId: string | number,
   formData: FormData
-): Promise<void> {
+): Promise<{ success: true }> {
   const userId = await currentUserId()
   const executor = db()
   const plan = await planOf(userId)
@@ -279,7 +279,7 @@ export async function updateAlert(
 /**
  * Delete an alert.
  */
-export async function deleteAlert(alertId: string | number): Promise<void> {
+export async function deleteAlert(alertId: string | number): Promise<{ success: true }> {
   const userId = await currentUserId()
   const executor = db()
 
