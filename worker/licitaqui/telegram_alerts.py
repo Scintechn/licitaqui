@@ -90,6 +90,11 @@ JOB_KIND = "send_telegram"
 #: The Monday sweep. Spec §7.1 calls it `weekly_alerts`; the kind is named for
 #: what it produces, and the scheduler entry carries the §7.1 cadence.
 DIGEST_JOB_KIND = "weekly_digest"
+#: The daily sweep for custom alerts (E30). Matches tenders against user-created
+#: alerts and enqueues send_custom_alert jobs.
+SYNC_CUSTOM_ALERTS_JOB_KIND = "sync_custom_alerts"
+#: One custom alert notification. Enqueued by sync_custom_alerts sweep.
+SEND_CUSTOM_ALERT_JOB_KIND = "send_custom_alert"
 
 CHANNEL = "telegram"
 BRT = ZoneInfo("America/Sao_Paulo")
@@ -118,6 +123,7 @@ TEMPLATE_IDS = DIGEST_TEMPLATES | frozenset(
         "help",
         "stop",
         "partial-digest-item",
+        "custom-alert-match",
     }
 )
 
@@ -346,6 +352,14 @@ def reply_job_key(update_id: int | str) -> str:
     return f"reply:{update_id}"
 
 
+def custom_alert_job_key(alert_id: int, tender_id: str) -> str:
+    """One send per alert per tender, enforced by `jobs_dedupe`.
+
+    Idempotent on (alert_id, tender_id) so duplicate sweeps do not re-send.
+    """
+    return f"custom_alert:{alert_id}:{tender_id}"
+
+
 # -- SQL --------------------------------------------------------------------
 
 #: Who the digest is for. `telegram_links` is the opt-in and `alerts.active` is
@@ -473,6 +487,67 @@ update alerts
    set active = false
  where user_id = %(user_id)s
    and channel = 'telegram'
+"""
+
+# Custom alerts (E30)
+
+#: Find all active custom alerts with Telegram enabled that match a tender.
+#: Matches by (keywords OR segments) AND states. Returns alert_id, user_id,
+#: chat_id, alert_name, and whether the alert_active flag is true.
+ELIGIBLE_CUSTOM_ALERTS_SQL = """
+select a.id, u.id, tl.chat_id, a.name, a.active
+  from alerts a
+  join users u on a.user_id = u.id
+  join telegram_links tl on tl.user_id = u.id
+ where a.channel = 'telegram'
+   and a.frequency in ('daily', 'on_match')
+   and a.active
+   and tl.chat_id is not null
+   and tl.linked_at is not null
+   and u.cnpj is not null
+ group by a.id, u.id, tl.chat_id, a.name, a.active
+ order by a.id
+"""
+
+#: Find tenders matching a specific alert. Matches by:
+#: - (keywords OR company CNAE segments) AND states
+#: - Not already sent to this alert (checked via alert_deliveries)
+#: - Proposals still open
+CUSTOM_ALERT_TENDERS_SQL = """
+with segs as (
+  select coalesce(array_agg(segment), '{}'::text[]) as labels
+    from company_segments
+   where cnpj = %(cnpj)s
+     and fit = 'compatible'
+)
+select t.id, t.object, t.agency_name, t.state, t.modality_name,
+       t.proposals_close_at, t.me_epp_summary
+  from tenders t, segs
+ where t.proposals_close_at > now()
+   and (
+         t.segments && segs.labels
+         or exists (select 1
+                      from unnest(%(keywords)s::text[]) as k
+                     where t.search @@ websearch_to_tsquery('pt_unaccent', k))
+       )
+   and (%(states)s::text[] is null or t.state = any(%(states)s))
+   and not exists (select 1
+                     from alert_deliveries d
+                    where d.alert_id = %(alert_id)s
+                      and d.tender_id = t.id)
+ order by t.proposals_close_at, t.id
+ limit %(limit)s
+"""
+
+#: Find all active custom alerts for a user.
+USER_CUSTOM_ALERTS_SQL = """
+select a.id, a.name, a.keywords, a.states, a.active
+  from alerts a
+ where a.user_id = %(user_id)s
+   and a.channel = 'telegram'
+   and a.frequency in ('daily', 'on_match')
+   and a.active
+ order by a.id
 """
 
 
@@ -675,6 +750,87 @@ def select_tenders(
     return [Tender(*row) for row in rows]
 
 
+def select_custom_alert_tenders(
+    conn: psycopg.Connection,
+    *,
+    cnpj: str,
+    keywords: tuple[str, ...] = (),
+    states: tuple[str, ...] = (),
+    alert_id: int,
+    limit: int = MAX_TENDERS,
+) -> list[Tender]:
+    """The up-to-3 open tenders matching this custom alert."""
+    with conn.cursor() as cur:
+        cur.execute(
+            CUSTOM_ALERT_TENDERS_SQL,
+            {
+                "cnpj": cnpj,
+                "keywords": list(keywords),
+                "states": list(states) or None,
+                "alert_id": alert_id,
+                "limit": limit,
+            },
+        )
+        rows = cur.fetchall()
+    return [Tender(*row) for row in rows]
+
+
+@dataclass(frozen=True, slots=True)
+class CustomAlert:
+    """One user's custom alert with matched tenders."""
+
+    alert_id: int
+    name: str
+    keywords: tuple[str, ...]
+    states: tuple[str, ...]
+    active: bool
+
+
+def read_user_custom_alerts(conn: psycopg.Connection, user_id: int) -> list[CustomAlert]:
+    """All active custom alerts for a user."""
+    with conn.cursor() as cur:
+        cur.execute(USER_CUSTOM_ALERTS_SQL, {"user_id": user_id})
+        rows = cur.fetchall()
+    return [
+        CustomAlert(
+            alert_id=int(row[0]),
+            name=row[1],
+            keywords=tuple(row[2] or ()),
+            states=tuple(row[3] or ()),
+            active=bool(row[4]) if row[4] is not None else False,
+        )
+        for row in rows
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class EligibleAlert:
+    """An eligible custom alert for sweeping."""
+
+    alert_id: int
+    user_id: int
+    chat_id: int
+    name: str
+    active: bool
+
+
+def eligible_custom_alerts(conn: psycopg.Connection) -> list[EligibleAlert]:
+    """All active custom alerts with Telegram linked."""
+    with conn.cursor() as cur:
+        cur.execute(ELIGIBLE_CUSTOM_ALERTS_SQL)
+        rows = cur.fetchall()
+    return [
+        EligibleAlert(
+            alert_id=int(row[0]),
+            user_id=int(row[1]),
+            chat_id=int(row[2]),
+            name=row[3],
+            active=bool(row[4]) if row[4] is not None else False,
+        )
+        for row in rows
+    ]
+
+
 # -- rendering --------------------------------------------------------------
 
 
@@ -808,6 +964,48 @@ def build_reply_context(
     if template == "start-linked":
         context["dia_semana"] = DIGEST_WEEKDAY_PT
     return context, flags
+
+
+def build_custom_alert_context(
+    *, name: str | None, company_name: str | None, alert_name: str, tender: Tender
+) -> tuple[dict[str, Any], dict[str, bool]]:
+    """The template context for a custom alert match.
+
+    Raises DigestSkipped only for the company — the one placeholder
+    that is genuinely required.
+    """
+    if not company_name:
+        raise DigestSkipped(SKIP_NO_COMPANY)
+
+    if tender.proposals_close_at is None:
+        # Every row of the block is a fact a bidder acts on; a tender with no
+        # deadline has nothing to act on and is not worth a line.
+        raise ValueError("a custom alert needs a proposals_close_at")
+
+    named, flags = name_context(name)
+    context: dict[str, Any] = {
+        **named,
+        "nome_empresa": company_name,
+        "alerta_nome": alert_name,
+        "objeto": tender.object,
+        "orgao": tender.agency_name or "Órgão não informado",
+        "uf": tender.state or "BR",
+        "modalidade": tender.modality_name or "Licitação",
+        "prazo_proposta": format_deadline(tender.proposals_close_at),
+        "link_edital": screening_url(tender.id),
+    }
+
+    marker = me_epp_marker(tender.me_epp_summary)
+    if marker is not None:
+        context["marcador_meepp"] = marker
+        flags["tem_meepp"] = True
+    else:
+        flags["tem_meepp"] = False
+
+    # Escape everything except the link
+    escaped = telegram.escape_context(context)
+    escaped["link_edital"] = context["link_edital"]
+    return escaped, flags
 
 
 # -- sending ----------------------------------------------------------------
@@ -1007,6 +1205,171 @@ def weekly_digest(ctx: JobContext) -> None:
     ctx.log.info(
         "weekly digest swept",
         extra={"eligible": len(users), "enqueued": created, "week": iso_week(moment)},
+    )
+
+
+@REGISTRY.job(SYNC_CUSTOM_ALERTS_JOB_KIND)
+def sync_custom_alerts(ctx: JobContext) -> None:
+    """The daily sweep for custom alerts (E30). Matches tenders to alerts and enqueues sends."""
+    alerts = eligible_custom_alerts(ctx.conn)
+    created = 0
+
+    for alert in alerts:
+        try:
+            # Get the alert details with keywords and states
+            user_alerts = read_user_custom_alerts(ctx.conn, alert.user_id)
+            for user_alert in user_alerts:
+                if user_alert.alert_id != alert.alert_id:
+                    continue
+
+                # Get the user's CNPJ for tender matching
+                with ctx.conn.cursor() as cur:
+                    cur.execute("select cnpj from users where id = %s", (alert.user_id,))
+                    row = cur.fetchone()
+                    if not row or not row[0]:
+                        continue
+                    cnpj = row[0]
+
+                # Find matching tenders
+                tenders = select_custom_alert_tenders(
+                    ctx.conn,
+                    cnpj=cnpj,
+                    keywords=user_alert.keywords,
+                    states=user_alert.states,
+                    alert_id=alert.alert_id,
+                )
+
+                # Enqueue a job for each matching tender
+                for tender in tenders:
+                    job_id = queue.enqueue(
+                        ctx.conn,
+                        SEND_CUSTOM_ALERT_JOB_KIND,
+                        custom_alert_job_key(alert.alert_id, tender.id),
+                        priority=9,
+                        payload={
+                            "alert_id": alert.alert_id,
+                            "user_id": alert.user_id,
+                            "chat_id": alert.chat_id,
+                            "tender_id": tender.id,
+                        },
+                    )
+                    if job_id is not None:
+                        created += 1
+                        # Record the delivery immediately to prevent re-sends on future sweeps
+                        record_deliveries(ctx.conn, alert.alert_id, [tender.id])
+        except Exception as exc:
+            ctx.log.warning(
+                "sync_custom_alerts: error processing alert",
+                extra={"alert_id": alert.alert_id, "error": str(exc)},
+                exc_info=True,
+            )
+
+    ctx.log.info(
+        "custom alerts swept",
+        extra={"eligible": len(alerts), "enqueued": created},
+    )
+
+
+@REGISTRY.job(SEND_CUSTOM_ALERT_JOB_KIND)
+def send_custom_alert(ctx: JobContext) -> None:
+    """One custom alert notification. Idempotent (§7.2)."""
+    alert_id = ctx.payload.get("alert_id")
+    user_id = ctx.payload.get("user_id")
+    chat_id = ctx.payload.get("chat_id")
+    tender_id = ctx.payload.get("tender_id")
+
+    if not alert_id or not user_id or not chat_id or not tender_id:
+        raise ValueError("send_custom_alert payload needs alert_id, user_id, chat_id, and tender_id")
+
+    # Fetch the alert name
+    with ctx.conn.cursor() as cur:
+        cur.execute("select name from alerts where id = %s", (int(alert_id),))
+        row = cur.fetchone()
+        if not row:
+            raise ValueError(f"alert {alert_id} not found")
+        alert_name = row[0]
+
+    # Fetch the tender
+    with ctx.conn.cursor() as cur:
+        cur.execute(
+            "select id, object, agency_name, state, modality_name, proposals_close_at, me_epp_summary from tenders where id = %s",
+            (str(tender_id),),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise ValueError(f"tender {tender_id} not found")
+        tender = Tender(*row)
+
+    # Build the message
+    who = recipient(ctx.conn, int(user_id))
+    if not who:
+        ctx.log.warning(
+            "send_custom_alert: recipient not found",
+            extra={"user_id": user_id, "alert_id": alert_id},
+        )
+        return
+
+    company_name = company_label(who)
+    if not company_name:
+        ctx.log.warning(
+            "send_custom_alert: no company name",
+            extra={"user_id": user_id, "alert_id": alert_id},
+        )
+        return
+
+    try:
+        context, flags = build_custom_alert_context(
+            name=who.name,
+            company_name=company_name,
+            alert_name=alert_name,
+            tender=tender,
+        )
+    except DigestSkipped as exc:
+        ctx.log.warning(
+            "send_custom_alert: skipped",
+            extra={"user_id": user_id, "alert_id": alert_id, "reason": exc.reason},
+        )
+        return
+
+    text = templates.render(CHANNEL, "custom-alert-match", context, **flags)
+
+    client = default_client()
+    try:
+        result = client.send_message(int(chat_id), text)
+    except CircuitOpen as exc:
+        ctx.log.warning(
+            "send_custom_alert: circuit open",
+            extra={"alert_id": alert_id, "breaker": exc.name},
+        )
+        raise
+    except TelegramError as exc:
+        ctx.log.warning(
+            "send_custom_alert: failed",
+            extra={
+                "alert_id": alert_id,
+                "chat_ref": chat_ref(int(chat_id)),
+                "reason": exc.reason,
+                "retryable": exc.retryable,
+            },
+        )
+        if exc.retryable:
+            raise
+        return
+
+    # Log the successful send
+    _record(
+        ctx.conn,
+        EVENT_SENT if result.delivered else EVENT_DRY_RUN,
+        int(user_id),
+        {
+            "template": "custom-alert-match",
+            "alert_id": alert_id,
+            "tender_id": tender_id,
+            "chat_ref": chat_ref(int(chat_id)),
+            "message_id": result.message_id,
+            "status": result.status_code,
+            "duration_ms": result.duration_ms,
+        },
     )
 
 
