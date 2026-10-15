@@ -1350,6 +1350,7 @@
     },
     "screen": {
       "title": "Sua conta",
+      "subtitle": "Gerencie sua conta, empresa, plano e dados pessoais.",
       "planLabel": "Seu plano",
       "screeningsLabel": "Triagens de edital por IA",
       "screeningsMonth": "{usadas} de {total} neste mês",

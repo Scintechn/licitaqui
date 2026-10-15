@@ -25,9 +25,8 @@ export function CompanyViewRedesigned({
   companyAction: (formData: FormData) => void | Promise<void>
   hideTitle?: boolean
 }) {
-  return (
-    <AccountChrome plan={plan} planName={planName} title={messages.radar.menu.company} hideTitle={hideTitle}>
-      <div className="flex flex-col gap-8 py-6">
+  const content = (
+    <div className="flex flex-col gap-8 py-6">
         {/* Company Status Cards */}
         <section>
           <h2 className="sr-only">Company Information</h2>
@@ -67,6 +66,13 @@ export function CompanyViewRedesigned({
           </div>
         </section>
       </div>
+  )
+
+  if (hideTitle) return content
+
+  return (
+    <AccountChrome plan={plan} planName={planName} title={messages.radar.menu.company}>
+      {content}
     </AccountChrome>
   )
 }
