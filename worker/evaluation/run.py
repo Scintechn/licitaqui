@@ -210,7 +210,10 @@ def run_case(case: Case, *, model: str, mode: str, ai_mode: str, key: str | None
         error=screening.error,
     )
     if screening.status == "ok" and analysis is not None:
-        report.checks = scoring.score(case.answer_key, analysis.result)
+        result_for_scoring = analysis.result
+        if ai_mode == "deep" and isinstance(result_for_scoring, dict) and "triagem" in result_for_scoring:
+            result_for_scoring = result_for_scoring["triagem"]
+        report.checks = scoring.score(case.answer_key, result_for_scoring)
     return report
 
 
