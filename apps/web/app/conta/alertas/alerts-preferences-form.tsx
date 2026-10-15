@@ -71,9 +71,14 @@ export function AlertsPreferencesForm({
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
-    // Ensure keywords are properly set
+
+    // Ensure state is properly set in formData
+    formData.set('uf', selectedState)
+
+    // Ensure keywords are properly set (clear old values and add current ones)
     formData.delete('palavra')
     keywords.forEach((kw) => formData.append('palavra', kw))
+
     await saveAction(formData)
   }
 
