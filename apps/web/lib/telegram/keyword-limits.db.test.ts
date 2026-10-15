@@ -122,6 +122,7 @@ const PLANS = ['basico', 'promocional', 'essencial', 'pro'] as const
  */
 function renderAlerts(limits: AlertLimits, keywords: string[]): string {
   const props: AlertsViewProps = {
+    userId: 12345,
     phase: { phase: 'idle' },
     active: true,
     limits,

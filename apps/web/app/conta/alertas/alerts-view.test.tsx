@@ -27,6 +27,7 @@ const WAITING: LinkPhase = {
 }
 
 const BASE: AlertsViewProps = {
+  userId: 12345,
   phase: { phase: 'idle' },
   active: false,
   limits: BASICO,
