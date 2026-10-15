@@ -78,7 +78,7 @@ export function AccountDashboard({
   }
 
   return (
-    <div className="mx-auto w-full flex flex-col gap-4 px-gutter pt-6 pb-10">
+    <div className="mx-auto w-full flex grow flex-col gap-4 px-gutter pt-6 pb-10" style={{ maxWidth: '1400px' }}>
       <div>
         <h1 className="font-display text-[32px] leading-tight font-semibold">{messages.account.screen.title}</h1>
         <p className="text-meta text-muted">{messages.account.screen.subtitle}</p>
