@@ -28,6 +28,7 @@ export function CompanyView({
   companyName,
   notice,
   companyAction,
+  hideTitle,
 }: {
   plan: string
   planName: string
@@ -35,9 +36,10 @@ export function CompanyView({
   companyName: string | null
   notice: AccountNotice
   companyAction: (formData: FormData) => void | Promise<void>
+  hideTitle?: boolean
 }) {
   return (
-    <AccountChrome plan={plan} planName={planName} title={messages.radar.menu.company}>
+    <AccountChrome plan={plan} planName={planName} title={messages.radar.menu.company} hideTitle={hideTitle}>
       <Card padding="none">
         <div className="px-4 py-1">
           <CardRow

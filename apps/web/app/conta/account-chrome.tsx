@@ -35,6 +35,7 @@ export function AccountChrome({
   planName,
   title,
   children,
+  hideTitle,
 }: {
   /** The raw plan key, for the tag's fallback. */
   plan: string
@@ -42,6 +43,8 @@ export function AccountChrome({
   planName: string
   title: string
   children: React.ReactNode
+  /** Hide the title when used in a tabbed dashboard context. */
+  hideTitle?: boolean
 }) {
   return (
     <div className="flex min-h-dvh flex-col">
@@ -59,7 +62,7 @@ export function AccountChrome({
         }
       />
       <main className="mx-auto flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10" style={{ maxWidth: '1400px' }}>
-        <h1 className="font-display text-[26px] leading-tight font-semibold">{title}</h1>
+        {!hideTitle && <h1 className="font-display text-[26px] leading-tight font-semibold">{title}</h1>}
         {children}
       </main>
     </div>

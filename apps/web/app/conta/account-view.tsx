@@ -27,6 +27,8 @@ export type AccountViewProps = {
   /** The display name, resolved by `readAccountData`. */
   planName: string
   signOutAction: () => void | Promise<void>
+  /** Hide the AccountChrome title when used as a dashboard tab. */
+  hideTitle?: boolean
 }
 
 export type AccountNotice = 'company' | 'cnpj-invalid' | null
@@ -68,9 +70,10 @@ export function AccountView({
   plan,
   planName,
   signOutAction,
+  hideTitle,
 }: AccountViewProps) {
   return (
-    <AccountChrome plan={plan} planName={planName} title={copy.title}>
+    <AccountChrome plan={plan} planName={planName} title={copy.title} hideTitle={hideTitle}>
         {/* **Who is signed in**, and the half of D22 that never shipped.
 
             No label and no new string: the wording on this screen is Sci's
