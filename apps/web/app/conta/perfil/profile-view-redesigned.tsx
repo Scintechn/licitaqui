@@ -38,7 +38,7 @@ export function ProfileViewRedesigned({
   const failed = (field: string) => errors.includes(field)
 
   const content = (
-    <div className="flex flex-col gap-8 py-6">
+    <div className="flex flex-col gap-8 py-6 mt-4">
         {/* Profile Description */}
         <section>
           <p className="text-body text-muted">{copy.subtitle}</p>

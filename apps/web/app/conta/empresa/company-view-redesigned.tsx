@@ -26,7 +26,7 @@ export function CompanyViewRedesigned({
   hideTitle?: boolean
 }) {
   const content = (
-    <div className="flex flex-col gap-8 py-6">
+    <div className="flex flex-col gap-8 py-6 mt-4">
         {/* Company Status Cards */}
         <section>
           <h2 className="sr-only">Company Information</h2>
