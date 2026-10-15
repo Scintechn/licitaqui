@@ -85,9 +85,11 @@ export type ProfileViewProps = {
   /** For `AccountChrome`'s plan tag, like every other account screen. */
   plan: string
   planName: string
+  /** Hide the AccountChrome title when used as a dashboard tab. */
+  hideTitle?: boolean
 }
 
-export function ProfileView({ action, values, errors, plan, planName }: ProfileViewProps) {
+export function ProfileView({ action, values, errors, plan, planName, hideTitle }: ProfileViewProps) {
   const failed = (field: string) => errors.includes(field)
 
   return (
@@ -103,7 +105,7 @@ export function ProfileView({ action, values, errors, plan, planName }: ProfileV
      * than parsing it. So do not spell a non-existent token here, even to
      * record that it was removed.
      */
-    <AccountChrome plan={plan} planName={planName} title={copy.title}>
+    <AccountChrome plan={plan} planName={planName} title={copy.title} hideTitle={hideTitle}>
       <p className="text-body text-muted">{copy.subtitle}</p>
 
       <form action={action} className="flex flex-col gap-4">

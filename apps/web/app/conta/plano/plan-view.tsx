@@ -126,6 +126,7 @@ export function PlanView({
   confirmingCancel = false,
   onCheckout,
   onCancel,
+  hideTitle,
 }: {
   plan: string
   planName: string
@@ -154,6 +155,7 @@ export function PlanView({
   onCheckout: (formData: FormData) => void
   /** `confirmCancel`; a no-op in a component test. */
   onCancel: () => void
+  hideTitle?: boolean
 }) {
   const banner = notice(state)
   const live = subscription !== null && subscription !== 'unavailable'
@@ -173,7 +175,7 @@ export function PlanView({
   const endsOn = live ? planDate(subscription.endsOn) : null
 
   return (
-    <AccountChrome plan={plan} planName={planName} title={messages.radar.menu.billing}>
+    <AccountChrome plan={plan} planName={planName} title={messages.radar.menu.billing} hideTitle={hideTitle}>
       {/* The house notice shape, the same one `/conta/empresa` uses for
           `companySaved`: an accented card with the approved sentence in it. */}
       {banner ? (

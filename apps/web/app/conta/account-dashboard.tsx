@@ -78,6 +78,8 @@ export function AccountDashboard({
 
   return (
     <div className="flex flex-col gap-4">
+      <h1 className="text-headline">{messages.account.screen.title}</h1>
+
       <Tabs
         items={tabs}
         active={activeTab}
@@ -86,19 +88,19 @@ export function AccountDashboard({
       />
 
       <TabPanel idPrefix="account" id="conta" isActive={activeTab === 'conta'}>
-        <AccountView {...account} />
+        <AccountView {...account} hideTitle />
       </TabPanel>
 
       <TabPanel idPrefix="account" id="empresa" isActive={activeTab === 'empresa'}>
-        <CompanyView {...company} plan={plan_key} planName={planName} />
+        <CompanyView {...company} plan={plan_key} planName={planName} hideTitle />
       </TabPanel>
 
       <TabPanel idPrefix="account" id="plano" isActive={activeTab === 'plano'}>
-        <PlanView {...plan} plan={plan_key} planName={planName} />
+        <PlanView {...plan} plan={plan_key} planName={planName} hideTitle />
       </TabPanel>
 
       <TabPanel idPrefix="account" id="perfil" isActive={activeTab === 'perfil'}>
-        <ProfileView {...profile} />
+        <ProfileView {...profile} hideTitle />
       </TabPanel>
     </div>
   )
