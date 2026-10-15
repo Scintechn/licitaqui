@@ -37,9 +37,9 @@ export type AlertsPageProps = {
   resumeAction: () => void | Promise<void>
   saveAction: (formData: FormData) => void | Promise<void>
   companyAction: (formData: FormData) => void | Promise<void>
-  createAlertAction: (formData: FormData) => void | Promise<void>
-  updateAlertAction: (alertId: string | number, formData: FormData) => void | Promise<void>
-  deleteAlertAction: (alertId: string | number) => void | Promise<void>
+  createAlertAction: (formData: FormData) => Promise<{ success: true }>
+  updateAlertAction: (alertId: string | number, formData: FormData) => Promise<{ success: true }>
+  deleteAlertAction: (alertId: string | number) => Promise<{ success: true }>
 }
 
 function Note({ children }: { children: React.ReactNode }) {
