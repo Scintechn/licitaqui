@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Tabs, TabPanel } from '@/components/tabs'
 import { messages } from '@/lib/messages'
 import { AccountView, type AccountViewProps } from './account-view'
+import { AccountViewRedesigned } from './account-view-redesigned'
 import { CompanyView } from './empresa/company-view'
 import { PlanView } from './plano/plan-view'
 import { ProfileView } from './perfil/profile-view'
@@ -88,7 +89,7 @@ export function AccountDashboard({
       />
 
       <TabPanel idPrefix="account" id="conta" isActive={activeTab === 'conta'}>
-        <AccountView {...account} hideTitle />
+        <AccountViewRedesigned {...account} hideTitle />
       </TabPanel>
 
       <TabPanel idPrefix="account" id="empresa" isActive={activeTab === 'empresa'}>
