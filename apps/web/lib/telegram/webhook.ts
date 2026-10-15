@@ -82,6 +82,7 @@ export type Command = (typeof COMMANDS)[keyof typeof COMMANDS]
 export type Update =
   | { kind: 'start'; updateId: number; chatId: number; token: string | null }
   | { kind: 'help' | 'stop'; updateId: number; chatId: number }
+  | { kind: 'callback'; updateId: number; chatId: number; callbackId: string; data: string }
   | { kind: 'ignore' }
 
 /**
@@ -104,8 +105,24 @@ const MAX_ARGUMENT = 64
 export function readUpdate(body: unknown): Update {
   if (!isRecord(body)) return { kind: 'ignore' }
   const updateId = body.update_id
+  if (typeof updateId !== 'number') return { kind: 'ignore' }
+
+  // Handle callback_query (button clicks) — E32 interactive buttons
+  const callbackQuery = body.callback_query
+  if (isRecord(callbackQuery)) {
+    const from = callbackQuery.from
+    if (isRecord(from) && typeof from.id === 'number') {
+      const callbackId = typeof callbackQuery.id === 'string' ? callbackQuery.id : ''
+      const data = typeof callbackQuery.data === 'string' ? callbackQuery.data : ''
+      if (callbackId && data) {
+        return { kind: 'callback', updateId, chatId: from.id, callbackId, data }
+      }
+    }
+  }
+
+  // Handle message (commands)
   const message = body.message
-  if (typeof updateId !== 'number' || !isRecord(message)) return { kind: 'ignore' }
+  if (!isRecord(message)) return { kind: 'ignore' }
 
   const chat = message.chat
   if (!isRecord(chat) || typeof chat.id !== 'number') return { kind: 'ignore' }

@@ -1270,6 +1270,30 @@ def sync_custom_alerts(ctx: JobContext) -> None:
     )
 
 
+def _build_alert_buttons(tender_id: str, alert_id: str) -> dict:
+    """Build InlineKeyboardMarkup for custom alert message (E32)."""
+    # Build radar URLs for the tender
+    base_url = "https://radar.licitaqui.com.br"
+    tender_url = f"{base_url}/edital/{tender_id}"
+    screening_url = f"{tender_url}?tab=triagem"
+
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "Ler Edital", "url": tender_url},
+                {"text": "Triagem Completa", "url": screening_url},
+            ],
+            [
+                {"text": "Pausar Alerta", "callback_data": f"pause_{alert_id}"},
+                {"text": "Ver Similares", "callback_data": f"similar_{tender_id}"},
+            ],
+            [
+                {"text": "Compartilhar", "callback_data": f"share_{tender_id}"},
+            ],
+        ]
+    }
+
+
 @REGISTRY.job(SEND_CUSTOM_ALERT_JOB_KIND)
 def send_custom_alert(ctx: JobContext) -> None:
     """One custom alert notification. Idempotent (§7.2)."""
@@ -1333,9 +1357,12 @@ def send_custom_alert(ctx: JobContext) -> None:
 
     text = templates.render(CHANNEL, "custom-alert-match", context, **flags)
 
+    # Build buttons for the message (E32)
+    buttons = _build_alert_buttons(str(tender_id), str(alert_id))
+
     client = default_client()
     try:
-        result = client.send_message(int(chat_id), text)
+        result = client.send_message(int(chat_id), text, reply_markup=buttons)
     except CircuitOpen as exc:
         ctx.log.warning(
             "send_custom_alert: circuit open",
