@@ -123,6 +123,62 @@ function StartCommand({ command, botHandle }: { command: string; botHandle: stri
   )
 }
 
+/**
+ * Example of what the weekly Telegram digest looks like.
+ * Shows the user a preview before they connect.
+ */
+function TelegramExamplePreview() {
+  return (
+    <Card padding="none" className="overflow-hidden">
+      <div className="bg-blue px-4 py-3">
+        <p className="text-lead font-medium text-on-brand">LicitaQui</p>
+      </div>
+      <div className="px-4 py-3 flex flex-col gap-3">
+        <p className="text-lead font-semibold">3 editais novos para sua empresa</p>
+
+        <div className="flex gap-3 items-start">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-blue mt-0.5">
+            <path d="M7 3h7l5 5v13H7z"/>
+            <path d="M14 3v5h5M10 13h6M10 17h6"/>
+          </svg>
+          <div className="flex-1">
+            <p className="text-lead font-semibold">Baterias e pilhas · Campinas/SP</p>
+            <p className="text-caption text-muted">R$ 48 mil · exclusivo ME/EPP · 30/09</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 items-start">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-blue mt-0.5">
+            <path d="M7 3h7l5 5v13H7z"/>
+            <path d="M14 3v5h5M10 13h6M10 17h6"/>
+          </svg>
+          <div className="flex-1">
+            <p className="text-lead font-semibold">Materiais hospitalares · Campinas/SP</p>
+            <p className="text-caption text-muted">R$ 1,25 mi · exige licença sanitária</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 items-start">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-blue mt-0.5">
+            <path d="M7 3h7l5 5v13H7z"/>
+            <path d="M14 3v5h5M10 13h6M10 17h6"/>
+          </svg>
+          <div className="flex-1">
+            <p className="text-lead font-semibold">Sistema web SaaS · Americana/SP</p>
+            <p className="text-caption text-muted">R$ 4,3 mi · atestado de 650 usuários</p>
+          </div>
+        </div>
+
+        <button className="w-full min-h-touch flex items-center justify-center rounded-control bg-blue-soft text-blue font-semibold text-lead transition-colors hover:bg-blue-line">
+          Ver triagens
+        </button>
+
+        <p className="text-caption text-muted text-center">Telegram · segunda 07:00</p>
+      </div>
+    </Card>
+  )
+}
+
 export function AlertsView({
   phase,
   active,
@@ -204,6 +260,12 @@ export function AlertsView({
                 </h2>
                 <p className="pt-1 text-meta leading-relaxed text-muted">{copy.connect.body}</p>
               </Card>
+
+              <div className="rounded-card border border-line overflow-hidden bg-fill-muted p-4">
+                <p className="text-caption font-mono uppercase text-muted mb-3">Exemplo do alerta</p>
+                <TelegramExamplePreview />
+              </div>
+
               <Note>{copy.screen.needsCnpjHere}</Note>
               <CompanyForm
                 action={companyAction}
@@ -237,8 +299,8 @@ export function AlertsView({
 
               <StartCommand command={phase.command} botHandle={botHandle} />
 
-              <form action={recheckAction}>
-                <Button type="submit" variant="secondary">
+              <form action={recheckAction} className="w-full">
+                <Button type="submit" variant="secondary" fullWidth>
                   {hand.recheck}
                 </Button>
               </form>
@@ -267,6 +329,12 @@ export function AlertsView({
                 </h2>
                 <p className="pt-1 text-meta leading-relaxed text-muted">{copy.connect.body}</p>
               </Card>
+
+              <div className="rounded-card border border-line overflow-hidden bg-fill-muted p-4">
+                <p className="text-caption font-mono uppercase text-muted mb-3">Exemplo do alerta</p>
+                <TelegramExamplePreview />
+              </div>
+
               <form action={connectAction}>
                 <Button type="submit" iconEnd="arrowRight">
                   {copy.connect.cta}
@@ -278,9 +346,11 @@ export function AlertsView({
           )}
         </section>
 
-        <form action={saveAction} className="flex flex-col gap-3 pt-2">
-          <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
-          <Note>{prefs.digestHelp}</Note>
+        <form action={saveAction} className="flex flex-col gap-3 pt-4">
+          <div className="border-t border-line pt-4">
+            <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
+            <Note>{prefs.digestHelp}</Note>
+          </div>
 
           <Select
             id="alerta-uf"
@@ -289,32 +359,40 @@ export function AlertsView({
             options={UF_OPTIONS}
             defaultValue={states[0] ?? ''}
           />
+
           {/* **One field per keyword the plan grants**, not one field.
-              `plan_limits` gives Básico 1 and Essencial 10, and this rendered
-              a single input on every plan — so the alert a founder paid for
-              was identical to the free one (E18). `keywordFields` is exported
-              and tested against `plan_limits` so the two cannot drift again.
+              Keyword fields are grouped: first field separate, then pairs in a grid on desktop.
+              Mobile shows single column for better readability. */}
+          <div className="flex flex-col gap-3">
+            {keywordFields(limits.keywords).length > 0 && (
+              <Field
+                id="alerta-palavra"
+                name="palavra"
+                label={messages.radar.landing.keywordLabel}
+                placeholder={messages.radar.landing.keywordPlaceholder}
+                maxLength={MAX_KEYWORD_CHARS}
+                defaultValue={keywords[0] ?? ''}
+              />
+            )}
 
-              All of them are `name="palavra"`, and the action reads them with
-              `getAll`. `get` returning only the first is the other half of how
-              ten became one. */}
-          {keywordFields(limits.keywords).map((index) => (
-            <Field
-              key={index}
-              id={index === 0 ? 'alerta-palavra' : `alerta-palavra-${index}`}
-              name="palavra"
-              label={
-                index === 0
-                  ? messages.radar.landing.keywordLabel
-                  : format(copy.keywordMore, { n: index + 1 })
-              }
-              placeholder={messages.radar.landing.keywordPlaceholder}
-              maxLength={MAX_KEYWORD_CHARS}
-              defaultValue={keywords[index] ?? ''}
-            />
-          ))}
+            {keywordFields(limits.keywords).length > 1 && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {keywordFields(limits.keywords).slice(1).map((index) => (
+                  <Field
+                    key={index}
+                    id={`alerta-palavra-${index}`}
+                    name="palavra"
+                    label={format(copy.keywordMore, { n: index + 1 })}
+                    placeholder={messages.radar.landing.keywordPlaceholder}
+                    maxLength={MAX_KEYWORD_CHARS}
+                    defaultValue={keywords[index] ?? ''}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
 
-          <Button type="submit" variant="secondary">
+          <Button type="submit" variant="secondary" className="mt-2">
             {messages.common.save}
           </Button>
         </form>

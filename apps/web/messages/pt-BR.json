@@ -562,11 +562,11 @@
   "telegram": {
     "connect": {
       "title": "Receba os editais no Telegram",
-      "body": "Uma vez por semana, o robô da LicitaQui manda até 3 editais abertos que combinam com o que a sua empresa faz.",
-      "cta": "Conectar o Telegram",
+      "body": "Toda segunda a LicitaQui manda um resumo com até 3 editais abertos que combinam com a sua empresa — sem encher o seu chat.",
+      "cta": "Conectar Telegram",
       "opening": "Abrindo o Telegram...",
-      "help": "O Telegram abre com uma conversa já pronta. É só tocar em Iniciar.",
-      "noApp": "Não tem o Telegram? Ele é gratuito e dá para instalar na loja de aplicativos do seu celular."
+      "help": "O Telegram abre com a conversa já pronta. É só tocar em Iniciar.",
+      "noApp": "Não tem o Telegram? É gratuito e está na loja de aplicativos do seu celular."
     },
     "connected": {
       "title": "Telegram conectado",
@@ -589,32 +589,32 @@
       "needsCnpjHere": "Para escolher editais que combinam com você, a gente precisa do CNPJ da sua empresa. Informe aqui mesmo:"
     },
     "handoff": {
-      "waitingTitle": "Falta tocar em Iniciar no Telegram",
-      "waitingBody": "Abra a conversa com o {bot} e toque em Iniciar. Assim que o robô responder, esta página mostra a conexão.",
+      "waitingTitle": "Aguardando resposta do Telegram",
+      "waitingBody": "Abra a conversa com o {bot} e toque em Iniciar. Assim que o robô responder, aqui mostra a conexão.",
       "open": "Abrir o Telegram",
-      "recheck": "Já toquei em Iniciar, verificar",
+      "recheck": "Já toquei em Iniciar — verificar agora",
       "validFor": "Este link vale por {minutos} minutos.",
-      "manualTitle": "O Telegram abriu e nada aconteceu?",
-      "manualBody": "Envie esta mensagem na conversa com o {bot}. Ela faz exatamente o que o botão Iniciar faria:",
-      "manualHint": "Toque na mensagem para selecionar e copiar.",
-      "failedTitle": "Não recebemos resposta do Telegram",
-      "failedBody": "O link anterior venceu ou não chegou até o robô. Nada foi perdido: gere outro link e toque em Iniciar na conversa.",
-      "newLink": "Gerar outro link",
-      "stillWaiting": "Ainda não chegou nada do Telegram. Se você acabou de tocar em Iniciar, espere alguns segundos e verifique de novo."
+      "manualTitle": "O Telegram abriu e não funcionou?",
+      "manualBody": "Copie e envie este comando para o {bot}. Faz a mesma coisa que o botão:",
+      "manualHint": "Toque para selecionar tudo e copiar.",
+      "failedTitle": "O Telegram não respondeu",
+      "failedBody": "O link expirou ou não chegou até o robô. Sem problema: gere outro link e tente novamente.",
+      "newLink": "Gerar um novo link",
+      "stillWaiting": "Se você acabou de tocar em Iniciar, espere alguns segundos e verifique de novo."
     },
     "keywordMore": "Palavra-chave {n}"
   },
   "notifications": {
     "title": "Avisos e preferências",
-    "intro": "Você escolhe por onde a LicitaQui fala com você. Pode mudar quando quiser.",
+    "intro": "Controle por onde a LicitaQui fala com você: qual canal, que tipo de mensagem, que editais. Pode mudar quando quiser.",
     "emailLabel": "E-mail",
-    "emailHelp": "Editais da semana, avisos sobre a sua conta e sobre cobrança.",
+    "emailHelp": "Listas de editais, confirmação de pagamento, avisos importantes.",
     "whatsappLabel": "WhatsApp",
-    "whatsappHelp": "Avisos importantes sobre a sua conta. Você também pode parar respondendo SAIR na conversa.",
+    "whatsappHelp": "Avisos importantes sobre sua conta — você pode responder SAIR para parar.",
     "telegramLabel": "Telegram",
-    "telegramHelp": "Os editais abertos que combinam com a sua empresa.",
+    "telegramHelp": "Resumo semanal com editais que combinam com a sua empresa.",
     "digestLabel": "Resumo semanal de editais",
-    "digestHelp": "Até 3 editais por semana, escolhidos pelas atividades do seu CNPJ.",
+    "digestHelp": "Até 3 editais por semana escolhidos pelas atividades do seu CNPJ — palavras-chave, estado de entrega.",
     "billingLabel": "Avisos de cobrança",
     "billingHelp": "Confirmação de pagamento, aviso de mudança de preço, aviso 3 dias antes de cada cobrança, aviso de pagamento não aprovado e aviso de suspensão. Esses não dá para desligar, porque a gente precisa te avisar.",
     "saved": "Preferências salvas.",
