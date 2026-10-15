@@ -86,7 +86,7 @@ export function PlanViewRedesigned({
   const endsOn = live ? planDate(subscription.endsOn) : null
 
   const content = (
-    <div className="flex flex-col gap-8 py-6">
+    <div className="flex flex-col gap-8 py-6 mt-4">
         {/* Banner Notice */}
         {banner ? (
           <div className="rounded-lg border border-line bg-surface p-6">

@@ -84,12 +84,16 @@ export function AccountDashboard({
         <p className="text-meta text-muted">{messages.account.screen.subtitle}</p>
       </div>
 
-      <Tabs
-        items={tabs}
-        active={activeTab}
-        onSelect={handleTabChange}
-        idPrefix="account"
-      />
+      <nav className="border-b border-line-strong">
+        <div className="flex gap-0 -mx-gutter px-gutter">
+          <Tabs
+            items={tabs}
+            active={activeTab}
+            onSelect={handleTabChange}
+            idPrefix="account"
+          />
+        </div>
+      </nav>
 
       <TabPanel idPrefix="account" id="conta" isActive={activeTab === 'conta'}>
         <AccountViewRedesigned {...account} hideTitle />
