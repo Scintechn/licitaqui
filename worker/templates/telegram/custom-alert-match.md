@@ -19,6 +19,4 @@ notes: One custom alert notification (E31 – rich text formatting). Sent when a
 [[se: tem_meepp]]🎯 {{marcador_meepp}}
 [[/se]]
 
-👁️ <a href="{{link_edital}}">Ler o edital completo</a>
-
 💡 A leitura é feita por inteligência artificial e serve para você decidir rápido. Antes de enviar proposta, confira sempre no edital.
