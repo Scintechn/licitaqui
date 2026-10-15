@@ -124,6 +124,21 @@ const nextConfig: NextConfig = {
    * photograph or an icon and stays at 75.
    */
   images: { qualities: [75, 90] },
+  /**
+   * **Monorepo file inclusion for Turbopack.**
+   *
+   * The product.json file lives in docs/ at the repository root, shared by
+   * the web app and the worker. Turbopack must be told to include it in the
+   * output tracing, so the Vercel build can access files outside the root
+   * directory. Without this, ES6 imports to ../../../docs/product.json fail
+   * at build time on Vercel, even when the "Include source files outside of
+   * Root Directory" setting is enabled in the Vercel project UI.
+   *
+   * See: docs/DEVELOPMENT_PLAN.md D48 and recent deployment history.
+   */
+  outputFileTracingIncludes: {
+    '/**/*': ['../docs/product.json'],
+  },
   async headers() {
     return [
       { source: '/:path*', headers: SECURITY_HEADERS },

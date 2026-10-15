@@ -11,7 +11,7 @@
  * change can be made once and *proven* everywhere (`product.test.ts`).
  */
 
-const facts = require('../../../docs/product.json') as any
+import facts from '../../../docs/product.json'
 
 export type PlanName = 'basico' | 'promocional' | 'essencial' | 'pro'
 
