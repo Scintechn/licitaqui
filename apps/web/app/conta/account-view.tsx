@@ -85,36 +85,38 @@ export function AccountView({
             is `max-w-[560px]` with a 20px gutter). */}
         <p className="font-mono text-meta break-all text-ink">{email}</p>
 
-        <div className="flex flex-col gap-2 min-[560px]:flex-row">
-          <Button href="/radar" iconEnd="arrowRight">
-            {copy.radar}
-          </Button>
-          <Button href={ALERTS_HREF} variant="secondary">
-            {copy.alerts}
-          </Button>
-          <Button href={COMPANY_PATH} variant="secondary">
-            {messages.radar.menu.company}
-          </Button>
-          {/*
-            **F31, and it is the only way back to that screen.** `/conta/perfil`
-            was linked from exactly one place — the plan screen's
-            no-checkout branch — and that block disappears the moment
-            `canBill` is true. So a subscriber who mistyped their mobile could
-            never reach the form again, and `users.name` and `users.whatsapp`
-            had no edit path at all. Found by review 2026-10-13; the screen's
-            own docstring had called itself an edit form.
+        {!hideTitle && (
+          <div className="flex flex-col gap-2 min-[560px]:flex-row">
+            <Button href="/radar" iconEnd="arrowRight">
+              {copy.radar}
+            </Button>
+            <Button href={ALERTS_HREF} variant="secondary">
+              {copy.alerts}
+            </Button>
+            <Button href={COMPANY_PATH} variant="secondary">
+              {messages.radar.menu.company}
+            </Button>
+            {/*
+              **F31, and it is the only way back to that screen.** `/conta/perfil`
+              was linked from exactly one place — the plan screen's
+              no-checkout branch — and that block disappears the moment
+              `canBill` is true. So a subscriber who mistyped their mobile could
+              never reach the form again, and `users.name` and `users.whatsapp`
+              had no edit path at all. Found by review 2026-10-13; the screen's
+              own docstring had called itself an edit form.
 
-            It matters more than it looks: the mobile is what reaches Asaas as
-            `mobilePhone` and what `billing.py` dials for the terms §7 charge
-            notice. A wrong one is a notice that never arrives.
-          */}
-          <Button href={PROFILE_PATH} variant="secondary">
-            {messages.account.profile.editAction}
-          </Button>
-          <Button href={PLAN_PATH} variant="secondary">
-            {messages.radar.menu.billing}
-          </Button>
-        </div>
+              It matters more than it looks: the mobile is what reaches Asaas as
+              `mobilePhone` and what `billing.py` dials for the terms §7 charge
+              notice. A wrong one is a notice that never arrives.
+            */}
+            <Button href={PROFILE_PATH} variant="secondary">
+              {messages.account.profile.editAction}
+            </Button>
+            <Button href={PLAN_PATH} variant="secondary">
+              {messages.radar.menu.billing}
+            </Button>
+          </div>
+        )}
 
         <section className="flex flex-col gap-2 pt-2">
           <SectionLabel>{copy.dataTitle}</SectionLabel>
