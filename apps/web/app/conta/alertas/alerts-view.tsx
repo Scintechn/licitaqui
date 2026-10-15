@@ -1,5 +1,4 @@
-import Link from 'next/link'
-import { AppBar, Button, Card, CardRow, Field, Logo, SectionLabel, Select } from '@/components'
+import { AppBar, Button, Card, CardRow, Field, SectionLabel, Select } from '@/components'
 import { MenuTrigger } from '@/components/menu-trigger'
 import { format, messages } from '@/lib/messages'
 import { UF_OPTIONS } from '@/lib/radar/ufs'
@@ -145,11 +144,6 @@ export function AlertsView({
   return (
     <div className="flex min-h-dvh flex-col">
       <AppBar
-        leading={
-          <Link href="/" aria-label={messages.radar.nav.home} className="inline-flex">
-            <Logo size={30} />
-          </Link>
-        }
         actions={<MenuTrigger />}
       />
       <main className="mx-auto flex w-full grow flex-col gap-4 px-gutter pt-6 pb-10" style={{ maxWidth: '1400px' }}>

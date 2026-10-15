@@ -75,7 +75,7 @@ export type TabsProps<Id extends string = string> = {
   className?: string
 }
 
-const ITEM = 'inline-flex min-h-10 items-center gap-1 border-b-2 px-0.5 text-body'
+const ITEM = 'flex min-h-9 items-center gap-1.5 border-b-2 px-3 text-meta font-medium transition-colors'
 
 export function Tabs<Id extends string>({
   items,
@@ -85,45 +85,47 @@ export function Tabs<Id extends string>({
   className,
 }: TabsProps<Id>) {
   return (
-    <div role="tablist" className={cn('flex gap-5 border-b border-line', className)}>
-      {items.map((item) => {
-        const icon = item.icon ? <Icon name={item.icon} size={13} /> : null
+    <nav role="tablist" className={cn('border-b border-line-strong', className)}>
+      <div className="flex gap-0 -mx-gutter px-gutter">
+        {items.map((item) => {
+          const icon = item.icon ? <Icon name={item.icon} size={13} /> : null
 
-        if (item.href !== undefined) {
+          if (item.href !== undefined) {
+            return (
+              <a
+                key={item.id}
+                href={item.href}
+                className={cn(ITEM, 'border-transparent text-muted no-underline')}
+              >
+                {icon}
+                {item.label}
+              </a>
+            )
+          }
+
+          const on = item.id === active
           return (
-            <a
+            <button
               key={item.id}
-              href={item.href}
-              className={cn(ITEM, 'border-transparent text-muted no-underline')}
+              type="button"
+              role="tab"
+              id={tabId(idPrefix, item.id)}
+              aria-selected={on}
+              aria-controls={panelId(idPrefix, item.id)}
+              onClick={onSelect ? () => onSelect(item.id) : undefined}
+              className={cn(
+                ITEM,
+                'bg-transparent',
+                on ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-ink',
+              )}
             >
               {icon}
               {item.label}
-            </a>
+            </button>
           )
-        }
-
-        const on = item.id === active
-        return (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            id={tabId(idPrefix, item.id)}
-            aria-selected={on}
-            aria-controls={panelId(idPrefix, item.id)}
-            onClick={onSelect ? () => onSelect(item.id) : undefined}
-            className={cn(
-              ITEM,
-              'border-0 border-b-2 bg-transparent',
-              on ? 'border-blue font-semibold text-blue' : 'border-transparent text-muted',
-            )}
-          >
-            {icon}
-            {item.label}
-          </button>
-        )
-      })}
-    </div>
+        })}
+      </div>
+    </nav>
   )
 }
 
