@@ -70,6 +70,13 @@ export function AlertsPreferencesForm({
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+
+    // Require at least a state selection
+    if (!selectedState) {
+      alert('Por favor, selecione um estado para receber editais.')
+      return
+    }
+
     const formData = new FormData(e.currentTarget)
 
     // Ensure state is properly set in formData
