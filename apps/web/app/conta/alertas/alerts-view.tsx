@@ -299,8 +299,8 @@ export function AlertsView({
 
               <StartCommand command={phase.command} botHandle={botHandle} />
 
-              <form action={recheckAction}>
-                <Button type="submit" variant="secondary">
+              <form action={recheckAction} className="w-full">
+                <Button type="submit" variant="secondary" fullWidth>
                   {hand.recheck}
                 </Button>
               </form>
