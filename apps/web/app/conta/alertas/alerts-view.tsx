@@ -348,58 +348,6 @@ export function AlertsView({
           )}
         </section>
 
-<<<<<<< HEAD
-        <form action={saveAction} className="flex flex-col gap-3 pt-4">
-          <div className="border-t border-line pt-4">
-            <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
-            <Note>{prefs.digestHelp}</Note>
-          </div>
-
-          <Select
-            id="alerta-uf"
-            name="uf"
-            label={messages.radar.landing.ufLabel}
-            options={UF_OPTIONS}
-            defaultValue={states[0] ?? ''}
-          />
-
-          {/* **One field per keyword the plan grants**, not one field.
-              Keyword fields are grouped: first field separate, then pairs in a grid on desktop.
-              Mobile shows single column for better readability. */}
-          <div className="flex flex-col gap-3">
-            {keywordFields(limits.keywords).length > 0 && (
-              <Field
-                id="alerta-palavra"
-                name="palavra"
-                label={messages.radar.landing.keywordLabel}
-                placeholder={messages.radar.landing.keywordPlaceholder}
-                maxLength={MAX_KEYWORD_CHARS}
-                defaultValue={keywords[0] ?? ''}
-              />
-            )}
-
-            {keywordFields(limits.keywords).length > 1 && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {keywordFields(limits.keywords).slice(1).map((index) => (
-                  <Field
-                    key={index}
-                    id={`alerta-palavra-${index}`}
-                    name="palavra"
-                    label={format(copy.keywordMore, { n: index + 1 })}
-                    placeholder={messages.radar.landing.keywordPlaceholder}
-                    maxLength={MAX_KEYWORD_CHARS}
-                    defaultValue={keywords[index] ?? ''}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <Button type="submit" variant="secondary" className="mt-2">
-            {messages.common.save}
-          </Button>
-        </form>
-=======
         <section className="flex flex-col gap-3 pt-2">
           <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
           <AlertsPreferencesForm
@@ -410,7 +358,6 @@ export function AlertsView({
             saveAction={saveAction}
           />
         </section>
->>>>>>> 1fce54d (fix(D48): Integrate keyword input and tender preview into alerts form)
       </main>
     </div>
   )
