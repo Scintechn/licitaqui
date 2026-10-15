@@ -154,3 +154,147 @@ export async function savePreferences(formData: FormData): Promise<void> {
   await saveAlert(userId, preferences, executor)
   redirect(`${ALERTS_PATH}?estado=salvo`)
 }
+
+/**
+ * Create a new custom alert with keywords, states, and frequency.
+ *
+ * Unlike the preferences form which manages a single Telegram weekly digest,
+ * this creates a new alert row that the user can manage independently.
+ */
+export async function createAlert(formData: FormData): Promise<{ success: true }> {
+  const userId = await currentUserId()
+  const executor = db()
+  const plan = await planOf(userId)
+  const limits = await readAlertLimits(plan, executor)
+
+  const keywords = formData.getAll('keywords').map((v) => String(v))
+  const states = formData.getAll('states').map((v) => String(v))
+  const frequency = String(formData.get('frequency') ?? 'weekly')
+  const channel = String(formData.get('channel') ?? 'telegram')
+
+  // Validate input
+  if (keywords.length === 0) {
+    throw new Error('Adicione pelo menos uma palavra-chave')
+  }
+  // Empty states means all states (Todo o Brasil)
+
+  // Enforce quota
+  const keywordLimit = limits.keywords ?? 10
+  if (keywords.length > keywordLimit) {
+    throw new Error(
+      `Máximo de ${keywordLimit} palavra-chave permitida para seu plano`
+    )
+  }
+
+  // Trim and dedupe keywords
+  const cleanKeywords = Array.from(new Set(keywords.map((k) => k.trim()))).filter(
+    (k) => k.length > 0
+  )
+
+  // Insert new alert - build raw SQL with proper array handling
+  const kw = cleanKeywords.map(k => `'${k.replace(/'/g, "''")}'`).join(',')
+  const st = states.length > 0
+    ? `array[${states.map(s => `'${s.replace(/'/g, "''")}'`).join(',')}]`
+    : `array[]::text[]`
+  const ch = `'${channel.replace(/'/g, "''")}'`
+  const fr = `'${frequency.replace(/'/g, "''")}'`
+
+  await executor.execute(sql`
+    insert into alerts (user_id, kind, keywords, states, channel, frequency, active)
+    values (
+      ${userId}::bigint,
+      'keyword',
+      array[${sql.raw(kw)}],
+      ${sql.raw(st)},
+      ${ch},
+      ${fr},
+      true
+    )
+  `)
+
+  // Return success - client will handle redirect
+  return { success: true }
+}
+
+/**
+ * Update an existing alert's keywords, states, and frequency.
+ */
+export async function updateAlert(
+  alertId: string | number,
+  formData: FormData
+): Promise<{ success: true }> {
+  const userId = await currentUserId()
+  const executor = db()
+  const plan = await planOf(userId)
+  const limits = await readAlertLimits(plan, executor)
+
+  const keywords = formData.getAll('keywords').map((v) => String(v))
+  const states = formData.getAll('states').map((v) => String(v))
+  const frequency = String(formData.get('frequency') ?? 'weekly')
+
+  // Validate input
+  if (keywords.length === 0) {
+    throw new Error('Adicione pelo menos uma palavra-chave')
+  }
+  // Empty states means all states (Todo o Brasil)
+
+  // Enforce quota
+  const keywordLimit = limits.keywords ?? 10
+  if (keywords.length > keywordLimit) {
+    throw new Error(
+      `Máximo de ${keywordLimit} palavra-chave permitida para seu plano`
+    )
+  }
+
+  // Trim and dedupe keywords
+  const cleanKeywords = Array.from(new Set(keywords.map((k) => k.trim()))).filter(
+    (k) => k.length > 0
+  )
+
+  // Update alert (verify ownership)
+  const kw = cleanKeywords.map(k => `'${k.replace(/'/g, "''")}'`).join(',')
+  const st = states.length > 0
+    ? `array[${states.map(s => `'${s.replace(/'/g, "''")}'`).join(',')}]`
+    : `array[]::text[]`
+  const fr = `'${frequency.replace(/'/g, "''")}'`
+
+  const result = await executor.execute(sql`
+    update alerts
+    set keywords = array[${sql.raw(kw)}],
+        states = ${sql.raw(st)},
+        frequency = ${fr}
+    where id = ${Number(alertId)}::bigint
+      and user_id = ${userId}::bigint
+    returning id
+  `)
+
+  if (result.rows.length === 0) {
+    throw new Error('Alerta não encontrado ou acesso negado')
+  }
+
+  // Return success - client will handle redirect
+  return { success: true }
+}
+
+/**
+ * Delete an alert.
+ */
+export async function deleteAlert(alertId: string | number): Promise<{ success: true }> {
+  const userId = await currentUserId()
+  const executor = db()
+
+  // Delete alert (verify ownership)
+  const result = await executor.execute(sql`
+    delete from alerts
+    where id = ${Number(alertId)}::bigint
+      and user_id = ${userId}::bigint
+    returning id
+  `)
+
+  if (result.rows.length === 0) {
+    throw new Error('Alerta não encontrado ou acesso negado')
+  }
+
+  // Return success - client will handle redirect
+  return { success: true }
+}
