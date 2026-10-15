@@ -85,9 +85,8 @@ export function PlanViewRedesigned({
   const promoEnds = live ? planDate(subscription.promoEndsOn) : null
   const endsOn = live ? planDate(subscription.endsOn) : null
 
-  return (
-    <AccountChrome plan={plan} planName={planName} title={messages.radar.menu.billing} hideTitle={hideTitle}>
-      <div className="flex flex-col gap-8 py-6">
+  const content = (
+    <div className="flex flex-col gap-8 py-6">
         {/* Banner Notice */}
         {banner ? (
           <div className="rounded-lg border border-line bg-surface p-6">
@@ -277,7 +276,14 @@ export function PlanViewRedesigned({
         {!live || cancelled ? (
           <p className="text-meta leading-relaxed text-muted">{billing.subscribe.methods}</p>
         ) : null}
-      </div>
+    </div>
+  )
+
+  if (hideTitle) return content
+
+  return (
+    <AccountChrome plan={plan} planName={planName} title={messages.radar.menu.billing}>
+      {content}
     </AccountChrome>
   )
 }

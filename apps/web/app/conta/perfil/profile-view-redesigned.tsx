@@ -37,9 +37,8 @@ export function ProfileViewRedesigned({
 }: ProfileViewRedesignedProps) {
   const failed = (field: string) => errors.includes(field)
 
-  return (
-    <AccountChrome plan={plan} planName={planName} title={copy.title} hideTitle={hideTitle}>
-      <div className="flex flex-col gap-8 py-6">
+  const content = (
+    <div className="flex flex-col gap-8 py-6">
         {/* Profile Description */}
         <section>
           <p className="text-body text-muted">{copy.subtitle}</p>
@@ -120,6 +119,13 @@ export function ProfileViewRedesigned({
           </p>
         </section>
       </div>
+  )
+
+  if (hideTitle) return content
+
+  return (
+    <AccountChrome plan={plan} planName={planName} title={copy.title}>
+      {content}
     </AccountChrome>
   )
 }
