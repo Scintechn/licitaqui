@@ -41,9 +41,9 @@ export async function getMatchingTenders(
   let query = sql`
     select
       id::text,
-      coalesce(short_title, object) as title,
-      uf || case when city is not null then '/' || city else '' end as location,
-      estimate_value_display as value,
+      object as title,
+      state || case when city is not null then '/' || city else '' end as location,
+      estimated_value::text as value,
       proposals_close_at::text as deadline
     from tenders
     where 1=1
@@ -51,13 +51,13 @@ export async function getMatchingTenders(
 
   // Filter by state
   if (state && state !== 'TODO_O_BRASIL') {
-    query = sql`${query} and uf = ${state}`
+    query = sql`${query} and state = ${state}`
   }
 
   // Filter by keywords (basic - would need more sophisticated full-text search in production)
   if (keywords.length > 0) {
     const keywordConditions = keywords.map(
-      (keyword) => sql`(object ilike ${'%' + keyword + '%'} or short_title ilike ${'%' + keyword + '%'})`
+      (keyword) => sql`object ilike ${'%' + keyword + '%'}`
     )
 
     // OR condition for keywords
