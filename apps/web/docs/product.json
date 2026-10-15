@@ -1,0 +1,139 @@
+{
+  "$comment": [
+    "THE PRODUCT'S NUMBERS, IN ONE PLACE.",
+    "",
+    "Every value here is written by hand in several other files: the copy",
+    "catalogue, the worker's message templates, the terms of use, the billing",
+    "FAQ and the legal brief. That duplication is not going away — a price in",
+    "`termos-de-uso.md` has to be prose, not a placeholder, because it is a",
+    "contract clause — so the answer is not to generate those files but to be",
+    "able to prove they still agree. `apps/web/lib/product.test.ts` does that:",
+    "it fails, naming the file, when any of them drifts from this one.",
+    "",
+    "Why it exists: D11b was three hardcoded dates, D7 was one claim in four",
+    "places, D6 survived a guard that keyed on the wrong phrasing. Each was a",
+    "product fact typed by hand in more places than anyone could hold in their",
+    "head, and each was found by a person reading one screen closely.",
+    "",
+    "Changing a number here does NOT change what renders. It changes the test",
+    "from green to red, listing every site still carrying the old value.",
+    "",
+    "Money is in whole BRL. Dates are ISO, in the product's clock",
+    "(America/Sao_Paulo) — see CLAUDE.md on the three clocks."
+  ],
+
+  "founders": {
+    "seatsTotal": 25,
+    "seatsOpenDefault": 17,
+    "opensOn": "2026-10-17",
+    "opensAtBrt": "12:00",
+    "$seatsComment": [
+      "Two numbers, because the offer opens in two lots and they are not the",
+      "same kind of fact.",
+      "",
+      "`seatsTotal` (25) is CONTRACTUAL — terms §6 says the offer is limited to",
+      "25 subscribers, released in lots of 17 and then 8. Changing it changes a",
+      "clause people have accepted.",
+      "",
+      "`seatsOpenDefault` (17) is only the value a fresh database starts at.",
+      "**The live cap is a row in `app_settings`, not this file.** Opening lot 2",
+      "must be an UPDATE, never a deploy: releasing eight seats should not",
+      "require a CI run, an image build and a redeploy, and on 2026-09-26 that",
+      "chain took six days to complete once.",
+      "",
+      "The invariant the code enforces: the cap may be raised freely, and",
+      "lowered only to a value at or above the highest seat already assigned.",
+      "Lowering it past an assigned seat would push somebody out of an offer",
+      "they had already accepted.",
+      "",
+      "A seat is RESERVED, not bought. Reserving costs nothing and happens now;",
+      "the charge starts on 17/10 when the plan opens. So `seat` on",
+      "`founders_list` records a booking, and a subscription is a separate",
+      "thing that does not exist yet (E8). Sci opens lot 2 only if the 17 are",
+      "still not taken by 17/10 — a decision, never a schedule."
+    ]
+  },
+
+  "plans": {
+    "basico": { "brl": 0 },
+    "promocional": { "brl": 57, "months": 3, "thenBrl": 75 },
+    "essencial": { "brl": 75 },
+    "pro": { "brl": 129 }
+  },
+
+  "planLimits": {
+    "visitor": {
+      "screening": { "period": "total", "quantity": 2 },
+      "days": { "period": "total", "quantity": 3 }
+    },
+    "basico": {
+      "screening": { "period": "month", "quantity": 5 }
+    }
+  },
+  "$planLimitsComment": [
+    "THE QUOTA NUMBERS THE COPY SELLS. NOT THE RUNTIME AUTHORITY.",
+    "",
+    "`plan_limits` stays the table the product reads at request time —",
+    "TECHNICAL_SPEC.md:302 calls it 'configurable without a deploy' and :475",
+    "says 'Numbers live in `plan_limits`, not in code'. **No quota decision**",
+    "reads what is here — a route that renders copy does, through messages.ts,",
+    "but only to print a sentence — and no `readLimit` call was replaced by a",
+    "constant. Raising Básico from 5 to 8 is still one UPDATE.",
+    "",
+    "What this is: the **stated** value. Three rows are sold word-for-word in",
+    "about a dozen pt-BR strings and in the terms' entitlement table, and until",
+    "D69 nothing compared the sentence to the row. D64 removed the last",
+    "incidental assertions (literals inside route-contract suites), so a",
+    "migration lowering Básico to 3 was silent while every page kept promising",
+    "five. CDC art. 30 binds an advertised feature, so the sentence is a",
+    "promise, not a label.",
+    "",
+    "Keyed `(plan, feature)` — the table's own primary key, spelled the same",
+    "way — so the two sides can be joined by eye as well as by a test. The",
+    "`period` is here because `month` versus `total` is the difference between",
+    "'five a month' and 'five for life', and a quantity without its period is",
+    "half a fact.",
+    "",
+    "Only the rows the copy quotes. `deep_analysis`, `alert`, `keywords`,",
+    "`states` and `price_band` are also sold in sentences, and exactly **one**",
+    "of them has a real copy-versus-table guard: `keyword-limits.db.test.ts`,",
+    "which walks the catalogue and compares each claimed number to the row.",
+    "`plan-limits.db.test.ts` is **not** one — it asserts the table against",
+    "literals (`toBe(1)`, `period === 'week'`) and reads no copy at all, so",
+    "`alert` is covered only incidentally. All four of the others, price_band",
+    "included, are card D74.",
+    "",
+    "A row added here must be tokenised in the catalogue and swept in the same",
+    "PR, or the guard grows a hole it cannot see — and `product.db.test.ts`",
+    "asserts this list **exactly**, so adding one without doing the rest goes",
+    "red rather than quiet.",
+    "",
+    "Three readers: `apps/web/lib/product.ts` (PLAN_LIMITS, which feeds the",
+    "`{$triagensVisitante}`, `{$diasVisitante}` and `{$triagensBasico}` copy",
+    "tokens), `product.test.ts` (the catalogue and the terms must still say",
+    "this) and `product.db.test.ts` (the table must still hold it)."
+  ],
+
+  "notice": {
+    "priceChangeDays": 30,
+    "chargeReminderDays": 3,
+    "suspendAfterDays": 10,
+    "$noticeComment": "priceChangeDays is the CONTRACTUAL FLOOR (terms §6.4), not the operating value. Sending earlier is always allowed; later never is. suspendAfterDays is terms §7's grace period, counted in calendar days from the vencimento: suspending EARLIER than this would break the contract, later is ours to give."
+  },
+
+  "refund": {
+    "statutoryDays": 7,
+    "guaranteeDays": 30,
+    "processingFeeBrl": 1.92,
+    "$refundComment": [
+      "Terms §8 and faq-cobranca. Days 1-7 are CDC art. 49 — full refund, no",
+      "deduction, and it wins whenever both windows apply. Days 8-30 are our own",
+      "guarantee and return the amount paid minus the acquirer's processing fee.",
+      "",
+      "The net figure quoted in the copy (R$ 55,08) is NOT stored: it is",
+      "promocional - processingFeeBrl, and product.test.ts asserts the prose",
+      "still matches that subtraction. A number written down twice is a number",
+      "that drifts; a number derived once cannot."
+    ]
+  }
+}
