@@ -154,6 +154,9 @@ export function GET(): Response {
 async function handle(update: Exclude<Update, { kind: 'ignore' }>): Promise<Reply | null> {
   if (update.kind === 'start') return start(update.chatId, update.token)
 
+  // Callback query (button click) — E32 interactive buttons
+  if (update.kind === 'callback') return handleCallback(update.chatId, update.data)
+
   const userId = await userForChat(update.chatId)
   if (update.kind === 'help') {
     // `help.md` needs no account: it explains the product to whoever asked.
@@ -165,6 +168,40 @@ async function handle(update: Exclude<Update, { kind: 'ignore' }>): Promise<Repl
   if (!userId) return { template: 'start-no-token', chatId: update.chatId }
   await setAlertActive(userId, false)
   return { template: 'stop', userId }
+}
+
+async function handleCallback(chatId: number, data: string): Promise<Reply | null> {
+  const userId = await userForChat(chatId)
+  if (!userId) return { template: 'start-no-token', chatId }
+
+  // Parse callback data: format is "action_id" (e.g., "pause_123", "similar_456")
+  const [action, ...idParts] = data.split('_')
+  const id = idParts.join('_')
+
+  if (action === 'pause') {
+    // Toggle alert active status via pause callback
+    await setAlertActive(userId, false)
+    return { template: 'alert-paused', userId }
+  }
+
+  if (action === 'similar' || action === 'share') {
+    // Enqueue a worker job to handle similar tenders or share functionality
+    const jobPayload = {
+      userId,
+      chatId,
+      action,
+      tenderId: id,
+    }
+    await enqueueJob({
+      kind: JOB_KINDS.sendTelegram,
+      key: `callback:${action}:${id}:${chatId}`,
+      priority: PRIORITY_USER_WAITING,
+      payload: sendTelegramPayload({ template: `callback-${action}`, ...jobPayload }),
+    })
+    return null // Callback is handled asynchronously
+  }
+
+  return null
 }
 
 async function start(chatId: number, token: string | null): Promise<Reply> {

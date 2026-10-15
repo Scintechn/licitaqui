@@ -267,7 +267,9 @@ class TelegramClient:
 
     # -- sending ----------------------------------------------------------
 
-    def send_message(self, chat_id: int | str, text: str) -> SendResult:
+    def send_message(
+        self, chat_id: int | str, text: str, reply_markup: dict | None = None
+    ) -> SendResult:
         """Send one message, or do nothing at all in dry run.
 
         The kill switch is checked *before* the token is resolved or a client is
@@ -277,13 +279,13 @@ class TelegramClient:
         if not sending_enabled():
             return SendResult(status=DELIVERY_DRY_RUN)
         try:
-            return self.post_message(chat_id, text)
+            return self.post_message(chat_id, text, reply_markup=reply_markup)
         except TelegramError as exc:
             if exc.reason != REASON_PARSE:
                 raise
             # A stray metacharacter got through. Better a message with visible
             # asterisks than no digest at all; see the module docstring.
-            result = self.post_message(chat_id, text, parse_mode=None)
+            result = self.post_message(chat_id, text, parse_mode=None, reply_markup=reply_markup)
             return SendResult(
                 status=result.status,
                 message_id=result.message_id,
@@ -293,7 +295,12 @@ class TelegramClient:
             )
 
     def post_message(
-        self, chat_id: int | str, text: str, *, parse_mode: str | None = PARSE_MODE
+        self,
+        chat_id: int | str,
+        text: str,
+        *,
+        parse_mode: str | None = PARSE_MODE,
+        reply_markup: dict | None = None,
     ) -> SendResult:
         """The request itself. Re-checks the switch; see the module docstring."""
         if not sending_enabled():
@@ -312,6 +319,8 @@ class TelegramClient:
         }
         if parse_mode:
             payload["parse_mode"] = parse_mode
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
 
         started = time.monotonic()
         with get_breaker(BREAKER_NAME).guard():
