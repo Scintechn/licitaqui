@@ -1,0 +1,76 @@
+# FAQ — assinatura, cancelamento e devolução
+
+**v1.4 · 21/09/2026.** Texto pronto para a FAQ do site e para o suporte responder. Cada resposta é curta de propósito: quem pergunta isso está com o cartão na mão. As regras aqui são as mesmas dos [Termos de Uso](./termos-de-uso.md) §7 e §8 — se um mudar, mude o outro.
+
+---
+
+**Tem fidelidade ou multa para sair?**
+
+Não. Todos os planos são mensais. Você cancela quando quiser, sozinho, sem falar com ninguém.
+
+**Como eu cancelo?**
+
+Em Conta → Plano, um clique. Não precisa mandar e-mail, ligar nem justificar.
+
+**Se eu cancelar hoje, perco o acesso na hora?**
+
+Não. O cancelamento desliga a renovação automática. Você continua com o plano pago **até o último dia do período que já pagou** — se você cancelar um dia depois da renovação, usa o mês inteiro. Depois disso a conta volta para o plano Básico, que é gratuito e continua seu.
+
+**Vocês devolvem o dinheiro?**
+
+Em dois casos:
+
+- **Nos primeiros 7 dias da primeira assinatura**, você pode desistir e recebe tudo de volta — é o direito de arrependimento do Código de Defesa do Consumidor. Vale na primeira contratação; a renovação automática dos meses seguintes não reabre esse prazo.
+- **Do 8º ao 30º dia**, se você achar que não valeu, devolvemos o valor do primeiro mês **menos a taxa de processamento do pagamento** — cerca de R$ 1,92 no plano Promocional, o que dá R$ 55,08 de volta. Essa taxa é cobrada pela operadora e não nos é devolvida; o valor exato aparece na tela de pagamento antes de você confirmar. Sem justificar. Vale uma vez por CNPJ, sobre a primeira cobrança, nos planos Promocional e Essencial.
+- **Atenção:** nos **7 primeiros dias** vale sempre a devolução integral, sem desconto nenhum. Se o seu pedido chegar nesse prazo, é essa a regra aplicada.
+
+Fora desses casos não há devolução proporcional, porque o período em curso continua disponível para você até o fim.
+
+**Sou fundador. O que acontece no 4º mês?**
+
+Você paga R$ 57/mês nos 3 primeiros meses — o tempo em que o plano Essencial ainda está sendo construído. A partir do 4º, R$ 75/mês, que é o preço do plano Essencial. **Avisamos por e-mail 30 dias antes da primeira cobrança no novo valor**, com a data e o valor. Se não quiser seguir, cancela em um clique, sem custo.
+
+**Se eu cancelar, guardo minha vaga de fundador?**
+
+Não. A vaga volta para a oferta e o preço promocional não é restabelecido em uma nova assinatura. São 25 vagas, liberadas em dois lotes, e elas são vinculadas ao CNPJ da assinatura.
+
+**Vou ser cobrado de surpresa?**
+
+Não. **Avisamos por e-mail 3 dias antes de cada cobrança**, com a data e o valor. Se a cobrança for por pix, avisamos também pelo WhatsApp que você informou. Dá tempo de conferir, trocar o cartão ou cancelar antes.
+
+**E se o meu cartão falhar?**
+
+Avisamos você por e-mail e também pelo WhatsApp que você informou. Se a cobrança for por cartão, tentamos de novo; se for por pix, ela continua disponível para pagamento, porque o pix não é debitado automaticamente. Se não houver pagamento em **10 dias** contados do vencimento, o acesso pago é suspenso, a conta volta ao plano Básico e a assinatura é encerrada. Nada é apagado — e para voltar, basta assinar de novo.
+
+**Emitem nota fiscal?**
+
+A emissão de documento fiscal segue a legislação vigente.
+
+**Com quem eu falo se precisar de ajuda?**
+
+contato@licitaquiapp.com.br ou WhatsApp (11) 96246-0678. Para assuntos de dados pessoais, privacidade@licitaquiapp.com.br.
+
+**Qual o horário de atendimento?**
+
+Segunda a sexta, em horário comercial. Mensagens enviadas fora desse período são respondidas no próximo dia útil. Cancelamento e mudança de plano você faz sozinho no app, a qualquer hora, sem depender de atendimento.
+
+**Se eu sair, o que acontece com o que eu já fiz no app?**
+
+Seus dados ficam disponíveis para exportação por **30 dias** depois do encerramento ou da suspensão. Passado esse prazo, apagamos ou anonimizamos, como está na [Política de Privacidade](./politica-de-privacidade.md) §11.
+
+**Posso pagar com pix?**
+
+Sim, conforme as opções disponíveis no checkout. A cobrança é feita pelo Asaas; não temos acesso ao número do seu cartão.
+
+---
+
+## Onde esta FAQ aparece
+
+| Local | Quais perguntas |
+|---|---|
+| Página da Oferta, abaixo do preço | fidelidade · cancelamento · as duas janelas de devolução · 4º mês |
+| `/conta/plano`, ao lado do botão de assinar | todas |
+| Página `/ajuda` (ou rodapé) | todas |
+| Respostas prontas do suporte | todas, no mesmo texto |
+
+Mantenha a redação igual nos três lugares. Cliente que lê uma regra na Oferta e outra no contrato pede chargeback.

@@ -36,11 +36,11 @@ export interface LegalDocument {
 /**
  * `docs/legal/` relative to the running process.
  *
- * `process.cwd()` is `apps/web` under `next build` and `next dev` alike, so the
- * documents are two levels up. Resolved once, here, rather than at each call
- * site guessing it.
+ * `process.cwd()` is `apps/web` under `next build` and `next dev` alike.
+ * Legal documents are copied into `apps/web/docs/legal/` for Vercel build
+ * compatibility. Resolved once, here, rather than at each call site guessing it.
  */
-const LEGAL_DIR = path.join(process.cwd(), '..', '..', 'docs', 'legal')
+const LEGAL_DIR = path.join(process.cwd(), 'docs', 'legal')
 
 /** `**Última atualização:** 20/09/2026 · …` → `20/09/2026`. */
 const UPDATED_AT = /\*\*Última atualização:\*\*\s*([^\s·*]+)/
