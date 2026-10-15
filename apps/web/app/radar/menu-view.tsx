@@ -74,26 +74,29 @@ const MAIN: Item[] = [
   { id: 'radar', href: '/radar', icon: 'search', label: copy.radar },
   { id: 'alerts', href: '/conta/alertas', icon: 'alert', label: copy.alerts },
   { id: 'favourites', href: FAVOURITES_PATH, icon: 'star', label: copy.favourites },
-  { id: 'company', href: '/conta?tab=empresa', icon: 'company', label: copy.company },
-  { id: 'billing', href: '/conta?tab=plano', icon: 'money', label: copy.billing },
+  // Company and billing are now tabs inside the unified /conta dashboard, not separate menu items
 ]
 
 /**
+ * Account menu — the single entry to the unified dashboard (/conta).
+ *
  * `/ajuda` is **not built**. `lib/routes.ts` spends a paragraph on exactly
  * this: Next prefetches a `<Link>` on viewport entry, so an unbuilt
  * destination is "a burst of 404s on every page view" — and this menu renders
  * six links at once. The row is out until the route exists; `copy.help` stays
  * in the catalogue for the day it does.
  *
- * All account sections now point to `/conta` (unified dashboard):
- * - `Perfil` goes to `/conta?tab=perfil`
- * - `Minha empresa` goes to `/conta?tab=empresa`
- * - `Plano e pagamento` goes to `/conta?tab=plano`
+ * **Unified dashboard (D22)**: All account sections are now tabs inside `/conta`:
+ * - `Perfil` (Account) → `/conta` or `/conta?tab=perfil`
+ * - `Minha empresa` → `/conta?tab=empresa` (tab, not menu item)
+ * - `Plano e pagamento` → `/conta?tab=plano` (tab, not menu item)
+ *
+ * The sidebar shows only the main entry point; tabs handle the rest.
  * The strip above renders only for a signed-in viewer, so the sign-up screen
  * is the one page these items can never mean.
  */
 const ACCOUNT: Item[] = [
-  { id: 'profile', href: '/conta?tab=perfil', icon: 'account', label: copy.profile },
+  { id: 'profile', href: '/conta', icon: 'account', label: copy.profile },
 ]
 
 /**
