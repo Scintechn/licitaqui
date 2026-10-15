@@ -315,19 +315,6 @@ export function AlertsPage({
           )}
         </section>
 
-        {/* Section 1.5: Telegram Digest Preferences */}
-        {phase.phase === 'linked' && (
-          <section className="flex flex-col gap-3 pt-4">
-            <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
-            <AlertsPreferencesForm
-              userId={userId}
-              limits={limits}
-              states={states}
-              keywords={keywords}
-              saveAction={saveAction}
-            />
-          </section>
-        )}
 
         {/* Section 2: Custom Alerts Register */}
         <section className="flex flex-col gap-3 pt-6 border-t border-line">
