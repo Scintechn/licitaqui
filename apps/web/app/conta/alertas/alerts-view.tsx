@@ -1,10 +1,9 @@
-import { AppBar, Button, Card, CardRow, Field, SectionLabel, Select } from '@/components'
-import { MenuTrigger } from '@/components/menu-trigger'
+import { AppBar, Button, Card, CardRow, SectionLabel } from '@/components'
+import { AlertsPreferencesForm } from './alerts-preferences-form'
 import { format, messages } from '@/lib/messages'
-import { UF_OPTIONS } from '@/lib/radar/ufs'
 import { ALERTS_PATH } from '@/lib/routes'
 import { HANDOFF_MINUTES, type LinkPhase } from '@/lib/telegram/handoff'
-import { type AlertLimits, keywordFields, MAX_KEYWORD_CHARS } from '@/lib/telegram/quota'
+import { type AlertLimits } from '@/lib/telegram/quota'
 import { CompanyForm } from '../company-form'
 
 /**
@@ -65,6 +64,8 @@ const prefs = messages.notifications
 export type AlertNotice = 'saved' | 'disconnected' | 'company' | 'cnpj-invalid' | null
 
 export type AlertsViewProps = {
+  /** User ID for live preview matching. */
+  userId: number
   /** Where the Telegram hand-off has got to. See `lib/telegram/handoff.ts`. */
   phase: LinkPhase
   /** Whether the weekly digest is switched on. False after `/pausar`. */
@@ -180,6 +181,7 @@ function TelegramExamplePreview() {
 }
 
 export function AlertsView({
+  userId,
   phase,
   active,
   limits,
@@ -346,56 +348,16 @@ export function AlertsView({
           )}
         </section>
 
-        <form action={saveAction} className="flex flex-col gap-3 pt-4">
-          <div className="border-t border-line pt-4">
-            <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
-            <Note>{prefs.digestHelp}</Note>
-          </div>
-
-          <Select
-            id="alerta-uf"
-            name="uf"
-            label={messages.radar.landing.ufLabel}
-            options={UF_OPTIONS}
-            defaultValue={states[0] ?? ''}
+        <section className="flex flex-col gap-3 pt-2">
+          <SectionLabel>{copy.screen.filtersTitle}</SectionLabel>
+          <AlertsPreferencesForm
+            userId={userId}
+            limits={limits}
+            states={states}
+            keywords={keywords}
+            saveAction={saveAction}
           />
-
-          {/* **One field per keyword the plan grants**, not one field.
-              Keyword fields are grouped: first field separate, then pairs in a grid on desktop.
-              Mobile shows single column for better readability. */}
-          <div className="flex flex-col gap-3">
-            {keywordFields(limits.keywords).length > 0 && (
-              <Field
-                id="alerta-palavra"
-                name="palavra"
-                label={messages.radar.landing.keywordLabel}
-                placeholder={messages.radar.landing.keywordPlaceholder}
-                maxLength={MAX_KEYWORD_CHARS}
-                defaultValue={keywords[0] ?? ''}
-              />
-            )}
-
-            {keywordFields(limits.keywords).length > 1 && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {keywordFields(limits.keywords).slice(1).map((index) => (
-                  <Field
-                    key={index}
-                    id={`alerta-palavra-${index}`}
-                    name="palavra"
-                    label={format(copy.keywordMore, { n: index + 1 })}
-                    placeholder={messages.radar.landing.keywordPlaceholder}
-                    maxLength={MAX_KEYWORD_CHARS}
-                    defaultValue={keywords[index] ?? ''}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <Button type="submit" variant="secondary" className="mt-2">
-            {messages.common.save}
-          </Button>
-        </form>
+        </section>
       </main>
     </div>
   )
