@@ -698,6 +698,8 @@ Max 3 agents in parallel; Sci reviews and owns S-tasks.
 **v2 Pro · 01-11 → 02-26 (7 weeks, release 2027-03-01)**
 - Competitors (name, CNPJ, share, discounts), SearchApi market price with normalization, opportunity score, WhatsApp via Evolution API + triggers, OCR for scanned PDFs, new answer keys (construction, continuous services).
 
+| E30 | E | open | **Custom alerts Telegram notifications:** Match tenders against user-created alerts (keywords + states) and send Telegram notifications when matches are found. Implement `sync_custom_alerts` worker job that runs periodically (daily/weekly), scans new tenders, matches against each user's alerts, and sends messages via Telegram. Coordinate with existing Telegram linking via `telegram_links` table. Create alert-specific message template | D26 (custom alerts system), E1 (Telegram integration) | ∥ | 2 | Custom alert matches new tenders; Telegram message sends to linked user within the job's cycle; message names the alert, the tender, and links to screening; job is idempotent on (user, alert, tender) |
+
 ---
 
 ## 8. Cut lines if M3 (10-08) slips
