@@ -78,7 +78,7 @@ export function AccountDashboard({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="mx-auto w-full flex flex-col gap-4 px-gutter pt-6 pb-10">
       <h1 className="text-headline">{messages.account.screen.title}</h1>
 
       <Tabs
