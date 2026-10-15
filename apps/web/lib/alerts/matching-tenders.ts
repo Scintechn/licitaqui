@@ -70,7 +70,7 @@ export async function getMatchingTenders(
   }
 
   // Order by newest and limit to 3 for preview
-  query = sql`${query} order by created_at desc limit 3`
+  query = sql`${query} order by updated_at desc limit 3`
 
   const result = await executor.execute<MatchingTender>(query)
 
