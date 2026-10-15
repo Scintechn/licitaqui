@@ -6,9 +6,9 @@ import { Tabs, TabPanel } from '@/components/tabs'
 import { messages } from '@/lib/messages'
 import { AccountView, type AccountViewProps } from './account-view'
 import { AccountViewRedesigned } from './account-view-redesigned'
-import { CompanyView } from './empresa/company-view'
-import { PlanView } from './plano/plan-view'
-import { ProfileView } from './perfil/profile-view'
+import { CompanyViewRedesigned } from './empresa/company-view-redesigned'
+import { PlanViewRedesigned } from './plano/plan-view-redesigned'
+import { ProfileViewRedesigned } from './perfil/profile-view-redesigned'
 import type { AccountNotice } from './account-view'
 import type { QuotaView } from '@/lib/radar/contract'
 import type { Subscription } from '@/lib/asaas/subscription'
@@ -78,7 +78,7 @@ export function AccountDashboard({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="mx-auto w-full flex flex-col gap-4 px-gutter pt-6 pb-10">
       <h1 className="text-headline">{messages.account.screen.title}</h1>
 
       <Tabs
@@ -93,15 +93,15 @@ export function AccountDashboard({
       </TabPanel>
 
       <TabPanel idPrefix="account" id="empresa" isActive={activeTab === 'empresa'}>
-        <CompanyView {...company} plan={plan_key} planName={planName} hideTitle />
+        <CompanyViewRedesigned {...company} plan={plan_key} planName={planName} hideTitle />
       </TabPanel>
 
       <TabPanel idPrefix="account" id="plano" isActive={activeTab === 'plano'}>
-        <PlanView {...plan} plan={plan_key} planName={planName} hideTitle />
+        <PlanViewRedesigned {...plan} plan={plan_key} planName={planName} hideTitle />
       </TabPanel>
 
       <TabPanel idPrefix="account" id="perfil" isActive={activeTab === 'perfil'}>
-        <ProfileView {...profile} hideTitle />
+        <ProfileViewRedesigned {...profile} hideTitle />
       </TabPanel>
     </div>
   )
