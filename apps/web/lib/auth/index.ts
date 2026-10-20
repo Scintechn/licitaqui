@@ -15,6 +15,8 @@ import {
 import { linkFounderSeat } from './founder-seat'
 import { sendVerificationRequest } from './magic-link-email'
 import { AUTH_PAGES } from './pages'
+import { isProfileComplete } from './profile-check'
+import { PROFILE_PATH } from '@/lib/routes'
 
 /**
  * The Auth.js (NextAuth v5) instance — spec §5 and §164.
@@ -48,7 +50,22 @@ import { AUTH_PAGES } from './pages'
  *
  * Nothing here logs an address, a token or a name. The one event recorded on
  * sign-in carries the provider and whether a founder seat was connected.
+ *
+ * ## D45: Auto-funnel new users to checkout
+ *
+ * New users are detected by the `isNewUser` helper checking their `created_at`.
+ * Their profile completeness is checked to determine the redirect destination:
+ * - Complete profile (CNPJ + mobile) → `/conta/plano` (checkout)
+ * - Incomplete profile → `/conta?tab=perfil` (profile completion)
+ * - Existing users → original destination (unchanged)
  */
+
+/**
+ * Transient storage for new user IDs during the auth flow.
+ * Used to communicate between the signIn event and the redirect callback.
+ * In serverless, this is valid for the duration of a single request.
+ */
+const newUserIds = new Set<string>()
 
 function providers(): Provider[] {
   const available = providerAvailability()
@@ -119,18 +136,43 @@ export const authConfig: NextAuthConfig = {
       }
       return session
     },
-    redirect({ url, baseUrl }) {
-      // If redirecting to the default /radar path and it looks like a new user,
-      // add the welcome parameter. Check if url contains createdAt info or
-      // if it's a fresh redirect without any existing query params.
+    async redirect({ url, baseUrl }) {
+      // D45: Auto-funnel new users from signup to checkout
+      // If redirecting to /radar, check if this is a new user and redirect to
+      // profile completion or checkout instead, based on profile completeness.
       if (url.includes('/radar')) {
-        // Return the URL as-is; client-side redirect logic will handle welcome=1
+        try {
+          // Check if we have a tracked new user to process
+          if (newUserIds.size > 0) {
+            // Get the first user ID (should be the one from this signIn call)
+            const userId = Array.from(newUserIds)[0]
+            newUserIds.clear() // Clean up the set
+
+            // Check if user profile is complete (CNPJ + whatsapp)
+            const isComplete = await isProfileComplete(userId)
+
+            if (isComplete) {
+              // User has complete profile → send to checkout
+              return `${baseUrl}/conta/plano`
+            } else {
+              // User needs to complete profile first
+              return `${baseUrl}${PROFILE_PATH}`
+            }
+          }
+        } catch (error) {
+          // If anything goes wrong, log it but allow normal flow
+          console.error('Error in auth redirect funnel:', error)
+        }
+
+        // Default: return URL as-is for non-new-user redirects
         return url
       }
+
       // For any other redirect, prepend baseUrl if it's a relative path
       if (url.startsWith('/')) {
         return `${baseUrl}${url}`
       }
+
       // Absolute URLs stay as-is
       return url
     },
@@ -144,6 +186,12 @@ export const authConfig: NextAuthConfig = {
      */
     async signIn({ user, account, isNewUser }) {
       if (!user?.id) return
+
+      // D45: Track new users for auto-funnel redirect
+      if (isNewUser) {
+        newUserIds.add(String(user.id))
+      }
+
       const seat = await linkFounderSeat(user.id).catch(() => null)
       // Only §14's `account_created`. A repeat sign-in is not a gate metric and
       // adding a name to the closed catalogue in `lib/events` for it would be
