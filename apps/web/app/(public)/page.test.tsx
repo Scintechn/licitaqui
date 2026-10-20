@@ -237,13 +237,12 @@ describe('/ · the approved page, section by section', () => {
   it('prices the three plans from the catalogue, never from a literal', () => {
     expect(out).toContain(messages.plans.basic.price)
     expect(out).toContain(messages.plans.essential.price)
-    expect(out).toContain(messages.plans.promo.price)
     expect(out).toContain(messages.plans.pro.price)
-    expect(out).toContain(messages.plans.promo.priceChangeNote)
     expect(out).toContain(messages.plans.essential.feature4)
     expect(out).toContain(copy.plans.proSoon)
-    expect(out).toContain('href="/fundadores"')
+    expect(out).toContain('href="/conta/criar"')
   })
+
 
   it('lists the guarantees and the questions', () => {
     for (const guarantee of copy.guarantees) expect(out).toContain(guarantee.title)

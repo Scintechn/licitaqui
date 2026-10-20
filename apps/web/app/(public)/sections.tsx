@@ -309,21 +309,13 @@ export function Plans({ seats }: { seats: FounderSeatsView | null }) {
             </Button>
           </Panel>
 
-          {/* Essencial, at the founders' promotional price while seats last. */}
+          {/* Essencial plan. */}
           <Panel accent className="flex flex-col gap-4 p-6">
             <SectionLabel tone="accent" size="caption">
               {copy.plans.essentialEyebrow}
             </SectionLabel>
             <H3>{plans.essential.name}</H3>
             <Price value={plans.essential.price} unit={plans.monthly} />
-
-            <div className="flex flex-col gap-1 rounded-swatch bg-attention-soft p-3 text-body leading-[1.45]">
-              <b className="text-attention">
-                {plans.promo.price} {plans.monthly} · {plans.promo.badge}
-              </b>
-              <span>{seatsLine(seats)}</span>
-              <span className="text-muted">{plans.promo.priceChangeNote}</span>
-            </div>
 
             <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
               <Feature>{plans.essential.feature3}</Feature>
@@ -332,8 +324,8 @@ export function Plans({ seats }: { seats: FounderSeatsView | null }) {
               <Feature>{plans.essential.feature4}</Feature>
             </ul>
 
-            <Button href="/fundadores" fullWidth className="mt-auto">
-              {messages.founders.offer.cta}
+            <Button href="/conta/criar" fullWidth className="mt-auto">
+              {plans.quota.cta}
             </Button>
             <p className="text-caption leading-[1.45] text-muted">
               {copy.plans.essentialPaymentNote}
