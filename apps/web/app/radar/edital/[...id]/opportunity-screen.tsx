@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getJobStatus, getTender, radarHref, readSearch, TAB_PARAM } from '@/lib/radar/client'
 import type {
+  Checklist,
   Freshness,
   ScreeningAvailability,
   TenderDetail,
@@ -30,6 +31,8 @@ type Data = {
   freshness: Freshness | null
   /** Whether a reading exists and whether this caller has paid for it. */
   screening: ScreeningAvailability | null
+  /** D26: The ScreeningChecklist showing PNCP requirements and AI findings. */
+  checklist: Checklist | null
   status: OpportunityStatus
 }
 
@@ -37,6 +40,7 @@ const INITIAL: Data = {
   tender: null,
   freshness: null,
   screening: null,
+  checklist: null,
   status: { kind: 'analyzing' },
 }
 
@@ -122,6 +126,7 @@ export function OpportunityScreen({ id }: { id: string }) {
           tender: null,
           freshness: null,
           screening: null,
+          checklist: null,
           status:
             value.error === 'not_found' || value.error === 'validation'
               ? { kind: 'notFound' }
@@ -130,7 +135,7 @@ export function OpportunityScreen({ id }: { id: string }) {
         return
       }
       if (timedOut || value.state === 'analyzing') {
-        setData({ tender: null, freshness: null, screening: null, status: { kind: 'notFound' } })
+        setData({ tender: null, freshness: null, screening: null, checklist: null, status: { kind: 'notFound' } })
         return
       }
 
@@ -138,6 +143,7 @@ export function OpportunityScreen({ id }: { id: string }) {
         tender: value.tender,
         freshness: value.freshness,
         screening: value.screening,
+        checklist: value.checklist ?? null,
         status: { kind: 'ready' },
       })
     }
@@ -148,6 +154,7 @@ export function OpportunityScreen({ id }: { id: string }) {
         tender: null,
         freshness: null,
         screening: null,
+        checklist: null,
         status: { kind: 'error', code: 'server_error', text: NETWORK_ERROR },
       })
     })
@@ -169,6 +176,7 @@ export function OpportunityScreen({ id }: { id: string }) {
       backHref={backHref}
       search={search}
       screening={data.screening}
+      checklist={data.checklist}
       onRetry={onRetry}
       tab={tab}
       onSelectTab={setTab}
