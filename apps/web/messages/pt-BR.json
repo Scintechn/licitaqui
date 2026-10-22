@@ -1070,6 +1070,7 @@
       "whyEmptyTitle": "Este edital veio da busca por palavra",
       "whyEmptyBody": "Ele não bate com as atividades do seu CNPJ. Leia com atenção o que o órgão pede antes de disputar.",
       "requirementsNote": "Atestado técnico, capital mínimo, amostra e licenças aparecem na triagem por IA, cada um com a página do edital.",
+      "aiBlockTitle": "O que a triagem encontrou",
       "objectTitle": "Objeto",
       "objectMore": "Ler tudo",
       "objectLess": "Ver menos",
@@ -1242,7 +1243,9 @@
       "ceilingBelowCent": "Abaixo de R$ 0,01"
     },
     "fields": {
+      "cnae": "Atividade econômica (CNAE)",
       "meEpp": "ME/EPP",
+      "deadline": "Encerramento de propostas",
       "technicalCertificate": "Atestado técnico",
       "minimumCapital": "Capital mínimo",
       "sample": "Amostra",
