@@ -49,6 +49,8 @@ import {
 } from '@/lib/radar/tender-status'
 import { TenderTags } from '../../tender-card'
 import { TenderStatusBanner } from '../../tender-status-banner'
+import { ScreeningChecklist } from '@/components/screening-checklist'
+import type { Checklist } from '@/lib/radar/contract'
 import { CopyId } from './copy-id'
 import { FavouriteButton } from './favourite-button'
 import { ITEMS_PAGE, TenderItems } from './tender-items'
@@ -651,6 +653,8 @@ export type OpportunityViewProps = {
    * tender id), so a cost line there would be false.
    */
   showScreeningCost?: boolean
+  /** The ScreeningChecklist object from D26, showing PNCP requirements and AI findings. */
+  checklist?: Checklist | null
   now?: Date
   onRetry?: () => void
   /** Which tab of the record is open. The screen owns it; this stays pure. */
@@ -669,6 +673,7 @@ export function OpportunityView({
   search,
   screening = null,
   showScreeningCost = false,
+  checklist = null,
   now = new Date(),
   onRetry,
   tab = 'items',
@@ -911,24 +916,32 @@ export function OpportunityView({
             below, rather than 42 above and 14 below. */}
         <div className="@container">
           <div className="flex flex-col gap-7 pt-7 @min-[860px]:grid @min-[860px]:grid-cols-2 @min-[860px]:items-start @min-[860px]:gap-10">
-            <section className="flex flex-col gap-2">
-              <SectionLabel tone="muted">{page.whyTitle}</SectionLabel>
-              {why.length === 0 ? (
-                <StateCard kind="empty" title={page.whyEmptyTitle} description={page.whyEmptyBody} />
-              ) : (
-                <ul className="m-0 flex list-none flex-col gap-2 p-0">
-                  {why.map((reason) => (
-                    <li key={reason} className="flex items-start gap-2.5 text-body">
-                      <Icon name="check" size={16} strokeWidth={2.4} className="mt-1 text-success" />
-                      <span>{reason}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <p className="text-caption leading-relaxed text-muted">{page.requirementsNote}</p>
-            </section>
-
-            <Operation tender={tender} />
+            {checklist ? (
+              <>
+                <ScreeningChecklist checklist={checklist} spent={screening?.spent ?? false} />
+                <Operation tender={tender} />
+              </>
+            ) : (
+              <>
+                <section className="flex flex-col gap-2">
+                  <SectionLabel tone="muted">{page.whyTitle}</SectionLabel>
+                  {why.length === 0 ? (
+                    <StateCard kind="empty" title={page.whyEmptyTitle} description={page.whyEmptyBody} />
+                  ) : (
+                    <ul className="m-0 flex list-none flex-col gap-2 p-0">
+                      {why.map((reason) => (
+                        <li key={reason} className="flex items-start gap-2.5 text-body">
+                          <Icon name="check" size={16} strokeWidth={2.4} className="mt-1 text-success" />
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-caption leading-relaxed text-muted">{page.requirementsNote}</p>
+                </section>
+                <Operation tender={tender} />
+              </>
+            )}
           </div>
         </div>
 
