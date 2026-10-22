@@ -918,7 +918,7 @@ export function OpportunityView({
           <div className="flex flex-col gap-7 pt-7 @min-[860px]:grid @min-[860px]:grid-cols-2 @min-[860px]:items-start @min-[860px]:gap-10">
             {checklist ? (
               <>
-                <ScreeningChecklist checklist={checklist} spent={screening?.spent ?? false} />
+                <ScreeningChecklist checklist={checklist} score={screening?.score ?? null} spent={screening?.spent ?? false} />
                 <Operation tender={tender} />
               </>
             ) : (
