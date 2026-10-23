@@ -177,7 +177,7 @@ function AiBlock({
       {checkedCount > 0 && (
         <div>
           <p className="text-caption text-muted mb-2">
-            {checkedCount === 1 ? '1 ponto conferido' : `${checkedCount} pontos conferidos`}
+            {format(screeningCopy.checkedByAiLabel, { count: checkedCount })}
           </p>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {aiRows
