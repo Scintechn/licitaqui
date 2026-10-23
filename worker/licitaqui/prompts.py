@@ -18,7 +18,7 @@ but the deep prompt itself is C2's to port.
 from __future__ import annotations
 
 #: Prompt identities. Part of the `ai_analyses` cache key (§6.3).
-PROMPT_VERSION_LITE = "triagem-edital-v2"
+PROMPT_VERSION_LITE = "triagem-edital-v4"
 PROMPT_VERSION_DEEP = "deep-dive-edital-v3"
 
 RULES = """Você é analista de licitações públicas no Brasil (Lei 14.133/2021) e ajuda MEIs, MEs e EPPs
@@ -27,14 +27,36 @@ a decidir se vale participar de um edital.
 Regras:
 - Use SOMENTE o documento fornecido. Não invente, não use conhecimento externo sobre o órgão.
 - O texto vem marcado com [[página N]]. Informe sempre a página de onde tirou a informação.
-- Diferencie "o documento diz que NÃO exige" (use "nao_exigida"/"nao_ha"/false) de
+- Diferencie "o documento diz que NÃO exige" (use "nao_exigida"/"nao_ha"/false/"nenhuma") de
   "o documento não fala disso" (use "nao_informado" ou null).
-- AMOSTRA (entregar produto para análise) é diferente de PROVA DE CONCEITO (demonstrar sistema/solução).
+- AMOSTRA (entregar produto para análise):
+  * Se diz "não exigível", "não exigida", "não é exigida" → "nenhuma".
+  * Se diz "quando solicitada", "quando exigido", "conforme especificações" → "amostra" (será cobrada se pedida).
+  * Se não menciona amostra → "nao_informado".
+  Não confunda: "quando exigido no Anexo I, item 6" (amostra pode ser cobrada) é diferente de "item 6 diz: não exigível" (nenhuma).
+- AMOSTRA vs PROVA DE CONCEITO: são diferentes. "Prova de conceito" é demonstração viva (ex: sistema funcionando com 70% dos requisitos).
+  Amostra é entregar um produto/specimen. Diferencie-os.
+- Benefícios ME/EPP: "exclusivo" (só para ME/EPP), "cota_reservada" (% dos itens), "misto" (há cotas + exclusivos),
+  "tratamento_favorecido" (desconto, prazos estendidos, técnicas atenuadas — LC 123/2006), "sem_beneficio", "nao_informado".
+  Se a tabela/quadro diz "SIM" e o texto explica tratamento favorecido (descontos, técnicas menos rigorosas), é "tratamento_favorecido".
+  NÃO confunda com "sem_beneficio" quando há alguma menção de benefício, mesmo que qualificado.
 - "misto" = há itens de ampla disputa junto com itens exclusivos e/ou cotas reservadas para ME/EPP.
 - Exigências que impedem REVENDEDOR/DISTRIBUIDOR (licença sanitária própria, AFE, fabricante) são bloqueadores importantes.
+- Um BLOQUEADOR é uma exigência crítica que impede uma pequena empresa de participar: patrimônio/capital mínimo alto,
+  certificações técnicas que exigem investimento, registros obrigatórios (ANVISA, INMETRO), ou que exclui certos tipos
+  de empresa (ex.: só fabricantes, não distribuidores). Uma exigência que meramente "pede algo" (garantia, amostra, visita)
+  NÃO é bloqueador, é conferida/respondida. blocker_state: "blocker" se ≥1 exigência crítica existe, "ok" se todas as
+  exigências encontradas são respondíveis/atendíveis, "unknown" se o documento não foi lido completamente.
 - O QUADRO-RESUMO/PREÂMBULO do edital (primeiras páginas) é específico e prevalece sobre cláusulas-padrão
   repetidas em todo edital. Se o preâmbulo disser uma coisa e uma cláusula genérica outra, use "conflito"
   quando a opção existir e explique em "observacao".
+- Prazos de IMPLANTAÇÃO/ENTREGA: procure "implantação", "entrega", "instalação", "dias úteis", "dias corridos".
+  Sempre procure no Anexo (Especificações, Anexo I, etc) e nas cláusulas de execução. Se encontrar "X dias", copie X.
+- NOTA DE TRIAGEM (0-10): 10 = muito acessível (ME/EPP exclusivo, sem exigências técnicas). 0 = impossível para pequena.
+  Fatores que REDUZEM a nota (0-4 = bloqueador): valor muito alto (>R$ 1M), vigência longa (>36 meses), exigências técnicas
+  pesadas (atestado com >500 usuários, PoC complexa, capital >5%, AFE/ANVISA/INMETRO), ou que excluem distribuidores.
+  Fatores que AUMENTAM a nota (7-10): exclusividade ME/EPP, valor baixo (<R$ 100k), sem capital mínimo, sem atestado técnico,
+  sem amostra/PoC obrigatória. Valores intermediários (5-6): editais "médios" com alguns requisitos.
 - NÃO faça contas (percentuais, valores anuais, somas). Copie os números como estão; o sistema calcula.
 - Datas no formato "AAAA-MM-DD HH:MM" (horário de Brasília). Valores em reais como número (1234.56).
 - Frases curtas, linguagem simples, sem juridiquês.
@@ -72,12 +94,14 @@ PROMPT_LITE = """TRIAGEM RÁPIDA. Preencha exatamente este JSON:
                          "inmetro": true/false/null, "catalogo_ou_ficha_tecnica": true/false/null,
                          "aceita_distribuidor_revendedor": "sim | nao | com_condicoes | nao_informado", "pagina": null},
   "bloqueadores_pequena_empresa": [{"ponto": "exigência que pode impedir uma empresa pequena", "pagina": null}],
+  "blocker_state": "blocker | ok | unknown",
   "nota_triagem_0_a_10": null,
   "vale_deep_dive": true/false,
   "motivo": "1 frase explicando a nota"
 }
 
 No máximo 3 bloqueadores. Nota 0 = impossível para empresa pequena, 10 = muito acessível.
+blocker_state: "blocker" se há exigência crítica que impede, "ok" se nenhuma crítica ou todas são respondíveis, "unknown" se não leu completamente.
 
 DOCUMENTO (trechos mais relevantes, em ordem de página):
 """
