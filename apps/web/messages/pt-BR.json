@@ -1173,6 +1173,7 @@
       "pageUnverified": "A página citada não confere: procure no edital inteiro.",
       "citationsNone": "Esta triagem não citou página nenhuma.",
       "shared": "Análise compartilhada: quem pedir este edital depois lê a mesma.",
+      "checkedByAiLabel": "{count, plural, one {1 ponto analisado pela IA} other {# pontos analisados pela IA}}",
       "verdict": {
         "good": "Boa para empresa pequena",
         "medium": "Dá para disputar, com atenção",
